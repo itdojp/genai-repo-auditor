@@ -40,22 +40,24 @@ Notes:
 
 ## Install locally
 
-Choose a user-owned install directory. This example uses `$HOME/.local/opt`.
+Choose a user-owned install directory. This example uses `$HOME/.local/opt`. Keep `GRA_HOME` set when following the examples so run paths are absolute and do not depend on your current directory.
 
 ```bash
 mkdir -p "$HOME/.local/opt"
-git clone https://github.com/itdojp/genai-repo-auditor.git "$HOME/.local/opt/genai-repo-auditor"
-cd "$HOME/.local/opt/genai-repo-auditor"
+export GRA_HOME="$HOME/.local/opt/genai-repo-auditor"
+git clone https://github.com/itdojp/genai-repo-auditor.git "$GRA_HOME"
+cd "$GRA_HOME"
 chmod +x bin/* scripts/*.sh
 ```
 
 Add the command directory to your shell path for the current session:
 
 ```bash
-export PATH="$HOME/.local/opt/genai-repo-auditor/bin:$PATH"
+export GRA_HOME="$HOME/.local/opt/genai-repo-auditor"
+export PATH="$GRA_HOME/bin:$PATH"
 ```
 
-To make the path persistent for future shells, add the same line to your shell startup file, such as `~/.profile`, `~/.bashrc`, or `~/.zshrc`.
+To make the path persistent for future shells, add both `export GRA_HOME=...` and `export PATH=...` lines to your shell startup file, such as `~/.profile`, `~/.bashrc`, or `~/.zshrc`.
 
 ## Verify the installation
 
@@ -95,17 +97,18 @@ gra-audit \
   --run-id first-prepare
 ```
 
-Expected output includes an audit run directory similar to:
+Expected output includes an absolute audit run directory. Unless `--runs-dir` is supplied, the default location is under the install root:
 
 ```text
-runs/OWNER__REPO/first-prepare/
+$GRA_HOME/runs/OWNER__REPO/first-prepare/
 ```
 
-Inspect the generated context:
+Inspect the generated context with the absolute path:
 
 ```bash
-cat runs/OWNER__REPO/first-prepare/context.json
-ls runs/OWNER__REPO/first-prepare/prompts/
+RUN_DIR="$GRA_HOME/runs/OWNER__REPO/first-prepare"
+cat "$RUN_DIR/context.json"
+ls "$RUN_DIR/prompts/"
 ```
 
 If the target repository clones successfully and the run directory is created, proceed to a full audit.
@@ -139,20 +142,20 @@ gra-audit \
   --mode exec
 ```
 
-By default, output is written under:
+By default, output is written under the install root, not the caller's current directory:
 
 ```text
-runs/OWNER__REPO/RUN_ID/
+$GRA_HOME/runs/OWNER__REPO/RUN_ID/
 ```
 
-Where `RUN_ID` is a UTC timestamp plus process identifiers unless `--run-id` is provided.
+Where `RUN_ID` is a UTC timestamp plus process identifiers unless `--run-id` is provided. Use the exact absolute run directory printed by `gra-audit` in follow-up commands.
 
 ## Review the results
 
 After the audit completes, locate the run directory printed by `gra-audit`. The key files are:
 
 ```text
-runs/OWNER__REPO/RUN_ID/
+$GRA_HOME/runs/OWNER__REPO/RUN_ID/
   context.json
   repo/                 # cloned target repository; treat as untrusted input
   reports/
@@ -168,15 +171,16 @@ runs/OWNER__REPO/RUN_ID/
 Run validation manually if needed:
 
 ```bash
-gra-validate-report --run runs/OWNER__REPO/RUN_ID
+RUN_DIR="$GRA_HOME/runs/OWNER__REPO/RUN_ID"  # replace RUN_ID with the actual value printed by gra-audit
+gra-validate-report --run "$RUN_DIR"
 ```
 
 Generate optional local outputs:
 
 ```bash
-gra-dashboard --run runs/OWNER__REPO/RUN_ID
-gra-sarif --run runs/OWNER__REPO/RUN_ID
-gra-store --run runs/OWNER__REPO/RUN_ID
+gra-dashboard --run "$RUN_DIR"
+gra-sarif --run "$RUN_DIR"
+gra-store --run "$RUN_DIR"
 ```
 
 Review `reports/FINDINGS.md`, `reports/findings.json`, and `reports/issue-drafts/` before taking action. Treat AI output as analysis that requires human verification.
@@ -186,13 +190,13 @@ Review `reports/FINDINGS.md`, `reports/findings.json`, and `reports/issue-drafts
 Always start with a dry run:
 
 ```bash
-gra-issues --run runs/OWNER__REPO/RUN_ID --dry-run
+gra-issues --run "$RUN_DIR" --dry-run
 ```
 
 Create issues only after the findings are verified and disclosure is approved:
 
 ```bash
-gra-issues --run runs/OWNER__REPO/RUN_ID --apply --create-labels
+gra-issues --run "$RUN_DIR" --apply --create-labels
 ```
 
 Public repository Issue creation is blocked by default. Use `--allow-public` only when public disclosure is intentional and approved.
@@ -200,7 +204,7 @@ Public repository Issue creation is blocked by default. Use `--allow-public` onl
 ## Update the local install
 
 ```bash
-cd "$HOME/.local/opt/genai-repo-auditor"
+cd "$GRA_HOME"
 git pull --ff-only
 chmod +x bin/* scripts/*.sh
 ```
