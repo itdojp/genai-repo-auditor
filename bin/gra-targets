@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / 'lib'))
+from gralib import env_from_context, find_target, load_context, load_targets, render_template, run_codex_exec, write_targets
+
+
+def print_table(targets):
+    print(f"{'ID':<10} {'RISK':<12} {'PRIO':<5} {'STATUS':<18} {'CATEGORY':<18} TITLE")
+    for t in sorted(targets, key=lambda x: (-int(x.get('priority') or 0), str(x.get('id')))):
+        print(f"{str(t.get('id','')):<10} {str(t.get('risk','')):<12} {str(t.get('priority','')):<5} {str(t.get('status','')):<18} {str(t.get('category',''))[:17]:<18} {t.get('title','')}")
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description='Generate and manage GenAI Repo Auditor target queues')
+    p.add_argument('--run', required=True, help='Run directory')
+    action = p.add_mutually_exclusive_group(required=True)
+    action.add_argument('--generate', action='store_true', help='Run Codex to generate reports/targets.json')
+    action.add_argument('--list', action='store_true', help='List targets')
+    action.add_argument('--show', metavar='TGT-ID', help='Show one target as JSON')
+    action.add_argument('--mark', nargs=2, metavar=('TGT-ID', 'STATUS'), help='Set target status')
+    p.add_argument('--model', default='gpt-5.5')
+    p.add_argument('--effort', default='xhigh')
+    p.add_argument('--network', action='store_true', help='Allow Codex sandbox network access. Not recommended.')
+    args = p.parse_args()
+
+    run_dir = Path(args.run).resolve()
+    if not (run_dir / 'context.json').exists():
+        print(f'context.json not found under {run_dir}', file=sys.stderr)
+        return 2
+
+    if args.list:
+        print_table(load_targets(run_dir))
+        return 0
+
+    if args.show:
+        try:
+            print(json.dumps(find_target(run_dir, args.show), indent=2, ensure_ascii=False))
+            return 0
+        except KeyError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+
+    if args.mark:
+        target_id, status = args.mark
+        valid = {'queued', 'in_progress', 'reviewed', 'skipped', 'needs_human_review'}
+        if status not in valid:
+            print(f'invalid status {status}; choose one of {sorted(valid)}', file=sys.stderr)
+            return 2
+        targets = load_targets(run_dir)
+        found = False
+        for t in targets:
+            if str(t.get('id')) == target_id:
+                t['status'] = status
+                found = True
+                break
+        if not found:
+            print(f'target not found: {target_id}', file=sys.stderr)
+            return 2
+        write_targets(run_dir, targets)
+        print(f'updated {target_id} -> {status}')
+        return 0
+
+    # generate
+    ctx = load_context(run_dir)
+    reports = run_dir / ctx.get('reports_dir', 'reports')
+    reports.mkdir(parents=True, exist_ok=True)
+    (run_dir / 'prompts' / 'exec').mkdir(parents=True, exist_ok=True)
+    env = env_from_context(run_dir)
+    # Ensure target schema is available in the run directory for Codex.
+    schema_src = LAB_ROOT / 'templates' / 'reports' / 'targets.schema.json'
+    if schema_src.exists():
+        (run_dir / 'targets.schema.json').write_text(schema_src.read_text(encoding='utf-8'), encoding='utf-8')
+    prompt = run_dir / 'prompts' / 'exec' / 'generate-targets.prompt.md'
+    render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'generate-targets.prompt.md', prompt, env)
+    print(f'Running Codex target generation for {ctx.get("repo", "")}')
+    status = run_codex_exec(
+        run_dir=run_dir,
+        prompt_file=prompt,
+        model=args.model,
+        effort=args.effort,
+        network=args.network,
+        output_last=run_dir / 'codex-targets-final.md',
+        events_file=run_dir / 'codex-targets-events.jsonl',
+        stderr_file=run_dir / 'codex-targets-stderr.txt',
+    )
+    if status != 0:
+        print(f'Codex exited with status {status}', file=sys.stderr)
+        return status
+    if not (reports / 'targets.json').exists():
+        print('Codex completed but reports/targets.json is missing', file=sys.stderr)
+        return 1
+    print(f'Wrote {reports / "targets.json"}')
+    print_table(load_targets(run_dir))
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

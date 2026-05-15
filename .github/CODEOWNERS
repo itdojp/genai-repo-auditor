@@ -1,0 +1,10 @@
+# Default owner
+* @itdojp
+
+# Security-sensitive areas
+/bin/ @itdojp
+/prompts/ @itdojp
+/templates/reports/ @itdojp
+/docs/SECURITY_MODEL.md @itdojp
+/SECURITY.md @itdojp
+/.github/workflows/ @itdojp

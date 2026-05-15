@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+import argparse
+import json
+from pathlib import Path
+from typing import Any, Dict, List
+
+SEVERITIES = ["Critical", "High", "Medium", "Low", "Informational"]
+STATUSES = ["Confirmed", "Probable", "Potential", "Needs human review", "Informational", "Invalid"]
+
+
+def load_json(path: Path) -> Dict[str, Any]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Create index of GenAI Repo Auditor runs")
+    parser.add_argument("--runs-dir", default="runs")
+    args = parser.parse_args()
+
+    runs_dir = Path(args.runs_dir).resolve()
+    items: List[Dict[str, Any]] = []
+    for findings_path in runs_dir.glob("*/*/reports/findings.json"):
+        run_dir = findings_path.parent.parent
+        data = load_json(findings_path)
+        findings = data.get("findings") or []
+        counts = {sev: 0 for sev in SEVERITIES}
+        statuses = {st: 0 for st in STATUSES}
+        for f in findings:
+            if not isinstance(f, dict):
+                continue
+            sev = f.get("severity")
+            st = f.get("status")
+            if sev in counts:
+                counts[sev] += 1
+            if st in statuses:
+                statuses[st] += 1
+        items.append({
+            "run_dir": str(run_dir),
+            "repo": data.get("repo"),
+            "run_id": data.get("run_id") or run_dir.name,
+            "commit": data.get("commit"),
+            "generated_at": data.get("generated_at"),
+            "finding_count": len(findings),
+            "severity_counts": counts,
+            "status_counts": statuses,
+        })
+
+    items.sort(key=lambda x: (str(x.get("repo")), str(x.get("run_id"))))
+    out_json = runs_dir / "index.json"
+    out_json.write_text(json.dumps({"runs": items}, indent=2) + "\n", encoding="utf-8")
+
+    lines = ["# GenAI Repo Auditor Run Index", "", "| Repo | Run ID | Findings | Critical | High | Medium | Run dir |", "|---|---|---:|---:|---:|---:|---|"]
+    for item in items:
+        c = item["severity_counts"]
+        lines.append(f"| {item.get('repo') or ''} | {item.get('run_id') or ''} | {item.get('finding_count', 0)} | {c.get('Critical',0)} | {c.get('High',0)} | {c.get('Medium',0)} | `{item.get('run_dir')}` |")
+    out_md = runs_dir / "index.md"
+    out_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    print(f"Wrote {out_json}")
+    print(f"Wrote {out_md}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

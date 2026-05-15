@@ -1,0 +1,11 @@
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+web_search = "disabled"
+
+[features]
+goals = true
+
+[sandbox_workspace_write]
+network_access = false

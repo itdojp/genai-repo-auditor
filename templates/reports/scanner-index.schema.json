@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor Scanner Index",
+  "type": "object",
+  "required": ["run_id", "repo", "generated_at", "results"],
+  "properties": {
+    "run_id": {"type": "string"},
+    "repo": {"type": "string"},
+    "generated_at": {"type": "string"},
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tool", "path", "format", "imported_at"],
+        "properties": {
+          "tool": {"type": "string"},
+          "path": {"type": "string"},
+          "format": {"type": "string"},
+          "imported_at": {"type": "string"},
+          "note": {"type": "string"}
+        }
+      }
+    }
+  }
+}

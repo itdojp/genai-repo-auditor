@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / 'lib'))
+from gralib import env_from_context, load_context, render_template, run_codex_exec
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description='Run reconnaissance phase for a prepared GenAI Repo Auditor run')
+    p.add_argument('--run', required=True, help='Run directory')
+    p.add_argument('--model', default='gpt-5.5')
+    p.add_argument('--effort', default='xhigh')
+    p.add_argument('--network', action='store_true', help='Allow Codex sandbox network access. Not recommended.')
+    args = p.parse_args()
+
+    run_dir = Path(args.run).resolve()
+    ctx = load_context(run_dir)
+    env = env_from_context(run_dir)
+    prompt = run_dir / 'prompts' / 'exec' / 'recon.prompt.md'
+    render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'recon.prompt.md', prompt, env)
+    print(f'Running Codex recon for {ctx.get("repo", "")}')
+    status = run_codex_exec(
+        run_dir=run_dir,
+        prompt_file=prompt,
+        model=args.model,
+        effort=args.effort,
+        network=args.network,
+        output_last=run_dir / 'codex-recon-final.md',
+        events_file=run_dir / 'codex-recon-events.jsonl',
+        stderr_file=run_dir / 'codex-recon-stderr.txt',
+    )
+    print(f'Codex status: {status}')
+    return status
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

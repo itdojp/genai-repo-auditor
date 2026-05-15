@@ -1,0 +1,49 @@
+# Example Codex rules for local security audit sessions.
+
+prefix_rule(
+    pattern = ["curl"],
+    decision = "prompt",
+    justification = "Network access requires explicit approval during security audits.",
+)
+
+prefix_rule(
+    pattern = ["wget"],
+    decision = "prompt",
+    justification = "Network access requires explicit approval during security audits.",
+)
+
+prefix_rule(
+    pattern = ["nmap"],
+    decision = "forbidden",
+    justification = "External scanning is out of scope for source-code audit.",
+)
+
+prefix_rule(
+    pattern = ["gh", "issue", "create"],
+    decision = "forbidden",
+    justification = "Issue creation must be done by gra-issues after human review.",
+)
+
+prefix_rule(
+    pattern = ["gh", "pr", "create"],
+    decision = "forbidden",
+    justification = "PR creation is outside audit phase.",
+)
+
+prefix_rule(
+    pattern = ["git", "push"],
+    decision = "forbidden",
+    justification = "Audit phase must not push changes.",
+)
+
+prefix_rule(
+    pattern = ["gh", "secret"],
+    decision = "forbidden",
+    justification = "Do not read or modify GitHub Secrets during audit.",
+)
+
+prefix_rule(
+    pattern = ["rm", "-rf"],
+    decision = "prompt",
+    justification = "Destructive filesystem operations require explicit approval.",
+)

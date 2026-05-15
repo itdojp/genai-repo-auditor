@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import hashlib
+import shutil
+import sys
+from pathlib import Path
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / 'lib'))
+from gralib import load_context, load_json, utc_now, write_json
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description='Ingest scanner output into a GenAI Repo Auditor run')
+    p.add_argument('--run', required=True, help='Run directory')
+    p.add_argument('--tool', required=True, help='Scanner/tool name, e.g. semgrep, gitleaks, trivy, codeql, checkov')
+    p.add_argument('--file', required=True, help='Scanner result file to copy into the run')
+    p.add_argument('--format', default='auto', help='Result format, e.g. json, sarif, text. Default: infer from extension')
+    p.add_argument('--note', default='', help='Optional note')
+    args = p.parse_args()
+
+    run_dir = Path(args.run).resolve()
+    ctx = load_context(run_dir)
+    src = Path(args.file).resolve()
+    if not src.exists():
+        print(f'file not found: {src}', file=sys.stderr)
+        return 2
+
+    fmt = args.format
+    if fmt == 'auto':
+        suffix = src.suffix.lower().lstrip('.')
+        fmt = suffix or 'unknown'
+    dest_dir = run_dir / 'reports' / 'scanner-results'
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256(src.read_bytes()).hexdigest()[:12]
+    safe_tool = ''.join(ch if ch.isalnum() or ch in '-_' else '-' for ch in args.tool.lower())
+    dest = dest_dir / f'{safe_tool}-{digest}.{fmt}'
+    shutil.copy2(src, dest)
+
+    index_path = dest_dir / 'scanner-index.json'
+    data = load_json(index_path, None)
+    if not data:
+        data = {
+            'run_id': ctx.get('run_id', run_dir.name),
+            'repo': ctx.get('repo', ''),
+            'generated_at': utc_now(),
+            'results': [],
+        }
+    entry = {
+        'tool': args.tool,
+        'path': str(dest.relative_to(run_dir)),
+        'format': fmt,
+        'imported_at': utc_now(),
+        'sha256': digest,
+        'note': args.note,
+    }
+    data.setdefault('results', []).append(entry)
+    write_json(index_path, data)
+    print(f'Ingested {src} -> {dest}')
+    print(f'Updated {index_path}')
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

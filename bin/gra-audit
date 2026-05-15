@@ -1,0 +1,310 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RUNS_DIR="${GENAI_REPO_AUDITOR_RUNS_DIR:-$LAB_ROOT/runs}"
+
+REPO=""
+BRANCH=""
+MODE="exec"
+MODEL="${GRA_MODEL:-${CODEX_MODEL:-gpt-5.5}}"
+EFFORT="${GRA_REASONING_EFFORT:-${CODEX_REASONING_EFFORT:-xhigh}}"
+DEPTH="1"
+RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
+CODEX_JSON="1"
+NETWORK="0"
+USE_LOCK="1"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  gra-audit --repo OWNER/REPO [options]
+
+Options:
+  --repo OWNER/REPO       GitHub repository to audit. Required.
+  --branch REF            Branch or ref to clone. Optional.
+  --mode exec|goal|prepare
+                         exec runs full audit non-interactively; goal prepares interactive /goal; prepare only creates a run directory. Default: exec
+  --model MODEL           Codex model. Default: gpt-5.5
+  --effort EFFORT         model_reasoning_effort. Default: xhigh
+  --depth N               Clone depth. Default: 1
+  --run-id ID             Override run id. Default: UTC timestamp + pid + random
+  --runs-dir DIR          Override runs directory for this invocation
+  --codex-json            Use codex exec --json and save event stream to codex-events.jsonl. Default: enabled
+  --network               Allow Codex sandbox network access. Default: disabled
+  --no-lock               Disable same-repo lock. Not recommended.
+  -h, --help              Show help.
+
+Examples:
+  gra-audit --repo acme/api --mode exec
+  gra-audit --repo acme/api --mode goal --model gpt-5.5 --effort xhigh
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --repo) REPO="${2:-}"; shift 2 ;;
+    --branch) BRANCH="${2:-}"; shift 2 ;;
+    --mode) MODE="${2:-}"; shift 2 ;;
+    --model) MODEL="${2:-}"; shift 2 ;;
+    --effort) EFFORT="${2:-}"; shift 2 ;;
+    --depth) DEPTH="${2:-}"; shift 2 ;;
+    --run-id) RUN_ID="${2:-}"; shift 2 ;;
+    --runs-dir) RUNS_DIR="${2:-}"; shift 2 ;;
+    --codex-json) CODEX_JSON="1"; shift ;;
+    --network) NETWORK="1"; shift ;;
+    --no-lock) USE_LOCK="0"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+if [[ -z "$REPO" ]]; then
+  echo "--repo is required" >&2
+  usage >&2
+  exit 2
+fi
+
+if [[ "$MODE" != "exec" && "$MODE" != "goal" && "$MODE" != "prepare" ]]; then
+  echo "--mode must be exec, goal, or prepare" >&2
+  exit 2
+fi
+
+for cmd in git gh codex python3; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "Missing required command: $cmd" >&2
+    exit 1
+  fi
+done
+
+slug_from_repo() {
+  local r="$1"
+  r="${r#https://github.com/}"
+  r="${r#http://github.com/}"
+  r="${r%.git}"
+  r="${r//\//__}"
+  r="${r//:/__}"
+  printf '%s' "$r"
+}
+
+REPO_SLUG="$(slug_from_repo "$REPO")"
+RUN_DIR="$RUNS_DIR/$REPO_SLUG/$RUN_ID"
+REPO_DIR="$RUN_DIR/repo"
+REPORT_DIR="$RUN_DIR/reports"
+TARGET_REPO_DIR="repo"
+REPORTS_DIR="reports"
+
+mkdir -p "$RUNS_DIR" "$RUN_DIR" "$REPORT_DIR" "$RUN_DIR/prompts"
+
+if [[ "$USE_LOCK" == "1" ]]; then
+  LOCK_DIR="$RUNS_DIR/.locks"
+  mkdir -p "$LOCK_DIR"
+  if command -v flock >/dev/null 2>&1; then
+    exec 9>"$LOCK_DIR/$REPO_SLUG.lock"
+    if ! flock -n 9; then
+      echo "Another audit appears to be running for $REPO. Lock: $LOCK_DIR/$REPO_SLUG.lock" >&2
+      exit 12
+    fi
+  else
+    LOCK_PATH="$LOCK_DIR/$REPO_SLUG.lockdir"
+    if ! mkdir "$LOCK_PATH" 2>/dev/null; then
+      echo "Another audit appears to be running for $REPO. Lock: $LOCK_PATH" >&2
+      exit 12
+    fi
+    trap 'rmdir "$LOCK_PATH" 2>/dev/null || true' EXIT
+  fi
+fi
+
+printf 'Run directory: %s\n' "$RUN_DIR"
+printf 'Cloning %s ...\n' "$REPO"
+
+CLONE_ARGS=("$REPO" "$REPO_DIR" -- --depth "$DEPTH")
+if [[ -n "$BRANCH" ]]; then
+  CLONE_ARGS=("$REPO" "$REPO_DIR" -- --branch "$BRANCH" --depth "$DEPTH")
+fi
+
+gh repo clone "${CLONE_ARGS[@]}"
+
+COMMIT="$(git -C "$REPO_DIR" rev-parse HEAD)"
+BRANCH_ACTUAL="$(git -C "$REPO_DIR" branch --show-current || true)"
+if [[ -z "$BRANCH" ]]; then
+  BRANCH="$BRANCH_ACTUAL"
+fi
+VISIBILITY="UNKNOWN"
+if VIS_OUT="$(gh repo view "$REPO" --json visibility --jq .visibility 2>/dev/null)"; then
+  VISIBILITY="$VIS_OUT"
+fi
+
+# Keep Codex in the run directory so the controlling AGENTS.md is the lab policy,
+# not a potentially untrusted repository AGENTS.md.
+cp "$LAB_ROOT/prompts/AGENTS.audit.md" "$RUN_DIR/AGENTS.md"
+cp "$LAB_ROOT/templates/reports/findings.schema.json" "$RUN_DIR/findings.schema.json"
+if [[ -f "$LAB_ROOT/templates/reports/targets.schema.json" ]]; then
+  cp "$LAB_ROOT/templates/reports/targets.schema.json" "$RUN_DIR/targets.schema.json"
+fi
+if [[ -f "$LAB_ROOT/templates/reports/scanner-index.schema.json" ]]; then
+  cp "$LAB_ROOT/templates/reports/scanner-index.schema.json" "$RUN_DIR/scanner-index.schema.json"
+fi
+mkdir -p "$REPORT_DIR/issue-drafts" "$REPORT_DIR/scanner-results" "$REPORT_DIR/target-research" "$REPORT_DIR/variant-analysis"
+
+python3 - <<PYCODE
+import json
+from pathlib import Path
+ctx = {
+  "run_id": "$RUN_ID",
+  "repo": "$REPO",
+  "repo_slug": "$REPO_SLUG",
+  "branch": "$BRANCH",
+  "commit": "$COMMIT",
+  "visibility": "$VISIBILITY",
+  "run_dir": "$RUN_DIR",
+  "repo_dir": "$REPO_DIR",
+  "target_repo_dir": "$TARGET_REPO_DIR",
+  "reports_dir": "$REPORTS_DIR",
+  "network_allowed": "$NETWORK" == "1",
+}
+Path("$RUN_DIR/context.json").write_text(json.dumps(ctx, indent=2) + "\n", encoding="utf-8")
+PYCODE
+
+export RUN_ID REPO REPO_SLUG BRANCH COMMIT VISIBILITY RUN_DIR REPO_DIR TARGET_REPO_DIR REPORTS_DIR
+
+EXEC_PROMPT="$RUN_DIR/prompt.exec.md"
+GOAL_PROMPT="$RUN_DIR/prompt.goal.md"
+python3 "$LAB_ROOT/lib/render_template.py" "$LAB_ROOT/prompts/exec/full-audit.prompt.md" "$EXEC_PROMPT"
+python3 "$LAB_ROOT/lib/render_template.py" "$LAB_ROOT/prompts/goal/full-audit.goal.md" "$GOAL_PROMPT"
+
+mkdir -p "$RUN_DIR/prompts/exec" "$RUN_DIR/prompts/goal"
+for tmpl in "$LAB_ROOT"/prompts/exec/*.prompt.md; do
+  name="$(basename "$tmpl")"
+  python3 "$LAB_ROOT/lib/render_template.py" "$tmpl" "$RUN_DIR/prompts/exec/$name"
+done
+for tmpl in "$LAB_ROOT"/prompts/goal/*.goal.md; do
+  name="$(basename "$tmpl")"
+  python3 "$LAB_ROOT/lib/render_template.py" "$tmpl" "$RUN_DIR/prompts/goal/$name"
+done
+
+NETWORK_VALUE="false"
+if [[ "$NETWORK" == "1" ]]; then
+  NETWORK_VALUE="true"
+fi
+
+if [[ "$MODE" == "prepare" ]]; then
+  cat <<EOF_PREPARE
+
+Prepared audit run directory without executing Codex.
+
+Audit run directory:
+  $RUN_DIR
+
+Target repository:
+  $REPO_DIR
+
+Rendered prompts:
+  $RUN_DIR/prompts/
+
+Suggested staged agentic workflow:
+  gra-recon --run "$RUN_DIR" --model "$MODEL" --effort "$EFFORT"
+  gra-targets --run "$RUN_DIR" --generate --model "$MODEL" --effort "$EFFORT"
+  gra-targets --run "$RUN_DIR" --list
+  gra-research --run "$RUN_DIR" --target TGT-001 --model "$MODEL" --effort "$EFFORT"
+  gra-validate-report --run "$RUN_DIR"
+  gra-dashboard --run "$RUN_DIR"
+
+For a supervised deep dive, use:
+  gra-research --run "$RUN_DIR" --target TGT-001 --mode goal --model "$MODEL" --effort "$EFFORT"
+EOF_PREPARE
+  exit 0
+fi
+
+if [[ "$MODE" == "goal" ]]; then
+  cat <<EOF2
+
+Prepared interactive /goal run.
+
+Audit run directory:
+  $RUN_DIR
+
+Target repository:
+  $REPO_DIR
+
+Goal prompt:
+  $GOAL_PROMPT
+
+Additional rendered prompts:
+  $RUN_DIR/prompts/
+
+Start Codex from the audit run directory:
+  codex --cd "$RUN_DIR" --skip-git-repo-check --model "$MODEL" --enable goals --sandbox workspace-write --ask-for-approval on-request -c 'model_reasoning_effort="$EFFORT"' -c 'web_search="disabled"' -c 'sandbox_workspace_write.network_access=$NETWORK_VALUE'
+
+Then paste the contents of:
+  $GOAL_PROMPT
+
+When Codex finishes, validate with:
+  gra-validate-report --run "$RUN_DIR"
+
+Then inspect:
+  $REPORT_DIR/FINDINGS.md
+  $REPORT_DIR/findings.json
+EOF2
+  exit 0
+fi
+
+printf 'Running Codex non-interactively from run directory...\n'
+
+CODEX_ARGS=(
+  exec
+  --cd "$RUN_DIR"
+  --skip-git-repo-check
+  --model "$MODEL"
+  --sandbox workspace-write
+  --ask-for-approval never
+  --color never
+  --output-last-message "$RUN_DIR/codex-final.md"
+  -c "model_reasoning_effort=\"$EFFORT\""
+  -c 'web_search="disabled"'
+  -c "sandbox_workspace_write.network_access=$NETWORK_VALUE"
+)
+
+set +e
+if [[ "$CODEX_JSON" == "1" ]]; then
+  codex "${CODEX_ARGS[@]}" --json - < "$EXEC_PROMPT" > "$RUN_DIR/codex-events.jsonl" 2> "$RUN_DIR/codex-stderr.txt"
+  CODEX_STATUS=$?
+else
+  codex "${CODEX_ARGS[@]}" - < "$EXEC_PROMPT" 2>&1 | tee "$RUN_DIR/codex-transcript.txt"
+  CODEX_STATUS=${PIPESTATUS[0]}
+fi
+set -e
+
+VALIDATION_STATUS="not-run"
+if [[ -f "$REPORT_DIR/findings.json" ]]; then
+  set +e
+  "$LAB_ROOT/bin/gra-validate-report" --run "$RUN_DIR" > "$RUN_DIR/report-validation.txt" 2>&1
+  VALIDATION_STATUS=$?
+  set -e
+else
+  VALIDATION_STATUS="missing-findings-json"
+fi
+
+cat > "$RUN_DIR/run-summary.txt" <<EOF3
+run_id=$RUN_ID
+repo=$REPO
+branch=$BRANCH
+commit=$COMMIT
+visibility=$VISIBILITY
+mode=$MODE
+model=$MODEL
+effort=$EFFORT
+codex_status=$CODEX_STATUS
+validation_status=$VALIDATION_STATUS
+repo_dir=$REPO_DIR
+reports_dir=$REPORT_DIR
+EOF3
+
+printf '\nRun complete. Codex status: %s\n' "$CODEX_STATUS"
+printf 'Reports: %s\n' "$REPORT_DIR"
+printf 'Validation: %s\n' "$VALIDATION_STATUS"
+if [[ ! -f "$REPORT_DIR/findings.json" ]]; then
+  printf 'Warning: findings.json was not produced. Inspect codex output and rerun if needed.\n' >&2
+fi
+
+exit "$CODEX_STATUS"

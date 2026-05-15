@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor Findings",
+  "type": "object",
+  "required": [
+    "run_id",
+    "repo",
+    "commit",
+    "generated_at",
+    "findings"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string"
+    },
+    "repo": {
+      "type": "string"
+    },
+    "branch": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "commit": {
+      "type": "string"
+    },
+    "visibility": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "fingerprint",
+          "title",
+          "severity",
+          "confidence",
+          "status",
+          "category",
+          "affected_locations",
+          "entry_point",
+          "trust_boundary",
+          "source_to_sink",
+          "root_cause",
+          "evidence",
+          "impact",
+          "validation_status",
+          "minimal_remediation",
+          "regression_test_idea",
+          "issue_title",
+          "issue_body_file",
+          "issue_recommended",
+          "labels"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "Critical",
+              "High",
+              "Medium",
+              "Low",
+              "Informational"
+            ]
+          },
+          "confidence": {
+            "enum": [
+              "High",
+              "Medium",
+              "Low"
+            ]
+          },
+          "status": {
+            "enum": [
+              "Confirmed",
+              "Probable",
+              "Potential",
+              "Informational",
+              "Invalid",
+              "Needs human review"
+            ]
+          },
+          "category": {
+            "type": "string"
+          },
+          "affected_locations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "file"
+              ],
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "end_line": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "entry_point": {
+            "type": "string"
+          },
+          "trust_boundary": {
+            "type": "string"
+          },
+          "source_to_sink": {
+            "type": "string"
+          },
+          "root_cause": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "impact": {
+            "type": "string"
+          },
+          "validation_status": {
+            "type": "string"
+          },
+          "minimal_remediation": {
+            "type": "string"
+          },
+          "regression_test_idea": {
+            "type": "string"
+          },
+          "issue_title": {
+            "type": "string"
+          },
+          "issue_body_file": {
+            "type": "string"
+          },
+          "issue_recommended": {
+            "type": "boolean"
+          },
+          "public_disclosure_risk": {
+            "enum": [
+              "Low",
+              "Medium",
+              "High"
+            ]
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "target_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lifecycle": {
+            "enum": [
+              "Candidate",
+              "Probable",
+              "Confirmed",
+              "Invalid",
+              "Accepted Risk",
+              "Informational",
+              "Needs human review"
+            ]
+          },
+          "scanner_refs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tool": {
+                  "type": "string"
+                },
+                "rule_id": {
+                  "type": "string"
+                },
+                "result_id": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "variant_of": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cwe": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "owasp": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "safe_validation_methods": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

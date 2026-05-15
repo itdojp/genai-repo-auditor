@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import sqlite3
+import sys
+from pathlib import Path
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / 'lib'))
+from gralib import load_context, load_json, utc_now
+
+
+def init(conn):
+    conn.executescript('''
+    create table if not exists runs (
+      run_id text primary key,
+      repo text,
+      branch text,
+      commit_hash text,
+      visibility text,
+      run_dir text,
+      imported_at text
+    );
+    create table if not exists targets (
+      run_id text,
+      target_id text,
+      category text,
+      title text,
+      risk text,
+      priority integer,
+      status text,
+      data_json text,
+      primary key (run_id, target_id)
+    );
+    create table if not exists findings (
+      run_id text,
+      finding_id text,
+      fingerprint text,
+      title text,
+      severity text,
+      confidence text,
+      status text,
+      category text,
+      target_id text,
+      issue_recommended integer,
+      data_json text,
+      primary key (run_id, finding_id)
+    );
+    create index if not exists idx_findings_fingerprint on findings(fingerprint);
+    create index if not exists idx_findings_severity on findings(severity, status);
+    create table if not exists scanner_results (
+      run_id text,
+      tool text,
+      path text,
+      format text,
+      imported_at text,
+      data_json text
+    );
+    create table if not exists issues (
+      run_id text,
+      finding_id text,
+      fingerprint text,
+      url text,
+      data_json text,
+      primary key (run_id, finding_id, url)
+    );
+    ''')
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description='Import a GenAI Repo Auditor run into a local SQLite store')
+    p.add_argument('--run', required=True, help='Run directory')
+    p.add_argument('--db', help='SQLite path. Default: <lab>/runs/security-audit.sqlite')
+    args = p.parse_args()
+
+    run_dir = Path(args.run).resolve()
+    ctx = load_context(run_dir)
+    db_path = Path(args.db).resolve() if args.db else LAB_ROOT / 'runs' / 'security-audit.sqlite'
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with sqlite3.connect(db_path) as conn:
+        init(conn)
+        run_id = str(ctx.get('run_id', run_dir.name))
+        conn.execute('replace into runs(run_id, repo, branch, commit_hash, visibility, run_dir, imported_at) values (?, ?, ?, ?, ?, ?, ?)', (
+            run_id, ctx.get('repo'), ctx.get('branch'), ctx.get('commit'), ctx.get('visibility'), str(run_dir), utc_now()
+        ))
+
+        targets_data = load_json(run_dir / 'reports' / 'targets.json', {}) or {}
+        for t in targets_data.get('targets') or []:
+            if not isinstance(t, dict):
+                continue
+            conn.execute('replace into targets(run_id, target_id, category, title, risk, priority, status, data_json) values (?, ?, ?, ?, ?, ?, ?, ?)', (
+                run_id, t.get('id'), t.get('category'), t.get('title'), t.get('risk'), t.get('priority'), t.get('status'), json.dumps(t, ensure_ascii=False)
+            ))
+
+        findings_data = load_json(run_dir / 'reports' / 'findings.json', {}) or {}
+        for f in findings_data.get('findings') or []:
+            if not isinstance(f, dict):
+                continue
+            conn.execute('replace into findings(run_id, finding_id, fingerprint, title, severity, confidence, status, category, target_id, issue_recommended, data_json) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (
+                run_id, f.get('id'), f.get('fingerprint'), f.get('title'), f.get('severity'), f.get('confidence'), f.get('status'), f.get('category'), f.get('target_id'), 1 if f.get('issue_recommended') else 0, json.dumps(f, ensure_ascii=False)
+            ))
+
+        scanner_index = load_json(run_dir / 'reports' / 'scanner-results' / 'scanner-index.json', {}) or {}
+        for r in scanner_index.get('results') or []:
+            if not isinstance(r, dict):
+                continue
+            conn.execute('insert into scanner_results(run_id, tool, path, format, imported_at, data_json) values (?, ?, ?, ?, ?, ?)', (
+                run_id, r.get('tool'), r.get('path'), r.get('format'), r.get('imported_at'), json.dumps(r, ensure_ascii=False)
+            ))
+
+        issues = load_json(run_dir / 'issues-created.json', {}) or {}
+        for item in (issues.get('created') or []):
+            if not isinstance(item, dict) or not item.get('url'):
+                continue
+            conn.execute('replace into issues(run_id, finding_id, fingerprint, url, data_json) values (?, ?, ?, ?, ?)', (
+                run_id, item.get('id'), item.get('fingerprint'), item.get('url'), json.dumps(item, ensure_ascii=False)
+            ))
+
+    print(f'Imported run into {db_path}')
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

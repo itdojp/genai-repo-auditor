@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO="${1:?usage: $0 OWNER/REPO}"
+MODEL="${MODEL:-gpt-5.5}"
+EFFORT="${EFFORT:-xhigh}"
+
+gra-audit --repo "$REPO" --mode prepare --model "$MODEL" --effort "$EFFORT" | tee /tmp/gra-prepare.out
+
+RUN_DIR="$(awk '/Audit run directory:/{getline; gsub(/^[[:space:]]+/, ""); print; exit}' /tmp/gra-prepare.out)"
+if [[ -z "$RUN_DIR" || ! -d "$RUN_DIR" ]]; then
+  echo "could not determine RUN_DIR" >&2
+  exit 1
+fi
+
+echo "RUN_DIR=$RUN_DIR"
+
+gra-recon --run "$RUN_DIR" --model "$MODEL" --effort "$EFFORT"
+gra-targets --run "$RUN_DIR" --generate --model "$MODEL" --effort "$EFFORT"
+gra-targets --run "$RUN_DIR" --list
+
+# Research the highest-priority target manually after inspecting the queue:
+# gra-research --run "$RUN_DIR" --target TGT-001 --model "$MODEL" --effort "$EFFORT"
+
+gra-validate-report --run "$RUN_DIR" || true
+gra-dashboard --run "$RUN_DIR" || true
+gra-sarif --run "$RUN_DIR" || true
+gra-store --run "$RUN_DIR" || true

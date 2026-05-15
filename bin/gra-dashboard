@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import html
+import json
+import sys
+from collections import Counter
+from pathlib import Path
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / 'lib'))
+from gralib import load_context, load_json, utc_now
+
+SEVERITIES = ['Critical', 'High', 'Medium', 'Low', 'Informational']
+STATUSES = ['Confirmed', 'Probable', 'Potential', 'Needs human review', 'Informational', 'Invalid']
+
+
+def h(x) -> str:
+    return html.escape(str(x or ''))
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description='Generate a local HTML dashboard for a GenAI Repo Auditor run')
+    p.add_argument('--run', required=True, help='Run directory')
+    p.add_argument('--out', help='Output HTML file. Default: reports/dashboard.html')
+    args = p.parse_args()
+
+    run_dir = Path(args.run).resolve()
+    ctx = load_context(run_dir)
+    reports = run_dir / 'reports'
+    findings_data = load_json(reports / 'findings.json', {}) or {}
+    findings = [f for f in findings_data.get('findings', []) if isinstance(f, dict)]
+    targets_data = load_json(reports / 'targets.json', {}) or {}
+    targets = [t for t in targets_data.get('targets', []) if isinstance(t, dict)]
+    scanner_index = load_json(reports / 'scanner-results' / 'scanner-index.json', {}) or {}
+    scanner_results = scanner_index.get('results') or []
+
+    sev_counts = Counter(f.get('severity', 'Unknown') for f in findings)
+    status_counts = Counter(f.get('status', 'Unknown') for f in findings)
+    target_status_counts = Counter(t.get('status', 'unknown') for t in targets)
+
+    rows = []
+    for f in findings:
+        locs = f.get('affected_locations') or []
+        loc_text = ', '.join(f"{loc.get('file','')}:{loc.get('line','')}" for loc in locs if isinstance(loc, dict))
+        rows.append(f"<tr><td>{h(f.get('id'))}</td><td>{h(f.get('severity'))}</td><td>{h(f.get('confidence'))}</td><td>{h(f.get('status'))}</td><td>{h(f.get('category'))}</td><td>{h(f.get('title'))}</td><td>{h(loc_text)}</td></tr>")
+
+    target_rows = []
+    for t in sorted(targets, key=lambda x: (-int(x.get('priority') or 0), str(x.get('id')))):
+        target_rows.append(f"<tr><td>{h(t.get('id'))}</td><td>{h(t.get('risk'))}</td><td>{h(t.get('priority'))}</td><td>{h(t.get('status'))}</td><td>{h(t.get('category'))}</td><td>{h(t.get('title'))}</td></tr>")
+
+    scanner_rows = []
+    for r in scanner_results:
+        if isinstance(r, dict):
+            scanner_rows.append(f"<tr><td>{h(r.get('tool'))}</td><td>{h(r.get('format'))}</td><td>{h(r.get('path'))}</td><td>{h(r.get('imported_at'))}</td><td>{h(r.get('note'))}</td></tr>")
+
+    css = """
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; margin: 32px; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0 32px; }
+    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+    th { background: #f5f5f5; text-align: left; }
+    code { background: #f6f8fa; padding: 2px 4px; border-radius: 3px; }
+    .cards { display: flex; gap: 16px; flex-wrap: wrap; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; min-width: 180px; }
+    .muted { color: #666; }
+    """
+    def counts_table(counts, keys):
+        return ''.join(f"<div class='card'><strong>{h(k)}</strong><br>{counts.get(k,0)}</div>" for k in keys)
+
+    html_text = f"""<!doctype html>
+<html><head><meta charset='utf-8'><title>GenAI Repo Auditor Dashboard</title><style>{css}</style></head>
+<body>
+<h1>GenAI Repo Auditor Dashboard</h1>
+<p class='muted'>Generated at {h(utc_now())}</p>
+<h2>Run</h2>
+<ul>
+<li>Repository: <code>{h(ctx.get('repo'))}</code></li>
+<li>Run ID: <code>{h(ctx.get('run_id', run_dir.name))}</code></li>
+<li>Commit: <code>{h(ctx.get('commit'))}</code></li>
+<li>Run directory: <code>{h(run_dir)}</code></li>
+</ul>
+<h2>Findings by severity</h2><div class='cards'>{counts_table(sev_counts, SEVERITIES)}</div>
+<h2>Findings by status</h2><div class='cards'>{counts_table(status_counts, STATUSES)}</div>
+<h2>Target status</h2><div class='cards'>{''.join(f"<div class='card'><strong>{h(k)}</strong><br>{v}</div>" for k, v in sorted(target_status_counts.items()))}</div>
+<h2>Findings</h2>
+<table><thead><tr><th>ID</th><th>Severity</th><th>Confidence</th><th>Status</th><th>Category</th><th>Title</th><th>Locations</th></tr></thead><tbody>{''.join(rows) or '<tr><td colspan="7">No findings.</td></tr>'}</tbody></table>
+<h2>Targets</h2>
+<table><thead><tr><th>ID</th><th>Risk</th><th>Priority</th><th>Status</th><th>Category</th><th>Title</th></tr></thead><tbody>{''.join(target_rows) or '<tr><td colspan="6">No targets.</td></tr>'}</tbody></table>
+<h2>Scanner results</h2>
+<table><thead><tr><th>Tool</th><th>Format</th><th>Path</th><th>Imported at</th><th>Note</th></tr></thead><tbody>{''.join(scanner_rows) or '<tr><td colspan="5">No scanner results ingested.</td></tr>'}</tbody></table>
+</body></html>"""
+    out = Path(args.out).resolve() if args.out else reports / 'dashboard.html'
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html_text, encoding='utf-8')
+    print(f'Wrote {out}')
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

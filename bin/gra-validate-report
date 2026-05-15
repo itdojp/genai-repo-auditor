@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any, Dict, List
+
+SEVERITIES = {"Critical", "High", "Medium", "Low", "Informational"}
+CONFIDENCES = {"High", "Medium", "Low"}
+STATUSES = {"Confirmed", "Probable", "Potential", "Informational", "Invalid", "Needs human review"}
+TARGET_STATUSES = {"queued", "in_progress", "reviewed", "skipped", "needs_human_review"}
+TARGET_RISKS = {"critical", "high", "medium", "low", "informational"}
+REQUIRED_TOP = ["run_id", "repo", "commit", "generated_at", "findings"]
+REQUIRED_FINDING = [
+    "id", "fingerprint", "title", "severity", "confidence", "status", "category",
+    "affected_locations", "entry_point", "trust_boundary", "source_to_sink",
+    "root_cause", "evidence", "impact", "validation_status", "minimal_remediation",
+    "regression_test_idea", "issue_title", "issue_body_file", "issue_recommended", "labels",
+]
+REQUIRED_TARGET = [
+    "id", "category", "title", "risk", "priority", "status", "scope",
+    "entry_points", "trust_boundaries", "sinks", "review_questions", "recommended_mode",
+]
+
+
+def find_findings(run: Path) -> Path:
+    candidates = [run / "reports" / "findings.json"]
+    for p in candidates:
+        if p.exists():
+            return p
+    raise FileNotFoundError(f"findings.json not found under {run}")
+
+
+def validate_targets(run_dir: Path, errors: List[str]) -> None:
+    targets_path = run_dir / "reports" / "targets.json"
+    if not targets_path.exists():
+        return
+    try:
+        targets_data = json.loads(targets_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        errors.append(f"targets.json invalid JSON: {e}")
+        return
+    targets = targets_data.get("targets")
+    if not isinstance(targets, list):
+        errors.append("targets.json: targets must be a list")
+        return
+    seen = set()
+    for i, t in enumerate(targets):
+        if not isinstance(t, dict):
+            errors.append(f"targets[{i}] is not an object")
+            continue
+        tid = str(t.get("id") or f"index-{i}")
+        for key in REQUIRED_TARGET:
+            if key not in t:
+                errors.append(f"{tid}: missing target key {key}")
+        if not tid.startswith("TGT-"):
+            errors.append(f"{tid}: target id should start with TGT-")
+        if tid in seen:
+            errors.append(f"{tid}: duplicate target id")
+        seen.add(tid)
+        if t.get("risk") not in TARGET_RISKS:
+            errors.append(f"{tid}: invalid risk {t.get('risk')}")
+        if t.get("status") not in TARGET_STATUSES:
+            errors.append(f"{tid}: invalid status {t.get('status')}")
+        if not isinstance(t.get("priority"), int):
+            errors.append(f"{tid}: priority must be integer")
+        for key in ["entry_points", "trust_boundaries", "sinks", "review_questions"]:
+            if key in t and not isinstance(t.get(key), list):
+                errors.append(f"{tid}: {key} must be list")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Validate GenAI Repo Auditor report contract")
+    parser.add_argument("--run", help="Run directory")
+    parser.add_argument("--findings", help="Path to findings.json")
+    args = parser.parse_args()
+
+    if not args.run and not args.findings:
+        parser.error("one of --run or --findings is required")
+
+    path = Path(args.findings).resolve() if args.findings else find_findings(Path(args.run).resolve())
+    run_dir = Path(args.run).resolve() if args.run else path.parent.parent
+
+    errors: List[str] = []
+    try:
+        data: Dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"ERROR: invalid JSON: {e}", file=sys.stderr)
+        return 1
+
+    for key in REQUIRED_TOP:
+        if key not in data:
+            errors.append(f"missing top-level key: {key}")
+    if not isinstance(data.get("findings"), list):
+        errors.append("findings must be a list")
+
+    findings = data.get("findings") if isinstance(data.get("findings"), list) else []
+    fingerprints = set()
+    for i, f in enumerate(findings):
+        if not isinstance(f, dict):
+            errors.append(f"findings[{i}] is not an object")
+            continue
+        fid = f.get("id", f"index-{i}")
+        for key in REQUIRED_FINDING:
+            if key not in f:
+                errors.append(f"{fid}: missing key {key}")
+        if f.get("severity") not in SEVERITIES:
+            errors.append(f"{fid}: invalid severity {f.get('severity')}")
+        if f.get("confidence") not in CONFIDENCES:
+            errors.append(f"{fid}: invalid confidence {f.get('confidence')}")
+        if f.get("status") not in STATUSES:
+            errors.append(f"{fid}: invalid status {f.get('status')}")
+        fp = str(f.get("fingerprint") or "").strip()
+        if not fp:
+            errors.append(f"{fid}: empty fingerprint")
+        elif fp in fingerprints:
+            errors.append(f"{fid}: duplicate fingerprint {fp}")
+        fingerprints.add(fp)
+        if not isinstance(f.get("affected_locations"), list):
+            errors.append(f"{fid}: affected_locations must be list")
+        if not isinstance(f.get("labels"), list):
+            errors.append(f"{fid}: labels must be list")
+        if not isinstance(f.get("issue_recommended"), bool):
+            errors.append(f"{fid}: issue_recommended must be boolean")
+        if f.get("issue_recommended"):
+            body_file = str(f.get("issue_body_file") or "")
+            candidates = [
+                run_dir / "repo" / body_file,
+                run_dir / body_file,
+                run_dir / "reports" / "issue-drafts" / Path(body_file).name,
+            ]
+            if body_file and not any(p.exists() for p in candidates):
+                errors.append(f"{fid}: issue_body_file not found: {body_file}")
+
+    validate_targets(run_dir, errors)
+
+    if errors:
+        for e in errors:
+            print(f"ERROR: {e}", file=sys.stderr)
+        print(f"Validation failed: {len(errors)} error(s)", file=sys.stderr)
+        return 1
+
+    print(f"OK: {path}")
+    print(f"Findings: {len(findings)}")
+    if (run_dir / "reports" / "targets.json").exists():
+        print("Targets: validated")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

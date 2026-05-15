@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / 'lib'))
+from gralib import env_from_context, find_finding, load_context, render_template, run_codex_exec
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description='Run variant analysis based on an existing finding or a supplied root-cause note')
+    p.add_argument('--run', required=True, help='Run directory')
+    src = p.add_mutually_exclusive_group(required=True)
+    src.add_argument('--finding', help='Finding ID to use as variant-analysis seed, e.g. SEC-001')
+    src.add_argument('--source-file', help='File containing root-cause description to use as seed')
+    p.add_argument('--mode', choices=['exec', 'goal'], default='exec')
+    p.add_argument('--model', default='gpt-5.5')
+    p.add_argument('--effort', default='xhigh')
+    p.add_argument('--network', action='store_true', help='Allow Codex sandbox network access. Not recommended.')
+    args = p.parse_args()
+
+    run_dir = Path(args.run).resolve()
+    ctx = load_context(run_dir)
+    if args.finding:
+        try:
+            source = find_finding(run_dir, args.finding)
+        except KeyError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        source_id = args.finding
+        source_path = run_dir / 'reports' / 'variant-analysis' / f'{source_id}.source.json'
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_text(json.dumps(source, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+    else:
+        source_path = Path(args.source_file).resolve()
+        if not source_path.exists():
+            print(f'source file not found: {source_path}', file=sys.stderr)
+            return 2
+        source_id = source_path.stem
+
+    env = env_from_context(run_dir, {
+        'FINDING_ID': source_id,
+        'VARIANT_SOURCE': str(source_path.relative_to(run_dir) if source_path.is_relative_to(run_dir) else source_path),
+    })
+
+    if args.mode == 'goal':
+        prompt = run_dir / 'prompts' / 'goal' / f'variant-{source_id}.goal.md'
+        render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'goal' / 'variant-analysis.goal.md', prompt, env)
+        print('Prepared supervised /goal variant-analysis run.')
+        print(f'Run directory: {run_dir}')
+        print(f'Variant source: {source_path}')
+        print(f'Goal prompt: {prompt}')
+        network_value = 'true' if args.network else 'false'
+        print('\nStart Codex:')
+        print(f'  codex --cd "{run_dir}" --skip-git-repo-check --model "{args.model}" --enable goals --sandbox workspace-write --ask-for-approval on-request -c \'model_reasoning_effort="{args.effort}"\' -c \'web_search="disabled"\' -c \'sandbox_workspace_write.network_access={network_value}\'')
+        print('\nThen paste the contents of the goal prompt.')
+        return 0
+
+    prompt = run_dir / 'prompts' / 'exec' / f'variant-{source_id}.prompt.md'
+    render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'variant-analysis.prompt.md', prompt, env)
+    print(f'Running Codex variant analysis from {source_id}')
+    status = run_codex_exec(
+        run_dir=run_dir,
+        prompt_file=prompt,
+        model=args.model,
+        effort=args.effort,
+        network=args.network,
+        output_last=run_dir / f'codex-variant-{source_id}-final.md',
+        events_file=run_dir / f'codex-variant-{source_id}-events.jsonl',
+        stderr_file=run_dir / f'codex-variant-{source_id}-stderr.txt',
+    )
+    print(f'Codex status: {status}')
+    print(f'Variant report: {run_dir / "reports" / "variant-analysis" / (source_id + ".md")}')
+    return status
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

@@ -1,0 +1,39 @@
+# Local audit outputs
+runs/
+batches/
+locks/
+*.sqlite
+*.sqlite3
+
+# Local agent / Codex artifacts
+.codex-local/
+codex-events.jsonl
+codex-final.md
+codex-stderr.txt
+codex-transcript.txt
+agent-events.jsonl
+agent-final.md
+
+# Scanner outputs
+semgrep.json
+gitleaks.json
+trivy.json
+checkov.json
+codeql-results.sarif
+*.sarif
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

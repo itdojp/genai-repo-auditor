@@ -1,0 +1,38 @@
+name: lint
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check shell syntax
+        run: |
+          for f in bin/gra-*; do
+            if head -n 1 "$f" | grep -q "bash"; then
+              bash -n "$f"
+            fi
+          done
+      - name: Check Python syntax
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import py_compile
+          files = list(Path('lib').glob('*.py'))
+          files += [p for p in Path('bin').glob('gra-*') if p.read_text(encoding='utf-8', errors='ignore').startswith('#!/usr/bin/env python3')]
+          for p in files:
+              py_compile.compile(str(p), doraise=True)
+          print('python syntax ok')
+          PY
+      - name: Check executable bits
+        run: |
+          test -x bin/gra-audit
+          test -x bin/gra-batch
+          test -x bin/gra-validate-report

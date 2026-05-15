@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RUNS_DIR="${GENAI_REPO_AUDITOR_RUNS_DIR:-$LAB_ROOT/runs}"
+
+REPO_LIST=""
+MODE="exec"
+MODEL="${GRA_MODEL:-${CODEX_MODEL:-gpt-5.5}}"
+EFFORT="${GRA_REASONING_EFFORT:-${CODEX_REASONING_EFFORT:-xhigh}}"
+DEPTH="1"
+CONCURRENCY="1"
+BATCH_ID="batch-$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
+EXTRA_ARGS=()
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  gra-batch --repo-list repos.txt [options]
+
+Options:
+  --repo-list FILE        File containing OWNER/REPO lines. Required.
+  --mode exec|goal        Default: exec
+  --model MODEL           Default: gpt-5.5
+  --effort EFFORT         Default: xhigh
+  --depth N               Default: 1
+  --concurrency N         Default: 1. Recommended: 1 initially, 2 after validation.
+  --runs-dir DIR          Override runs directory
+  --batch-id ID           Override batch id
+  --codex-json            Pass through to gra-audit
+  --network               Pass through to gra-audit. Usually not recommended.
+  -h, --help              Show help.
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --repo-list) REPO_LIST="${2:-}"; shift 2 ;;
+    --mode) MODE="${2:-}"; shift 2 ;;
+    --model) MODEL="${2:-}"; shift 2 ;;
+    --effort) EFFORT="${2:-}"; shift 2 ;;
+    --depth) DEPTH="${2:-}"; shift 2 ;;
+    --concurrency) CONCURRENCY="${2:-}"; shift 2 ;;
+    --runs-dir) RUNS_DIR="${2:-}"; shift 2 ;;
+    --batch-id) BATCH_ID="${2:-}"; shift 2 ;;
+    --codex-json) EXTRA_ARGS+=(--codex-json); shift ;;
+    --network) EXTRA_ARGS+=(--network); shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+if [[ -z "$REPO_LIST" || ! -f "$REPO_LIST" ]]; then
+  echo "--repo-list FILE is required" >&2
+  usage >&2
+  exit 2
+fi
+
+if ! [[ "$CONCURRENCY" =~ ^[0-9]+$ ]] || [[ "$CONCURRENCY" -lt 1 ]]; then
+  echo "--concurrency must be a positive integer" >&2
+  exit 2
+fi
+
+BATCH_DIR="$RUNS_DIR/_batches/$BATCH_ID"
+LOG_DIR="$BATCH_DIR/logs"
+mkdir -p "$LOG_DIR"
+
+REPOS_FILE="$BATCH_DIR/repos.normalized.txt"
+grep -v '^[[:space:]]*$' "$REPO_LIST" | grep -v '^[[:space:]]*#' > "$REPOS_FILE" || true
+
+COUNT="$(wc -l < "$REPOS_FILE" | tr -d ' ')"
+cat > "$BATCH_DIR/batch.json" <<EOF
+{
+  "batch_id": "$BATCH_ID",
+  "repo_list": "$REPO_LIST",
+  "count": $COUNT,
+  "mode": "$MODE",
+  "model": "$MODEL",
+  "effort": "$EFFORT",
+  "depth": "$DEPTH",
+  "concurrency": $CONCURRENCY,
+  "runs_dir": "$RUNS_DIR"
+}
+EOF
+
+printf 'Batch: %s\n' "$BATCH_ID"
+printf 'Repos: %s\n' "$COUNT"
+printf 'Concurrency: %s\n' "$CONCURRENCY"
+printf 'Logs: %s\n' "$LOG_DIR"
+
+export LAB_ROOT RUNS_DIR MODE MODEL EFFORT DEPTH LOG_DIR
+export EXTRA_ARGS_JOINED="${EXTRA_ARGS[*]-}"
+
+run_one() {
+  local repo="$1"
+  local safe="${repo//\//__}"
+  safe="${safe//:/__}"
+  local log="$LOG_DIR/${safe}.log"
+  {
+    echo "=== audit start: $repo ==="
+    date -u
+    # shellcheck disable=SC2086
+    "$LAB_ROOT/bin/gra-audit" \
+      --repo "$repo" \
+      --mode "$MODE" \
+      --model "$MODEL" \
+      --effort "$EFFORT" \
+      --depth "$DEPTH" \
+      --runs-dir "$RUNS_DIR" \
+      $EXTRA_ARGS_JOINED
+    status=$?
+    echo "=== audit done: $repo status=$status ==="
+    date -u
+    exit "$status"
+  } > "$log" 2>&1
+}
+export -f run_one
+
+if [[ "$CONCURRENCY" -eq 1 ]]; then
+  while IFS= read -r repo; do
+    [[ -z "$repo" ]] && continue
+    run_one "$repo" || true
+  done < "$REPOS_FILE"
+else
+  xargs -r -n 1 -P "$CONCURRENCY" bash -c 'run_one "$1" || true' _ < "$REPOS_FILE"
+fi
+
+printf 'Batch complete. Logs: %s\n' "$LOG_DIR"

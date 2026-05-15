@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / 'lib'))
+from gralib import load_context, load_json, utc_now, write_json
+
+LEVEL_MAP = {
+    'Critical': 'error',
+    'High': 'error',
+    'Medium': 'warning',
+    'Low': 'note',
+    'Informational': 'note',
+}
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description='Convert findings.json to SARIF 2.1.0')
+    p.add_argument('--run', required=True, help='Run directory')
+    p.add_argument('--out', help='Output SARIF file. Default: reports/findings.sarif')
+    args = p.parse_args()
+
+    run_dir = Path(args.run).resolve()
+    ctx = load_context(run_dir)
+    findings_data = load_json(run_dir / 'reports' / 'findings.json', {}) or {}
+    findings = [f for f in findings_data.get('findings', []) if isinstance(f, dict)]
+    rules = []
+    results = []
+    seen_rules = set()
+    for f in findings:
+        rule_id = str(f.get('id') or f.get('fingerprint') or 'SEC-UNKNOWN')
+        if rule_id not in seen_rules:
+            seen_rules.add(rule_id)
+            rules.append({
+                'id': rule_id,
+                'name': f.get('title') or rule_id,
+                'shortDescription': {'text': f.get('title') or rule_id},
+                'fullDescription': {'text': f.get('root_cause') or f.get('evidence') or ''},
+                'help': {'text': f.get('minimal_remediation') or ''},
+                'properties': {
+                    'severity': f.get('severity'),
+                    'confidence': f.get('confidence'),
+                    'status': f.get('status'),
+                    'category': f.get('category'),
+                    'fingerprint': f.get('fingerprint'),
+                },
+            })
+        locs = []
+        for loc in f.get('affected_locations') or []:
+            if not isinstance(loc, dict) or not loc.get('file'):
+                continue
+            region = {}
+            if isinstance(loc.get('line'), int):
+                region['startLine'] = loc['line']
+            if isinstance(loc.get('end_line'), int):
+                region['endLine'] = loc['end_line']
+            locs.append({'physicalLocation': {'artifactLocation': {'uri': loc['file']}, 'region': region}})
+        if not locs:
+            locs = [{'physicalLocation': {'artifactLocation': {'uri': 'repo/'}}}]
+        results.append({
+            'ruleId': rule_id,
+            'level': LEVEL_MAP.get(str(f.get('severity')), 'warning'),
+            'message': {'text': f.get('evidence') or f.get('title') or rule_id},
+            'locations': locs,
+            'partialFingerprints': {'genaiRepoAuditor': str(f.get('fingerprint') or rule_id)},
+            'properties': {
+                'impact': f.get('impact'),
+                'entry_point': f.get('entry_point'),
+                'trust_boundary': f.get('trust_boundary'),
+                'source_to_sink': f.get('source_to_sink'),
+                'validation_status': f.get('validation_status'),
+                'run_id': ctx.get('run_id', run_dir.name),
+                'repo': ctx.get('repo'),
+                'commit': ctx.get('commit'),
+            },
+        })
+
+    sarif = {
+        '$schema': 'https://json.schemastore.org/sarif-2.1.0.json',
+        'version': '2.1.0',
+        'runs': [{
+            'tool': {
+                'driver': {
+                    'name': 'genai-repo-auditor',
+                    'informationUri': 'https://github.com/itdojp/genai-repo-auditor',
+                    'rules': rules,
+                }
+            },
+            'invocations': [{
+                'executionSuccessful': True,
+                'endTimeUtc': utc_now(),
+                'properties': {'run_id': ctx.get('run_id', run_dir.name), 'repo': ctx.get('repo'), 'commit': ctx.get('commit')},
+            }],
+            'results': results,
+        }],
+    }
+    out = Path(args.out).resolve() if args.out else run_dir / 'reports' / 'findings.sarif'
+    write_json(out, sarif)
+    print(f'Wrote {out}')
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
