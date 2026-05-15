@@ -26,11 +26,7 @@ jobs:
           sudo apt-get install -y shellcheck
       - name: Run ShellCheck
         run: |
-          find bin examples -type f -print0 | while IFS= read -r -d '' f; do
-            if head -n 1 "$f" | grep -Eq "(bash|sh)"; then
-              shellcheck "$f"
-            fi
-          done
+          shellcheck bin/gra-audit bin/gra-batch examples/staged-agentic-workflow.sh.example
       - name: Check Python syntax
         run: |
           python3 - <<'PY'
