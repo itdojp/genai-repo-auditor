@@ -55,7 +55,7 @@ PY
 If shellcheck is available, also run:
 
 ```bash
-shellcheck bin/gra-* || true
+scripts/validate-shellcheck.sh
 ```
 
 ## Documentation tone
