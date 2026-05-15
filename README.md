@@ -66,6 +66,11 @@ codex --help >/dev/null
 python3 --version
 ```
 
+For a fresh local install and first `OWNER/REPO` audit, see:
+
+- `docs/LOCAL_INSTALL_AND_AUDIT.md` (English)
+- `docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md` (Japanese)
+
 ## Quick start: full audit
 
 ```bash
@@ -210,6 +215,8 @@ Do not use this project for:
 
 ## Documentation
 
+- `docs/LOCAL_INSTALL_AND_AUDIT.md`
+- `docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md`
 - `docs/WORKFLOW_OVERVIEW.md`
 - `docs/NORMAL_WORKFLOW.md`
 - `docs/GOAL_DEEP_DIVE.md`
