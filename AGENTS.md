@@ -55,7 +55,7 @@ PY
 If shellcheck is available, also run:
 
 ```bash
-shellcheck bin/gra-* || true
+shellcheck bin/gra-audit bin/gra-batch examples/staged-agentic-workflow.sh.example
 ```
 
 ## Documentation tone

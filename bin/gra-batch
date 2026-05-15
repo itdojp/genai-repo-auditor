@@ -96,6 +96,7 @@ run_one() {
   local safe="${repo//\//__}"
   safe="${safe//:/__}"
   local log="$LOG_DIR/${safe}.log"
+  local status=0
   {
     echo "=== audit start: $repo ==="
     date -u
@@ -111,8 +112,8 @@ run_one() {
     status=$?
     echo "=== audit done: $repo status=$status ==="
     date -u
-    exit "$status"
   } > "$log" 2>&1
+  return "$status"
 }
 export -f run_one
 
@@ -122,6 +123,7 @@ if [[ "$CONCURRENCY" -eq 1 ]]; then
     run_one "$repo" || true
   done < "$REPOS_FILE"
 else
+  # shellcheck disable=SC2016 # run_one is expanded in the child bash process after export -f.
   xargs -r -n 1 -P "$CONCURRENCY" bash -c 'run_one "$1" || true' _ < "$REPOS_FILE"
 fi
 
