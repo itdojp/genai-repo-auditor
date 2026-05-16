@@ -8,6 +8,10 @@
 gra-batch --repo-list repos.txt --concurrency 1 --mode exec --model gpt-5.5 --effort xhigh
 ```
 
+`gra-batch` は全 repo の監査を継続し、結果を
+`runs/_batches/BATCH_ID/batch-results.json` に集約します。既定では 1 件以上の
+repo が失敗すると batch 全体も non-zero exit します。
+
 `repos.txt`:
 
 ```text
@@ -26,6 +30,28 @@ gra-batch --repo-list repos.txt --concurrency 2 --mode exec
 
 同一repoの同時監査は lock で防ぎます。`--no-lock` は通常使いません。
 
+## Failure handling
+
+CI などで失敗を厳密に扱う場合は既定動作を使います。
+
+```bash
+gra-batch --repo-list repos.txt --concurrency 1 --mode exec
+```
+
+探索目的で失敗 repo を記録しつつ batch 自体は成功扱いにする場合のみ
+`--allow-failures` を使います。
+
+```bash
+gra-batch --repo-list repos.txt --concurrency 1 --mode exec --allow-failures
+```
+
+最初の失敗で停止したい場合は `--fail-fast` を使います。この option は
+`--concurrency 1` と組み合わせてください。
+
+```bash
+gra-batch --repo-list repos.txt --concurrency 1 --mode exec --fail-fast
+```
+
 ## run layout
 
 ```text
@@ -36,6 +62,10 @@ runs/
   OWNER__repo-b/RUN_ID/
     repo/
     reports/
+  _batches/BATCH_ID/
+    batch.json
+    batch-results.json
+    logs/
 ```
 
 ## Issue creation

@@ -14,6 +14,7 @@ RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
 CODEX_JSON="1"
 NETWORK="0"
 USE_LOCK="1"
+ALLOW_INVALID_REPORT="0"
 
 usage() {
   cat <<'USAGE'
@@ -33,6 +34,8 @@ Options:
   --codex-json            Use codex exec --json and save event stream to codex-events.jsonl. Default: enabled
   --network               Allow Codex sandbox network access. Default: disabled
   --no-lock               Disable same-repo lock. Not recommended.
+  --allow-invalid-report  Do not fail when findings.json is missing or report validation fails.
+                          Not recommended for CI or batch automation.
   -h, --help              Show help.
 
 Examples:
@@ -54,6 +57,7 @@ while [[ $# -gt 0 ]]; do
     --codex-json) CODEX_JSON="1"; shift ;;
     --network) NETWORK="1"; shift ;;
     --no-lock) USE_LOCK="0"; shift ;;
+    --allow-invalid-report) ALLOW_INVALID_REPORT="1"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -285,6 +289,17 @@ else
   VALIDATION_STATUS="missing-findings-json"
 fi
 
+FINAL_STATUS="$CODEX_STATUS"
+if [[ "$CODEX_STATUS" -eq 0 && "$VALIDATION_STATUS" != "0" ]]; then
+  if [[ "$ALLOW_INVALID_REPORT" == "1" ]]; then
+    FINAL_STATUS="0"
+  elif [[ "$VALIDATION_STATUS" =~ ^[0-9]+$ ]]; then
+    FINAL_STATUS="$VALIDATION_STATUS"
+  else
+    FINAL_STATUS="1"
+  fi
+fi
+
 cat > "$RUN_DIR/run-summary.txt" <<EOF3
 run_id=$RUN_ID
 repo=$REPO
@@ -296,6 +311,8 @@ model=$MODEL
 effort=$EFFORT
 codex_status=$CODEX_STATUS
 validation_status=$VALIDATION_STATUS
+allow_invalid_report=$ALLOW_INVALID_REPORT
+final_status=$FINAL_STATUS
 repo_dir=$REPO_DIR
 reports_dir=$REPORT_DIR
 EOF3
@@ -305,6 +322,17 @@ printf 'Reports: %s\n' "$REPORT_DIR"
 printf 'Validation: %s\n' "$VALIDATION_STATUS"
 if [[ ! -f "$REPORT_DIR/findings.json" ]]; then
   printf 'Warning: findings.json was not produced. Inspect codex output and rerun if needed.\n' >&2
+  printf 'Missing report path: %s\n' "$REPORT_DIR/findings.json" >&2
+elif [[ "$VALIDATION_STATUS" != "0" ]]; then
+  printf 'Report validation failed. See: %s\n' "$RUN_DIR/report-validation.txt" >&2
 fi
+if [[ "$CODEX_STATUS" -eq 0 && "$VALIDATION_STATUS" != "0" ]]; then
+  if [[ "$ALLOW_INVALID_REPORT" == "1" ]]; then
+    printf 'Continuing despite invalid or missing report because --allow-invalid-report was set.\n' >&2
+  else
+    printf 'Failing audit because Codex succeeded but report validation did not pass. Use --allow-invalid-report only when this is intentional.\n' >&2
+  fi
+fi
+printf 'Final status: %s\n' "$FINAL_STATUS"
 
-exit "$CODEX_STATUS"
+exit "$FINAL_STATUS"

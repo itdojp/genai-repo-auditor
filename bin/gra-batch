@@ -11,6 +11,8 @@ EFFORT="${GRA_REASONING_EFFORT:-${CODEX_REASONING_EFFORT:-xhigh}}"
 DEPTH="1"
 CONCURRENCY="1"
 BATCH_ID="batch-$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
+ALLOW_FAILURES="0"
+FAIL_FAST="0"
 EXTRA_ARGS=()
 
 usage() {
@@ -29,6 +31,8 @@ Options:
   --batch-id ID           Override batch id
   --codex-json            Pass through to gra-audit
   --network               Pass through to gra-audit. Usually not recommended.
+  --allow-failures        Continue and exit 0 even when one or more audits fail.
+  --fail-fast             Stop after the first failed audit. Requires --concurrency 1.
   -h, --help              Show help.
 USAGE
 }
@@ -45,6 +49,8 @@ while [[ $# -gt 0 ]]; do
     --batch-id) BATCH_ID="${2:-}"; shift 2 ;;
     --codex-json) EXTRA_ARGS+=(--codex-json); shift ;;
     --network) EXTRA_ARGS+=(--network); shift ;;
+    --allow-failures) ALLOW_FAILURES="1"; shift ;;
+    --fail-fast) FAIL_FAST="1"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -61,6 +67,11 @@ if ! [[ "$CONCURRENCY" =~ ^[0-9]+$ ]] || [[ "$CONCURRENCY" -lt 1 ]]; then
   exit 2
 fi
 
+if [[ "$FAIL_FAST" == "1" && "$CONCURRENCY" -ne 1 ]]; then
+  echo "--fail-fast requires --concurrency 1" >&2
+  exit 2
+fi
+
 BATCH_DIR="$RUNS_DIR/_batches/$BATCH_ID"
 LOG_DIR="$BATCH_DIR/logs"
 mkdir -p "$LOG_DIR"
@@ -69,6 +80,14 @@ REPOS_FILE="$BATCH_DIR/repos.normalized.txt"
 grep -v '^[[:space:]]*$' "$REPO_LIST" | grep -v '^[[:space:]]*#' > "$REPOS_FILE" || true
 
 COUNT="$(wc -l < "$REPOS_FILE" | tr -d ' ')"
+ALLOW_FAILURES_JSON="false"
+FAIL_FAST_JSON="false"
+if [[ "$ALLOW_FAILURES" == "1" ]]; then
+  ALLOW_FAILURES_JSON="true"
+fi
+if [[ "$FAIL_FAST" == "1" ]]; then
+  FAIL_FAST_JSON="true"
+fi
 cat > "$BATCH_DIR/batch.json" <<EOF
 {
   "batch_id": "$BATCH_ID",
@@ -79,6 +98,8 @@ cat > "$BATCH_DIR/batch.json" <<EOF
   "effort": "$EFFORT",
   "depth": "$DEPTH",
   "concurrency": $CONCURRENCY,
+  "allow_failures": $ALLOW_FAILURES_JSON,
+  "fail_fast": $FAIL_FAST_JSON,
   "runs_dir": "$RUNS_DIR"
 }
 EOF
@@ -86,6 +107,8 @@ EOF
 printf 'Batch: %s\n' "$BATCH_ID"
 printf 'Repos: %s\n' "$COUNT"
 printf 'Concurrency: %s\n' "$CONCURRENCY"
+printf 'Allow failures: %s\n' "$ALLOW_FAILURES"
+printf 'Fail fast: %s\n' "$FAIL_FAST"
 printf 'Logs: %s\n' "$LOG_DIR"
 
 export LAB_ROOT RUNS_DIR MODE MODEL EFFORT DEPTH LOG_DIR
@@ -100,6 +123,7 @@ run_one() {
   {
     echo "=== audit start: $repo ==="
     date -u
+    set +e
     # shellcheck disable=SC2086
     "$LAB_ROOT/bin/gra-audit" \
       --repo "$repo" \
@@ -117,14 +141,108 @@ run_one() {
 }
 export -f run_one
 
+BATCH_STATUS=0
 if [[ "$CONCURRENCY" -eq 1 ]]; then
   while IFS= read -r repo; do
     [[ -z "$repo" ]] && continue
-    run_one "$repo" || true
+    if run_one "$repo"; then
+      set -e
+      :
+    else
+      set -e
+      BATCH_STATUS=1
+      if [[ "$FAIL_FAST" == "1" ]]; then
+        printf 'Fail-fast stopping after failed audit: %s\n' "$repo" >&2
+        break
+      fi
+    fi
   done < "$REPOS_FILE"
 else
+  set +e
   # shellcheck disable=SC2016 # run_one is expanded in the child bash process after export -f.
-  xargs -r -n 1 -P "$CONCURRENCY" bash -c 'run_one "$1" || true' _ < "$REPOS_FILE"
+  xargs -r -n 1 -P "$CONCURRENCY" bash -c 'set +e; run_one "$1"; status=$?; set -e; if [[ "$status" -eq 0 ]]; then exit 0; fi; exit 1' _ < "$REPOS_FILE"
+  XARGS_STATUS=$?
+  set -e
+  if [[ "$XARGS_STATUS" -ne 0 ]]; then
+    BATCH_STATUS=1
+  fi
 fi
 
+RESULTS_PATH="$BATCH_DIR/batch-results.json"
+FAILED_COUNT_FILE="$BATCH_DIR/failed-count.txt"
+python3 - "$BATCH_DIR" "$REPOS_FILE" "$LOG_DIR" "$RESULTS_PATH" "$FAILED_COUNT_FILE" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+batch_dir = Path(sys.argv[1])
+repos_file = Path(sys.argv[2])
+log_dir = Path(sys.argv[3])
+results_path = Path(sys.argv[4])
+failed_count_file = Path(sys.argv[5])
+
+batch = json.loads((batch_dir / "batch.json").read_text(encoding="utf-8"))
+repos = [line.strip() for line in repos_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def safe_name(repo: str) -> str:
+    return repo.replace("/", "__").replace(":", "__")
+
+
+results = []
+for repo in repos:
+    log_path = log_dir / f"{safe_name(repo)}.log"
+    attempted = log_path.exists()
+    text = log_path.read_text(encoding="utf-8", errors="replace") if attempted else ""
+    status_match = re.search(rf"^=== audit done: {re.escape(repo)} status=([0-9]+) ===$", text, re.MULTILINE)
+    run_dir_match = re.search(r"^Run directory: (.+)$", text, re.MULTILINE)
+    status = int(status_match.group(1)) if status_match else None
+    result = {
+        "repo": repo,
+        "status": status,
+        "status_text": "not-run" if not attempted else ("unknown" if status is None else ("success" if status == 0 else "failed")),
+        "run_dir": run_dir_match.group(1) if run_dir_match else "",
+        "log_path": str(log_path),
+    }
+    results.append(result)
+
+failed = [r for r in results if r["status"] not in (0, None) or (r["status"] is None and r["status_text"] != "not-run")]
+succeeded = [r for r in results if r["status"] == 0]
+not_run = [r for r in results if r["status_text"] == "not-run"]
+
+summary = {
+    **batch,
+    "completed": len(succeeded) + len(failed),
+    "succeeded": len(succeeded),
+    "failed": len(failed),
+    "not_run": len(not_run),
+    "results": results,
+}
+results_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+failed_count_file.write_text(str(len(failed)), encoding="utf-8")
+
+print("")
+print("Batch results:")
+print(f"{'REPO':<40} {'STATUS':<10} LOG")
+for r in results:
+    status = r["status_text"] if r["status"] is None else str(r["status"])
+    print(f"{r['repo']:<40} {status:<10} {r['log_path']}")
+print(f"Successes: {len(succeeded)}")
+print(f"Failures: {len(failed)}")
+if not_run:
+    print(f"Not run: {len(not_run)}")
+print(f"Wrote {results_path}")
+PY
+
+FAILED_COUNT="$(cat "$FAILED_COUNT_FILE")"
 printf 'Batch complete. Logs: %s\n' "$LOG_DIR"
+printf 'Batch results: %s\n' "$RESULTS_PATH"
+
+if [[ "$FAILED_COUNT" -gt 0 && "$ALLOW_FAILURES" != "1" ]]; then
+  exit 1
+fi
+if [[ "$BATCH_STATUS" -ne 0 && "$ALLOW_FAILURES" != "1" ]]; then
+  exit "$BATCH_STATUS"
+fi
+exit 0
