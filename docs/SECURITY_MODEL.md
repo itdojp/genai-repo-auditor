@@ -94,3 +94,16 @@ Imported scanner outputs are not automatically true findings. They are leads tha
 - safe validation
 
 This prevents scanner noise from becoming GitHub Issues without review.
+
+## Repository CI hardening
+
+The repository's own GitHub Actions workflows are part of the security
+boundary. Workflows use explicit least-privilege `permissions:` blocks, with
+read-only `contents` access for validation jobs and `security-events: write`
+only for CodeQL code scanning result upload.
+
+CodeQL runs for Python source and GitHub Actions workflow definitions.
+Dependabot monitors GitHub Actions updates weekly. The scheduled
+self-validation workflow prepares an offline fixture audit run with mocked
+`gh` and `codex` commands so `gra-audit --mode prepare` is exercised without
+contacting a target repository or enabling Codex network access.
