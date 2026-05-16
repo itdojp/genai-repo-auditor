@@ -10,6 +10,7 @@ from pathlib import Path
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from gralib import load_context, load_json, utc_now, write_json
+from scanner_normalize import normalize_scanner_file
 
 
 def main() -> int:
@@ -38,6 +39,13 @@ def main() -> int:
     safe_tool = ''.join(ch if ch.isalnum() or ch in '-_' else '-' for ch in args.tool.lower())
     dest = dest_dir / f'{safe_tool}-{digest}.{fmt}'
     shutil.copy2(src, dest)
+    raw_result_ref = str(dest.relative_to(run_dir))
+
+    normalized_dir = dest_dir / 'normalized'
+    normalized_dir.mkdir(parents=True, exist_ok=True)
+    normalized = normalize_scanner_file(tool=args.tool, raw_path=dest, raw_result_ref=raw_result_ref)
+    normalized_path = normalized_dir / f'{safe_tool}-{digest}-leads.json'
+    write_json(normalized_path, normalized)
 
     index_path = dest_dir / 'scanner-index.json'
     data = load_json(index_path, None)
@@ -50,15 +58,20 @@ def main() -> int:
         }
     entry = {
         'tool': args.tool,
-        'path': str(dest.relative_to(run_dir)),
+        'path': raw_result_ref,
         'format': fmt,
         'imported_at': utc_now(),
         'sha256': digest,
+        'raw_bytes': normalized.get('raw_bytes', 0),
+        'normalized_path': str(normalized_path.relative_to(run_dir)),
+        'normalized_leads_count': len(normalized.get('leads') or []),
+        'normalization': normalized.get('normalization') or {},
         'note': args.note,
     }
     data.setdefault('results', []).append(entry)
     write_json(index_path, data)
     print(f'Ingested {src} -> {dest}')
+    print(f'Normalized leads -> {normalized_path}')
     print(f'Updated {index_path}')
     return 0
 
