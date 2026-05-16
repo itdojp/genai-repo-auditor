@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
-import os
 import re
 import subprocess
 from pathlib import Path
@@ -33,9 +32,19 @@ def load_context(run_dir: Path) -> Dict[str, Any]:
     return ctx
 
 
+TEMPLATE_PLACEHOLDER_RE = re.compile(r'^[A-Z0-9_]+$')
+TEMPLATE_DENYLIST_RE = re.compile(r'(?:TOKEN|SECRET|KEY|PASSWORD|COOKIE|SESSION|CREDENTIAL)')
+
+
+def validate_template_env_key(key: str) -> None:
+    if not TEMPLATE_PLACEHOLDER_RE.fullmatch(key):
+        raise ValueError(f'invalid template environment key: {key}')
+    if TEMPLATE_DENYLIST_RE.search(key):
+        raise ValueError(f'denied template environment key: {key}')
+
+
 def env_from_context(run_dir: Path, extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     ctx = load_context(run_dir)
-    env = os.environ.copy()
     mapping = {
         'RUN_ID': ctx.get('run_id', run_dir.name),
         'REPO': ctx.get('repo', ''),
@@ -49,10 +58,13 @@ def env_from_context(run_dir: Path, extra: Optional[Dict[str, str]] = None) -> D
         'REPORTS_DIR': ctx.get('reports_dir', 'reports'),
         'REPORT_DIR': str(run_dir / ctx.get('reports_dir', 'reports')),
     }
+    env: Dict[str, str] = {}
     for k, v in mapping.items():
+        validate_template_env_key(k)
         env[k] = '' if v is None else str(v)
     if extra:
         for k, v in extra.items():
+            validate_template_env_key(k)
             env[k] = '' if v is None else str(v)
     return env
 

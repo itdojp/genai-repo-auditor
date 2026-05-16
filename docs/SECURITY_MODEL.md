@@ -51,6 +51,20 @@ commit messages
 - 疑わしい secret は redacted form で path / line / type だけ記録する。
 - credential rotation、GitHub Secrets 操作、cloud secrets 操作は禁止。
 
+## Template rendering
+
+Prompt template rendering uses an explicit placeholder allowlist rather than
+the full process environment. Built-in run-context placeholders such as
+`RUN_ID`, `REPO`, `BRANCH`, `COMMIT`, `TARGET_REPO_DIR`, and `REPORTS_DIR`
+are supported. Additional operator-controlled values must be passed as
+`GRA_TEMPLATE_<PLACEHOLDER_NAME>`.
+
+The renderer fails closed when a template references an unknown placeholder.
+Placeholder names containing `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `COOKIE`,
+`SESSION`, or `CREDENTIAL` are denied, including controlled
+`GRA_TEMPLATE_...` values. This prevents accidental substitution of variables
+such as `OPENAI_API_KEY` into prompts or generated audit artifacts.
+
 ## Public repository handling
 
 public repository への GitHub Issue 作成はデフォルト拒否です。脆弱性情報を公開Issueとして出す場合は `--allow-public` を明示し、人間が内容を確認します。
