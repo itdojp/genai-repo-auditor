@@ -1,0 +1,31 @@
+{
+  "run_id": "invalid-findings-run",
+  "repo": "example/demo",
+  "commit": "0000000000000000000000000000000000000000",
+  "generated_at": "2026-05-16T00:00:00Z",
+  "findings": [
+    {
+      "id": "SEC-INVALID",
+      "fingerprint": "",
+      "title": "Invalid fixture finding",
+      "severity": "Urgent",
+      "confidence": "Certain",
+      "status": "Confirmed",
+      "category": "fixture",
+      "affected_locations": "app.py:1",
+      "entry_point": "fixture",
+      "trust_boundary": "fixture",
+      "source_to_sink": "fixture",
+      "root_cause": "fixture",
+      "evidence": "fixture",
+      "impact": "fixture",
+      "validation_status": "fixture",
+      "minimal_remediation": "fixture",
+      "regression_test_idea": "fixture",
+      "issue_title": "Invalid fixture finding",
+      "issue_body_file": "missing.md",
+      "issue_recommended": "yes",
+      "labels": "security"
+    }
+  ]
+}

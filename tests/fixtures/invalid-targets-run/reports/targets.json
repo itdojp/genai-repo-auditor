@@ -1,0 +1,20 @@
+{
+  "run_id": "invalid-targets-run",
+  "repo": "example/demo",
+  "targets": [
+    {
+      "id": "BAD-1",
+      "category": "fixture",
+      "title": "Invalid target fixture",
+      "risk": "urgent",
+      "priority": "high",
+      "status": "todo",
+      "scope": "app.py",
+      "entry_points": "app.py",
+      "trust_boundaries": [],
+      "sinks": [],
+      "review_questions": [],
+      "recommended_mode": "research"
+    }
+  ]
+}

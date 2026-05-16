@@ -1,0 +1,23 @@
+{
+  "run_id": "fixture-run",
+  "repo": "example/demo",
+  "branch": "main",
+  "commit": "0000000000000000000000000000000000000000",
+  "generated_at": "2026-05-16T00:00:00Z",
+  "targets": [
+    {
+      "id": "TGT-001",
+      "category": "command-injection",
+      "title": "Review command execution entry points",
+      "risk": "high",
+      "priority": 80,
+      "status": "queued",
+      "scope": "app.py",
+      "entry_points": ["tests.fixture.entry"],
+      "trust_boundaries": ["user input"],
+      "sinks": ["subprocess"],
+      "review_questions": ["Can user input reach subprocess without validation?"],
+      "recommended_mode": "research"
+    }
+  ]
+}

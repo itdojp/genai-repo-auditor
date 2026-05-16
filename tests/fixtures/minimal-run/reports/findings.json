@@ -1,0 +1,33 @@
+{
+  "run_id": "fixture-run",
+  "repo": "example/demo",
+  "commit": "0000000000000000000000000000000000000000",
+  "generated_at": "2026-05-16T00:00:00Z",
+  "findings": [
+    {
+      "id": "SEC-001",
+      "fingerprint": "fingerprint-001",
+      "title": "Fixture command injection finding",
+      "severity": "High",
+      "confidence": "High",
+      "status": "Confirmed",
+      "category": "command-injection",
+      "affected_locations": [
+        {"file": "app.py", "line": 1, "end_line": 1}
+      ],
+      "entry_point": "tests.fixture.entry",
+      "trust_boundary": "user input to shell command",
+      "source_to_sink": "request parameter -> subprocess call",
+      "root_cause": "Unsanitized input reaches a command execution sink in the fixture.",
+      "evidence": "Fixture evidence for deterministic integration tests.",
+      "impact": "Arbitrary command execution in the fixture scenario.",
+      "validation_status": "validated",
+      "minimal_remediation": "Pass arguments as a list and validate input.",
+      "regression_test_idea": "Assert metacharacters are treated as data.",
+      "issue_title": "[Security][High] Fixture command injection finding",
+      "issue_body_file": "reports/issue-drafts/SEC-001.md",
+      "issue_recommended": true,
+      "labels": ["security", "test-fixture"]
+    }
+  ]
+}
