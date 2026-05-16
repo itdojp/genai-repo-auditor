@@ -20,7 +20,13 @@ gra-audit --repo OWNER/REPO --mode exec --model gpt-5.5 --effort xhigh
 --codex-json               codex exec のJSON event出力を保存
 --network                  Codex sandbox内ネットワークを許可。通常は使わない
 --no-lock                  同一repo lockを無効化。通常は使わない
+--allow-invalid-report     findings.json 不在または validation failure でも成功扱いにする。
+                           CI / batch automation では通常使わない
 ```
+
+`--mode exec` は、Codex が成功しても `reports/findings.json` が不在、または
+`gra-validate-report` が失敗した場合は既定で non-zero exit します。
+`run-summary.txt` には `codex_status`、`validation_status`、`final_status` が記録されます。
 
 ## 通常使用の成果物
 
@@ -64,6 +70,14 @@ prompts/deep-dive-category.goal.md          # 単一カテゴリの深掘り
 
 ```bash
 gra-batch --repo-list repos.txt --concurrency 1 --mode exec
+```
+
+`gra-batch` は各 repo の結果を `runs/_batches/BATCH_ID/batch-results.json` に集約します。
+1 件以上失敗した場合は既定で non-zero exit します。
+
+```text
+--allow-failures           失敗があっても batch を成功扱いにする
+--fail-fast                最初の失敗で停止する（--concurrency 1 のみ）
 ```
 
 `repos.txt`:

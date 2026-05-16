@@ -217,6 +217,9 @@ class CliWorkflowTests(unittest.TestCase):
                 if mode == "fail":
                     print(json.dumps({"event": "mock", "status": "failed"}))
                     return int(os.environ.get("GRA_MOCK_CODEX_STATUS", "42"))
+                if mode == "missing-findings":
+                    print(json.dumps({"event": "mock", "status": "ok", "run_dir": str(run_dir)}))
+                    return 0
 
                 if fixture_dir.exists():
                     copy_fixture_reports(run_dir, fixture_dir)
@@ -277,6 +280,82 @@ class CliWorkflowTests(unittest.TestCase):
         summary = (run_dir / "run-summary.txt").read_text(encoding="utf-8")
         self.assertIn("codex_status=0", summary)
         self.assertIn("validation_status=0", summary)
+        self.assertIn("final_status=0", summary)
+
+    def test_gra_audit_exec_fails_when_mock_codex_writes_invalid_findings(self) -> None:
+        env = self.env.copy()
+        env["GRA_MOCK_FIXTURE_DIR"] = str(FIXTURES / "invalid-findings-run")
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-audit",
+                "--repo",
+                "example/demo",
+                "--mode",
+                "exec",
+                "--run-id",
+                "invalid-report-run",
+                "--runs-dir",
+                self.runs_dir,
+                "--no-lock",
+            ],
+            env=env,
+        )
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("Report validation failed", cp.stderr)
+        run_dir = self.runs_dir / "example__demo" / "invalid-report-run"
+        self.assertIn("invalid severity", (run_dir / "report-validation.txt").read_text(encoding="utf-8"))
+        summary = (run_dir / "run-summary.txt").read_text(encoding="utf-8")
+        self.assertIn("codex_status=0", summary)
+        self.assertRegex(summary, r"validation_status=[1-9][0-9]*")
+        self.assertRegex(summary, r"final_status=[1-9][0-9]*")
+
+    def test_gra_audit_exec_fails_when_findings_missing_unless_allowed(self) -> None:
+        env = self.env.copy()
+        env["GRA_MOCK_CODEX_MODE"] = "missing-findings"
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-audit",
+                "--repo",
+                "example/demo",
+                "--mode",
+                "exec",
+                "--run-id",
+                "missing-report-run",
+                "--runs-dir",
+                self.runs_dir,
+                "--no-lock",
+            ],
+            env=env,
+        )
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("findings.json was not produced", cp.stderr)
+        run_dir = self.runs_dir / "example__demo" / "missing-report-run"
+        summary = (run_dir / "run-summary.txt").read_text(encoding="utf-8")
+        self.assertIn("validation_status=missing-findings-json", summary)
+        self.assertIn("final_status=1", summary)
+
+        cp_allowed = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-audit",
+                "--repo",
+                "example/demo",
+                "--mode",
+                "exec",
+                "--run-id",
+                "missing-report-allowed-run",
+                "--runs-dir",
+                self.runs_dir,
+                "--no-lock",
+                "--allow-invalid-report",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Final status: 0", cp_allowed.stdout)
+        allowed_run_dir = self.runs_dir / "example__demo" / "missing-report-allowed-run"
+        allowed_summary = (allowed_run_dir / "run-summary.txt").read_text(encoding="utf-8")
+        self.assertIn("allow_invalid_report=1", allowed_summary)
+        self.assertIn("final_status=0", allowed_summary)
 
     def test_validate_report_accepts_valid_fixture_and_rejects_invalid_fixtures(self) -> None:
         valid_run = self.copy_fixture_run("minimal-run")
@@ -400,6 +479,132 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertTrue((batch_dir / "logs" / "example__one.log").exists())
         self.assertTrue((batch_dir / "logs" / "example__two.log").exists())
         self.assertEqual(json.loads((batch_dir / "batch.json").read_text(encoding="utf-8"))["count"], 2)
+        results = json.loads((batch_dir / "batch-results.json").read_text(encoding="utf-8"))
+        self.assertEqual(results["succeeded"], 2)
+        self.assertEqual(results["failed"], 0)
+        self.assertEqual([item["status"] for item in results["results"]], [0, 0])
+
+    def test_gra_batch_exits_nonzero_and_records_failures_by_default(self) -> None:
+        repo_list = self.work_dir / "repos-fail.txt"
+        repo_list.write_text("example/ok\nexample/clone-fail\n", encoding="utf-8")
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-batch",
+                "--repo-list",
+                repo_list,
+                "--mode",
+                "exec",
+                "--runs-dir",
+                self.runs_dir,
+                "--batch-id",
+                "batch-fail",
+                "--concurrency",
+                "1",
+            ]
+        )
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("Failures: 1", cp.stdout)
+        batch_dir = self.runs_dir / "_batches" / "batch-fail"
+        results = json.loads((batch_dir / "batch-results.json").read_text(encoding="utf-8"))
+        self.assertEqual(results["succeeded"], 1)
+        self.assertEqual(results["failed"], 1)
+        by_repo = {item["repo"]: item for item in results["results"]}
+        self.assertEqual(by_repo["example/ok"]["status"], 0)
+        self.assertEqual(by_repo["example/clone-fail"]["status"], 1)
+
+        cp_concurrent = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-batch",
+                "--repo-list",
+                repo_list,
+                "--mode",
+                "exec",
+                "--runs-dir",
+                self.runs_dir,
+                "--batch-id",
+                "batch-fail-concurrent",
+                "--concurrency",
+                "2",
+            ]
+        )
+        self.assertNotEqual(cp_concurrent.returncode, 0)
+        concurrent_results = json.loads((self.runs_dir / "_batches" / "batch-fail-concurrent" / "batch-results.json").read_text(encoding="utf-8"))
+        self.assertEqual(concurrent_results["succeeded"], 1)
+        self.assertEqual(concurrent_results["failed"], 1)
+
+    def test_gra_batch_concurrent_continues_after_status_255(self) -> None:
+        repo_list = self.work_dir / "repos-status-255.txt"
+        repo_list.write_text("example/one\nexample/two\nexample/three\n", encoding="utf-8")
+        env = self.env.copy()
+        env["GRA_MOCK_CODEX_MODE"] = "fail"
+        env["GRA_MOCK_CODEX_STATUS"] = "255"
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-batch",
+                "--repo-list",
+                repo_list,
+                "--mode",
+                "exec",
+                "--runs-dir",
+                self.runs_dir,
+                "--batch-id",
+                "batch-status-255",
+                "--concurrency",
+                "2",
+            ],
+            env=env,
+        )
+        self.assertNotEqual(cp.returncode, 0)
+        results = json.loads((self.runs_dir / "_batches" / "batch-status-255" / "batch-results.json").read_text(encoding="utf-8"))
+        self.assertEqual(results["failed"], 3)
+        self.assertEqual([item["status"] for item in results["results"]], [255, 255, 255])
+
+    def test_gra_batch_allow_failures_and_fail_fast_modes(self) -> None:
+        repo_list = self.work_dir / "repos-allow.txt"
+        repo_list.write_text("example/ok\nexample/clone-fail\n", encoding="utf-8")
+        cp_allowed = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-batch",
+                "--repo-list",
+                repo_list,
+                "--mode",
+                "exec",
+                "--runs-dir",
+                self.runs_dir,
+                "--batch-id",
+                "batch-allow",
+                "--allow-failures",
+            ],
+            check=True,
+        )
+        self.assertIn("Failures: 1", cp_allowed.stdout)
+        allow_results = json.loads((self.runs_dir / "_batches" / "batch-allow" / "batch-results.json").read_text(encoding="utf-8"))
+        self.assertTrue(allow_results["allow_failures"])
+        self.assertEqual(allow_results["failed"], 1)
+
+        fail_fast_list = self.work_dir / "repos-fail-fast.txt"
+        fail_fast_list.write_text("example/clone-fail\nexample/not-run\n", encoding="utf-8")
+        cp_fail_fast = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-batch",
+                "--repo-list",
+                fail_fast_list,
+                "--mode",
+                "exec",
+                "--runs-dir",
+                self.runs_dir,
+                "--batch-id",
+                "batch-fail-fast",
+                "--fail-fast",
+            ]
+        )
+        self.assertNotEqual(cp_fail_fast.returncode, 0)
+        self.assertIn("Fail-fast stopping after failed audit", cp_fail_fast.stderr)
+        fail_fast_results = json.loads((self.runs_dir / "_batches" / "batch-fail-fast" / "batch-results.json").read_text(encoding="utf-8"))
+        self.assertTrue(fail_fast_results["fail_fast"])
+        self.assertEqual(fail_fast_results["failed"], 1)
+        self.assertEqual(fail_fast_results["not_run"], 1)
+        self.assertEqual(fail_fast_results["results"][1]["status_text"], "not-run")
 
 
 if __name__ == "__main__":

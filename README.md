@@ -179,6 +179,9 @@ gra-batch \
 ```
 
 Start with `--concurrency 1`. If parallelizing, use low concurrency and keep Issue creation sequential.
+Batch runs write `runs/_batches/BATCH_ID/batch-results.json` and exit non-zero by default
+when one or more repository audits fail. Use `--allow-failures` only when this is intentional;
+use `--fail-fast` with `--concurrency 1` when CI should stop at the first failed repository.
 
 ## Commands
 
