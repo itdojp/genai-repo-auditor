@@ -41,6 +41,10 @@ class CliWorkflowTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         shutil.rmtree(self.work_dir, ignore_errors=True)
+        try:
+            self.tmp_parent.rmdir()
+        except OSError:
+            pass
 
     def run_cmd(
         self,
@@ -53,7 +57,7 @@ class CliWorkflowTests(unittest.TestCase):
         cp = subprocess.run(
             cmd,
             cwd=REPO_ROOT,
-            env=env or self.env,
+            env=env if env is not None else self.env,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -101,10 +105,11 @@ class CliWorkflowTests(unittest.TestCase):
                 subprocess.run(["git", "-C", str(dest), "checkout", "-b", "main"], check=True, stdout=DEVNULL, stderr=DEVNULL)
                 subprocess.run(["git", "-C", str(dest), "config", "user.email", "fixture@example.invalid"], check=True)
                 subprocess.run(["git", "-C", str(dest), "config", "user.name", "Fixture User"], check=True)
+                subprocess.run(["git", "-C", str(dest), "config", "commit.gpgsign", "false"], check=True)
                 (dest / "README.md").write_text(f"# {repo}\n", encoding="utf-8")
                 (dest / "app.py").write_text("print('fixture')\n", encoding="utf-8")
                 subprocess.run(["git", "-C", str(dest), "add", "README.md", "app.py"], check=True, stdout=DEVNULL, stderr=DEVNULL)
-                subprocess.run(["git", "-C", str(dest), "commit", "-m", "init"], check=True, stdout=DEVNULL, stderr=DEVNULL)
+                subprocess.run(["git", "-C", str(dest), "-c", "commit.gpgsign=false", "commit", "-m", "init"], check=True, stdout=DEVNULL)
 
             def main() -> int:
                 args = sys.argv[1:]

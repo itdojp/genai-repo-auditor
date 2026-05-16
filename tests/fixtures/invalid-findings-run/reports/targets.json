@@ -17,7 +17,7 @@
       "trust_boundaries": ["user input"],
       "sinks": ["subprocess"],
       "review_questions": ["Can user input reach subprocess without validation?"],
-      "recommended_mode": "research"
+      "recommended_mode": "exec"
     }
   ]
 }
