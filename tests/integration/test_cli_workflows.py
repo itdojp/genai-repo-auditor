@@ -15,6 +15,7 @@ from typing import List, Optional, Union
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
+FIXTURE_FINGERPRINT = "0123456789abcdef01234567"
 
 
 class CliWorkflowTests(unittest.TestCase):
@@ -27,6 +28,7 @@ class CliWorkflowTests(unittest.TestCase):
         self.runs_dir = self.work_dir / "runs"
         self.mock_bin = self.work_dir / "bin"
         self.mock_bin.mkdir()
+        self.fixture_counter = 0
         self._write_mock_gh()
         self._write_mock_codex()
         self.env = os.environ.copy()
@@ -74,7 +76,8 @@ class CliWorkflowTests(unittest.TestCase):
         return cp
 
     def copy_fixture_run(self, fixture_name: str = "minimal-run") -> Path:
-        dst = self.work_dir / fixture_name
+        self.fixture_counter += 1
+        dst = self.work_dir / f"{fixture_name}-{self.fixture_counter}"
         shutil.copytree(FIXTURES / fixture_name, dst)
         return dst
 
@@ -125,7 +128,10 @@ class CliWorkflowTests(unittest.TestCase):
                     print(os.environ.get("GRA_MOCK_GH_VISIBILITY", "PRIVATE"))
                     return 0
                 if len(args) >= 2 and args[:2] == ["issue", "list"]:
-                    print("[]")
+                    if "--jq" in args:
+                        print("")
+                    else:
+                        print("[]")
                     return 0
                 if len(args) >= 2 and args[:2] == ["issue", "create"]:
                     print(os.environ.get("GRA_MOCK_ISSUE_URL", "https://github.example.invalid/example/demo/issues/1"))
@@ -372,10 +378,54 @@ class CliWorkflowTests(unittest.TestCase):
         invalid_targets_run = self.copy_fixture_run("invalid-targets-run")
         cp_invalid_targets = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", invalid_targets_run])
         self.assertNotEqual(cp_invalid_targets.returncode, 0)
-        self.assertIn("target id should start with TGT-", cp_invalid_targets.stderr)
+        self.assertIn("target id must match", cp_invalid_targets.stderr)
         self.assertIn("priority must be integer", cp_invalid_targets.stderr)
 
-    def test_gra_issues_dry_run_uses_fixture_issue_body(self) -> None:
+        empty_run = self.copy_fixture_run("minimal-run")
+        empty_findings_path = empty_run / "reports" / "findings.json"
+        empty_findings = json.loads(empty_findings_path.read_text(encoding="utf-8"))
+        empty_findings["findings"] = []
+        empty_findings_path.write_text(json.dumps(empty_findings, indent=2) + "\n", encoding="utf-8")
+        cp_empty = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", empty_run])
+        self.assertEqual(cp_empty.returncode, 0, cp_empty.stderr)
+        self.assertIn("Findings: 0", cp_empty.stdout)
+
+    def test_validate_report_rejects_safety_invalid_fields(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        findings_path = run_dir / "reports" / "findings.json"
+        data = json.loads(findings_path.read_text(encoding="utf-8"))
+        finding = data["findings"][0]
+        finding["fingerprint"] = "fingerprint-001"
+        finding["generated_at"] = "not-a-date"
+        finding["affected_locations"][0]["file"] = "../secret.py"
+        finding["affected_locations"][0]["line"] = 0
+        finding["issue_body_file"] = "../../secret.md"
+        finding.pop("public_disclosure_risk", None)
+        data["generated_at"] = "not-a-date"
+        data["evidence_secret_probe"] = "AKIAABCDEFGHIJKLMNOP"
+        findings_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir])
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("findings.generated_at", cp.stderr)
+        self.assertIn("fingerprint must not be a placeholder", cp.stderr)
+        self.assertIn("affected_locations[0].file", cp.stderr)
+        self.assertIn("line must be a positive integer", cp.stderr)
+        self.assertIn("issue_body_file must not contain", cp.stderr)
+        self.assertIn("public_disclosure_risk", cp.stderr)
+        self.assertIn("obvious unredacted full secret value", cp.stderr)
+
+    def test_validate_report_rejects_symlink_issue_body(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        draft_path = run_dir / "reports" / "issue-drafts" / "SEC-001.md"
+        draft_path.unlink()
+        outside = self.work_dir / "outside.md"
+        outside.write_text("outside content\n", encoding="utf-8")
+        draft_path.symlink_to(outside)
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir])
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("issue_body_file must not be a symlink", cp.stderr)
+
+    def test_gra_issues_dry_run_and_apply_use_safe_fixture_issue_body(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         cp = self.run_cmd(
             [
@@ -394,7 +444,85 @@ class CliWorkflowTests(unittest.TestCase):
         result = json.loads((run_dir / "issues-created.json").read_text(encoding="utf-8"))
         self.assertTrue(result["dry_run"])
         self.assertEqual(result["created"][0]["id"], "SEC-001")
-        self.assertEqual(result["created"][0]["fingerprint"], "fingerprint-001")
+        self.assertEqual(result["created"][0]["fingerprint"], FIXTURE_FINGERPRINT)
+
+        apply_run = self.copy_fixture_run("minimal-run")
+        cp_apply = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                apply_run,
+                "--apply",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            check=True,
+        )
+        self.assertIn("CREATED SEC-001", cp_apply.stdout)
+
+    def test_gra_issues_rejects_unsafe_issue_body_file_in_dry_run_and_apply(self) -> None:
+        dry_run_dir = self.copy_fixture_run("minimal-run")
+        dry_findings_path = dry_run_dir / "reports" / "findings.json"
+        dry_data = json.loads(dry_findings_path.read_text(encoding="utf-8"))
+        dry_data["findings"][0]["issue_body_file"] = "../../secret.md"
+        dry_findings_path.write_text(json.dumps(dry_data, indent=2) + "\n", encoding="utf-8")
+        cp_dry = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                dry_run_dir,
+                "--dry-run",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ]
+        )
+        self.assertNotEqual(cp_dry.returncode, 0)
+        self.assertIn("issue_body_file must not contain", cp_dry.stderr)
+
+        apply_run = self.copy_fixture_run("minimal-run")
+        apply_findings_path = apply_run / "reports" / "findings.json"
+        apply_data = json.loads(apply_findings_path.read_text(encoding="utf-8"))
+        apply_data["findings"][0]["issue_body_file"] = "/etc/passwd"
+        apply_findings_path.write_text(json.dumps(apply_data, indent=2) + "\n", encoding="utf-8")
+        cp_apply = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                apply_run,
+                "--apply",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ]
+        )
+        self.assertNotEqual(cp_apply.returncode, 0)
+        self.assertIn("issue_body_file must be relative under reports/issue-drafts", cp_apply.stderr)
+
+    def test_gra_issues_rejects_symlinked_reports_parent(self) -> None:
+        run_dir = self.work_dir / "symlink-parent-run"
+        run_dir.mkdir()
+        outside_reports = self.work_dir / "outside-reports"
+        shutil.copytree(FIXTURES / "minimal-run" / "reports", outside_reports)
+        (run_dir / "reports").symlink_to(outside_reports, target_is_directory=True)
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--dry-run",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ]
+        )
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("issue_body_file must not be a symlink", cp.stderr)
 
     def test_gra_targets_list_show_and_mark(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

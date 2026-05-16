@@ -1,9 +1,22 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import argparse
+import datetime as dt
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / "lib"))
+from report_safety import (  # noqa: E402
+    ReportSafetyError,
+    iter_secret_findings,
+    safe_issue_body_path,
+    validate_relative_repo_path,
+)
 
 SEVERITIES = {"Critical", "High", "Medium", "Low", "Informational"}
 CONFIDENCES = {"High", "Medium", "Low"}
@@ -21,6 +34,7 @@ REQUIRED_TARGET = [
     "id", "category", "title", "risk", "priority", "status", "scope",
     "entry_points", "trust_boundaries", "sinks", "review_questions", "recommended_mode",
 ]
+PLACEHOLDER_FINGERPRINTS = {"", "n/a", "na", "none", "null", "unknown", "todo", "tbd", "placeholder", "fingerprint", "fingerprint-001"}
 
 
 def find_findings(run: Path) -> Path:
@@ -29,6 +43,94 @@ def find_findings(run: Path) -> Path:
         if p.exists():
             return p
     raise FileNotFoundError(f"findings.json not found under {run}")
+
+
+def load_schema(name: str) -> Dict[str, Any]:
+    return json.loads((LAB_ROOT / "templates" / "reports" / name).read_text(encoding="utf-8"))
+
+
+def json_type_name(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    return type(value).__name__
+
+
+def matches_json_type(value: Any, expected: str) -> bool:
+    if expected == "null":
+        return value is None
+    if expected == "boolean":
+        return isinstance(value, bool)
+    if expected == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected == "number":
+        return (isinstance(value, int) or isinstance(value, float)) and not isinstance(value, bool)
+    if expected == "string":
+        return isinstance(value, str)
+    if expected == "array":
+        return isinstance(value, list)
+    if expected == "object":
+        return isinstance(value, dict)
+    return True
+
+
+def validate_schema(value: Any, schema: Dict[str, Any], path: str, errors: List[str]) -> None:
+    expected_type = schema.get("type")
+    if expected_type is not None:
+        expected_types = expected_type if isinstance(expected_type, list) else [expected_type]
+        if not any(matches_json_type(value, t) for t in expected_types):
+            errors.append(f"{path}: expected type {'/'.join(expected_types)}, got {json_type_name(value)}")
+            return
+
+    if "enum" in schema and value not in schema["enum"]:
+        errors.append(f"{path}: value {value!r} is not one of {schema['enum']}")
+
+    if isinstance(value, dict):
+        for key in schema.get("required", []):
+            if key not in value:
+                errors.append(f"{path}.{key}: missing required field")
+        properties = schema.get("properties", {})
+        for key, subschema in properties.items():
+            if key in value:
+                validate_schema(value[key], subschema, f"{path}.{key}", errors)
+
+    if isinstance(value, list) and "items" in schema:
+        for index, item in enumerate(value):
+            validate_schema(item, schema["items"], f"{path}[{index}]", errors)
+
+    if isinstance(value, str) and "pattern" in schema:
+        if not re.search(schema["pattern"], value):
+            errors.append(f"{path}: value {value!r} does not match pattern {schema['pattern']}")
+
+    if isinstance(value, int) and not isinstance(value, bool):
+        if "minimum" in schema and value < schema["minimum"]:
+            errors.append(f"{path}: value {value} is below minimum {schema['minimum']}")
+        if "maximum" in schema and value > schema["maximum"]:
+            errors.append(f"{path}: value {value} is above maximum {schema['maximum']}")
+
+
+def validate_generated_at(value: Any, path: str, errors: List[str]) -> None:
+    if not isinstance(value, str):
+        return
+    raw = value.strip()
+    if not raw:
+        errors.append(f"{path}: generated_at must not be empty")
+        return
+    try:
+        dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        errors.append(f"{path}: generated_at must be valid ISO-8601 datetime")
 
 
 def validate_targets(run_dir: Path, errors: List[str]) -> None:
@@ -40,33 +142,77 @@ def validate_targets(run_dir: Path, errors: List[str]) -> None:
     except Exception as e:
         errors.append(f"targets.json invalid JSON: {e}")
         return
+
+    validate_schema(targets_data, load_schema("targets.schema.json"), "targets", errors)
+    validate_generated_at(targets_data.get("generated_at"), "targets.generated_at", errors)
+
     targets = targets_data.get("targets")
     if not isinstance(targets, list):
-        errors.append("targets.json: targets must be a list")
+        errors.append("targets.targets: targets must be a list")
         return
     seen = set()
     for i, t in enumerate(targets):
+        path = f"targets.targets[{i}]"
         if not isinstance(t, dict):
-            errors.append(f"targets[{i}] is not an object")
+            errors.append(f"{path}: target must be an object")
             continue
         tid = str(t.get("id") or f"index-{i}")
         for key in REQUIRED_TARGET:
             if key not in t:
-                errors.append(f"{tid}: missing target key {key}")
-        if not tid.startswith("TGT-"):
-            errors.append(f"{tid}: target id should start with TGT-")
+                errors.append(f"{path}.{key}: missing target key")
+        if not re.fullmatch(r"TGT-[0-9]{3,}", tid):
+            errors.append(f"{path}.id: target id must match ^TGT-[0-9]{{3,}}$ (got {tid})")
         if tid in seen:
-            errors.append(f"{tid}: duplicate target id")
+            errors.append(f"{path}.id: duplicate target id {tid}")
         seen.add(tid)
         if t.get("risk") not in TARGET_RISKS:
-            errors.append(f"{tid}: invalid risk {t.get('risk')}")
+            errors.append(f"{path}.risk: invalid risk {t.get('risk')}")
         if t.get("status") not in TARGET_STATUSES:
-            errors.append(f"{tid}: invalid status {t.get('status')}")
-        if not isinstance(t.get("priority"), int):
-            errors.append(f"{tid}: priority must be integer")
+            errors.append(f"{path}.status: invalid status {t.get('status')}")
+        if not isinstance(t.get("priority"), int) or isinstance(t.get("priority"), bool):
+            errors.append(f"{path}.priority: priority must be integer")
+        elif not 0 <= int(t["priority"]) <= 100:
+            errors.append(f"{path}.priority: priority must be between 0 and 100")
         for key in ["entry_points", "trust_boundaries", "sinks", "review_questions"]:
             if key in t and not isinstance(t.get(key), list):
-                errors.append(f"{tid}: {key} must be list")
+                errors.append(f"{path}.{key}: {key} must be list")
+
+
+def validate_affected_locations(finding: Dict[str, Any], path: str, errors: List[str]) -> None:
+    locs = finding.get("affected_locations")
+    if not isinstance(locs, list):
+        errors.append(f"{path}.affected_locations: affected_locations must be list")
+        return
+    for index, loc in enumerate(locs):
+        loc_path = f"{path}.affected_locations[{index}]"
+        if not isinstance(loc, dict):
+            errors.append(f"{loc_path}: location must be object")
+            continue
+        try:
+            validate_relative_repo_path(loc.get("file"), field_path=f"{loc_path}.file")
+        except ReportSafetyError as exc:
+            errors.append(str(exc))
+        for key in ("line", "end_line"):
+            if key in loc and loc.get(key) is not None:
+                if not isinstance(loc.get(key), int) or isinstance(loc.get(key), bool):
+                    errors.append(f"{loc_path}.{key}: {key} must be a positive integer or null")
+                elif int(loc[key]) < 1:
+                    errors.append(f"{loc_path}.{key}: {key} must be a positive integer")
+        if isinstance(loc.get("line"), int) and isinstance(loc.get("end_line"), int) and loc["end_line"] < loc["line"]:
+            errors.append(f"{loc_path}.end_line: end_line must be greater than or equal to line")
+
+
+def validate_fingerprint(finding: Dict[str, Any], path: str, fingerprints: set[str], errors: List[str]) -> None:
+    fp = str(finding.get("fingerprint") or "").strip()
+    if not fp:
+        errors.append(f"{path}.fingerprint: empty fingerprint")
+    elif fp.lower() in PLACEHOLDER_FINGERPRINTS or "placeholder" in fp.lower():
+        errors.append(f"{path}.fingerprint: fingerprint must not be a placeholder")
+    elif len(fp) < 8:
+        errors.append(f"{path}.fingerprint: fingerprint must be at least 8 characters")
+    elif fp in fingerprints:
+        errors.append(f"{path}.fingerprint: duplicate fingerprint {fp}")
+    fingerprints.add(fp)
 
 
 def main() -> int:
@@ -88,49 +234,53 @@ def main() -> int:
         print(f"ERROR: invalid JSON: {e}", file=sys.stderr)
         return 1
 
+    validate_schema(data, load_schema("findings.schema.json"), "findings", errors)
+    validate_generated_at(data.get("generated_at"), "findings.generated_at", errors)
+    for secret_error in iter_secret_findings(data, field_path="findings"):
+        errors.append(secret_error)
+
     for key in REQUIRED_TOP:
         if key not in data:
-            errors.append(f"missing top-level key: {key}")
+            errors.append(f"findings.{key}: missing top-level key")
     if not isinstance(data.get("findings"), list):
-        errors.append("findings must be a list")
+        errors.append("findings.findings: findings must be a list")
 
     findings = data.get("findings") if isinstance(data.get("findings"), list) else []
-    fingerprints = set()
+    fingerprints: set[str] = set()
     for i, f in enumerate(findings):
+        path_prefix = f"findings.findings[{i}]"
         if not isinstance(f, dict):
-            errors.append(f"findings[{i}] is not an object")
+            errors.append(f"{path_prefix}: finding must be an object")
             continue
-        fid = f.get("id", f"index-{i}")
         for key in REQUIRED_FINDING:
             if key not in f:
-                errors.append(f"{fid}: missing key {key}")
+                errors.append(f"{path_prefix}.{key}: missing key")
         if f.get("severity") not in SEVERITIES:
-            errors.append(f"{fid}: invalid severity {f.get('severity')}")
+            errors.append(f"{path_prefix}.severity: invalid severity {f.get('severity')}")
         if f.get("confidence") not in CONFIDENCES:
-            errors.append(f"{fid}: invalid confidence {f.get('confidence')}")
+            errors.append(f"{path_prefix}.confidence: invalid confidence {f.get('confidence')}")
         if f.get("status") not in STATUSES:
-            errors.append(f"{fid}: invalid status {f.get('status')}")
-        fp = str(f.get("fingerprint") or "").strip()
-        if not fp:
-            errors.append(f"{fid}: empty fingerprint")
-        elif fp in fingerprints:
-            errors.append(f"{fid}: duplicate fingerprint {fp}")
-        fingerprints.add(fp)
-        if not isinstance(f.get("affected_locations"), list):
-            errors.append(f"{fid}: affected_locations must be list")
+            errors.append(f"{path_prefix}.status: invalid status {f.get('status')}")
+        validate_fingerprint(f, path_prefix, fingerprints, errors)
+        validate_affected_locations(f, path_prefix, errors)
         if not isinstance(f.get("labels"), list):
-            errors.append(f"{fid}: labels must be list")
+            errors.append(f"{path_prefix}.labels: labels must be list")
         if not isinstance(f.get("issue_recommended"), bool):
-            errors.append(f"{fid}: issue_recommended must be boolean")
+            errors.append(f"{path_prefix}.issue_recommended: issue_recommended must be boolean")
         if f.get("issue_recommended"):
+            if "public_disclosure_risk" not in f:
+                errors.append(f"{path_prefix}.public_disclosure_risk: required when issue_recommended is true")
             body_file = str(f.get("issue_body_file") or "")
-            candidates = [
-                run_dir / "repo" / body_file,
-                run_dir / body_file,
-                run_dir / "reports" / "issue-drafts" / Path(body_file).name,
-            ]
-            if body_file and not any(p.exists() for p in candidates):
-                errors.append(f"{fid}: issue_body_file not found: {body_file}")
+            if body_file:
+                try:
+                    safe_issue_body_path(run_dir, body_file, field_path=f"{path_prefix}.issue_body_file")
+                except ReportSafetyError as exc:
+                    errors.append(str(exc))
+        elif f.get("issue_body_file"):
+            try:
+                safe_issue_body_path(run_dir, f.get("issue_body_file"), field_path=f"{path_prefix}.issue_body_file")
+            except ReportSafetyError as exc:
+                errors.append(str(exc))
 
     validate_targets(run_dir, errors)
 

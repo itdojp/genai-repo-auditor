@@ -10,6 +10,10 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / "lib"))
+from report_safety import ReportSafetyError, safe_issue_body_path  # noqa: E402
+
 SEVERITY_RANK = {"Critical": 5, "High": 4, "Medium": 3, "Low": 2, "Informational": 1}
 DEFAULT_LABELS: Dict[str, Tuple[str, str]] = {
     "security": ("d73a4a", "Security-related issue"),
@@ -98,19 +102,12 @@ def render_locations(locs: Iterable[Any]) -> str:
 
 def render_body(repo: str, run_id: str, commit: str, finding: Dict[str, Any], fingerprint: str, run_dir: Path) -> str:
     issue_body_file = str(finding.get("issue_body_file") or "")
-    candidates: List[Path] = []
     if issue_body_file:
-        candidates.extend([
-            run_dir / issue_body_file,
-            run_dir / "reports" / "issue-drafts" / Path(issue_body_file).name,
-            run_dir / "repo" / issue_body_file,
-        ])
-    for p in candidates:
-        if p.exists():
-            body = p.read_text(encoding="utf-8")
-            if "genai-repo-auditor:fingerprint=" not in body and "gra-fingerprint:" not in body:
-                body += f"\n\n<!-- genai-repo-auditor:fingerprint={fingerprint} -->\n"
-            return body
+        p = safe_issue_body_path(run_dir, issue_body_file)
+        body = p.read_text(encoding="utf-8")
+        if "genai-repo-auditor:fingerprint=" not in body and "gra-fingerprint:" not in body:
+            body += f"\n\n<!-- genai-repo-auditor:fingerprint={fingerprint} -->\n"
+        return body
 
     title = str(finding.get("title") or "Security finding")
     call_path = finding.get("call_path") or finding.get("source_to_sink") or "Not specified"
@@ -292,7 +289,11 @@ def main() -> int:
         finding_id = finding.get("id", "SEC-UNKNOWN")
         title = finding.get("issue_title") or f"[Security][{finding.get('severity','Unknown')}] {finding.get('title','Security finding')}"
         labels = normalize_labels(finding)
-        body = render_body(repo, run_id, commit, finding, fingerprint, run_dir)
+        try:
+            body = render_body(repo, run_id, commit, finding, fingerprint, run_dir)
+        except ReportSafetyError as exc:
+            print(f"ERROR: {finding_id}: {exc}", file=sys.stderr)
+            return 2
 
         existing = None if dry_run else issue_exists(repo, fingerprint)
         if existing:

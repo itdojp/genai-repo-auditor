@@ -39,8 +39,38 @@ findings[].minimal_remediation
 findings[].issue_title
 findings[].issue_body_file
 findings[].issue_recommended
+findings[].public_disclosure_risk
 findings[].labels
 ```
+
+## validation and safety constraints
+
+`gra-validate-report` validates `findings.json` and `targets.json` against the
+bundled JSON schemas using the Python standard library. It also applies local
+safety rules before downstream tools can use report-controlled paths.
+
+Important constraints:
+
+- `generated_at` must be parseable ISO-8601.
+- `targets[].id` must match `TGT-[0-9]{3,}` and `priority` must be 0–100.
+- `findings[].affected_locations[].file` must be a relative target-repo path.
+- `line` and `end_line` must be positive integers when present.
+- `public_disclosure_risk` is required when `issue_recommended` is true.
+- fingerprints must be non-empty and non-placeholder.
+- obvious unredacted full secret values are rejected. Redacted or clearly marked
+  example values should use markers such as `REDACTED`, `EXAMPLE`, or
+  `PLACEHOLDER`.
+
+`issue_body_file`, when present, must point to a regular `.md` file under
+`reports/issue-drafts/`, for example:
+
+```text
+reports/issue-drafts/SEC-001.md
+```
+
+Absolute paths, `..` traversal, symlinks, non-Markdown files, and oversized
+issue body files are rejected. If `issue_body_file` is empty, `gra-issues` can
+render a body from structured finding fields instead of reading a draft file.
 
 ## finding quality bar
 
