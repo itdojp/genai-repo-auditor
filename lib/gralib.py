@@ -4,8 +4,11 @@ import datetime as _dt
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
+
+from template_env import validate_template_env_key
 
 
 def utc_now() -> str:
@@ -30,17 +33,6 @@ def load_context(run_dir: Path) -> Dict[str, Any]:
     ctx.setdefault('reports_dir', 'reports')
     ctx.setdefault('repo_dir', str(run_dir / 'repo'))
     return ctx
-
-
-TEMPLATE_PLACEHOLDER_RE = re.compile(r'^[A-Z0-9_]+$')
-TEMPLATE_DENYLIST_RE = re.compile(r'(?:TOKEN|SECRET|KEY|PASSWORD|COOKIE|SESSION|CREDENTIAL)')
-
-
-def validate_template_env_key(key: str) -> None:
-    if not TEMPLATE_PLACEHOLDER_RE.fullmatch(key):
-        raise ValueError(f'invalid template environment key: {key}')
-    if TEMPLATE_DENYLIST_RE.search(key):
-        raise ValueError(f'denied template environment key: {key}')
 
 
 def env_from_context(run_dir: Path, extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
@@ -70,7 +62,7 @@ def env_from_context(run_dir: Path, extra: Optional[Dict[str, str]] = None) -> D
 
 
 def render_template(lab_root: Path, template: Path, out: Path, env: Dict[str, str]) -> None:
-    cmd = ['python3', str(lab_root / 'lib' / 'render_template.py'), str(template), str(out)]
+    cmd = [sys.executable, str(lab_root / 'lib' / 'render_template.py'), str(template), str(out)]
     subprocess.run(cmd, check=True, env=env)
 
 
