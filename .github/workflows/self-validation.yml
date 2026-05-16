@@ -1,0 +1,93 @@
+name: self-validation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "47 3 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  prepare-fixture:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GENAI_REPO_AUDITOR_RUNS_DIR: ${{ runner.temp }}/gra-runs
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Create offline command fixtures
+        run: |
+          mkdir -p "$RUNNER_TEMP/gra-bin"
+
+          cat > "$RUNNER_TEMP/gra-bin/gh" <<'GH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          if [[ "${1:-}" == "repo" && "${2:-}" == "clone" ]]; then
+            repo="${3:-}"
+            dest="${4:-}"
+            if [[ -z "$repo" || -z "$dest" ]]; then
+              echo "mock gh: repo clone requires repo and destination" >&2
+              exit 2
+            fi
+            mkdir -p "$dest"
+            git init -b main "$dest" >/dev/null
+            git -C "$dest" config user.email "fixture@example.invalid"
+            git -C "$dest" config user.name "Fixture User"
+            printf '# %s\n' "$repo" > "$dest/README.md"
+            printf 'print("fixture")\n' > "$dest/app.py"
+            git -C "$dest" add README.md app.py
+            git -C "$dest" -c commit.gpgsign=false commit -m "init" >/dev/null
+            exit 0
+          fi
+
+          if [[ "${1:-}" == "repo" && "${2:-}" == "view" ]]; then
+            echo "PRIVATE"
+            exit 0
+          fi
+
+          echo "mock gh: unsupported arguments: $*" >&2
+          exit 2
+          GH
+          chmod +x "$RUNNER_TEMP/gra-bin/gh"
+
+          cat > "$RUNNER_TEMP/gra-bin/codex" <<'CODEX'
+          #!/usr/bin/env bash
+          echo "offline codex mock should not run in prepare mode" >&2
+          exit 99
+          CODEX
+          chmod +x "$RUNNER_TEMP/gra-bin/codex"
+
+      - name: Prepare an offline fixture audit run
+        run: |
+          PATH="$RUNNER_TEMP/gra-bin:$PATH" \
+            bin/gra-audit \
+              --repo fixture/self-validation \
+              --mode prepare \
+              --run-id self-validation \
+              --runs-dir "$GENAI_REPO_AUDITOR_RUNS_DIR" \
+              --no-lock
+
+          run_dir="$GENAI_REPO_AUDITOR_RUNS_DIR/fixture__self-validation/self-validation"
+          test -f "$run_dir/context.json"
+          test -f "$run_dir/prompt.exec.md"
+          test -f "$run_dir/prompt.goal.md"
+          test -d "$run_dir/prompts/exec"
+          test -d "$run_dir/prompts/goal"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run_dir = Path(os.environ["GENAI_REPO_AUDITOR_RUNS_DIR"]) / "fixture__self-validation" / "self-validation"
+          ctx = json.loads((run_dir / "context.json").read_text(encoding="utf-8"))
+          assert ctx["repo"] == "fixture/self-validation"
+          assert ctx["visibility"] == "PRIVATE"
+          assert ctx["network_allowed"] is False
+          PY
