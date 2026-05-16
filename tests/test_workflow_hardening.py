@@ -31,6 +31,7 @@ class WorkflowHardeningTests(unittest.TestCase):
         self.assertIn("--mode prepare", text)
         self.assertIn('ctx["network_allowed"] is False', text)
         self.assertIn("offline codex mock should not run in prepare mode", text)
+        self.assertNotIn("${{ runner.temp }}", text)
 
 
 if __name__ == "__main__":

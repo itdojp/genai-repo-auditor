@@ -15,8 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      GENAI_REPO_AUDITOR_RUNS_DIR: ${{ runner.temp }}/gra-runs
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -66,26 +64,28 @@ jobs:
 
       - name: Prepare an offline fixture audit run
         run: |
+          runs_dir="$RUNNER_TEMP/gra-runs"
           PATH="$RUNNER_TEMP/gra-bin:$PATH" \
             bin/gra-audit \
               --repo fixture/self-validation \
               --mode prepare \
               --run-id self-validation \
-              --runs-dir "$GENAI_REPO_AUDITOR_RUNS_DIR" \
+              --runs-dir "$runs_dir" \
               --no-lock
 
-          run_dir="$GENAI_REPO_AUDITOR_RUNS_DIR/fixture__self-validation/self-validation"
+          run_dir="$runs_dir/fixture__self-validation/self-validation"
           test -f "$run_dir/context.json"
           test -f "$run_dir/prompt.exec.md"
           test -f "$run_dir/prompt.goal.md"
           test -d "$run_dir/prompts/exec"
           test -d "$run_dir/prompts/goal"
+          export GRA_SELF_VALIDATION_RUN_DIR="$run_dir"
           python3 - <<'PY'
           import json
           import os
           from pathlib import Path
 
-          run_dir = Path(os.environ["GENAI_REPO_AUDITOR_RUNS_DIR"]) / "fixture__self-validation" / "self-validation"
+          run_dir = Path(os.environ["GRA_SELF_VALIDATION_RUN_DIR"])
           ctx = json.loads((run_dir / "context.json").read_text(encoding="utf-8"))
           assert ctx["repo"] == "fixture/self-validation"
           assert ctx["visibility"] == "PRIVATE"
