@@ -1,0 +1,11 @@
+{
+  "run_id": "fixture-run",
+  "repo": "example/demo",
+  "repo_slug": "example__demo",
+  "branch": "main",
+  "commit": "0000000000000000000000000000000000000000",
+  "visibility": "PRIVATE",
+  "target_repo_dir": "repo",
+  "reports_dir": "reports",
+  "network_allowed": false
+}

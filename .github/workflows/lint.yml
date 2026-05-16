@@ -38,6 +38,9 @@ jobs:
               py_compile.compile(str(p), doraise=True)
           print('python syntax ok')
           PY
+      - name: Run integration tests
+        run: |
+          python3 -m unittest discover -s tests
       - name: Check executable bits
         run: |
           test -x bin/gra-audit

@@ -2,6 +2,7 @@
 runs/
 batches/
 locks/
+.test-tmp/
 *.sqlite
 *.sqlite3
 

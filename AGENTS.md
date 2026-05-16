@@ -50,6 +50,7 @@ for p in Path('bin').glob('gra-*'):
     assert p.read_text(encoding='utf-8').startswith(('#!', ''))
 print('basic validation ok')
 PY
+python3 -m unittest discover -s tests
 ```
 
 If shellcheck is available, also run:

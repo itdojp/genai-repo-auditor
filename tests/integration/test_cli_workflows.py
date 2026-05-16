@@ -1,0 +1,406 @@
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import sqlite3
+import stat
+import subprocess
+import sys
+import tempfile
+import textwrap
+import unittest
+from pathlib import Path
+from typing import List, Optional, Union
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+FIXTURES = REPO_ROOT / "tests" / "fixtures"
+
+
+class CliWorkflowTests(unittest.TestCase):
+    maxDiff = None
+
+    def setUp(self) -> None:
+        self.tmp_parent = REPO_ROOT / ".test-tmp"
+        self.tmp_parent.mkdir(exist_ok=True)
+        self.work_dir = Path(tempfile.mkdtemp(prefix=f"{self._testMethodName}-", dir=self.tmp_parent))
+        self.runs_dir = self.work_dir / "runs"
+        self.mock_bin = self.work_dir / "bin"
+        self.mock_bin.mkdir()
+        self._write_mock_gh()
+        self._write_mock_codex()
+        self.env = os.environ.copy()
+        self.env.update(
+            {
+                "PATH": f"{self.mock_bin}{os.pathsep}{self.env.get('PATH', '')}",
+                "GENAI_REPO_AUDITOR_RUNS_DIR": str(self.runs_dir),
+                "GRA_MOCK_FIXTURE_DIR": str(FIXTURES / "minimal-run"),
+                "PYTHONUNBUFFERED": "1",
+            }
+        )
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.work_dir, ignore_errors=True)
+        try:
+            self.tmp_parent.rmdir()
+        except OSError:
+            pass
+
+    def run_cmd(
+        self,
+        args: List[Union[str, Path]],
+        *,
+        env: Optional[dict] = None,
+        check: bool = False,
+    ) -> subprocess.CompletedProcess:
+        cmd = [str(arg) for arg in args]
+        cp = subprocess.run(
+            cmd,
+            cwd=REPO_ROOT,
+            env=env if env is not None else self.env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=60,
+        )
+        if check and cp.returncode != 0:
+            self.fail(
+                "command failed\n"
+                f"cmd: {' '.join(cmd)}\n"
+                f"exit: {cp.returncode}\n"
+                f"stdout:\n{cp.stdout}\n"
+                f"stderr:\n{cp.stderr}"
+            )
+        return cp
+
+    def copy_fixture_run(self, fixture_name: str = "minimal-run") -> Path:
+        dst = self.work_dir / fixture_name
+        shutil.copytree(FIXTURES / fixture_name, dst)
+        return dst
+
+    def _write_executable(self, name: str, content: str) -> None:
+        path = self.mock_bin / name
+        path.write_text(textwrap.dedent(content).lstrip(), encoding="utf-8")
+        path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    def _write_mock_gh(self) -> None:
+        self._write_executable(
+            "gh",
+            r'''
+            #!/usr/bin/env python3
+            from __future__ import annotations
+
+            import os
+            import subprocess
+            import sys
+            from pathlib import Path
+
+            DEVNULL = subprocess.DEVNULL
+
+            def init_repo(dest: Path, repo: str) -> None:
+                dest.mkdir(parents=True, exist_ok=True)
+                if (dest / ".git").exists():
+                    return
+                subprocess.run(["git", "init", str(dest)], check=True, stdout=DEVNULL, stderr=DEVNULL)
+                subprocess.run(["git", "-C", str(dest), "checkout", "-b", "main"], check=True, stdout=DEVNULL, stderr=DEVNULL)
+                subprocess.run(["git", "-C", str(dest), "config", "user.email", "fixture@example.invalid"], check=True)
+                subprocess.run(["git", "-C", str(dest), "config", "user.name", "Fixture User"], check=True)
+                subprocess.run(["git", "-C", str(dest), "config", "commit.gpgsign", "false"], check=True)
+                (dest / "README.md").write_text(f"# {repo}\n", encoding="utf-8")
+                (dest / "app.py").write_text("print('fixture')\n", encoding="utf-8")
+                subprocess.run(["git", "-C", str(dest), "add", "README.md", "app.py"], check=True, stdout=DEVNULL, stderr=DEVNULL)
+                subprocess.run(["git", "-C", str(dest), "-c", "commit.gpgsign=false", "commit", "-m", "init"], check=True, stdout=DEVNULL)
+
+            def main() -> int:
+                args = sys.argv[1:]
+                if len(args) >= 4 and args[:2] == ["repo", "clone"]:
+                    repo = args[2]
+                    dest = Path(args[3])
+                    if "clone-fail" in repo:
+                        print(f"mock clone failure for {repo}", file=sys.stderr)
+                        return 1
+                    init_repo(dest, repo)
+                    return 0
+                if len(args) >= 3 and args[:2] == ["repo", "view"]:
+                    print(os.environ.get("GRA_MOCK_GH_VISIBILITY", "PRIVATE"))
+                    return 0
+                if len(args) >= 2 and args[:2] == ["issue", "list"]:
+                    print("[]")
+                    return 0
+                if len(args) >= 2 and args[:2] == ["issue", "create"]:
+                    print(os.environ.get("GRA_MOCK_ISSUE_URL", "https://github.example.invalid/example/demo/issues/1"))
+                    return 0
+                if len(args) >= 2 and args[:2] == ["label", "create"]:
+                    return 0
+                print(f"mock gh: unsupported arguments: {args}", file=sys.stderr)
+                return 2
+
+            if __name__ == "__main__":
+                raise SystemExit(main())
+            ''',
+        )
+
+    def _write_mock_codex(self) -> None:
+        self._write_executable(
+            "codex",
+            r'''
+            #!/usr/bin/env python3
+            from __future__ import annotations
+
+            import json
+            import os
+            import shutil
+            import sys
+            from pathlib import Path
+
+            def arg_value(args, name):
+                if name not in args:
+                    return None
+                idx = args.index(name)
+                if idx + 1 >= len(args):
+                    return None
+                return args[idx + 1]
+
+            def load_json(path: Path, default):
+                if not path.exists():
+                    return default
+                return json.loads(path.read_text(encoding="utf-8"))
+
+            def write_json(path: Path, data) -> None:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+            def copy_fixture_reports(run_dir: Path, fixture_dir: Path) -> None:
+                ctx = load_json(run_dir / "context.json", {})
+                reports = run_dir / "reports"
+                reports.mkdir(parents=True, exist_ok=True)
+                findings = load_json(fixture_dir / "reports" / "findings.json", {})
+                findings.update(
+                    {
+                        "run_id": ctx.get("run_id", run_dir.name),
+                        "repo": ctx.get("repo", findings.get("repo", "")),
+                        "commit": ctx.get("commit", findings.get("commit", "")),
+                    }
+                )
+                write_json(reports / "findings.json", findings)
+                targets_src = fixture_dir / "reports" / "targets.json"
+                if targets_src.exists():
+                    targets = load_json(targets_src, {})
+                    targets.update(
+                        {
+                            "run_id": ctx.get("run_id", run_dir.name),
+                            "repo": ctx.get("repo", targets.get("repo", "")),
+                            "branch": ctx.get("branch", targets.get("branch", "")),
+                            "commit": ctx.get("commit", targets.get("commit", "")),
+                        }
+                    )
+                    write_json(reports / "targets.json", targets)
+                drafts_src = fixture_dir / "reports" / "issue-drafts"
+                if drafts_src.exists():
+                    drafts_dest = reports / "issue-drafts"
+                    drafts_dest.mkdir(parents=True, exist_ok=True)
+                    for src in drafts_src.iterdir():
+                        if src.is_file():
+                            shutil.copy2(src, drafts_dest / src.name)
+                (reports / "FINDINGS.md").write_text("# Fixture findings\n", encoding="utf-8")
+
+            def main() -> int:
+                args = sys.argv[1:]
+                run_dir = Path(arg_value(args, "--cd") or os.getcwd())
+                output_last = Path(arg_value(args, "--output-last-message") or (run_dir / "codex-final.md"))
+                fixture_dir = Path(os.environ.get("GRA_MOCK_FIXTURE_DIR", ""))
+                mode = os.environ.get("GRA_MOCK_CODEX_MODE", "success")
+
+                output_last.parent.mkdir(parents=True, exist_ok=True)
+                output_last.write_text(f"mock codex mode={mode}\n", encoding="utf-8")
+
+                if mode == "fail":
+                    print(json.dumps({"event": "mock", "status": "failed"}))
+                    return int(os.environ.get("GRA_MOCK_CODEX_STATUS", "42"))
+
+                if fixture_dir.exists():
+                    copy_fixture_reports(run_dir, fixture_dir)
+                print(json.dumps({"event": "mock", "status": "ok", "run_dir": str(run_dir)}))
+                return 0
+
+            if __name__ == "__main__":
+                raise SystemExit(main())
+            ''',
+        )
+
+    def test_gra_audit_prepare_creates_run_context_and_prompts(self) -> None:
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-audit",
+                "--repo",
+                "example/demo",
+                "--mode",
+                "prepare",
+                "--run-id",
+                "prepare-run",
+                "--runs-dir",
+                self.runs_dir,
+                "--no-lock",
+            ],
+            check=True,
+        )
+        run_dir = self.runs_dir / "example__demo" / "prepare-run"
+        self.assertIn("Prepared audit run directory", cp.stdout)
+        self.assertTrue((run_dir / "context.json").exists())
+        self.assertTrue((run_dir / "prompts" / "exec" / "full-audit.prompt.md").exists())
+        self.assertTrue((run_dir / "reports" / "issue-drafts").is_dir())
+        ctx = json.loads((run_dir / "context.json").read_text(encoding="utf-8"))
+        self.assertEqual(ctx["repo"], "example/demo")
+        self.assertEqual(ctx["repo_slug"], "example__demo")
+        self.assertEqual(ctx["visibility"], "PRIVATE")
+
+    def test_gra_audit_exec_with_mock_codex_validates_reports(self) -> None:
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-audit",
+                "--repo",
+                "example/demo",
+                "--mode",
+                "exec",
+                "--run-id",
+                "exec-run",
+                "--runs-dir",
+                self.runs_dir,
+                "--no-lock",
+            ],
+            check=True,
+        )
+        run_dir = self.runs_dir / "example__demo" / "exec-run"
+        self.assertIn("Run complete. Codex status: 0", cp.stdout)
+        self.assertTrue((run_dir / "reports" / "findings.json").exists())
+        self.assertIn("OK:", (run_dir / "report-validation.txt").read_text(encoding="utf-8"))
+        summary = (run_dir / "run-summary.txt").read_text(encoding="utf-8")
+        self.assertIn("codex_status=0", summary)
+        self.assertIn("validation_status=0", summary)
+
+    def test_validate_report_accepts_valid_fixture_and_rejects_invalid_fixtures(self) -> None:
+        valid_run = self.copy_fixture_run("minimal-run")
+        cp_valid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", valid_run])
+        self.assertEqual(cp_valid.returncode, 0, cp_valid.stderr)
+        self.assertIn("Findings: 1", cp_valid.stdout)
+
+        invalid_findings_run = self.copy_fixture_run("invalid-findings-run")
+        cp_invalid_findings = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", invalid_findings_run])
+        self.assertNotEqual(cp_invalid_findings.returncode, 0)
+        self.assertIn("invalid severity", cp_invalid_findings.stderr)
+        self.assertIn("issue_recommended must be boolean", cp_invalid_findings.stderr)
+
+        invalid_targets_run = self.copy_fixture_run("invalid-targets-run")
+        cp_invalid_targets = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", invalid_targets_run])
+        self.assertNotEqual(cp_invalid_targets.returncode, 0)
+        self.assertIn("target id should start with TGT-", cp_invalid_targets.stderr)
+        self.assertIn("priority must be integer", cp_invalid_targets.stderr)
+
+    def test_gra_issues_dry_run_uses_fixture_issue_body(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--dry-run",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            check=True,
+        )
+        self.assertIn("DRY RUN: would create issue for SEC-001", cp.stdout)
+        result = json.loads((run_dir / "issues-created.json").read_text(encoding="utf-8"))
+        self.assertTrue(result["dry_run"])
+        self.assertEqual(result["created"][0]["id"], "SEC-001")
+        self.assertEqual(result["created"][0]["fingerprint"], "fingerprint-001")
+
+    def test_gra_targets_list_show_and_mark(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        cp_list = self.run_cmd([REPO_ROOT / "bin" / "gra-targets", "--run", run_dir, "--list"], check=True)
+        self.assertIn("TGT-001", cp_list.stdout)
+        cp_show = self.run_cmd([REPO_ROOT / "bin" / "gra-targets", "--run", run_dir, "--show", "TGT-001"], check=True)
+        self.assertEqual(json.loads(cp_show.stdout)["id"], "TGT-001")
+        cp_mark = self.run_cmd([REPO_ROOT / "bin" / "gra-targets", "--run", run_dir, "--mark", "TGT-001", "reviewed"], check=True)
+        self.assertIn("updated TGT-001 -> reviewed", cp_mark.stdout)
+        targets = json.loads((run_dir / "reports" / "targets.json").read_text(encoding="utf-8"))["targets"]
+        self.assertEqual(targets[0]["status"], "reviewed")
+
+    def test_ingest_scanner_triage_dashboard_sarif_and_store(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        scanner_file = self.work_dir / "semgrep.json"
+        scanner_file.write_text('{"results": [{"check_id": "fixture.rule"}]}\n', encoding="utf-8")
+
+        cp_ingest = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-ingest",
+                "--run",
+                run_dir,
+                "--tool",
+                "semgrep",
+                "--file",
+                scanner_file,
+                "--format",
+                "json",
+                "--note",
+                "fixture",
+            ],
+            check=True,
+        )
+        self.assertIn("Ingested", cp_ingest.stdout)
+        index_path = run_dir / "reports" / "scanner-results" / "scanner-index.json"
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+        self.assertEqual(index["results"][0]["tool"], "semgrep")
+
+        cp_triage = self.run_cmd([REPO_ROOT / "bin" / "gra-scanner-triage", "--run", run_dir], check=True)
+        self.assertIn("Codex status: 0", cp_triage.stdout)
+        triage_prompt = run_dir / "prompts" / "exec" / "scanner-triage.prompt.md"
+        self.assertIn("reports/scanner-results/scanner-index.json", triage_prompt.read_text(encoding="utf-8"))
+
+        cp_dashboard = self.run_cmd([REPO_ROOT / "bin" / "gra-dashboard", "--run", run_dir], check=True)
+        self.assertIn("dashboard.html", cp_dashboard.stdout)
+        self.assertTrue((run_dir / "reports" / "dashboard.html").exists())
+
+        cp_sarif = self.run_cmd([REPO_ROOT / "bin" / "gra-sarif", "--run", run_dir], check=True)
+        self.assertIn("findings.sarif", cp_sarif.stdout)
+        sarif = json.loads((run_dir / "reports" / "findings.sarif").read_text(encoding="utf-8"))
+        self.assertEqual(sarif["version"], "2.1.0")
+        self.assertEqual(sarif["runs"][0]["results"][0]["ruleId"], "SEC-001")
+
+        db_path = self.work_dir / "audit.sqlite"
+        cp_store = self.run_cmd([REPO_ROOT / "bin" / "gra-store", "--run", run_dir, "--db", db_path], check=True)
+        self.assertIn("Imported run", cp_store.stdout)
+        with sqlite3.connect(db_path) as conn:
+            count = conn.execute("select count(*) from findings").fetchone()[0]
+        self.assertEqual(count, 1)
+
+    def test_gra_batch_runs_multiple_repositories_with_mock_commands(self) -> None:
+        repo_list = self.work_dir / "repos.txt"
+        repo_list.write_text("example/one\n# comment\n\nexample/two\n", encoding="utf-8")
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-batch",
+                "--repo-list",
+                repo_list,
+                "--mode",
+                "exec",
+                "--runs-dir",
+                self.runs_dir,
+                "--batch-id",
+                "batch-ok",
+                "--concurrency",
+                "1",
+            ],
+            check=True,
+        )
+        self.assertIn("Batch complete", cp.stdout)
+        batch_dir = self.runs_dir / "_batches" / "batch-ok"
+        self.assertTrue((batch_dir / "logs" / "example__one.log").exists())
+        self.assertTrue((batch_dir / "logs" / "example__two.log").exists())
+        self.assertEqual(json.loads((batch_dir / "batch.json").read_text(encoding="utf-8"))["count"], 2)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
