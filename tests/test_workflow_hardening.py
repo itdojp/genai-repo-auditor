@@ -41,6 +41,61 @@ def parse_mapping(block: str, indent: int) -> dict[str, str]:
     return result
 
 
+def parse_keys(block: str, indent: int) -> set[str]:
+    prefix = " " * indent
+    result = set()
+    for line in block.splitlines():
+        if not line.startswith(prefix) or line.startswith(prefix + " "):
+            continue
+        stripped = line.strip()
+        if ":" not in stripped:
+            continue
+        key, _value = stripped.split(":", 1)
+        result.add(key)
+    return result
+
+
+def workflow_triggers(workflow: str) -> set[str]:
+    return parse_keys(extract_block(workflow, "on:"), 2)
+
+
+def parse_list_items(block: str, indent: int) -> list[str]:
+    prefix = " " * indent + "- "
+    result = []
+    for line in block.splitlines():
+        if line.startswith(prefix):
+            result.append(line[len(prefix):].strip())
+    return result
+
+
+def push_branches(workflow: str) -> list[str]:
+    push = extract_block(extract_block(workflow, "on:"), "  push:")
+    inline_branches = parse_mapping(push, 4).get("branches")
+    if inline_branches:
+        return [item.strip() for item in inline_branches.removeprefix("[").removesuffix("]").split(",") if item.strip()]
+    branches_block = extract_block(push, "    branches:")
+    branches = parse_list_items(branches_block, 6)
+    if not branches:
+        raise AssertionError("missing push.branches trigger")
+    return branches
+
+
+def schedule_block(workflow: str) -> str:
+    return extract_block(extract_block(workflow, "on:"), "  schedule:")
+
+
+def cron_entries(workflow: str) -> list[str]:
+    result = []
+    for line in schedule_block(workflow).splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("- cron:"):
+            continue
+        value = stripped.split(":", 1)[1].strip().strip("'\"")
+        if value:
+            result.append(value)
+    return result
+
+
 def job_block(workflow: str, job_name: str) -> str:
     return extract_block(extract_block(workflow, "jobs:"), f"  {job_name}:")
 
@@ -74,6 +129,12 @@ class WorkflowHardeningTests(unittest.TestCase):
         self.assertIn("        with:", step)
         self.assertIn("          persist-credentials: false", step)
 
+    def assert_required_workflow_triggers(self, text: str) -> None:
+        required = {"pull_request", "push", "schedule", "workflow_dispatch"}
+        self.assertTrue(required.issubset(workflow_triggers(text)))
+        self.assertEqual(["main"], push_branches(text))
+        self.assertTrue(cron_entries(text), "missing schedule cron trigger")
+
     def test_lint_workflow_uses_explicit_read_only_permissions(self) -> None:
         text = (WORKFLOWS / "lint.yml").read_text(encoding="utf-8")
         self.assertEqual({"contents": "read"}, parse_mapping(extract_block(text, "permissions:"), 2))
@@ -81,8 +142,26 @@ class WorkflowHardeningTests(unittest.TestCase):
         self.assertEqual({"contents": "read"}, job_permissions(text, "lint"))
         self.assert_checkout_does_not_persist_credentials(lint)
 
+    def test_trigger_helpers_accept_valid_yaml_variants(self) -> None:
+        workflow = "\n".join(
+            [
+                "on:",
+                "  pull_request:",
+                "  merge_group:",
+                "  push:",
+                "    branches:",
+                "      - main",
+                "  schedule:",
+                "    - cron: '23 3 * * 1'",
+                "  workflow_dispatch:",
+                "jobs:",
+            ]
+        )
+        self.assert_required_workflow_triggers(workflow)
+
     def test_codeql_workflow_scans_python_and_github_actions(self) -> None:
         text = (WORKFLOWS / "codeql.yml").read_text(encoding="utf-8")
+        self.assert_required_workflow_triggers(text)
         self.assert_top_level_permissions_disabled(text)
         analyze = job_block(text, "analyze")
         self.assertEqual(
@@ -98,6 +177,7 @@ class WorkflowHardeningTests(unittest.TestCase):
 
     def test_self_validation_workflow_prepares_offline_fixture_run(self) -> None:
         text = (WORKFLOWS / "self-validation.yml").read_text(encoding="utf-8")
+        self.assert_required_workflow_triggers(text)
         self.assert_top_level_permissions_disabled(text)
         prepare = job_block(text, "prepare-fixture")
         self.assertEqual({"contents": "read"}, job_permissions(text, "prepare-fixture"))
