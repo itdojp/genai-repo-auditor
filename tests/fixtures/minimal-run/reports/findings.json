@@ -6,14 +6,18 @@
   "findings": [
     {
       "id": "SEC-001",
-      "fingerprint": "fingerprint-001",
+      "fingerprint": "0123456789abcdef01234567",
       "title": "Fixture command injection finding",
       "severity": "High",
       "confidence": "High",
       "status": "Confirmed",
       "category": "command-injection",
       "affected_locations": [
-        {"file": "app.py", "line": 1, "end_line": 1}
+        {
+          "file": "app.py",
+          "line": 1,
+          "end_line": 1
+        }
       ],
       "entry_point": "tests.fixture.entry",
       "trust_boundary": "user input to shell command",
@@ -27,7 +31,11 @@
       "issue_title": "[Security][High] Fixture command injection finding",
       "issue_body_file": "reports/issue-drafts/SEC-001.md",
       "issue_recommended": true,
-      "labels": ["security", "test-fixture"]
+      "labels": [
+        "security",
+        "test-fixture"
+      ],
+      "public_disclosure_risk": "Low"
     }
   ]
 }
