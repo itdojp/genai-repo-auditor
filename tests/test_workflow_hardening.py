@@ -41,6 +41,36 @@ def parse_mapping(block: str, indent: int) -> dict[str, str]:
     return result
 
 
+def parse_keys(block: str, indent: int) -> set[str]:
+    prefix = " " * indent
+    result = set()
+    for line in block.splitlines():
+        if not line.startswith(prefix) or line.startswith(prefix + " "):
+            continue
+        stripped = line.strip()
+        if ":" not in stripped:
+            continue
+        key, _value = stripped.split(":", 1)
+        result.add(key)
+    return result
+
+
+def workflow_triggers(workflow: str) -> set[str]:
+    return parse_keys(extract_block(workflow, "on:"), 2)
+
+
+def push_branches(workflow: str) -> list[str]:
+    push = extract_block(extract_block(workflow, "on:"), "  push:")
+    branches = parse_mapping(push, 4).get("branches")
+    if branches is None:
+        raise AssertionError("missing push.branches trigger")
+    return [item.strip() for item in branches.removeprefix("[").removesuffix("]").split(",") if item.strip()]
+
+
+def schedule_block(workflow: str) -> str:
+    return extract_block(extract_block(workflow, "on:"), "  schedule:")
+
+
 def job_block(workflow: str, job_name: str) -> str:
     return extract_block(extract_block(workflow, "jobs:"), f"  {job_name}:")
 
@@ -74,6 +104,11 @@ class WorkflowHardeningTests(unittest.TestCase):
         self.assertIn("        with:", step)
         self.assertIn("          persist-credentials: false", step)
 
+    def assert_required_workflow_triggers(self, text: str) -> None:
+        self.assertEqual({"pull_request", "push", "schedule", "workflow_dispatch"}, workflow_triggers(text))
+        self.assertEqual(["main"], push_branches(text))
+        self.assertRegex(schedule_block(text), re.compile(r"^    - cron: \"[^\"]+\"$", re.MULTILINE))
+
     def test_lint_workflow_uses_explicit_read_only_permissions(self) -> None:
         text = (WORKFLOWS / "lint.yml").read_text(encoding="utf-8")
         self.assertEqual({"contents": "read"}, parse_mapping(extract_block(text, "permissions:"), 2))
@@ -83,6 +118,7 @@ class WorkflowHardeningTests(unittest.TestCase):
 
     def test_codeql_workflow_scans_python_and_github_actions(self) -> None:
         text = (WORKFLOWS / "codeql.yml").read_text(encoding="utf-8")
+        self.assert_required_workflow_triggers(text)
         self.assert_top_level_permissions_disabled(text)
         analyze = job_block(text, "analyze")
         self.assertEqual(
@@ -98,6 +134,7 @@ class WorkflowHardeningTests(unittest.TestCase):
 
     def test_self_validation_workflow_prepares_offline_fixture_run(self) -> None:
         text = (WORKFLOWS / "self-validation.yml").read_text(encoding="utf-8")
+        self.assert_required_workflow_triggers(text)
         self.assert_top_level_permissions_disabled(text)
         prepare = job_block(text, "prepare-fixture")
         self.assertEqual({"contents": "read"}, job_permissions(text, "prepare-fixture"))
