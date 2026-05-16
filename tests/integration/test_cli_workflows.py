@@ -402,7 +402,7 @@ class CliWorkflowTests(unittest.TestCase):
         finding["issue_body_file"] = "../../secret.md"
         finding.pop("public_disclosure_risk", None)
         data["generated_at"] = "not-a-date"
-        data["evidence_secret_probe"] = "AKIAABCDEFGHIJKLMNOP"
+        data["evidence_secret_probe"] = "AKIA" + "ABCDEFGHIJKLMNOP"
         findings_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
         cp = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir])
         self.assertNotEqual(cp.returncode, 0)
@@ -560,11 +560,16 @@ class CliWorkflowTests(unittest.TestCase):
         index_path = run_dir / "reports" / "scanner-results" / "scanner-index.json"
         index = json.loads(index_path.read_text(encoding="utf-8"))
         self.assertEqual(index["results"][0]["tool"], "semgrep")
+        normalized_path = run_dir / index["results"][0]["normalized_path"]
+        self.assertTrue(normalized_path.exists())
+        normalized = json.loads(normalized_path.read_text(encoding="utf-8"))
+        self.assertEqual(index["results"][0]["normalized_leads_count"], len(normalized["leads"]))
 
         cp_triage = self.run_cmd([REPO_ROOT / "bin" / "gra-scanner-triage", "--run", run_dir], check=True)
         self.assertIn("Codex status: 0", cp_triage.stdout)
         triage_prompt = run_dir / "prompts" / "exec" / "scanner-triage.prompt.md"
         self.assertIn("reports/scanner-results/scanner-index.json", triage_prompt.read_text(encoding="utf-8"))
+        self.assertIn("Normalized lead files", triage_prompt.read_text(encoding="utf-8"))
 
         cp_dashboard = self.run_cmd([REPO_ROOT / "bin" / "gra-dashboard", "--run", run_dir], check=True)
         self.assertIn("dashboard.html", cp_dashboard.stdout)
@@ -582,6 +587,150 @@ class CliWorkflowTests(unittest.TestCase):
         with sqlite3.connect(db_path) as conn:
             count = conn.execute("select count(*) from findings").fetchone()[0]
         self.assertEqual(count, 1)
+
+    def test_gra_ingest_normalizes_and_redacts_secret_scanner_outputs(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        stripe_secret = "sk_live_1234567890abcdef"
+        aws_secret = "AKIA" + "ABCDEFGHIJKLMNOP"
+        gitleaks_file = self.work_dir / "gitleaks.json"
+        gitleaks_file.write_text(
+            json.dumps(
+                [
+                    {
+                        "RuleID": "generic-api-key",
+                        "Description": "Stripe key",
+                        "File": "src/config.ts",
+                        "StartLine": 42,
+                        "Secret": stripe_secret,
+                    }
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        trufflehog_file = self.work_dir / "trufflehog.json"
+        trufflehog_file.write_text(
+            json.dumps(
+                {
+                    "DetectorName": "AWS",
+                    "Raw": aws_secret,
+                    "SourceMetadata": {"Data": {"Git": {"file": "settings.py", "line": 7}}},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-ingest", "--run", run_dir, "--tool", "gitleaks", "--file", gitleaks_file], check=True)
+        self.run_cmd([REPO_ROOT / "bin" / "gra-ingest", "--run", run_dir, "--tool", "trufflehog", "--file", trufflehog_file], check=True)
+
+        index = json.loads((run_dir / "reports" / "scanner-results" / "scanner-index.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(index["results"]), 2)
+        index_text = json.dumps(index)
+        self.assertNotIn(stripe_secret, index_text)
+        self.assertNotIn(aws_secret, index_text)
+        for entry in index["results"]:
+            normalized_path = run_dir / entry["normalized_path"]
+            normalized_text = normalized_path.read_text(encoding="utf-8")
+            self.assertNotIn(stripe_secret, normalized_text)
+            self.assertNotIn(aws_secret, normalized_text)
+            normalized = json.loads(normalized_text)
+            self.assertGreaterEqual(entry["normalized_leads_count"], 1)
+            self.assertEqual(normalized["leads"][0]["raw_result_ref"], entry["path"])
+        all_normalized = "\n".join((run_dir / entry["normalized_path"]).read_text(encoding="utf-8") for entry in index["results"])
+        self.assertIn("sk_live_...cdef", all_normalized)
+        self.assertIn("AKIA...MNOP", all_normalized)
+
+    def test_gra_ingest_handles_generic_secret_large_json_and_sarif_locations(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        generic_secret = "correcthorsebatterystaple"
+        aws_secret_access_key = "wJalrXUtnFEMI/" + "K7MDENG/bPxRfiCY" + "1234567890"
+        temp_aws_id = "ASIA" + "ABCDEFGHIJKLMNOP"
+        generic_file = self.work_dir / "generic-secret.json"
+        generic_file.write_text(json.dumps([{"RuleID": "generic-password", "File": "config.env", "StartLine": 3, "Raw": generic_secret}]) + "\n", encoding="utf-8")
+
+        large_file = self.work_dir / "large-semgrep.json"
+        large_file.write_text(
+            json.dumps(
+                {
+                    "results": [
+                        {"check_id": f"rule-{i}", "path": f"src/file{i}.py", "start": {"line": i + 1}, "extra": {"message": "x" * 25000}}
+                        for i in range(3)
+                    ]
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        sarif_file = self.work_dir / "codeql.sarif"
+        sarif_file.write_text(
+            json.dumps(
+                {
+                    "runs": [
+                        {
+                            "results": [
+                                {
+                                    "ruleId": "py/test-rule",
+                                    "level": "warning",
+                                    "message": {"text": "example"},
+                                    "locations": [
+                                        {
+                                            "physicalLocation": {
+                                                "artifactLocation": {"uri": "src/main.py"},
+                                                "region": {"startLine": 12},
+                                            }
+                                        }
+                                    ],
+                                }
+                            ]
+                        }
+                    ]
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        jsonl_file = self.work_dir / "trufflehog.jsonl"
+        jsonl_file.write_text(
+            "\n".join(
+                [
+                    json.dumps({"DetectorName": "generic", "Raw": generic_secret, "SourceMetadata": {"Data": {"Git": {"file": "a.env", "line": 1}}}}),
+                    json.dumps({"DetectorName": "aws-secret", "Raw": aws_secret_access_key, "SourceMetadata": {"Data": {"Git": {"file": "b.env", "line": 2}}}}),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        private_key_file = self.work_dir / "private-key.txt"
+        private_key_file.write_text("-----BEGIN PRIVATE KEY-----\nABCDEF1234567890\n", encoding="utf-8")
+        temp_aws_file = self.work_dir / "temp-aws.json"
+        temp_aws_file.write_text(json.dumps([{"RuleID": "temp-aws", "File": "aws.env", "StartLine": 4, "Secret": temp_aws_id}]) + "\n", encoding="utf-8")
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-ingest", "--run", run_dir, "--tool", "custom", "--file", generic_file], check=True)
+        self.run_cmd([REPO_ROOT / "bin" / "gra-ingest", "--run", run_dir, "--tool", "semgrep", "--file", large_file], check=True)
+        self.run_cmd([REPO_ROOT / "bin" / "gra-ingest", "--run", run_dir, "--tool", "codeql", "--file", sarif_file, "--format", "sarif"], check=True)
+        self.run_cmd([REPO_ROOT / "bin" / "gra-ingest", "--run", run_dir, "--tool", "trufflehog", "--file", jsonl_file, "--format", "jsonl"], check=True)
+        self.run_cmd([REPO_ROOT / "bin" / "gra-ingest", "--run", run_dir, "--tool", "privatekey", "--file", private_key_file, "--format", "text"], check=True)
+        self.run_cmd([REPO_ROOT / "bin" / "gra-ingest", "--run", run_dir, "--tool", "gitleaks", "--file", temp_aws_file], check=True)
+
+        index = json.loads((run_dir / "reports" / "scanner-results" / "scanner-index.json").read_text(encoding="utf-8"))
+        by_tool = {entry["tool"]: json.loads((run_dir / entry["normalized_path"]).read_text(encoding="utf-8")) for entry in index["results"]}
+        all_text = "\n".join(json.dumps(value) for value in by_tool.values())
+        self.assertNotIn(generic_secret, all_text)
+        self.assertNotIn(aws_secret_access_key, all_text)
+        self.assertNotIn(temp_aws_id, all_text)
+        self.assertNotIn("ABCDEF1234567890", all_text)
+        self.assertIn("<REDACTED:scanner-secret>", all_text)
+        self.assertIn("<REDACTED:private-key>", all_text)
+        self.assertIn("ASIA...MNOP", all_text)
+        self.assertEqual(len(by_tool["semgrep"]["leads"]), 3)
+        self.assertEqual(by_tool["semgrep"]["leads"][0]["line"], 1)
+        self.assertFalse(by_tool["semgrep"]["normalization"]["parse_error"])
+        self.assertEqual(len(by_tool["trufflehog"]["leads"]), 2)
+        sarif_lead = by_tool["codeql"]["leads"][0]
+        self.assertEqual(sarif_lead["path"], "src/main.py")
+        self.assertEqual(sarif_lead["line"], 12)
 
     def test_gra_batch_runs_multiple_repositories_with_mock_commands(self) -> None:
         repo_list = self.work_dir / "repos.txt"

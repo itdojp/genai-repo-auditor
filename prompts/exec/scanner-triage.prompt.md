@@ -15,16 +15,18 @@ Read first:
 - context.json
 - findings.schema.json
 - {{SCANNER_INDEX}}
-- Imported scanner result files referenced by scanner-index.json
+- Normalized lead files referenced by `normalized_path` in scanner-index.json
 - Relevant repository files under {{TARGET_REPO_DIR}}/
 
 Rules:
 - Scanner results are leads, not findings.
+- Use normalized/redacted leads by default. Do not open raw scanner result files unless the
+  normalized lead is insufficient and human policy permits local raw inspection.
 - Do not report a scanner result unless repository context supports it.
 - If a result needs deeper review, create or update {{REPORTS_DIR}}/targets.json instead of overclaiming.
 - Do not modify target repository files.
 - No network, production/staging, external scanning, live exploitation, dependency installation, credential operations, or weaponized exploit code.
-- Redact secrets.
+- Do not quote or reconstruct full secret values. Keep any secret evidence redacted.
 
 Required outputs:
 - {{REPORTS_DIR}}/scanner-triage.md with triage summary, confirmed leads, rejected leads, deferred leads, and unresolved questions.

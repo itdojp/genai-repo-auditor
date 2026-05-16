@@ -17,6 +17,11 @@
           "path": {"type": "string"},
           "format": {"type": "string"},
           "imported_at": {"type": "string"},
+          "sha256": {"type": "string"},
+          "raw_bytes": {"type": "integer", "minimum": 0},
+          "normalized_path": {"type": "string"},
+          "normalized_leads_count": {"type": "integer", "minimum": 0},
+          "normalization": {"type": "object"},
           "note": {"type": "string"}
         }
       }
