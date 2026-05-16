@@ -16,6 +16,8 @@ from typing import List, Optional, Union
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 FIXTURE_FINGERPRINT = "0123456789abcdef01234567"
+sys.path.insert(0, str(REPO_ROOT / "lib"))
+from gralib import env_from_context  # noqa: E402
 
 
 class CliWorkflowTests(unittest.TestCase):
@@ -262,6 +264,65 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(ctx["repo"], "example/demo")
         self.assertEqual(ctx["repo_slug"], "example__demo")
         self.assertEqual(ctx["visibility"], "PRIVATE")
+
+    def test_render_template_uses_allowlist_and_rejects_unknown_or_secret_placeholders(self) -> None:
+        template = self.work_dir / "template.md"
+        out = self.work_dir / "out.md"
+        env = {
+            "RUN_ID": "run-1",
+            "REPO": "example/demo",
+            "GRA_TEMPLATE_CUSTOM_VALUE": "controlled",
+            "OPENAI_API_KEY": "fixture-value",
+        }
+
+        template.write_text("run={{RUN_ID}}\nrepo={{REPO}}\ncustom={{CUSTOM_VALUE}}\n", encoding="utf-8")
+        cp = self.run_cmd([sys.executable, REPO_ROOT / "lib" / "render_template.py", template, out], env=env, check=True)
+        self.assertEqual(cp.stderr, "")
+        self.assertEqual(out.read_text(encoding="utf-8"), "run=run-1\nrepo=example/demo\ncustom=controlled\n")
+        self.assertNotIn("fixture-value", out.read_text(encoding="utf-8"))
+
+        out.unlink()
+        template.write_text("unknown={{UNKNOWN_PLACEHOLDER}}\n", encoding="utf-8")
+        cp_unknown = self.run_cmd([sys.executable, REPO_ROOT / "lib" / "render_template.py", template, out], env=env)
+        self.assertEqual(cp_unknown.returncode, 2)
+        self.assertIn("unknown template placeholder: UNKNOWN_PLACEHOLDER", cp_unknown.stderr)
+        self.assertFalse(out.exists())
+
+        template.write_text("secret={{OPENAI_API_KEY}}\n", encoding="utf-8")
+        cp_secret = self.run_cmd([sys.executable, REPO_ROOT / "lib" / "render_template.py", template, out], env=env)
+        self.assertEqual(cp_secret.returncode, 2)
+        self.assertIn("denied template placeholder: OPENAI_API_KEY", cp_secret.stderr)
+        self.assertFalse(out.exists())
+
+        controlled_secret_env = {"GRA_TEMPLATE_API_KEY": "fixture-value"}
+        template.write_text("secret={{API_KEY}}\n", encoding="utf-8")
+        cp_controlled_secret = self.run_cmd(
+            [sys.executable, REPO_ROOT / "lib" / "render_template.py", template, out],
+            env=controlled_secret_env,
+        )
+        self.assertEqual(cp_controlled_secret.returncode, 2)
+        self.assertIn("denied controlled template placeholder: API_KEY", cp_controlled_secret.stderr)
+        self.assertFalse(out.exists())
+
+    def test_env_from_context_is_minimal_and_rejects_secret_like_extra_keys(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        original = os.environ.get("OPENAI_API_KEY")
+        os.environ["OPENAI_API_KEY"] = "fixture-value"
+        try:
+            env = env_from_context(run_dir, {"TARGET_ID": "TGT-001"})
+        finally:
+            if original is None:
+                os.environ.pop("OPENAI_API_KEY", None)
+            else:
+                os.environ["OPENAI_API_KEY"] = original
+
+        self.assertEqual(env["RUN_ID"], "fixture-run")
+        self.assertEqual(env["TARGET_ID"], "TGT-001")
+        self.assertNotIn("OPENAI_API_KEY", env)
+        self.assertNotIn("PATH", env)
+
+        with self.assertRaisesRegex(ValueError, "denied template environment key: OPENAI_API_KEY"):
+            env_from_context(run_dir, {"OPENAI_API_KEY": "fixture-value"})
 
     def test_gra_audit_exec_with_mock_codex_validates_reports(self) -> None:
         cp = self.run_cmd(
