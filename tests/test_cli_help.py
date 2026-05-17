@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import stat
@@ -36,10 +37,8 @@ class CliHelpTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         shutil.rmtree(self.work_dir, ignore_errors=True)
-        try:
+        with contextlib.suppress(OSError):
             self.tmp_parent.rmdir()
-        except OSError:
-            pass
 
     def _write_forbidden_command(self, name: str) -> None:
         path = self.mock_bin / name
