@@ -1,5 +1,7 @@
 # Usage
 
+この文書は主要ワークフローの概要です。全 `gra-*` コマンドの詳細オプション、成果物、exit status、注意事項は [`docs/COMMAND_REFERENCE.md`](COMMAND_REFERENCE.md) を参照してください。
+
 ## 通常使用: 単一repo監査
 
 ```bash
