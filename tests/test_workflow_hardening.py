@@ -175,7 +175,7 @@ class WorkflowHardeningTests(unittest.TestCase):
         self.assertIn("uses: github/codeql-action/init@v4", analyze)
         self.assertIn("uses: github/codeql-action/analyze@v4", analyze)
 
-    def test_self_validation_workflow_prepares_offline_fixture_run(self) -> None:
+    def test_self_validation_workflow_prepares_and_executes_offline_fixture_run(self) -> None:
         text = (WORKFLOWS / "self-validation.yml").read_text(encoding="utf-8")
         self.assert_required_workflow_triggers(text)
         self.assert_top_level_permissions_disabled(text)
@@ -186,6 +186,14 @@ class WorkflowHardeningTests(unittest.TestCase):
         self.assertIn("--mode prepare", prepare)
         self.assertIn('ctx["network_allowed"] is False', prepare)
         self.assertIn("offline codex mock should not run in prepare mode", prepare)
+        self.assertIn("Execute an offline fixture audit run", prepare)
+        self.assertIn("--mode exec", prepare)
+        self.assertIn("--run-id self-validation-exec", prepare)
+        self.assertIn('^final_status=0$', prepare)
+        self.assertIn('^validation_status=0$', prepare)
+        self.assertIn('bin/gra-validate-report --run "$run_dir"', prepare)
+        self.assertIn('run_dir.is_relative_to(runner_temp)', prepare)
+        self.assertIn('Path(summary["reports_dir"]).resolve().is_relative_to(runner_temp)', prepare)
         self.assertNotIn("${{ runner.temp }}", prepare)
 
 
