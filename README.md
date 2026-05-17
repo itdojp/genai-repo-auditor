@@ -185,6 +185,8 @@ use `--fail-fast` with `--concurrency 1` when CI should stop at the first failed
 
 ## Commands
 
+For detailed options, outputs, exit status behavior, and safety cautions, see [`docs/COMMAND_REFERENCE.md`](docs/COMMAND_REFERENCE.md).
+
 | Command | Purpose |
 |---|---|
 | `gra-audit` | Clone a repo, create a run, execute full audit, prepare goal mode |
@@ -219,6 +221,7 @@ Do not use this project for:
 ## Documentation
 
 - `docs/LOCAL_INSTALL_AND_AUDIT.md`
+- `docs/COMMAND_REFERENCE.md`
 - `docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md`
 - `docs/WORKFLOW_OVERVIEW.md`
 - `docs/NORMAL_WORKFLOW.md`
