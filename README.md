@@ -220,19 +220,21 @@ Do not use this project for:
 
 ## Documentation
 
-- `docs/LOCAL_INSTALL_AND_AUDIT.md`
-- `docs/COMMAND_REFERENCE.md`
-- `docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md`
-- `docs/WORKFLOW_OVERVIEW.md`
-- `docs/NORMAL_WORKFLOW.md`
-- `docs/GOAL_DEEP_DIVE.md`
-- `docs/STAGED_AGENTIC_WORKFLOW.md`
-- `docs/TARGET_QUEUE.md`
-- `docs/VARIANT_ANALYSIS.md`
-- `docs/SCANNER_INTEGRATION.md`
-- `docs/REPORTING_AND_STORE.md`
-- `docs/SECURITY_MODEL.md`
-- `docs/CODEX_WORK_INSTRUCTIONS.md`
+- [`docs/LOCAL_INSTALL_AND_AUDIT.md`](docs/LOCAL_INSTALL_AND_AUDIT.md)
+- [`docs/COMMAND_REFERENCE.md`](docs/COMMAND_REFERENCE.md)
+- [`docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md`](docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md)
+- [`docs/WORKFLOW_OVERVIEW.md`](docs/WORKFLOW_OVERVIEW.md)
+- [`docs/NORMAL_WORKFLOW.md`](docs/NORMAL_WORKFLOW.md)
+- [`docs/GOAL_DEEP_DIVE.md`](docs/GOAL_DEEP_DIVE.md)
+- [`docs/STAGED_AGENTIC_WORKFLOW.md`](docs/STAGED_AGENTIC_WORKFLOW.md)
+- [`docs/TARGET_QUEUE.md`](docs/TARGET_QUEUE.md)
+- [`docs/VARIANT_ANALYSIS.md`](docs/VARIANT_ANALYSIS.md)
+- [`docs/SCANNER_INTEGRATION.md`](docs/SCANNER_INTEGRATION.md)
+- [`docs/ISSUE_WORKFLOW.md`](docs/ISSUE_WORKFLOW.md)
+- [`docs/REPORTING_AND_STORE.md`](docs/REPORTING_AND_STORE.md)
+- [`docs/REPORT_CONTRACT.md`](docs/REPORT_CONTRACT.md)
+- [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md)
+- [`docs/CODEX_WORK_INSTRUCTIONS.md`](docs/CODEX_WORK_INSTRUCTIONS.md)
 
 ## License
 
