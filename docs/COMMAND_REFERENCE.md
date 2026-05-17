@@ -10,7 +10,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 - Run commands from a checked-out `genai-repo-auditor` repository with `bin/` on `PATH`, or call commands through `./bin/<command>`.
 - Most commands operate on a run directory such as `runs/OWNER__REPO/RUN_ID`.
 - `--network` enables network access inside the Codex sandbox for commands that call Codex. It is disabled by default and should remain disabled unless an approved workflow requires it.
-- `--model` defaults to `gpt-5.5` and `--effort` defaults to `xhigh` for Codex-driven commands unless overridden by command options or environment variables.
+- `--model` defaults to `gpt-5.5` and `--effort` defaults to `xhigh` for Codex-driven commands. `gra-audit` and `gra-batch` also read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT` as defaults; staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-variant`, and `gra-scanner-triage` require explicit `--model` / `--effort` options to override their argparse defaults.
 - Python commands use `argparse`; missing required arguments or invalid choices normally exit with status `2`.
 - Generated audit artifacts, cloned target repositories, scanner raw outputs, issue drafts, and local stores should remain local and should not be committed.
 
