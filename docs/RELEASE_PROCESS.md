@@ -52,7 +52,7 @@ In the release PR:
 - Confirm README and docs links are still correct.
 - Confirm security-sensitive docs are current: [`SECURITY.md`](../SECURITY.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md), [`docs/ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md), and [`docs/SCANNER_INTEGRATION.md`](SCANNER_INTEGRATION.md).
 - Confirm any CLI, schema, report contract, or workflow changes have matching documentation.
-- Request normal code review and automated Copilot review.
+- Request maintainer review and any configured automated code review.
 - Merge only after local validation and GitHub Actions are green.
 
 ## Required validation before tagging
@@ -111,13 +111,37 @@ Use annotated tags for releases. Do not tag a local commit that has not been pus
 
 ## GitHub Release creation
 
-Create the GitHub Release from the pushed tag. Use the corresponding `CHANGELOG.md` section as the release notes.
+Create the GitHub Release from the pushed tag. Use the corresponding `CHANGELOG.md` section as the release notes. The notes file is a local scratch artifact and must be created before `gh release create`.
+
+```bash
+VERSION_VALUE="$(cat VERSION)"
+mkdir -p .codex-local/tmp
+RELEASE_NOTES=".codex-local/tmp/release-notes-v$VERSION_VALUE.md"
+VERSION_VALUE="$VERSION_VALUE" RELEASE_NOTES="$RELEASE_NOTES" python3 - <<'PY'
+import os
+from pathlib import Path
+
+version = os.environ["VERSION_VALUE"]
+output = Path(os.environ["RELEASE_NOTES"])
+heading = f"## v{version}"
+lines = Path("CHANGELOG.md").read_text(encoding="utf-8").splitlines()
+start = next((i for i, line in enumerate(lines) if line.startswith(heading)), None)
+if start is None:
+    raise SystemExit(f"missing changelog section: {heading}")
+end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+notes = "\n".join(lines[start:end]).strip() + "\n"
+output.write_text(notes, encoding="utf-8")
+PY
+test -s "$RELEASE_NOTES"
+```
+
+Then create the GitHub Release.
 
 ```bash
 gh release create "v$VERSION_VALUE" \
   --repo itdojp/genai-repo-auditor \
   --title "v$VERSION_VALUE" \
-  --notes-file .codex-local/tmp/release-notes-v$VERSION_VALUE.md
+  --notes-file "$RELEASE_NOTES"
 ```
 
 Release assets are optional. If assets are added later, they must be generated from the tagged source and must not contain local audit outputs, scanner results, cloned repositories, secrets, or private findings.
