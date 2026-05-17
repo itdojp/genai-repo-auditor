@@ -33,6 +33,22 @@ class TemplateEnvTests(unittest.TestCase):
         with contextlib.suppress(OSError):
             self.tmp_parent.rmdir()
 
+    def render_env(self, **overrides: str) -> dict[str, str]:
+        env = {key: value for key, value in os.environ.items() if not key.startswith("GRA_TEMPLATE_")}
+        env.update(overrides)
+        return env
+
+    def run_render_template(self, template: Path, out: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, REPO_ROOT / "lib" / "render_template.py", template, out],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+            check=False,
+            timeout=20,
+        )
+
     def test_build_template_values_uses_allowlist_and_controlled_prefix(self) -> None:
         values = build_template_values(
             {
@@ -64,44 +80,22 @@ class TemplateEnvTests(unittest.TestCase):
     def test_render_template_replaces_known_values_and_rejects_unknown_or_denied_placeholders(self) -> None:
         template = self.work_dir / "template.md"
         out = self.work_dir / "out.md"
-        env = os.environ.copy()
-        env.update({"RUN_ID": "run-1", "REPO": "OWNER/REPO", "GRA_TEMPLATE_CUSTOM_VALUE": "controlled"})
+        env = self.render_env(RUN_ID="run-1", REPO="OWNER/REPO", GRA_TEMPLATE_CUSTOM_VALUE="controlled")
 
         template.write_text("run={{RUN_ID}}\nrepo={{REPO}}\ncustom={{CUSTOM_VALUE}}\n", encoding="utf-8")
-        cp = subprocess.run(
-            [sys.executable, REPO_ROOT / "lib" / "render_template.py", template, out],
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
-            check=False,
-        )
+        cp = self.run_render_template(template, out, env)
         self.assertEqual(cp.returncode, 0, cp.stderr)
         self.assertEqual(out.read_text(encoding="utf-8"), "run=run-1\nrepo=OWNER/REPO\ncustom=controlled\n")
 
         out.unlink()
         template.write_text("unknown={{UNKNOWN_PLACEHOLDER}}\n", encoding="utf-8")
-        cp_unknown = subprocess.run(
-            [sys.executable, REPO_ROOT / "lib" / "render_template.py", template, out],
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
-            check=False,
-        )
+        cp_unknown = self.run_render_template(template, out, env)
         self.assertEqual(cp_unknown.returncode, 2)
         self.assertIn("unknown template placeholder: UNKNOWN_PLACEHOLDER", cp_unknown.stderr)
         self.assertFalse(out.exists())
 
         template.write_text("secret={{OPENAI_API_KEY}}\n", encoding="utf-8")
-        cp_denied = subprocess.run(
-            [sys.executable, REPO_ROOT / "lib" / "render_template.py", template, out],
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
-            check=False,
-        )
+        cp_denied = self.run_render_template(template, out, env)
         self.assertEqual(cp_denied.returncode, 2)
         self.assertIn("denied template placeholder: OPENAI_API_KEY", cp_denied.stderr)
         self.assertFalse(out.exists())
