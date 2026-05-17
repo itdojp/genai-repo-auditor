@@ -69,6 +69,11 @@ jobs:
           # regressed. The text is intentionally retained for workflow tests.
           prepare_mode_guard="offline codex mock should not run in prepare mode"
 
+          if [[ "${GRA_SELF_VALIDATION_ALLOW_CODEX_EXEC:-0}" != "1" ]]; then
+            echo "$prepare_mode_guard" >&2
+            exit 99
+          fi
+
           while [[ $# -gt 0 ]]; do
             case "$1" in
               exec) shift ;;
@@ -157,7 +162,6 @@ jobs:
           else
             printf 'offline fixture audit complete\n'
           fi
-          : "$prepare_mode_guard"
           CODEX
           chmod +x "$RUNNER_TEMP/gra-bin/codex"
 
@@ -194,7 +198,8 @@ jobs:
       - name: Execute an offline fixture audit run
         run: |
           runs_dir="$RUNNER_TEMP/gra-runs-exec"
-          PATH="$RUNNER_TEMP/gra-bin:$PATH" \
+          GRA_SELF_VALIDATION_ALLOW_CODEX_EXEC=1 \
+            PATH="$RUNNER_TEMP/gra-bin:$PATH" \
             bin/gra-audit \
               --repo fixture/self-validation \
               --mode exec \

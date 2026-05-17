@@ -187,6 +187,7 @@ class WorkflowHardeningTests(unittest.TestCase):
         self.assertIn('ctx["network_allowed"] is False', prepare)
         self.assertIn("offline codex mock should not run in prepare mode", prepare)
         self.assertIn("Execute an offline fixture audit run", prepare)
+        self.assertIn("GRA_SELF_VALIDATION_ALLOW_CODEX_EXEC=1", prepare)
         self.assertIn("--mode exec", prepare)
         self.assertIn("--run-id self-validation-exec", prepare)
         self.assertIn('^final_status=0$', prepare)
