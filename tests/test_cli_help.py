@@ -29,11 +29,14 @@ class CliHelpTests(unittest.TestCase):
         self.sentinel = self.work_dir / "external-command-invocations.txt"
         self._write_forbidden_command("gh")
         self._write_forbidden_command("codex")
-        self.env = {
-            "PATH": f"{self.mock_bin}{os.pathsep}{os.environ.get('PATH', '')}",
-            "GRA_HELP_SENTINEL": str(self.sentinel),
-            "PYTHONUNBUFFERED": "1",
-        }
+        self.env = os.environ.copy()
+        self.env.update(
+            {
+                "PATH": f"{self.mock_bin}{os.pathsep}{self.env.get('PATH', '')}",
+                "GRA_HELP_SENTINEL": str(self.sentinel),
+                "PYTHONUNBUFFERED": "1",
+            }
+        )
 
     def tearDown(self) -> None:
         shutil.rmtree(self.work_dir, ignore_errors=True)
