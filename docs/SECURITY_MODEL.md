@@ -104,6 +104,7 @@ only for CodeQL code scanning result upload.
 
 CodeQL runs for Python source and GitHub Actions workflow definitions.
 Dependabot monitors GitHub Actions updates weekly. The scheduled
-self-validation workflow prepares an offline fixture audit run with mocked
-`gh` and `codex` commands so `gra-audit --mode prepare` is exercised without
-contacting a target repository or enabling Codex network access.
+self-validation workflow prepares an offline fixture audit run and exercises a
+minimal `gra-audit --mode exec` path with mocked `gh` and `codex` commands.
+This verifies the primary non-interactive path without contacting a target
+repository or enabling Codex network access.
