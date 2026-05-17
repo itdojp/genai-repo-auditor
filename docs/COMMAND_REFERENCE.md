@@ -10,7 +10,8 @@ All examples use placeholder repositories and local run paths. Do not paste real
 - Run commands from a checked-out `genai-repo-auditor` repository with `bin/` on `PATH`, or call commands through `./bin/<command>`.
 - Most commands operate on a run directory such as `runs/OWNER__REPO/RUN_ID`.
 - `--network` enables network access inside the Codex sandbox for commands that call Codex. It is disabled by default and should remain disabled unless an approved workflow requires it.
-- `--model` defaults to `gpt-5.5` and `--effort` defaults to `xhigh` for Codex-driven commands. `gra-audit` and `gra-batch` also read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT` as defaults; staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-variant`, and `gra-scanner-triage` require explicit `--model` / `--effort` options to override their argparse defaults.
+- `--model` defaults to `gpt-5.5` and `--effort` defaults to `xhigh` for Codex-driven commands. Command-line `--model` / `--effort` options are the portable override mechanism across Codex-driven commands.
+- Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-variant`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
 - Python commands use `argparse`; missing required arguments or invalid choices normally exit with status `2`.
 - Generated audit artifacts, cloned target repositories, scanner raw outputs, issue drafts, and local stores should remain local and should not be committed.
 
@@ -79,7 +80,7 @@ gra-batch --repo-list examples/repos.txt.example --concurrency 1 --mode exec
 | Workflow category | Target workflow. |
 | Required inputs | `--run RUN_DIR` and exactly one action: `--generate`, `--list`, `--show TGT-ID`, or `--mark TGT-ID STATUS`. |
 | Key options | `--model MODEL`, `--effort EFFORT`, `--network`. `--mark` accepts `queued`, `in_progress`, `reviewed`, `skipped`, or `needs_human_review`. |
-| Generated outputs | `reports/targets.json` for generation, target-specific JSON under `reports/target-research/` when used by research workflows, and updated target status in `targets.json` for `--mark`. |
+| Generated outputs | For `--generate`: `prompts/exec/generate-targets.prompt.md`, `codex-targets-events.jsonl`, `codex-targets-stderr.txt`, `codex-targets-final.md`, and the expected `reports/targets.json`. For `--mark`: updated target status in `reports/targets.json`. `--list` and `--show` write to stdout only. |
 | Exit status behavior | `0` for successful list/show/mark/generate; `1` when Codex completes but `reports/targets.json` is missing after generation; `2` for missing context, unknown target, or invalid target status. Codex execution status is returned for generation failures. |
 | Security / disclosure cautions | Target queues are local planning artifacts. Review generated scope before using it to drive deeper research. Avoid network access unless the audit plan explicitly requires it. |
 | Related docs | [`docs/TARGET_QUEUE.md`](TARGET_QUEUE.md), [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md). |
