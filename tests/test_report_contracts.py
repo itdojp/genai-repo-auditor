@@ -80,7 +80,7 @@ class ReportContractTests(unittest.TestCase):
         self.assertTrue(set(VALIDATOR.REQUIRED_TARGET).issubset(target_required))
 
         scanner_result = scanner_schema["properties"]["results"]["items"]
-        self.assertEqual(["tool", "path", "format", "imported_at"], scanner_result["required"])
+        self.assertEqual({"tool", "path", "format", "imported_at"}, set(scanner_result["required"]))
         for normalized_field in ["normalized_path", "normalized_leads_count", "normalization"]:
             self.assertIn(normalized_field, scanner_result["properties"])
 
