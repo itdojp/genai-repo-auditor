@@ -222,7 +222,12 @@ Do not use this project for:
 
 - [`docs/LOCAL_INSTALL_AND_AUDIT.md`](docs/LOCAL_INSTALL_AND_AUDIT.md)
 - [`docs/COMMAND_REFERENCE.md`](docs/COMMAND_REFERENCE.md)
-- [`docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md`](docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md)
+- Japanese docs index: [`docs/ja/README.md`](docs/ja/README.md)
+  - [`docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md`](docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md)
+  - [`docs/ja/USAGE.ja.md`](docs/ja/USAGE.ja.md)
+  - [`docs/ja/ISSUE_WORKFLOW.ja.md`](docs/ja/ISSUE_WORKFLOW.ja.md)
+  - [`docs/ja/SCANNER_INTEGRATION.ja.md`](docs/ja/SCANNER_INTEGRATION.ja.md)
+  - [`docs/ja/SECURITY_MODEL.ja.md`](docs/ja/SECURITY_MODEL.ja.md)
 - [`docs/WORKFLOW_OVERVIEW.md`](docs/WORKFLOW_OVERVIEW.md)
 - [`docs/NORMAL_WORKFLOW.md`](docs/NORMAL_WORKFLOW.md)
 - [`docs/GOAL_DEEP_DIVE.md`](docs/GOAL_DEEP_DIVE.md)
