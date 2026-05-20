@@ -71,6 +71,13 @@ gra-audit --version
 
 The version output should match the repository [`VERSION`](../VERSION) file and does not run an audit.
 
+For a deterministic local install smoke check that does not require `gh`,
+`codex`, network access, or a real target repository, run:
+
+```bash
+"$GRA_HOME/scripts/validate-install-smoke.sh"
+```
+
 Verify required external tools:
 
 ```bash

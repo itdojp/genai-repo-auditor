@@ -82,6 +82,7 @@ PY
 ```
 
 ```bash
+scripts/validate-install-smoke.sh
 scripts/validate-shellcheck.sh
 ruby -e 'require "yaml"; Dir[".github/workflows/*.yml"].each { |f| YAML.load_file(f); puts "ok #{f}" }'
 python3 -m unittest discover -s tests

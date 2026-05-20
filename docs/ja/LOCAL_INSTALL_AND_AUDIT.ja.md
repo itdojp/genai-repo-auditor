@@ -73,6 +73,12 @@ gra-audit --version
 
 バージョン出力は repository の [`VERSION`](../../VERSION) file と一致し、audit は実行しません。
 
+`gh`、`codex`、network access、実在の target repository を必要としない deterministic な local install smoke check は、次のコマンドで実行できます。
+
+```bash
+"$GRA_HOME/scripts/validate-install-smoke.sh"
+```
+
 外部ツールを確認します。
 
 ```bash

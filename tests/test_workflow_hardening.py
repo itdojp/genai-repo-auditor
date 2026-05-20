@@ -141,6 +141,9 @@ class WorkflowHardeningTests(unittest.TestCase):
         lint = job_block(text, "lint")
         self.assertEqual({"contents": "read"}, job_permissions(text, "lint"))
         self.assert_checkout_does_not_persist_credentials(lint)
+        self.assertIn("- name: Run local install smoke validation", lint)
+        self.assertIn("        run: |\n          scripts/validate-install-smoke.sh", lint)
+        self.assertIn("test -x scripts/validate-install-smoke.sh", lint)
 
     def test_trigger_helpers_accept_valid_yaml_variants(self) -> None:
         workflow = "\n".join(
