@@ -90,10 +90,30 @@ class CliWorkflowTests(unittest.TestCase):
         env.update(overrides)
         return env, log_path
 
-    def read_gh_calls(self, log_path: Path) -> list[list[str]]:
+    def env_with_codex_log(self, **overrides: str) -> tuple[dict, Path]:
+        log_path = self.work_dir / f"codex-calls-{self.fixture_counter + 1}.jsonl"
+        env = self.env.copy()
+        env["GRA_MOCK_CODEX_LOG"] = str(log_path)
+        env.update(overrides)
+        return env, log_path
+
+    def read_jsonl_calls(self, log_path: Path) -> list[list[str]]:
         if not log_path.exists():
             return []
         return [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+    def read_gh_calls(self, log_path: Path) -> list[list[str]]:
+        return self.read_jsonl_calls(log_path)
+
+    def read_codex_calls(self, log_path: Path) -> list[list[str]]:
+        return self.read_jsonl_calls(log_path)
+
+    def target_by_id(self, run_dir: Path, target_id: str) -> dict:
+        targets = json.loads((run_dir / "reports" / "targets.json").read_text(encoding="utf-8"))["targets"]
+        for target in targets:
+            if target.get("id") == target_id:
+                return target
+        raise AssertionError(f"target {target_id!r} not found: {targets!r}")
 
     def assert_gh_called(self, calls: list[list[str]], prefix: list[str]) -> None:
         if not any(call[: len(prefix)] == prefix for call in calls):
@@ -196,6 +216,15 @@ class CliWorkflowTests(unittest.TestCase):
             import sys
             from pathlib import Path
 
+            def record_call(args) -> None:
+                log_path = os.environ.get("GRA_MOCK_CODEX_LOG")
+                if not log_path:
+                    return
+                path = Path(log_path)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with path.open("a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(args) + "\n")
+
             def arg_value(args, name):
                 if name not in args:
                     return None
@@ -249,6 +278,7 @@ class CliWorkflowTests(unittest.TestCase):
 
             def main() -> int:
                 args = sys.argv[1:]
+                record_call(args)
                 run_dir = Path(arg_value(args, "--cd") or os.getcwd())
                 output_last = Path(arg_value(args, "--output-last-message") or (run_dir / "codex-final.md"))
                 fixture_dir = Path(os.environ.get("GRA_MOCK_FIXTURE_DIR", ""))
@@ -458,6 +488,203 @@ class CliWorkflowTests(unittest.TestCase):
         allowed_summary = (allowed_run_dir / "run-summary.txt").read_text(encoding="utf-8")
         self.assertIn("allow_invalid_report=1", allowed_summary)
         self.assertIn("final_status=0", allowed_summary)
+
+    def test_gra_recon_exec_renders_prompt_and_writes_codex_artifacts(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        env, codex_log = self.env_with_codex_log()
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-recon",
+                "--run",
+                run_dir,
+                "--model",
+                "gpt-fixture",
+                "--effort",
+                "medium",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Running Codex recon for example/demo", cp.stdout)
+        self.assertIn("Codex status: 0", cp.stdout)
+
+        prompt = run_dir / "prompts" / "exec" / "recon.prompt.md"
+        prompt_text = prompt.read_text(encoding="utf-8")
+        self.assertIn("Run ID: fixture-run", prompt_text)
+        self.assertIn("Repository: example/demo", prompt_text)
+        self.assertIn("Reports directory: reports/", prompt_text)
+        self.assertNotIn("{{", prompt_text)
+
+        final_path = run_dir / "codex-recon-final.md"
+        events_path = run_dir / "codex-recon-events.jsonl"
+        stderr_path = run_dir / "codex-recon-stderr.txt"
+        self.assertEqual(final_path.read_text(encoding="utf-8"), "mock codex mode=success\n")
+        self.assertIn('"status": "ok"', events_path.read_text(encoding="utf-8"))
+        self.assertTrue(stderr_path.exists())
+
+        calls = self.read_codex_calls(codex_log)
+        self.assertEqual(len(calls), 1, calls)
+        self.assertEqual(calls[0][:2], ["exec", "--cd"])
+        self.assertIn(str(run_dir.resolve()), calls[0])
+        self.assertIn(str(final_path), calls[0])
+        self.assertIn('model_reasoning_effort="medium"', calls[0])
+        self.assertIn("sandbox_workspace_write.network_access=false", calls[0])
+
+    def test_gra_research_exec_marks_target_reviewed_and_writes_codex_artifacts(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        env, codex_log = self.env_with_codex_log()
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-research",
+                "--run",
+                run_dir,
+                "--target",
+                "TGT-001",
+                "--mode",
+                "exec",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Running Codex target research for TGT-001", cp.stdout)
+        self.assertIn("Codex status: 0", cp.stdout)
+
+        target_json = run_dir / "reports" / "target-research" / "TGT-001.target.json"
+        self.assertEqual(json.loads(target_json.read_text(encoding="utf-8"))["id"], "TGT-001")
+        prompt = run_dir / "prompts" / "exec" / "research-TGT-001.prompt.md"
+        prompt_text = prompt.read_text(encoding="utf-8")
+        self.assertIn("Target ID: TGT-001", prompt_text)
+        self.assertIn("Target file: reports/target-research/TGT-001.target.json", prompt_text)
+        self.assertNotIn("{{", prompt_text)
+
+        self.assertEqual(self.target_by_id(run_dir, "TGT-001")["status"], "reviewed")
+        final_path = run_dir / "codex-research-TGT-001-final.md"
+        events_path = run_dir / "codex-research-TGT-001-events.jsonl"
+        stderr_path = run_dir / "codex-research-TGT-001-stderr.txt"
+        self.assertEqual(final_path.read_text(encoding="utf-8"), "mock codex mode=success\n")
+        self.assertIn('"status": "ok"', events_path.read_text(encoding="utf-8"))
+        self.assertTrue(stderr_path.exists())
+
+        calls = self.read_codex_calls(codex_log)
+        self.assertEqual(len(calls), 1, calls)
+        self.assertIn(str(final_path), calls[0])
+
+    def test_gra_research_exec_failure_marks_target_needs_human_review(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        env, codex_log = self.env_with_codex_log(
+            GRA_MOCK_CODEX_MODE="fail",
+            GRA_MOCK_CODEX_STATUS="42",
+        )
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-research",
+                "--run",
+                run_dir,
+                "--target",
+                "TGT-001",
+                "--mode",
+                "exec",
+            ],
+            env=env,
+        )
+        self.assertEqual(cp.returncode, 42, cp.stderr)
+        self.assertIn("Codex status: 42", cp.stdout)
+        target = self.target_by_id(run_dir, "TGT-001")
+        self.assertEqual(target["status"], "needs_human_review")
+        self.assertNotEqual(target["status"], "reviewed")
+        self.assertEqual(
+            (run_dir / "codex-research-TGT-001-final.md").read_text(encoding="utf-8"),
+            "mock codex mode=fail\n",
+        )
+        self.assertIn(
+            '"status": "failed"',
+            (run_dir / "codex-research-TGT-001-events.jsonl").read_text(encoding="utf-8"),
+        )
+        self.assertEqual(len(self.read_codex_calls(codex_log)), 1)
+
+    def test_gra_research_goal_prepares_prompt_without_codex_exec(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        env, codex_log = self.env_with_codex_log()
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-research",
+                "--run",
+                run_dir,
+                "--target",
+                "TGT-001",
+                "--mode",
+                "goal",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Prepared supervised /goal target research run.", cp.stdout)
+        prompt = run_dir / "prompts" / "goal" / "research-TGT-001.goal.md"
+        self.assertTrue(prompt.exists())
+        self.assertTrue(prompt.read_text(encoding="utf-8").startswith("/goal "))
+        self.assertEqual(self.target_by_id(run_dir, "TGT-001")["status"], "queued")
+        self.assertEqual(self.read_codex_calls(codex_log), [])
+        self.assertFalse((run_dir / "codex-research-TGT-001-final.md").exists())
+
+    def test_gra_variant_exec_renders_seed_and_writes_codex_artifacts(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        env, codex_log = self.env_with_codex_log()
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-variant",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--mode",
+                "exec",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Running Codex variant analysis from SEC-001", cp.stdout)
+        self.assertIn("Codex status: 0", cp.stdout)
+
+        source = run_dir / "reports" / "variant-analysis" / "SEC-001.source.json"
+        self.assertEqual(json.loads(source.read_text(encoding="utf-8"))["id"], "SEC-001")
+        prompt = run_dir / "prompts" / "exec" / "variant-SEC-001.prompt.md"
+        prompt_text = prompt.read_text(encoding="utf-8")
+        self.assertIn("Variant source: reports/variant-analysis/SEC-001.source.json", prompt_text)
+        self.assertIn("Seed finding or source ID: SEC-001", prompt_text)
+        self.assertNotIn("{{", prompt_text)
+
+        final_path = run_dir / "codex-variant-SEC-001-final.md"
+        events_path = run_dir / "codex-variant-SEC-001-events.jsonl"
+        stderr_path = run_dir / "codex-variant-SEC-001-stderr.txt"
+        self.assertEqual(final_path.read_text(encoding="utf-8"), "mock codex mode=success\n")
+        self.assertIn('"status": "ok"', events_path.read_text(encoding="utf-8"))
+        self.assertTrue(stderr_path.exists())
+        calls = self.read_codex_calls(codex_log)
+        self.assertEqual(len(calls), 1, calls)
+        self.assertIn(str(final_path), calls[0])
+
+    def test_gra_variant_goal_prepares_prompt_without_codex_exec(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        env, codex_log = self.env_with_codex_log()
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-variant",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--mode",
+                "goal",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Prepared supervised /goal variant-analysis run.", cp.stdout)
+        prompt = run_dir / "prompts" / "goal" / "variant-SEC-001.goal.md"
+        self.assertTrue(prompt.exists())
+        self.assertTrue(prompt.read_text(encoding="utf-8").startswith("/goal "))
+        self.assertEqual(self.read_codex_calls(codex_log), [])
+        self.assertFalse((run_dir / "codex-variant-SEC-001-final.md").exists())
 
     def test_validate_report_accepts_valid_fixture_and_rejects_invalid_fixtures(self) -> None:
         valid_run = self.copy_fixture_run("minimal-run")
