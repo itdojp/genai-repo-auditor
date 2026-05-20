@@ -71,6 +71,7 @@ For a fresh local install and first `OWNER/REPO` audit, see:
 
 - `docs/LOCAL_INSTALL_AND_AUDIT.md` (English)
 - `docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md` (Japanese)
+- `docs/LOCAL_ARTIFACT_CLEANUP.md` for local retention and cleanup guidance
 
 ## Quick start: full audit
 
