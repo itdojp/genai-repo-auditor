@@ -1,8 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LAB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
+if [[ "$SCRIPT_DIR" == "${BASH_SOURCE[0]}" ]]; then
+  SCRIPT_DIR="."
+fi
+LAB_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 RUNS_DIR="${GENAI_REPO_AUDITOR_RUNS_DIR:-$LAB_ROOT/runs}"
+
+print_version() {
+  local version="unknown"
+  if [[ -r "$LAB_ROOT/VERSION" ]]; then
+    IFS= read -r version < "$LAB_ROOT/VERSION" || version="unknown"
+  fi
+  if [[ -z "$version" ]]; then
+    version="unknown"
+  fi
+  printf '%s %s\n' "${0##*/}" "$version"
+}
 
 REPO=""
 BRANCH=""
@@ -10,7 +25,7 @@ MODE="exec"
 MODEL="${GRA_MODEL:-${CODEX_MODEL:-gpt-5.5}}"
 EFFORT="${GRA_REASONING_EFFORT:-${CODEX_REASONING_EFFORT:-xhigh}}"
 DEPTH="1"
-RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
+RUN_ID=""
 CODEX_JSON="1"
 NETWORK="0"
 USE_LOCK="1"
@@ -36,6 +51,7 @@ Options:
   --no-lock               Disable same-repo lock. Not recommended.
   --allow-invalid-report  Do not fail when findings.json is missing or report validation fails.
                           Not recommended for CI or batch automation.
+  --version               Show version.
   -h, --help              Show help.
 
 Examples:
@@ -58,6 +74,7 @@ while [[ $# -gt 0 ]]; do
     --network) NETWORK="1"; shift ;;
     --no-lock) USE_LOCK="0"; shift ;;
     --allow-invalid-report) ALLOW_INVALID_REPORT="1"; shift ;;
+    --version) print_version; exit 0 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -67,6 +84,10 @@ if [[ -z "$REPO" ]]; then
   echo "--repo is required" >&2
   usage >&2
   exit 2
+fi
+
+if [[ -z "$RUN_ID" ]]; then
+  RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
 fi
 
 if [[ "$MODE" != "exec" && "$MODE" != "goal" && "$MODE" != "prepare" ]]; then

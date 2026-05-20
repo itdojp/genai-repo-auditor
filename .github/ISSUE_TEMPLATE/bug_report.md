@@ -13,7 +13,7 @@ labels: bug
 - Python version:
 - GitHub CLI version:
 - AI agent / CLI used:
-- GenAI Repo Auditor version or commit:
+- GenAI Repo Auditor version (`gra-audit --version`) or commit:
 
 ## Steps to reproduce
 

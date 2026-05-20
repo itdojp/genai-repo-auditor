@@ -7,6 +7,7 @@ from pathlib import Path
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
+from version import auditor_version
 from gralib import load_context, load_json, utc_now, write_json
 
 LEVEL_MAP = {
@@ -20,6 +21,7 @@ LEVEL_MAP = {
 
 def main() -> int:
     p = argparse.ArgumentParser(description='Convert findings.json to SARIF 2.1.0')
+    p.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
     p.add_argument('--run', required=True, help='Run directory')
     p.add_argument('--out', help='Output SARIF file. Default: reports/findings.sarif')
     args = p.parse_args()

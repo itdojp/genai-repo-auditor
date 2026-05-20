@@ -64,6 +64,7 @@ export PATH="$PWD/bin:$PATH"
 gh auth status
 codex --help >/dev/null
 python3 --version
+gra-audit --version
 ```
 
 For a fresh local install and first `OWNER/REPO` audit, see:

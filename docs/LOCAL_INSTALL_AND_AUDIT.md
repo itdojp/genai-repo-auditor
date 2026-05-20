@@ -66,7 +66,10 @@ From any directory, verify that the commands resolve:
 ```bash
 gra-audit --help
 gra-validate-report --help
+gra-audit --version
 ```
+
+The version output should match the repository [`VERSION`](../VERSION) file and does not run an audit.
 
 Verify required external tools:
 

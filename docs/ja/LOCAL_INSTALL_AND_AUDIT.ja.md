@@ -68,7 +68,10 @@ export PATH="$GRA_HOME/bin:$PATH"
 ```bash
 gra-audit --help
 gra-validate-report --help
+gra-audit --version
 ```
+
+バージョン出力は repository の [`VERSION`](../../VERSION) file と一致し、audit は実行しません。
 
 外部ツールを確認します。
 

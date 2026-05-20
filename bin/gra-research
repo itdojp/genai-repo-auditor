@@ -8,11 +8,13 @@ from pathlib import Path
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
+from version import auditor_version
 from gralib import env_from_context, find_target, load_context, load_targets, render_template, run_codex_exec, write_targets
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description='Research one target from reports/targets.json using Codex')
+    p.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
     p.add_argument('--run', required=True, help='Run directory')
     p.add_argument('--target', required=True, help='Target ID, e.g. TGT-001')
     p.add_argument('--mode', choices=['exec', 'goal'], default='exec')

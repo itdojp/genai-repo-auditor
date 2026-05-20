@@ -1,8 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LAB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
+if [[ "$SCRIPT_DIR" == "${BASH_SOURCE[0]}" ]]; then
+  SCRIPT_DIR="."
+fi
+LAB_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 RUNS_DIR="${GENAI_REPO_AUDITOR_RUNS_DIR:-$LAB_ROOT/runs}"
+
+print_version() {
+  local version="unknown"
+  if [[ -r "$LAB_ROOT/VERSION" ]]; then
+    IFS= read -r version < "$LAB_ROOT/VERSION" || version="unknown"
+  fi
+  if [[ -z "$version" ]]; then
+    version="unknown"
+  fi
+  printf '%s %s\n' "${0##*/}" "$version"
+}
 
 REPO_LIST=""
 MODE="exec"
@@ -10,7 +25,7 @@ MODEL="${GRA_MODEL:-${CODEX_MODEL:-gpt-5.5}}"
 EFFORT="${GRA_REASONING_EFFORT:-${CODEX_REASONING_EFFORT:-xhigh}}"
 DEPTH="1"
 CONCURRENCY="1"
-BATCH_ID="batch-$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
+BATCH_ID=""
 ALLOW_FAILURES="0"
 FAIL_FAST="0"
 EXTRA_ARGS=()
@@ -33,6 +48,7 @@ Options:
   --network               Pass through to gra-audit. Usually not recommended.
   --allow-failures        Continue and exit 0 even when one or more audits fail.
   --fail-fast             Stop after the first failed audit. Requires --concurrency 1.
+  --version               Show version.
   -h, --help              Show help.
 USAGE
 }
@@ -51,6 +67,7 @@ while [[ $# -gt 0 ]]; do
     --network) EXTRA_ARGS+=(--network); shift ;;
     --allow-failures) ALLOW_FAILURES="1"; shift ;;
     --fail-fast) FAIL_FAST="1"; shift ;;
+    --version) print_version; exit 0 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -65,6 +82,10 @@ fi
 if ! [[ "$CONCURRENCY" =~ ^[0-9]+$ ]] || [[ "$CONCURRENCY" -lt 1 ]]; then
   echo "--concurrency must be a positive integer" >&2
   exit 2
+fi
+
+if [[ -z "$BATCH_ID" ]]; then
+  BATCH_ID="batch-$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
 fi
 
 if [[ "$FAIL_FAST" == "1" && "$CONCURRENCY" -ne 1 ]]; then

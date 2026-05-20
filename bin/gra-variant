@@ -8,11 +8,13 @@ from pathlib import Path
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
+from version import auditor_version
 from gralib import env_from_context, find_finding, load_context, render_template, run_codex_exec
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description='Run variant analysis based on an existing finding or a supplied root-cause note')
+    p.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
     p.add_argument('--run', required=True, help='Run directory')
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument('--finding', help='Finding ID to use as variant-analysis seed, e.g. SEC-001')

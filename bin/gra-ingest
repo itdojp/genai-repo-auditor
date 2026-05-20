@@ -9,12 +9,14 @@ from pathlib import Path
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
+from version import auditor_version
 from gralib import load_context, load_json, utc_now, write_json
 from scanner_normalize import normalize_scanner_file
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description='Ingest scanner output into a GenAI Repo Auditor run')
+    p.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
     p.add_argument('--run', required=True, help='Run directory')
     p.add_argument('--tool', required=True, help='Scanner/tool name, e.g. semgrep, gitleaks, trivy, codeql, checkov')
     p.add_argument('--file', required=True, help='Scanner result file to copy into the run')
