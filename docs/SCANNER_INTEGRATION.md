@@ -53,6 +53,16 @@ Normalized leads use bounded evidence and secret redaction:
 Raw scanner outputs remain local artifacts. Prompts and triage should use
 `normalized_path` by default and must not quote or reconstruct full secrets.
 
+When `scanner-index.json` is present, validate it before triage:
+
+```bash
+gra-validate-report --run runs/OWNER__REPO/RUN_ID
+```
+
+This validates the index schema, raw artifact paths, normalized artifact paths,
+and normalized lead counts before scanner leads are used by downstream triage or
+reporting commands.
+
 Then triage:
 
 ```bash

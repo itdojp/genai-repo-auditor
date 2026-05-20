@@ -57,6 +57,53 @@ class ReportContractTests(unittest.TestCase):
     def write_json(self, path: Path, data: dict[str, Any]) -> None:
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
+    def write_scanner_index(
+        self,
+        run_dir: Path,
+        *,
+        leads: list[dict[str, Any]] | None = None,
+        entry_overrides: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        scanner_dir = run_dir / "reports" / "scanner-results"
+        normalized_dir = scanner_dir / "normalized"
+        normalized_dir.mkdir(parents=True, exist_ok=True)
+        raw_path = scanner_dir / "semgrep.json"
+        raw_path.write_text('{"results": []}\n', encoding="utf-8")
+        leads = leads if leads is not None else [{"rule_id": "fixture.rule", "raw_result_ref": "reports/scanner-results/semgrep.json"}]
+        normalization = {"parse_error": "", "results_truncated": False}
+        normalized = {
+            "tool": "semgrep",
+            "raw_result_ref": "reports/scanner-results/semgrep.json",
+            "raw_bytes": raw_path.stat().st_size,
+            "format": "json",
+            "normalization": normalization,
+            "leads": leads,
+        }
+        normalized_path = normalized_dir / "semgrep-leads.json"
+        self.write_json(normalized_path, normalized)
+        entry = {
+            "tool": "semgrep",
+            "path": "reports/scanner-results/semgrep.json",
+            "format": "json",
+            "imported_at": "2026-05-16T00:00:01Z",
+            "sha256": "abc123",
+            "raw_bytes": raw_path.stat().st_size,
+            "normalized_path": "reports/scanner-results/normalized/semgrep-leads.json",
+            "normalized_leads_count": len(leads),
+            "normalization": normalization,
+            "note": "fixture",
+        }
+        if entry_overrides:
+            entry.update(entry_overrides)
+        scanner_index = {
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "generated_at": "2026-05-16T00:00:00Z",
+            "results": [entry],
+        }
+        self.write_json(scanner_dir / "scanner-index.json", scanner_index)
+        return scanner_index
+
     def run_validator(self, run_dir: Path) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [sys.executable, VALIDATOR_PATH, "--run", run_dir],
@@ -91,6 +138,113 @@ class ReportContractTests(unittest.TestCase):
         self.assertIn("OK:", cp.stdout)
         self.assertIn("Findings: 1", cp.stdout)
         self.assertIn("Targets: validated", cp.stdout)
+
+    def test_valid_scanner_index_artifacts_pass_validator(self) -> None:
+        run_dir = self.copy_run()
+        self.write_scanner_index(run_dir)
+
+        cp = self.run_validator(run_dir)
+        self.assertEqual(cp.returncode, 0, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
+        self.assertIn("Scanner index: validated", cp.stdout)
+
+    def test_scanner_index_rejects_unsafe_artifact_paths(self) -> None:
+        run_dir = self.copy_run()
+        self.write_scanner_index(
+            run_dir,
+            entry_overrides={
+                "path": "../scanner.json",
+                "normalized_path": "reports/scanner-results/../normalized/semgrep-leads.json",
+            },
+        )
+
+        cp = self.run_validator(run_dir)
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("scanner_index.results[0].path: scanner artifact path must not contain '..'", cp.stderr)
+        self.assertIn("scanner_index.results[0].normalized_path: scanner artifact path must not contain '..'", cp.stderr)
+
+    def test_scanner_index_rejects_missing_normalized_artifact(self) -> None:
+        run_dir = self.copy_run()
+        self.write_scanner_index(run_dir, entry_overrides={"normalized_path": "reports/scanner-results/normalized/missing-leads.json"})
+
+        cp = self.run_validator(run_dir)
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("scanner_index.results[0].normalized_path: normalized scanner artifact not found", cp.stderr)
+
+    def test_scanner_index_rejects_missing_normalized_metadata_fields(self) -> None:
+        run_dir = self.copy_run()
+        scanner_index = self.write_scanner_index(run_dir)
+        scanner_index["results"][0].pop("normalized_leads_count")
+        scanner_index["results"][0].pop("normalization")
+        self.write_json(run_dir / "reports" / "scanner-results" / "scanner-index.json", scanner_index)
+
+        cp = self.run_validator(run_dir)
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("scanner_index.results[0].normalized_leads_count: missing normalized lead count", cp.stderr)
+        self.assertIn("scanner_index.results[0].normalization: missing normalization metadata", cp.stderr)
+
+    def test_scanner_index_rejects_symlinked_scanner_results_parent(self) -> None:
+        run_dir = self.copy_run()
+        outside_scanner = self.work_dir / "outside-scanner-results"
+        outside_normalized = outside_scanner / "normalized"
+        outside_normalized.mkdir(parents=True)
+        (outside_scanner / "semgrep.json").write_text('{"results": []}\n', encoding="utf-8")
+        self.write_json(
+            outside_normalized / "semgrep-leads.json",
+            {
+                "tool": "semgrep",
+                "raw_result_ref": "reports/scanner-results/semgrep.json",
+                "raw_bytes": 16,
+                "format": "json",
+                "normalization": {"parse_error": "", "results_truncated": False},
+                "leads": [{"rule_id": "fixture.rule", "raw_result_ref": "reports/scanner-results/semgrep.json"}],
+            },
+        )
+        self.write_json(
+            outside_scanner / "scanner-index.json",
+            {
+                "run_id": "fixture-run",
+                "repo": "example/demo",
+                "generated_at": "2026-05-16T00:00:00Z",
+                "results": [
+                    {
+                        "tool": "semgrep",
+                        "path": "reports/scanner-results/semgrep.json",
+                        "format": "json",
+                        "imported_at": "2026-05-16T00:00:01Z",
+                        "raw_bytes": 16,
+                        "normalized_path": "reports/scanner-results/normalized/semgrep-leads.json",
+                        "normalized_leads_count": 1,
+                        "normalization": {"parse_error": "", "results_truncated": False},
+                    }
+                ],
+            },
+        )
+        (run_dir / "reports" / "scanner-results").symlink_to(outside_scanner, target_is_directory=True)
+
+        cp = self.run_validator(run_dir)
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("scanner_index: scanner artifact path must not contain symlink components", cp.stderr)
+
+    def test_scanner_index_rejects_malformed_counts_and_metadata_drift(self) -> None:
+        run_dir = self.copy_run()
+        self.write_scanner_index(
+            run_dir,
+            leads=[
+                {"rule_id": "fixture.one", "raw_result_ref": "reports/scanner-results/semgrep.json"},
+                {"rule_id": "fixture.two", "raw_result_ref": "reports/scanner-results/semgrep.json"},
+            ],
+            entry_overrides={
+                "raw_bytes": 999,
+                "normalized_leads_count": 1,
+                "normalization": {"parse_error": "drift"},
+            },
+        )
+
+        cp = self.run_validator(run_dir)
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("normalized_leads_count: value 1 does not match normalized leads length 2", cp.stderr)
+        self.assertIn("normalization: value does not match normalized artifact metadata", cp.stderr)
+        self.assertIn("raw_bytes: value does not match normalized artifact raw_bytes", cp.stderr)
 
     def test_missing_required_fields_fail_with_actionable_messages(self) -> None:
         run_dir = self.copy_run()

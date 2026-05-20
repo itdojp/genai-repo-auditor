@@ -45,9 +45,10 @@ findings[].labels
 
 ## validation and safety constraints
 
-`gra-validate-report` validates `findings.json` and `targets.json` against the
-bundled JSON schemas using the Python standard library. It also applies local
-safety rules before downstream tools can use report-controlled paths.
+`gra-validate-report` validates `findings.json`, optional `targets.json`, and
+optional scanner index artifacts against the bundled JSON schemas using the
+Python standard library. It also applies local safety rules before downstream
+tools can use report-controlled paths.
 
 Important constraints:
 
@@ -60,6 +61,11 @@ Important constraints:
 - obvious unredacted full secret values are rejected. Redacted or clearly marked
   example values should use markers such as `REDACTED`, `EXAMPLE`, or
   `PLACEHOLDER`.
+- If `reports/scanner-results/scanner-index.json` exists, scanner artifact paths
+  must remain under `reports/scanner-results/`, normalized lead artifacts must be
+  `.json` files under `reports/scanner-results/normalized/`, and
+  `normalized_leads_count`, `raw_bytes`, and `normalization` metadata must match
+  the referenced normalized artifact.
 
 `issue_body_file`, when present, must point to a regular `.md` file under
 `reports/issue-drafts/`, for example:
