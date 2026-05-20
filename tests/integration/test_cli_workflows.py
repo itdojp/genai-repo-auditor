@@ -115,6 +115,13 @@ class CliWorkflowTests(unittest.TestCase):
                 return target
         raise AssertionError(f"target {target_id!r} not found: {targets!r}")
 
+    def load_manifest(self, run_dir: Path) -> dict:
+        return json.loads((run_dir / "run-manifest.json").read_text(encoding="utf-8"))
+
+    def manifest_artifact_paths(self, run_dir: Path) -> set[str]:
+        manifest = self.load_manifest(run_dir)
+        return {str(item["path"]) for item in manifest["artifacts"]}
+
     def assert_gh_called(self, calls: list[list[str]], prefix: list[str]) -> None:
         if not any(call[: len(prefix)] == prefix for call in calls):
             self.fail(f"expected gh call prefix {prefix!r}; observed calls: {calls!r}")
@@ -305,6 +312,8 @@ class CliWorkflowTests(unittest.TestCase):
         )
 
     def test_gra_audit_prepare_creates_run_context_and_prompts(self) -> None:
+        env = self.env.copy()
+        env["OPENAI_API_KEY"] = "fixture-secret-value"
         cp = self.run_cmd(
             [
                 REPO_ROOT / "bin" / "gra-audit",
@@ -318,6 +327,7 @@ class CliWorkflowTests(unittest.TestCase):
                 self.runs_dir,
                 "--no-lock",
             ],
+            env=env,
             check=True,
         )
         run_dir = self.runs_dir / "example__demo" / "prepare-run"
@@ -329,6 +339,32 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(ctx["repo"], "example/demo")
         self.assertEqual(ctx["repo_slug"], "example__demo")
         self.assertEqual(ctx["visibility"], "PRIVATE")
+        manifest_text = (run_dir / "run-manifest.json").read_text(encoding="utf-8")
+        manifest = json.loads(manifest_text)
+        self.assertEqual(manifest["schema_version"], "1")
+        self.assertEqual(manifest["generated_by"]["version"], (REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip())
+        self.assertEqual(manifest["run"]["run_id"], "prepare-run")
+        self.assertEqual(manifest["run"]["repo"], "example/demo")
+        self.assertEqual(manifest["command"]["name"], "gra-audit")
+        self.assertEqual(manifest["command"]["mode"], "prepare")
+        self.assertFalse(manifest["command"]["network_allowed"])
+        self.assertEqual(manifest["paths"], {
+            "run_dir": ".",
+            "target_repo_dir": "repo",
+            "reports_dir": "reports",
+        })
+        self.assertEqual(manifest["execution"], {
+            "phase": "prepared",
+            "codex_status": None,
+            "validation_status": None,
+            "final_status": None,
+        })
+        self.assertIn({"name": "run-manifest.schema.json", "path": "run-manifest.schema.json"}, manifest["schemas"])
+        self.assertNotIn("run-manifest.json", self.manifest_artifact_paths(run_dir))
+        self.assertIn("prompts/exec/full-audit.prompt.md", self.manifest_artifact_paths(run_dir))
+        self.assertNotIn("OPENAI_API_KEY", manifest_text)
+        self.assertNotIn("fixture-secret-value", manifest_text)
+        self.assertNotIn(str(self.runs_dir), manifest_text)
 
     def test_render_template_uses_allowlist_and_rejects_unknown_or_secret_placeholders(self) -> None:
         template = self.work_dir / "template.md"
@@ -413,6 +449,21 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("codex_status=0", summary)
         self.assertIn("validation_status=0", summary)
         self.assertIn("final_status=0", summary)
+        manifest = self.load_manifest(run_dir)
+        self.assertEqual(manifest["command"]["mode"], "exec")
+        self.assertEqual(manifest["execution"], {
+            "phase": "completed",
+            "codex_status": "0",
+            "validation_status": "0",
+            "final_status": "0",
+        })
+        artifact_paths = self.manifest_artifact_paths(run_dir)
+        self.assertIn("run-summary.txt", artifact_paths)
+        self.assertIn("report-validation.txt", artifact_paths)
+        self.assertIn("codex-events.jsonl", artifact_paths)
+        self.assertIn("codex-final.md", artifact_paths)
+        self.assertIn("reports/findings.json", artifact_paths)
+        self.assertIn("run-manifest.schema.json", artifact_paths)
 
     def test_gra_audit_exec_fails_when_mock_codex_writes_invalid_findings(self) -> None:
         env = self.env.copy()
