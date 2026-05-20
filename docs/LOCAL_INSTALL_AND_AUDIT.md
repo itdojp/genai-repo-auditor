@@ -233,3 +233,5 @@ chmod +x bin/* scripts/*.sh
 ## Local artifact policy
 
 Do not commit audit outputs or cloned target repositories. The project `.gitignore` excludes local artifacts such as `runs/`, `batches/`, `*.sqlite`, scanner outputs, and Codex transcripts.
+
+For retention guidance and a dry-run-first cleanup helper, see [`LOCAL_ARTIFACT_CLEANUP.md`](LOCAL_ARTIFACT_CLEANUP.md).
