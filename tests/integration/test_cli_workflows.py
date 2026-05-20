@@ -83,6 +83,26 @@ class CliWorkflowTests(unittest.TestCase):
         shutil.copytree(FIXTURES / fixture_name, dst)
         return dst
 
+    def env_with_gh_log(self, **overrides: str) -> tuple[dict, Path]:
+        log_path = self.work_dir / f"gh-calls-{self.fixture_counter + 1}.jsonl"
+        env = self.env.copy()
+        env["GRA_MOCK_GH_LOG"] = str(log_path)
+        env.update(overrides)
+        return env, log_path
+
+    def read_gh_calls(self, log_path: Path) -> list[list[str]]:
+        if not log_path.exists():
+            return []
+        return [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+    def assert_gh_called(self, calls: list[list[str]], prefix: list[str]) -> None:
+        if not any(call[: len(prefix)] == prefix for call in calls):
+            self.fail(f"expected gh call prefix {prefix!r}; observed calls: {calls!r}")
+
+    def assert_gh_not_called(self, calls: list[list[str]], prefix: list[str]) -> None:
+        if any(call[: len(prefix)] == prefix for call in calls):
+            self.fail(f"unexpected gh call prefix {prefix!r}; observed calls: {calls!r}")
+
     def _write_executable(self, name: str, content: str) -> None:
         path = self.mock_bin / name
         path.write_text(textwrap.dedent(content).lstrip(), encoding="utf-8")
@@ -95,12 +115,22 @@ class CliWorkflowTests(unittest.TestCase):
             #!/usr/bin/env python3
             from __future__ import annotations
 
+            import json
             import os
             import subprocess
             import sys
             from pathlib import Path
 
             DEVNULL = subprocess.DEVNULL
+
+            def record_call(args) -> None:
+                log_path = os.environ.get("GRA_MOCK_GH_LOG")
+                if not log_path:
+                    return
+                path = Path(log_path)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with path.open("a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(args) + "\n")
 
             def init_repo(dest: Path, repo: str) -> None:
                 dest.mkdir(parents=True, exist_ok=True)
@@ -118,6 +148,7 @@ class CliWorkflowTests(unittest.TestCase):
 
             def main() -> int:
                 args = sys.argv[1:]
+                record_call(args)
                 if len(args) >= 4 and args[:2] == ["repo", "clone"]:
                     repo = args[2]
                     dest = Path(args[3])
@@ -130,10 +161,14 @@ class CliWorkflowTests(unittest.TestCase):
                     print(os.environ.get("GRA_MOCK_GH_VISIBILITY", "PRIVATE"))
                     return 0
                 if len(args) >= 2 and args[:2] == ["issue", "list"]:
+                    existing_url = os.environ.get("GRA_MOCK_EXISTING_ISSUE_URL", "")
                     if "--jq" in args:
-                        print("")
+                        print(existing_url)
                     else:
-                        print("[]")
+                        if existing_url:
+                            print(json.dumps([{"url": existing_url}]))
+                        else:
+                            print("[]")
                     return 0
                 if len(args) >= 2 and args[:2] == ["issue", "create"]:
                     print(os.environ.get("GRA_MOCK_ISSUE_URL", "https://github.example.invalid/example/demo/issues/1"))
@@ -522,6 +557,149 @@ class CliWorkflowTests(unittest.TestCase):
             check=True,
         )
         self.assertIn("CREATED SEC-001", cp_apply.stdout)
+
+    def test_gra_issues_apply_refuses_public_repo_without_allow_public(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        env, log_path = self.env_with_gh_log(GRA_MOCK_GH_VISIBILITY="PUBLIC")
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            env=env,
+        )
+        self.assertEqual(cp.returncode, 3, cp.stderr)
+        self.assertIn("Refusing to create security issues", cp.stderr)
+        self.assertIn("visibility=PUBLIC", cp.stderr)
+        self.assertIn("Use --allow-public only when disclosure policy permits", cp.stderr)
+        self.assertFalse((run_dir / "issues-created.json").exists())
+
+        calls = self.read_gh_calls(log_path)
+        self.assert_gh_called(calls, ["repo", "view"])
+        self.assert_gh_not_called(calls, ["issue", "list"])
+        self.assert_gh_not_called(calls, ["issue", "create"])
+
+    def test_gra_issues_allow_public_apply_creates_issue_with_safe_fixture(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        issue_url = "https://github.example.invalid/example/demo/issues/41"
+        env, log_path = self.env_with_gh_log(
+            GRA_MOCK_GH_VISIBILITY="PUBLIC",
+            GRA_MOCK_ISSUE_URL=issue_url,
+        )
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply",
+                "--allow-public",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn(f"CREATED SEC-001: {issue_url}", cp.stdout)
+
+        result = json.loads((run_dir / "issues-created.json").read_text(encoding="utf-8"))
+        self.assertFalse(result["dry_run"])
+        self.assertEqual(result["visibility"], "PUBLIC")
+        self.assertEqual(result["created"], [
+            {
+                "id": "SEC-001",
+                "url": issue_url,
+                "title": "[Security][High] Fixture command injection finding",
+                "fingerprint": FIXTURE_FINGERPRINT,
+            }
+        ])
+        self.assertEqual(result["skipped"], [])
+
+        calls = self.read_gh_calls(log_path)
+        self.assert_gh_called(calls, ["repo", "view"])
+        self.assert_gh_called(calls, ["issue", "list"])
+        self.assert_gh_called(calls, ["issue", "create"])
+
+    def test_gra_issues_duplicate_fingerprint_skips_issue_creation(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        existing_url = "https://github.example.invalid/example/demo/issues/7"
+        env, log_path = self.env_with_gh_log(GRA_MOCK_EXISTING_ISSUE_URL=existing_url)
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn(f"SKIP duplicate SEC-001: {existing_url}", cp.stdout)
+
+        result = json.loads((run_dir / "issues-created.json").read_text(encoding="utf-8"))
+        self.assertEqual(result["created"], [])
+        self.assertEqual(result["skipped"], [
+            {
+                "id": "SEC-001",
+                "reason": "duplicate",
+                "url": existing_url,
+                "fingerprint": FIXTURE_FINGERPRINT,
+            }
+        ])
+
+        calls = self.read_gh_calls(log_path)
+        self.assert_gh_called(calls, ["repo", "view"])
+        self.assert_gh_called(calls, ["issue", "list"])
+        self.assert_gh_not_called(calls, ["issue", "create"])
+
+    def test_gra_issues_create_labels_uses_mocked_gh_label_updates(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        env, log_path = self.env_with_gh_log()
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply",
+                "--create-labels",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("CREATED SEC-001", cp.stdout)
+
+        calls = self.read_gh_calls(log_path)
+        label_names = [
+            call[2]
+            for call in calls
+            if len(call) >= 3 and call[:2] == ["label", "create"]
+        ]
+        self.assertIn("security", label_names)
+        self.assertIn("genai-audit", label_names)
+        self.assertIn("severity-high", label_names)
+        self.assertIn("status-confirmed", label_names)
+        self.assertIn("category-command-injection", label_names)
+        self.assertIn("test-fixture", label_names)
+        self.assertTrue(
+            all("--force" in call for call in calls if len(call) >= 3 and call[:2] == ["label", "create"]),
+            f"label create calls must update existing labels with --force: {calls!r}",
+        )
+        self.assert_gh_called(calls, ["issue", "create"])
 
     def test_gra_issues_rejects_unsafe_issue_body_file_in_dry_run_and_apply(self) -> None:
         dry_run_dir = self.copy_fixture_run("minimal-run")
