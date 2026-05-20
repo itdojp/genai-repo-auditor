@@ -45,8 +45,12 @@ jobs:
       - name: Run integration tests
         run: |
           python3 -m unittest discover -s tests
+      - name: Run local install smoke validation
+        run: |
+          scripts/validate-install-smoke.sh
       - name: Check executable bits
         run: |
           test -x bin/gra-audit
           test -x bin/gra-batch
           test -x bin/gra-validate-report
+          test -x scripts/validate-install-smoke.sh

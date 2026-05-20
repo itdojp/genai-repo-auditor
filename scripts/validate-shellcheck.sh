@@ -6,6 +6,7 @@ cd "$ROOT"
 
 shellcheck \
   scripts/validate-shellcheck.sh \
+  scripts/validate-install-smoke.sh \
   bin/gra-audit \
   bin/gra-batch \
   examples/staged-agentic-workflow.sh.example
