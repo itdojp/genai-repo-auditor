@@ -119,6 +119,7 @@ class ReportContractTests(unittest.TestCase):
         findings_schema = self.load_json(SCHEMAS / "findings.schema.json")
         target_schema = self.load_json(SCHEMAS / "targets.schema.json")
         scanner_schema = self.load_json(SCHEMAS / "scanner-index.schema.json")
+        manifest_schema = self.load_json(SCHEMAS / "run-manifest.schema.json")
 
         self.assertTrue(set(VALIDATOR.REQUIRED_TOP).issubset(findings_schema["required"]))
         finding_required = findings_schema["properties"]["findings"]["items"]["required"]
@@ -130,6 +131,22 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual({"tool", "path", "format", "imported_at"}, set(scanner_result["required"]))
         for normalized_field in ["normalized_path", "normalized_leads_count", "normalization"]:
             self.assertIn(normalized_field, scanner_result["properties"])
+
+        self.assertEqual(
+            {
+                "schema_version",
+                "generated_at",
+                "generated_by",
+                "run",
+                "command",
+                "paths",
+                "schemas",
+                "artifacts",
+                "execution",
+            },
+            set(manifest_schema["required"]),
+        )
+        self.assertTrue({"name", "mode", "model", "effort"}.issubset(manifest_schema["properties"]["command"]["required"]))
 
     def test_valid_minimal_fixture_passes_validator(self) -> None:
         run_dir = self.copy_run()

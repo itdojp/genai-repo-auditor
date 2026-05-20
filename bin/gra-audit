@@ -170,6 +170,9 @@ fi
 if [[ -f "$LAB_ROOT/templates/reports/scanner-index.schema.json" ]]; then
   cp "$LAB_ROOT/templates/reports/scanner-index.schema.json" "$RUN_DIR/scanner-index.schema.json"
 fi
+if [[ -f "$LAB_ROOT/templates/reports/run-manifest.schema.json" ]]; then
+  cp "$LAB_ROOT/templates/reports/run-manifest.schema.json" "$RUN_DIR/run-manifest.schema.json"
+fi
 mkdir -p "$REPORT_DIR/issue-drafts" "$REPORT_DIR/scanner-results" "$REPORT_DIR/target-research" "$REPORT_DIR/variant-analysis"
 
 python3 - <<PYCODE
@@ -213,7 +216,30 @@ if [[ "$NETWORK" == "1" ]]; then
   NETWORK_VALUE="true"
 fi
 
+write_run_manifest() {
+  local execution_phase="$1"
+  local codex_status="${2:-}"
+  local validation_status="${3:-}"
+  local final_status="${4:-}"
+  python3 "$LAB_ROOT/lib/run_manifest.py" \
+    --lab-root "$LAB_ROOT" \
+    --run-dir "$RUN_DIR" \
+    --command-name "gra-audit" \
+    --mode "$MODE" \
+    --model "$MODEL" \
+    --effort "$EFFORT" \
+    --depth "$DEPTH" \
+    --network-allowed "$NETWORK_VALUE" \
+    --codex-json "$CODEX_JSON" \
+    --allow-invalid-report "$ALLOW_INVALID_REPORT" \
+    --execution-phase "$execution_phase" \
+    --codex-status "$codex_status" \
+    --validation-status "$validation_status" \
+    --final-status "$final_status"
+}
+
 if [[ "$MODE" == "prepare" ]]; then
+  write_run_manifest "prepared"
   cat <<EOF_PREPARE
 
 Prepared audit run directory without executing Codex.
@@ -242,6 +268,7 @@ EOF_PREPARE
 fi
 
 if [[ "$MODE" == "goal" ]]; then
+  write_run_manifest "goal-prepared"
   cat <<EOF2
 
 Prepared interactive /goal run.
@@ -337,6 +364,8 @@ final_status=$FINAL_STATUS
 repo_dir=$REPO_DIR
 reports_dir=$REPORT_DIR
 EOF3
+
+write_run_manifest "completed" "$CODEX_STATUS" "$VALIDATION_STATUS" "$FINAL_STATUS"
 
 printf '\nRun complete. Codex status: %s\n' "$CODEX_STATUS"
 printf 'Reports: %s\n' "$REPORT_DIR"

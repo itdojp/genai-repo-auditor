@@ -6,6 +6,15 @@ Validate reports:
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
 
+Each `gra-audit` run writes `run-manifest.json` at the run root. The manifest
+contains bounded provenance metadata such as auditor version, command mode,
+repository ref, network setting, schema filenames, and generated artifact paths.
+It does not contain environment variables, credentials, raw scanner contents, or
+full finding evidence. Paths in the manifest are run-relative; the artifact list
+intentionally omits `run-manifest.json` itself to avoid unstable self-referential
+size metadata. Treat it as support metadata; it is not a substitute for human
+review of `reports/findings.json`, issue drafts, or scanner leads.
+
 Generate local dashboard:
 
 ```bash

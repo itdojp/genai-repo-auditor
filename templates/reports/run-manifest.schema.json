@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor Run Manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_at",
+    "generated_by",
+    "run",
+    "command",
+    "paths",
+    "schemas",
+    "artifacts",
+    "execution"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "generated_by": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "required": ["run_id", "repo", "repo_slug", "branch", "commit", "visibility"],
+      "properties": {
+        "run_id": {
+          "type": "string"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "repo_slug": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        },
+        "visibility": {
+          "type": "string"
+        }
+      }
+    },
+    "command": {
+      "type": "object",
+      "required": [
+        "name",
+        "mode",
+        "model",
+        "effort",
+        "clone_depth",
+        "network_allowed",
+        "codex_json",
+        "allow_invalid_report"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "mode": {
+          "enum": ["exec", "goal", "prepare"]
+        },
+        "model": {
+          "type": "string"
+        },
+        "effort": {
+          "type": "string"
+        },
+        "clone_depth": {
+          "type": "string"
+        },
+        "network_allowed": {
+          "type": "boolean"
+        },
+        "codex_json": {
+          "type": "boolean"
+        },
+        "allow_invalid_report": {
+          "type": "boolean"
+        }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "required": ["run_dir", "target_repo_dir", "reports_dir"],
+      "properties": {
+        "run_dir": {
+          "type": "string"
+        },
+        "target_repo_dir": {
+          "type": "string"
+        },
+        "reports_dir": {
+          "type": "string"
+        }
+      }
+    },
+    "schemas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "path"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "kind"],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": ["file", "dir"]
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "required": ["phase", "codex_status", "validation_status", "final_status"],
+      "properties": {
+        "phase": {
+          "enum": ["prepared", "goal-prepared", "completed"]
+        },
+        "codex_status": {
+          "type": ["string", "null"]
+        },
+        "validation_status": {
+          "type": ["string", "null"]
+        },
+        "final_status": {
+          "type": ["string", "null"]
+        }
+      }
+    }
+  }
+}
