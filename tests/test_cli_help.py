@@ -94,6 +94,22 @@ class CliHelpTests(unittest.TestCase):
                 self.assert_no_traceback_or_shell_error(cp)
         self.assertFalse(self.sentinel.exists(), "--help invoked a real external dependency path")
 
+    def test_every_gra_command_exposes_version_without_external_tools(self) -> None:
+        for forbidden in ("date", "dirname", "basename", "cat", "gh", "codex"):
+            self._write_forbidden_command(forbidden)
+        expected_version = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").splitlines()[0].strip()
+
+        commands = self.command_paths()
+        self.assertGreaterEqual(len(commands), 1)
+        for path in commands:
+            with self.subTest(command=path.name):
+                cp = self.invoke(path, ["--version"])
+                self.assertEqual(cp.returncode, 0, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
+                self.assertEqual(cp.stderr, "")
+                self.assertEqual(cp.stdout, f"{path.name} {expected_version}\n")
+                self.assert_no_traceback_or_shell_error(cp)
+        self.assertFalse(self.sentinel.exists(), "--version invoked an external dependency path")
+
     def test_core_missing_argument_failures_are_usage_errors(self) -> None:
         cases = [
             ("gra-audit", [], 2, "--repo is required"),

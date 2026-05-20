@@ -7,11 +7,13 @@ from pathlib import Path
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
+from version import auditor_version
 from gralib import env_from_context, load_context, render_template, run_codex_exec
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description='Run reconnaissance phase for a prepared GenAI Repo Auditor run')
+    p.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
     p.add_argument('--run', required=True, help='Run directory')
     p.add_argument('--model', default='gpt-5.5')
     p.add_argument('--effort', default='xhigh')

@@ -12,6 +12,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
+from version import auditor_version
 from report_safety import ReportSafetyError, safe_issue_body_path  # noqa: E402
 
 SEVERITY_RANK = {"Critical": 5, "High": 4, "Medium": 3, "Low": 2, "Informational": 1}
@@ -235,6 +236,7 @@ def normalize_labels(finding: Dict[str, Any]) -> List[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create GitHub Issues from GenAI Repo Auditor findings.json")
+    parser.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
     parser.add_argument("--run", required=True, help="Run directory, e.g. runs/OWNER__REPO/RUN_ID")
     parser.add_argument("--repo", help="Override target repo OWNER/REPO")
     parser.add_argument("--min-severity", choices=list(SEVERITY_RANK), default="High")

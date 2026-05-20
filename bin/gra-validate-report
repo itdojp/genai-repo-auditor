@@ -11,6 +11,7 @@ from typing import Any, Dict, List
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
+from version import auditor_version
 from report_safety import (  # noqa: E402
     ReportSafetyError,
     iter_secret_findings,
@@ -217,6 +218,7 @@ def validate_fingerprint(finding: Dict[str, Any], path: str, fingerprints: set[s
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate GenAI Repo Auditor report contract")
+    parser.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
     parser.add_argument("--run", help="Run directory")
     parser.add_argument("--findings", help="Path to findings.json")
     args = parser.parse_args()

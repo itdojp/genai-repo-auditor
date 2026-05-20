@@ -8,6 +8,7 @@ from pathlib import Path
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
+from version import auditor_version
 from gralib import env_from_context, find_target, load_context, load_targets, render_template, run_codex_exec, write_targets
 
 
@@ -19,6 +20,7 @@ def print_table(targets):
 
 def main() -> int:
     p = argparse.ArgumentParser(description='Generate and manage GenAI Repo Auditor target queues')
+    p.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
     p.add_argument('--run', required=True, help='Run directory')
     action = p.add_mutually_exclusive_group(required=True)
     action.add_argument('--generate', action='store_true', help='Run Codex to generate reports/targets.json')

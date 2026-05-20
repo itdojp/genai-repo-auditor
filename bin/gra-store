@@ -9,6 +9,7 @@ from pathlib import Path
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
+from version import auditor_version
 from gralib import load_context, load_json, utc_now
 
 
@@ -71,6 +72,7 @@ def init(conn):
 
 def main() -> int:
     p = argparse.ArgumentParser(description='Import a GenAI Repo Auditor run into a local SQLite store')
+    p.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
     p.add_argument('--run', required=True, help='Run directory')
     p.add_argument('--db', help='SQLite path. Default: <lab>/runs/security-audit.sqlite')
     args = p.parse_args()

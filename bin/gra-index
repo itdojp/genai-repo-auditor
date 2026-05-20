@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any, Dict, List
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / "lib"))
+from version import auditor_version
 
 SEVERITIES = ["Critical", "High", "Medium", "Low", "Informational"]
 STATUSES = ["Confirmed", "Probable", "Potential", "Needs human review", "Informational", "Invalid"]
@@ -17,6 +22,7 @@ def load_json(path: Path) -> Dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create index of GenAI Repo Auditor runs")
+    parser.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
     parser.add_argument("--runs-dir", default="runs")
     args = parser.parse_args()
 
