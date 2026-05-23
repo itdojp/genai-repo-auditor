@@ -18,6 +18,7 @@ from report_safety import (  # noqa: E402
     safe_issue_body_path,
     validate_relative_repo_path,
 )
+from taxonomies import load_taxonomy_profiles, validate_taxonomy_refs  # noqa: E402
 
 SEVERITIES = {"Critical", "High", "Medium", "Low", "Informational"}
 CONFIDENCES = {"High", "Medium", "Low"}
@@ -154,6 +155,7 @@ def validate_targets(run_dir: Path, errors: List[str]) -> None:
         errors.append("targets.targets: targets must be a list")
         return
     seen = set()
+    taxonomy_profiles = load_taxonomy_profiles()
     for i, t in enumerate(targets):
         path = f"targets.targets[{i}]"
         if not isinstance(t, dict):
@@ -179,6 +181,7 @@ def validate_targets(run_dir: Path, errors: List[str]) -> None:
         for key in ["entry_points", "trust_boundaries", "sinks", "review_questions"]:
             if key in t and not isinstance(t.get(key), list):
                 errors.append(f"{path}.{key}: {key} must be list")
+        validate_taxonomy_refs(t.get("taxonomies"), f"{path}.taxonomies", errors, taxonomy_profiles)
 
 
 def validate_run_artifact_path(
@@ -388,6 +391,7 @@ def main() -> int:
 
     findings = data.get("findings") if isinstance(data.get("findings"), list) else []
     fingerprints: set[str] = set()
+    taxonomy_profiles = load_taxonomy_profiles()
     for i, f in enumerate(findings):
         path_prefix = f"findings.findings[{i}]"
         if not isinstance(f, dict):
@@ -408,6 +412,7 @@ def main() -> int:
             errors.append(f"{path_prefix}.labels: labels must be list")
         if not isinstance(f.get("issue_recommended"), bool):
             errors.append(f"{path_prefix}.issue_recommended: issue_recommended must be boolean")
+        validate_taxonomy_refs(f.get("taxonomies"), f"{path_prefix}.taxonomies", errors, taxonomy_profiles)
         if f.get("issue_recommended"):
             if "public_disclosure_risk" not in f:
                 errors.append(f"{path_prefix}.public_disclosure_risk: required when issue_recommended is true")

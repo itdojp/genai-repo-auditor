@@ -1,0 +1,18 @@
+{
+  "schema_version": "1",
+  "name": "OWASP LLM Top 10 2025",
+  "version": "2025",
+  "source_url": "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+  "entries": [
+    {"id": "LLM01", "label": "Prompt Injection"},
+    {"id": "LLM02", "label": "Sensitive Information Disclosure"},
+    {"id": "LLM03", "label": "Supply Chain"},
+    {"id": "LLM04", "label": "Data and Model Poisoning"},
+    {"id": "LLM05", "label": "Improper Output Handling"},
+    {"id": "LLM06", "label": "Excessive Agency"},
+    {"id": "LLM07", "label": "System Prompt Leakage"},
+    {"id": "LLM08", "label": "Vector and Embedding Weaknesses"},
+    {"id": "LLM09", "label": "Misinformation"},
+    {"id": "LLM10", "label": "Unbounded Consumption"}
+  ]
+}

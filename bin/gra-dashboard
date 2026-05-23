@@ -41,6 +41,11 @@ def main() -> int:
     sev_counts = Counter(f.get('severity', 'Unknown') for f in findings)
     status_counts = Counter(f.get('status', 'Unknown') for f in findings)
     target_status_counts = Counter(t.get('status', 'unknown') for t in targets)
+    taxonomy_counts = Counter()
+    for item in findings + targets:
+        for ref in item.get('taxonomies') or []:
+            if isinstance(ref, dict):
+                taxonomy_counts[f"{ref.get('name', 'Unknown')}::{ref.get('id', 'UNKNOWN')}"] += 1
 
     rows = []
     for f in findings:
@@ -56,6 +61,11 @@ def main() -> int:
     for r in scanner_results:
         if isinstance(r, dict):
             scanner_rows.append(f"<tr><td>{h(r.get('tool'))}</td><td>{h(r.get('format'))}</td><td>{h(r.get('path'))}</td><td>{h(r.get('imported_at'))}</td><td>{h(r.get('note'))}</td></tr>")
+
+    taxonomy_rows = []
+    for key, count in sorted(taxonomy_counts.items()):
+        name, _, identifier = key.partition('::')
+        taxonomy_rows.append(f"<tr><td>{h(name)}</td><td>{h(identifier)}</td><td>{count}</td></tr>")
 
     css = """
     body { font-family: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; margin: 32px; }
@@ -85,6 +95,8 @@ def main() -> int:
 <h2>Findings by severity</h2><div class='cards'>{counts_table(sev_counts, SEVERITIES)}</div>
 <h2>Findings by status</h2><div class='cards'>{counts_table(status_counts, STATUSES)}</div>
 <h2>Target status</h2><div class='cards'>{''.join(f"<div class='card'><strong>{h(k)}</strong><br>{v}</div>" for k, v in sorted(target_status_counts.items()))}</div>
+<h2>Taxonomies</h2>
+<table><thead><tr><th>Taxonomy</th><th>ID</th><th>Count</th></tr></thead><tbody>{''.join(taxonomy_rows) or '<tr><td colspan="3">No taxonomy mappings.</td></tr>'}</tbody></table>
 <h2>Findings</h2>
 <table><thead><tr><th>ID</th><th>Severity</th><th>Confidence</th><th>Status</th><th>Category</th><th>Title</th><th>Locations</th></tr></thead><tbody>{''.join(rows) or '<tr><td colspan="7">No findings.</td></tr>'}</tbody></table>
 <h2>Targets</h2>

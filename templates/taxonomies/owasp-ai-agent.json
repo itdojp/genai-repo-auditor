@@ -1,0 +1,15 @@
+{
+  "schema_version": "1",
+  "name": "OWASP AI Agent Security",
+  "version": "cheat-sheet",
+  "source_url": "https://cheatsheetseries.owasp.org/cheatsheets/AI_Agent_Security_Cheat_Sheet.html",
+  "entries": [
+    {"id": "AGENT-EXCESSIVE-AUTONOMY", "label": "Excessive Autonomy"},
+    {"id": "AGENT-HIGH-IMPACT-ACTION", "label": "High-Impact Action Abuse"},
+    {"id": "AGENT-TOOL-PERMISSION", "label": "Over-Privileged Tool Access"},
+    {"id": "AGENT-MEMORY-ISOLATION", "label": "Memory and Context Isolation"},
+    {"id": "AGENT-PROMPT-INJECTION", "label": "Agent Prompt Injection"},
+    {"id": "AGENT-OUTPUT-VALIDATION", "label": "Missing Output Validation"},
+    {"id": "AGENT-MONITORING", "label": "Insufficient Monitoring and Audit Trail"}
+  ]
+}

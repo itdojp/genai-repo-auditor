@@ -1,0 +1,15 @@
+{
+  "schema_version": "1",
+  "name": "MCP Security",
+  "version": "2025-06-18",
+  "source_url": "https://modelcontextprotocol.io/specification/2025-06-18/basic/security_best_practices",
+  "entries": [
+    {"id": "MCP-CONFUSED-DEPUTY", "label": "Confused Deputy"},
+    {"id": "MCP-TOKEN-PASSTHROUGH", "label": "Token Passthrough"},
+    {"id": "MCP-SSRF", "label": "OAuth Metadata SSRF"},
+    {"id": "MCP-SESSION-HIJACKING", "label": "Session Hijacking"},
+    {"id": "MCP-LOCAL-SERVER-COMPROMISE", "label": "Local MCP Server Compromise"},
+    {"id": "MCP-SCOPE-MINIMIZATION", "label": "Scope Minimization Failure"},
+    {"id": "MCP-PROMPT-INJECTION", "label": "Prompt Injection via Tool or Context Payload"}
+  ]
+}

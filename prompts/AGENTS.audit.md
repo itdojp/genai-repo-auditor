@@ -66,5 +66,7 @@ Every finding must include:
 - minimal remediation
 - regression test idea
 - safe GitHub issue draft, if issue creation is recommended
+- controlled taxonomy IDs when applicable (for example OWASP LLM, AI Agent,
+  MCP, CWE, and supply-chain posture IDs from templates/taxonomies/)
 
 Prioritize concrete, evidence-backed vulnerabilities over generic hardening advice.
