@@ -463,6 +463,9 @@ def _normalize_vulnerabilities(vulnerabilities: list[dict[str, Any]], component_
         component = _bounded_text(vuln.get("component"))
         if not vid:
             continue
+        # Partial SBOMs may include vulnerability evidence for components that
+        # are omitted from the inventory. Preserve the evidence_ref but do not
+        # emit a dangling component id that would fail downstream validation.
         if component and component not in component_ids:
             component = ""
         key = (vid, component)
