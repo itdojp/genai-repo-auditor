@@ -1,12 +1,17 @@
 # Report contract
 
-Codex は以下を `reports/` に生成する必要があります。
+監査 run は `reports/` に以下のような成果物を持ちます。`AUDIT_*` /
+`FINDINGS.md` / `findings.json` は Codex による監査出力であり、
+`PROVENANCE_POSTURE.md` / `provenance-posture.json` は `gra-recon` が
+決定的に生成する補助 posture artifact です。
 
 ```text
 reports/
   AUDIT_SUMMARY.md
   THREAT_MODEL.md
   ATTACK_SURFACE.md
+  PROVENANCE_POSTURE.md
+  provenance-posture.json
   FINDINGS.md
   findings.json
   AUDIT_LOG.md
@@ -49,6 +54,10 @@ findings[].labels
 optional scanner index artifacts against the bundled JSON schemas using the
 Python standard library. It also applies local safety rules before downstream
 tools can use report-controlled paths.
+
+`provenance-posture.json` is a local posture artifact produced by `gra-recon`;
+it is advisory input for target generation and is not treated as a finding
+contract.
 
 Important constraints:
 

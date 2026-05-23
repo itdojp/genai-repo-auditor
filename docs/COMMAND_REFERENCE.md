@@ -81,10 +81,10 @@ gra-batch --repo-list examples/repos.txt.example --concurrency 1 --mode exec
 | Workflow category | Target workflow. |
 | Required inputs | `--run RUN_DIR` and exactly one action: `--generate`, `--list`, `--show TGT-ID`, or `--mark TGT-ID STATUS`. |
 | Key options | `--model MODEL`, `--effort EFFORT`, `--network`. `--mark` accepts `queued`, `in_progress`, `reviewed`, `skipped`, or `needs_human_review`. |
-| Generated outputs | For `--generate`: `prompts/exec/generate-targets.prompt.md`, `codex-targets-events.jsonl`, `codex-targets-stderr.txt`, `codex-targets-final.md`, and the expected `reports/targets.json`. If `reports/agent-surface.json` exists, high-risk AI agent / MCP surfaces are appended as `TGT-AGENT-NNN` targets. For `--mark`: updated target status in `reports/targets.json`. `--list` and `--show` write to stdout only. |
+| Generated outputs | For `--generate`: `prompts/exec/generate-targets.prompt.md`, `codex-targets-events.jsonl`, `codex-targets-stderr.txt`, `codex-targets-final.md`, and the expected `reports/targets.json`. If `reports/agent-surface.json` exists, high-risk AI agent / MCP surfaces are appended as `TGT-AGENT-NNN` targets. If `reports/provenance-posture.json` exists, release provenance posture recommendations are appended as `TGT-PROVENANCE-NNN` targets. For `--mark`: updated target status in `reports/targets.json`. `--list` and `--show` write to stdout only. |
 | Exit status behavior | `0` for successful list/show/mark/generate; `1` when Codex completes but `reports/targets.json` is missing after generation; `2` for missing context, unknown target, or invalid target status. Codex execution status is returned for generation failures. |
 | Security / disclosure cautions | Target queues are local planning artifacts. Review generated scope before using it to drive deeper research. Avoid network access unless the audit plan explicitly requires it. |
-| Related docs | [`docs/TARGET_QUEUE.md`](TARGET_QUEUE.md), [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md), [`docs/AGENT_SURFACE_DISCOVERY.md`](AGENT_SURFACE_DISCOVERY.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md). |
+| Related docs | [`docs/TARGET_QUEUE.md`](TARGET_QUEUE.md), [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md), [`docs/AGENT_SURFACE_DISCOVERY.md`](AGENT_SURFACE_DISCOVERY.md), [`docs/PROVENANCE_POSTURE.md`](PROVENANCE_POSTURE.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md). |
 
 Examples:
 
@@ -98,14 +98,14 @@ gra-targets --run runs/OWNER__REPO/RUN_ID --mark TGT-001 reviewed
 
 | Field | Details |
 |---|---|
-| Purpose | Run the reconnaissance phase for a prepared audit run by first detecting AI agent / MCP surfaces locally, then rendering and executing the recon prompt. |
+| Purpose | Run the reconnaissance phase for a prepared audit run by first detecting AI agent / MCP surfaces and release provenance posture locally, then rendering and executing the recon prompt. |
 | Workflow category | Research / recon workflow. |
 | Required inputs | `--run RUN_DIR` with an existing `context.json`. |
 | Key options | `--model MODEL`, `--effort EFFORT`, `--network`. |
-| Generated outputs | When AI agent or MCP surfaces are found: `reports/agent-surface.json` and `reports/AGENT_SURFACE.md`. Always renders `prompts/exec/recon.prompt.md` and writes Codex event/output files such as `codex-recon-events.jsonl`, `codex-recon-stderr.txt`, and `codex-recon-final.md`. |
+| Generated outputs | When AI agent or MCP surfaces are found: `reports/agent-surface.json` and `reports/AGENT_SURFACE.md`. Always writes release provenance posture artifacts `reports/provenance-posture.json` and `reports/PROVENANCE_POSTURE.md`, renders `prompts/exec/recon.prompt.md`, and writes Codex event/output files such as `codex-recon-events.jsonl`, `codex-recon-stderr.txt`, and `codex-recon-final.md`. |
 | Exit status behavior | Returns the Codex execution status; `0` indicates Codex completed successfully. `argparse` returns `2` for usage errors. |
 | Security / disclosure cautions | Recon is still a defensive local code review phase. Do not expand scope beyond the cloned repository and approved inputs. |
-| Related docs | [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md), [`docs/AGENT_SURFACE_DISCOVERY.md`](AGENT_SURFACE_DISCOVERY.md), [`docs/NORMAL_WORKFLOW.md`](NORMAL_WORKFLOW.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
+| Related docs | [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md), [`docs/AGENT_SURFACE_DISCOVERY.md`](AGENT_SURFACE_DISCOVERY.md), [`docs/PROVENANCE_POSTURE.md`](PROVENANCE_POSTURE.md), [`docs/NORMAL_WORKFLOW.md`](NORMAL_WORKFLOW.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
 
 Example:
 
@@ -318,5 +318,6 @@ The repository currently has no alternate executable aliases for `gra-*` command
 - [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md) for staged recon, target, and research workflows.
 - [`docs/SCANNER_INTEGRATION.md`](SCANNER_INTEGRATION.md) for scanner ingestion and triage.
 - [`docs/AGENT_SURFACE_DISCOVERY.md`](AGENT_SURFACE_DISCOVERY.md) for AI agent and MCP surface discovery.
+- [`docs/PROVENANCE_POSTURE.md`](PROVENANCE_POSTURE.md) for artifact attestation and release provenance posture.
 - [`docs/ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md) for reviewed GitHub Issue creation.
 - [`docs/REPORTING_AND_STORE.md`](REPORTING_AND_STORE.md) for dashboard, SARIF, SQLite, and indexing.
