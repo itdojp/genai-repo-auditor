@@ -31,6 +31,45 @@ gra-issues --run runs/OWNER__REPO/RUN_ID --dry-run
 
 `issue_body_file` を使う finding では、参照先は `reports/issue-drafts/` 配下の相対 `.md` file である必要があります。`gra-issues` は絶対 path、`..` traversal、symlink、non-Markdown file、過大な draft を拒否します。
 
+dry-run は既定の immutable publication plan path と、各 Issue body の
+SHA-256 hash も表示します。承認対象の本文がどれかを確認するために
+hash を利用してください。
+
+## immutable publication plan
+
+外部に見える Issue 作成や high-impact な公開操作では、二段階の plan
+workflow を推奨します。plan は同じ `findings.json` と issue draft set
+に対して deterministic であり、GitHub Issue は作成しません。
+
+```bash
+gra-issues --run runs/OWNER__REPO/RUN_ID --plan
+```
+
+生成先:
+
+```text
+runs/OWNER__REPO/RUN_ID/reports/issue-publication-plan.json
+```
+
+plan には selected finding ID、fingerprint、title、label、issue body
+file、issue body SHA-256 hash、public disclosure risk、run ID、repo、
+commit が記録されます。公開前に plan と参照される issue draft を確認します。
+
+承認後、同じ plan を apply します。
+
+```bash
+gra-issues \
+  --run runs/OWNER__REPO/RUN_ID \
+  --apply-plan runs/OWNER__REPO/RUN_ID/reports/issue-publication-plan.json \
+  --create-labels
+```
+
+`--apply-plan` は Issue body hash、fingerprint、selected finding の存在、
+title、label、public disclosure risk を再計算・検証し、plan 作成後に
+変更された内容の公開を拒否します。plan が古くなった場合は `--plan` で
+作り直し、再レビューしてから apply してください。`--apply-plan ... --replan`
+は plan を更新して終了し、Issue は作成しません。
+
 ## apply
 
 Issue 本文、label、重複有無、公開可否を確認した後だけ apply します。
@@ -38,6 +77,10 @@ Issue 本文、label、重複有無、公開可否を確認した後だけ apply
 ```bash
 gra-issues --run runs/OWNER__REPO/RUN_ID --apply --create-labels
 ```
+
+private workflow で既に人間レビュー済みの場合は direct `--apply` も利用できます。
+ただし、承認を exact Issue content に結び付ける必要がある場合は plan workflow
+を使用してください。
 
 public repository への Issue 作成はデフォルトで拒否されます。公開が意図され、承認済みの場合だけ `--allow-public` を指定します。
 
