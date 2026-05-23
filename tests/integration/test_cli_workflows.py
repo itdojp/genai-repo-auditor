@@ -815,10 +815,15 @@ class CliWorkflowTests(unittest.TestCase):
             check=True,
         )
         self.assertIn("DRY RUN: would create issue for SEC-001", cp.stdout)
+        self.assertIn("Plan:", cp.stdout)
+        self.assertIn("issue-publication-plan.json", cp.stdout)
+        self.assertIn("Issue body SHA256:", cp.stdout)
         result = json.loads((run_dir / "issues-created.json").read_text(encoding="utf-8"))
         self.assertTrue(result["dry_run"])
         self.assertEqual(result["created"][0]["id"], "SEC-001")
         self.assertEqual(result["created"][0]["fingerprint"], FIXTURE_FINGERPRINT)
+        self.assertEqual(len(result["created"][0]["issue_body_sha256"]), 64)
+        self.assertEqual(result["created"][0]["issue_body_sha256"], result["created"][0]["issue_body_sha256"].lower())
 
         apply_run = self.copy_fixture_run("minimal-run")
         cp_apply = self.run_cmd(
@@ -835,6 +840,162 @@ class CliWorkflowTests(unittest.TestCase):
             check=True,
         )
         self.assertIn("CREATED SEC-001", cp_apply.stdout)
+
+    def test_gra_issues_plan_and_apply_plan_bind_exact_issue_content(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        plan_path = run_dir / "reports" / "issue-publication-plan.json"
+        cp_plan = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--plan",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            check=True,
+        )
+        self.assertIn("Wrote issue publication plan", cp_plan.stdout)
+        self.assertIn("issue_body_sha256=", cp_plan.stdout)
+        self.assertTrue(plan_path.is_file())
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        self.assertEqual(plan["schema_version"], "1")
+        self.assertEqual(plan["repo"], "example/demo")
+        self.assertEqual(plan["selected_findings"][0]["id"], "SEC-001")
+        self.assertEqual(plan["selected_findings"][0]["fingerprint"], FIXTURE_FINGERPRINT)
+        self.assertEqual(plan["selected_findings"][0]["issue_body_file"], "reports/issue-drafts/SEC-001.md")
+        self.assertFalse((run_dir / "issues-created.json").exists())
+
+        issue_url = "https://github.example.invalid/example/demo/issues/60"
+        env, log_path = self.env_with_gh_log(GRA_MOCK_ISSUE_URL=issue_url)
+        cp_apply = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply-plan",
+                plan_path,
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Verified issue publication plan", cp_apply.stdout)
+        self.assertIn(f"CREATED SEC-001: {issue_url}", cp_apply.stdout)
+        result = json.loads((run_dir / "issues-created.json").read_text(encoding="utf-8"))
+        self.assertFalse(result["dry_run"])
+        self.assertEqual(result["plan_path"], str(plan_path))
+        self.assertEqual(len(result["plan_sha256"]), 64)
+        self.assertEqual(result["created"][0]["fingerprint"], FIXTURE_FINGERPRINT)
+        calls = self.read_gh_calls(log_path)
+        self.assert_gh_called(calls, ["repo", "view"])
+        self.assert_gh_called(calls, ["issue", "list"])
+        self.assert_gh_called(calls, ["issue", "create"])
+
+    def test_gra_issues_apply_plan_rejects_changed_issue_body(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        plan_path = run_dir / "reports" / "issue-publication-plan.json"
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--plan",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            check=True,
+        )
+        draft = run_dir / "reports" / "issue-drafts" / "SEC-001.md"
+        draft.write_text(draft.read_text(encoding="utf-8") + "\nChanged after approval.\n", encoding="utf-8")
+        env, log_path = self.env_with_gh_log()
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply-plan",
+                plan_path,
+            ],
+            env=env,
+        )
+        self.assertEqual(cp.returncode, 4, cp.stderr)
+        self.assertIn("Issue publication plan verification failed", cp.stderr)
+        self.assertIn("SEC-001: issue_body_sha256 changed after plan creation", cp.stderr)
+        self.assertFalse((run_dir / "issues-created.json").exists())
+        self.assert_gh_not_called(self.read_gh_calls(log_path), ["issue", "create"])
+
+    def test_gra_issues_apply_plan_rejects_changed_fingerprint(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        plan_path = run_dir / "reports" / "issue-publication-plan.json"
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--plan",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            check=True,
+        )
+        findings_path = run_dir / "reports" / "findings.json"
+        findings = json.loads(findings_path.read_text(encoding="utf-8"))
+        findings["findings"][0]["fingerprint"] = "fedcba9876543210fedcba98"
+        findings_path.write_text(json.dumps(findings, indent=2) + "\n", encoding="utf-8")
+        env, log_path = self.env_with_gh_log()
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply-plan",
+                plan_path,
+            ],
+            env=env,
+        )
+        self.assertEqual(cp.returncode, 4, cp.stderr)
+        self.assertIn("SEC-001: fingerprint changed after plan creation", cp.stderr)
+        self.assert_gh_not_called(self.read_gh_calls(log_path), ["issue", "create"])
+
+    def test_gra_issues_apply_plan_preserves_public_repo_guard(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        plan_path = run_dir / "reports" / "issue-publication-plan.json"
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--plan",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            check=True,
+        )
+        env, log_path = self.env_with_gh_log(GRA_MOCK_GH_VISIBILITY="PUBLIC")
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply-plan",
+                plan_path,
+            ],
+            env=env,
+        )
+        self.assertEqual(cp.returncode, 3, cp.stderr)
+        self.assertIn("Refusing to create security issues", cp.stderr)
+        calls = self.read_gh_calls(log_path)
+        self.assert_gh_called(calls, ["repo", "view"])
+        self.assert_gh_not_called(calls, ["issue", "list"])
+        self.assert_gh_not_called(calls, ["issue", "create"])
 
     def test_gra_issues_apply_refuses_public_repo_without_allow_public(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

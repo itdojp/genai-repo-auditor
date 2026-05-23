@@ -25,11 +25,55 @@ If a finding uses `issue_body_file`, the path must be a relative `.md` file unde
 symlinks, non-Markdown files, and oversized drafts before dry-run or apply
 output is produced.
 
+Dry-run output includes the default immutable publication plan path and the
+SHA-256 hash of each issue body. Use those hashes to confirm exactly which
+content is being reviewed.
+
+## immutable publication plan
+
+For high-impact or externally visible Issue creation, prefer the two-step plan
+workflow. The plan is deterministic for a given `findings.json` and issue draft
+set; it does not create GitHub Issues.
+
+```bash
+gra-issues --run runs/OWNER__REPO/RUN_ID --plan
+```
+
+This writes:
+
+```text
+runs/OWNER__REPO/RUN_ID/reports/issue-publication-plan.json
+```
+
+The plan records the selected finding IDs, fingerprints, titles, labels, issue
+body files, issue body SHA-256 hashes, public disclosure risk, run ID, repo, and
+commit. Review the plan and referenced issue drafts before publishing.
+
+After review, apply the exact plan:
+
+```bash
+gra-issues \
+  --run runs/OWNER__REPO/RUN_ID \
+  --apply-plan runs/OWNER__REPO/RUN_ID/reports/issue-publication-plan.json \
+  --create-labels
+```
+
+`--apply-plan` recomputes issue body hashes, verifies finding fingerprints,
+checks that selected findings still exist, and rejects changed titles, labels,
+issue bodies, or public disclosure risk before it calls `gh issue create`.
+When the plan is stale, rerun `--plan` and review the refreshed file before
+applying. `--apply-plan ... --replan` refreshes the plan and exits without
+publishing.
+
 ## apply
 
 ```bash
 gra-issues --run runs/OWNER__REPO/RUN_ID --apply
 ```
+
+Direct `--apply` remains available for already-reviewed private workflows, but
+the plan workflow is recommended when approval must be bound to exact Issue
+content.
 
 ## labels
 
