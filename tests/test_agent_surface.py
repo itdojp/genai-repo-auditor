@@ -139,6 +139,27 @@ class AgentSurfaceTests(unittest.TestCase):
         self.assertEqual([], surfaces)
         self.assertFalse((run_dir / "reports" / "agent-surface.json").exists())
 
+    def test_non_default_run_paths_are_respected(self) -> None:
+        run_dir = self.copy_run()
+        (run_dir / "repo").rename(run_dir / "source")
+        (run_dir / "reports").rename(run_dir / "custom-reports")
+        context_path = run_dir / "context.json"
+        context = json.loads(context_path.read_text(encoding="utf-8"))
+        context["target_repo_dir"] = "source"
+        context["reports_dir"] = "custom-reports"
+        context_path.write_text(json.dumps(context, indent=2) + "\n", encoding="utf-8")
+
+        surfaces = write_agent_surface_artifacts(run_dir)
+        self.assertTrue(surfaces)
+        self.assertTrue((run_dir / "custom-reports" / "agent-surface.json").exists())
+        self.assertTrue(all(str(surface["path"]).startswith("source/") for surface in surfaces))
+
+        added = append_agent_surface_targets(run_dir)
+        self.assertTrue(added)
+        custom_targets = json.loads((run_dir / "custom-reports" / "targets.json").read_text(encoding="utf-8"))["targets"]
+        self.assertTrue(any(str(target["id"]).startswith("TGT-AGENT-") for target in custom_targets))
+        self.assertTrue(any(target["scope"] == "source/.vscode/mcp.json" for target in custom_targets))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

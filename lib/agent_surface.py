@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from contextlib import suppress
 from pathlib import Path
@@ -113,21 +114,29 @@ def _iter_text_files(repo_dir: Path) -> Iterable[Path]:
     if not repo_dir.exists():
         return []
     files: list[Path] = []
-    for path in repo_dir.rglob("*"):
-        if not path.is_file():
-            continue
-        if path.is_symlink():
-            continue
-        if any(part in SKIP_DIRS for part in path.relative_to(repo_dir).parts):
-            continue
-        if path.suffix.lower() not in TEXT_SUFFIXES:
-            continue
-        try:
-            if path.stat().st_size > MAX_FILE_BYTES:
+    for root, dirnames, filenames in os.walk(repo_dir, onerror=lambda _error: None):
+        root_path = Path(root)
+        dirnames[:] = sorted(
+            dirname
+            for dirname in dirnames
+            if dirname not in SKIP_DIRS and not (root_path / dirname).is_symlink()
+        )
+        for filename in sorted(filenames):
+            path = root_path / filename
+            if not path.is_file():
                 continue
-        except OSError:
-            continue
-        files.append(path)
+            if path.is_symlink():
+                continue
+            if any(part in SKIP_DIRS for part in path.relative_to(repo_dir).parts):
+                continue
+            if path.suffix.lower() not in TEXT_SUFFIXES:
+                continue
+            try:
+                if path.stat().st_size > MAX_FILE_BYTES:
+                    continue
+            except OSError:
+                continue
+            files.append(path)
     return sorted(files, key=lambda p: p.relative_to(repo_dir).as_posix())
 
 
@@ -138,8 +147,16 @@ def _read_text(path: Path) -> str:
         return ""
 
 
-def _display_path(repo_dir: Path, path: Path) -> str:
-    return f"repo/{path.relative_to(repo_dir).as_posix()}"
+def _repo_display_prefix(run_dir: Path, repo_dir: Path) -> str:
+    try:
+        return repo_dir.relative_to(run_dir).as_posix()
+    except ValueError:
+        return repo_dir.name
+
+
+def _display_path(run_dir: Path, repo_dir: Path, path: Path) -> str:
+    prefix = _repo_display_prefix(run_dir, repo_dir)
+    return f"{prefix}/{path.relative_to(repo_dir).as_posix()}"
 
 
 def _is_agent_instruction(rel: str) -> bool:
@@ -248,13 +265,20 @@ def _summary(surface_type: str, rel: str, capabilities: list[str], providers: li
     return f"{labels.get(surface_type, surface_type)} in {rel}{caps}"
 
 
-def _make_surface(surface_type: str, repo_dir: Path, path: Path, text: str, providers: list[str] | None = None) -> dict[str, Any]:
+def _make_surface(
+    surface_type: str,
+    run_dir: Path,
+    repo_dir: Path,
+    path: Path,
+    text: str,
+    providers: list[str] | None = None,
+) -> dict[str, Any]:
     rel = path.relative_to(repo_dir).as_posix()
     capabilities = _detect_capabilities(text)
     risk = _risk(surface_type, text, capabilities)
     return {
         "type": surface_type,
-        "path": _display_path(repo_dir, path),
+        "path": _display_path(run_dir, repo_dir, path),
         "risk": risk,
         "summary": _summary(surface_type, rel, capabilities, providers),
         "detected_capabilities": capabilities,
@@ -271,18 +295,18 @@ def discover_agent_surfaces(run_dir: Path) -> list[dict[str, Any]]:
         text = _read_text(path)
         lower = text.lower()
         if rel in MCP_CONFIG_PATHS or rel.endswith("/mcp.json"):
-            surfaces.append(_make_surface("mcp_config", repo_dir, path, text))
+            surfaces.append(_make_surface("mcp_config", run_dir, repo_dir, path, text))
         if _is_agent_instruction(rel):
-            surfaces.append(_make_surface("agent_instruction", repo_dir, path, text))
+            surfaces.append(_make_surface("agent_instruction", run_dir, repo_dir, path, text))
         providers = [label for label, pattern in AI_SDK_PATTERNS if re.search(pattern, text, re.IGNORECASE)]
         if providers:
-            surfaces.append(_make_surface("ai_sdk_usage", repo_dir, path, text, providers))
+            surfaces.append(_make_surface("ai_sdk_usage", run_dir, repo_dir, path, text, providers))
         if "vector" in lower or any(token in lower for token in ["chroma", "pinecone", "qdrant", "weaviate", "faiss", "milvus", "pgvector"]):
-            surfaces.append(_make_surface("memory_store", repo_dir, path, text))
+            surfaces.append(_make_surface("memory_store", run_dir, repo_dir, path, text))
         if TOOL_DEFINITION_RE.search(text) and ("tool" in lower or "function" in lower):
-            surfaces.append(_make_surface("tool_definition", repo_dir, path, text))
+            surfaces.append(_make_surface("tool_definition", run_dir, repo_dir, path, text))
         if _is_prompt_template(path, rel):
-            surfaces.append(_make_surface("prompt_template", repo_dir, path, text))
+            surfaces.append(_make_surface("prompt_template", run_dir, repo_dir, path, text))
 
     surfaces = sorted(surfaces, key=lambda item: (item["path"], item["type"]))
     for index, surface in enumerate(surfaces, start=1):
