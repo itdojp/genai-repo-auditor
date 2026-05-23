@@ -169,6 +169,11 @@ class CliWorkflowTests(unittest.TestCase):
                     if not fixture_path.is_dir():
                         print(f"mock gh: fixture repository does not exist: {fixture_path}", file=sys.stderr)
                         raise SystemExit(2)
+                    symlinks = [p for p in fixture_path.rglob("*") if p.is_symlink()]
+                    if symlinks:
+                        rels = ", ".join(str(p.relative_to(fixture_path)) for p in symlinks)
+                        print(f"mock gh: fixture repository contains symlinks: {rels}", file=sys.stderr)
+                        raise SystemExit(2)
                     if dest.exists():
                         shutil.rmtree(dest)
                     shutil.copytree(fixture_path, dest, ignore=shutil.ignore_patterns(".git"))
@@ -482,10 +487,9 @@ class CliWorkflowTests(unittest.TestCase):
         fixtures = manifest["fixtures"]
         self.assertGreaterEqual(len(fixtures), 5)
         observed_tags = {tag for fixture in fixtures for tag in fixture["tags"]}
-        self.assertTrue(
-            {"direct", "indirect", "encoded", "markdown-html", "agent-specific"}.issubset(observed_tags),
-            f"missing adversarial fixture coverage tags: {sorted(observed_tags)}",
-        )
+        required_tags = {"direct", "indirect", "encoded", "markdown-html", "agent-specific"}
+        missing_tags = required_tags - observed_tags
+        self.assertEqual(set(), missing_tags)
 
         for fixture in fixtures:
             fixture_id = fixture["id"]
@@ -585,6 +589,33 @@ class CliWorkflowTests(unittest.TestCase):
                 self.assertNotIn("fixture-aws-secret-value", generated_text)
                 for sentinel in fixture["sentinels"]:
                     self.assertNotIn(sentinel, generated_text)
+
+    def test_adversarial_fixture_clone_rejects_symlinked_fixture_content(self) -> None:
+        fixture_repo = self.work_dir / "symlinked-fixture"
+        fixture_repo.mkdir()
+        (fixture_repo / "README.md").write_text("# Symlink fixture\n", encoding="utf-8")
+        outside = self.work_dir / "outside-secret.txt"
+        outside.write_text("fixture outside content must not be copied\n", encoding="utf-8")
+        (fixture_repo / "outside-link.txt").symlink_to(outside)
+
+        env, _gh_log = self.env_with_gh_log(GRA_MOCK_TARGET_REPO_DIR=str(fixture_repo))
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-audit",
+                "--repo",
+                "example/symlinked-fixture",
+                "--mode",
+                "prepare",
+                "--run-id",
+                "symlinked-fixture",
+                "--runs-dir",
+                self.runs_dir,
+                "--no-lock",
+            ],
+            env=env,
+        )
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("fixture repository contains symlinks: outside-link.txt", cp.stderr)
 
     def test_gra_audit_exec_fails_when_mock_codex_writes_invalid_findings(self) -> None:
         env = self.env.copy()
