@@ -20,6 +20,7 @@ Read first:
 - Dockerfiles, container files, IaC files if present
 - .github/workflows if present
 - reports/agent-surface.json if present; treat it as deterministic review leads for AI agent and MCP surfaces
+- reports/provenance-posture.json if present; treat it as deterministic release provenance and attestation posture leads
 - source tree and route definitions
 - auth/session modules, persistence layer, webhooks, background jobs, CLI/admin scripts, file upload/import/parser paths
 
@@ -66,6 +67,7 @@ Required outputs:
    - database access layer
    - secrets/logging/error reporting paths
    - CI/CD workflows
+   - release provenance, artifact attestation, package publishing, container publishing, and SBOM attestation posture
    - AI agent, MCP, prompt-template, tool-definition, and model-provider surfaces
    - container/IaC surfaces
    - dependency/build surfaces

@@ -7,6 +7,8 @@ reports/
   AUDIT_SUMMARY.md
   THREAT_MODEL.md
   ATTACK_SURFACE.md
+  PROVENANCE_POSTURE.md
+  provenance-posture.json
   FINDINGS.md
   findings.json
   AUDIT_LOG.md
@@ -49,6 +51,10 @@ findings[].labels
 optional scanner index artifacts against the bundled JSON schemas using the
 Python standard library. It also applies local safety rules before downstream
 tools can use report-controlled paths.
+
+`provenance-posture.json` is a local posture artifact produced by `gra-recon`;
+it is advisory input for target generation and is not treated as a finding
+contract.
 
 Important constraints:
 

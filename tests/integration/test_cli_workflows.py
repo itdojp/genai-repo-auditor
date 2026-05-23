@@ -164,6 +164,27 @@ class CliWorkflowTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def write_provenance_fixture_repo(self, run_dir: Path) -> None:
+        workflow_dir = run_dir / "repo" / ".github" / "workflows"
+        workflow_dir.mkdir(parents=True, exist_ok=True)
+        (workflow_dir / "release.yml").write_text(
+            "name: release\n"
+            "on:\n"
+            "  release:\n"
+            "    types: [published]\n"
+            "permissions:\n"
+            "  contents: write\n"
+            "jobs:\n"
+            "  release:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: make release && tar czf dist/app.tar.gz dist/app\n"
+            "      - uses: softprops/action-gh-release@v2\n"
+            "        with:\n"
+            "          files: dist/app.tar.gz\n",
+            encoding="utf-8",
+        )
+
     def assert_gh_called(self, calls: list[list[str]], prefix: list[str]) -> None:
         if not any(call[: len(prefix)] == prefix for call in calls):
             self.fail(f"expected gh call prefix {prefix!r}; observed calls: {calls!r}")
@@ -752,11 +773,15 @@ class CliWorkflowTests(unittest.TestCase):
             check=True,
         )
         self.assertIn("Agent surfaces:", cp.stdout)
+        self.assertIn("Provenance posture:", cp.stdout)
         self.assertIn("Running Codex recon for example/demo", cp.stdout)
         self.assertIn("Codex status: 0", cp.stdout)
         agent_surface = json.loads((run_dir / "reports" / "agent-surface.json").read_text(encoding="utf-8"))
         self.assertGreaterEqual(len(agent_surface["agent_surfaces"]), 5)
         self.assertTrue((run_dir / "reports" / "AGENT_SURFACE.md").exists())
+        provenance = json.loads((run_dir / "reports" / "provenance-posture.json").read_text(encoding="utf-8"))
+        self.assertEqual("not_applicable", provenance["status"])
+        self.assertTrue((run_dir / "reports" / "PROVENANCE_POSTURE.md").exists())
 
         prompt = run_dir / "prompts" / "exec" / "recon.prompt.md"
         prompt_text = prompt.read_text(encoding="utf-8")
@@ -796,6 +821,29 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("repo/.vscode/mcp.json", {target["scope"] for target in agent_targets})
         self.assertTrue(all(target["risk"] == "high" for target in agent_targets))
         self.assertTrue(any(ref.get("name") == "MCP Security" for target in agent_targets for ref in target.get("taxonomies", [])))
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("OK:", cp_validate.stdout)
+
+        calls = self.read_codex_calls(codex_log)
+        self.assertEqual(len(calls), 2, calls)
+
+    def test_gra_targets_generate_appends_provenance_posture_targets(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.write_provenance_fixture_repo(run_dir)
+        env, codex_log = self.env_with_codex_log()
+
+        cp_recon = self.run_cmd([REPO_ROOT / "bin" / "gra-recon", "--run", run_dir], env=env, check=True)
+        self.assertIn("Provenance posture: needs_review", cp_recon.stdout)
+
+        cp_targets = self.run_cmd([REPO_ROOT / "bin" / "gra-targets", "--run", run_dir, "--generate"], env=env, check=True)
+        self.assertIn("Added 1 provenance-posture target(s)", cp_targets.stdout)
+        targets = json.loads((run_dir / "reports" / "targets.json").read_text(encoding="utf-8"))["targets"]
+        provenance_targets = [target for target in targets if str(target.get("id", "")).startswith("TGT-PROVENANCE-")]
+        self.assertEqual(1, len(provenance_targets))
+        self.assertEqual("repo/.github/workflows/release.yml", provenance_targets[0]["scope"])
+        self.assertEqual("medium", provenance_targets[0]["risk"])
+        self.assertTrue(any(ref.get("id") == "SC-ARTIFACT-ATTESTATION" for ref in provenance_targets[0].get("taxonomies", [])))
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
         self.assertIn("OK:", cp_validate.stdout)

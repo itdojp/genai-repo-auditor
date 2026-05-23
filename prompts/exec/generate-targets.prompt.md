@@ -21,6 +21,7 @@ Read first:
 - {{REPORTS_DIR}}/ATTACK_SURFACE.md if present
 - {{REPORTS_DIR}}/AUDIT_SUMMARY.md if present
 - {{REPORTS_DIR}}/agent-surface.json if present
+- {{REPORTS_DIR}}/provenance-posture.json if present
 - {{TARGET_REPO_DIR}}/README and architecture docs if present
 - {{TARGET_REPO_DIR}}/package manifests and lockfiles
 - {{TARGET_REPO_DIR}}/.github/workflows if present
@@ -54,6 +55,7 @@ Target categories to consider:
 - webhook_authenticity
 - secrets_logging_error_handling
 - ci_cd_supply_chain
+- release_provenance_attestation
 - container_iac
 - business_logic
 - dependency_build_scripts
@@ -99,6 +101,7 @@ Quality bar:
 - Do not create findings here.
 - Every target must have a concrete scope, entry points or candidate files, and review questions.
 - If {{REPORTS_DIR}}/agent-surface.json exists, include high-risk AI agent and MCP surfaces as bounded targets unless they are already covered.
+- If {{REPORTS_DIR}}/provenance-posture.json exists, include release, package, container, or binary artifact workflows that need provenance posture review as bounded supply-chain targets.
 - Use controlled taxonomy IDs from templates/taxonomies/ when they apply. Taxonomy classification is advisory and does not replace risk or priority.
 - Status must be queued unless there is a specific reason to mark skipped or needs_human_review.
 

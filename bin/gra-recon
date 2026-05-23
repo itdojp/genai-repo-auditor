@@ -10,6 +10,7 @@ sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
 from gralib import env_from_context, load_context, render_template, run_codex_exec
 from agent_surface import write_agent_surface_artifacts
+from provenance_posture import write_provenance_posture_artifacts
 
 
 def main() -> int:
@@ -23,9 +24,12 @@ def main() -> int:
 
     run_dir = Path(args.run).resolve()
     ctx = load_context(run_dir)
+    reports = run_dir / ctx.get('reports_dir', 'reports')
     surfaces = write_agent_surface_artifacts(run_dir)
     if surfaces:
-        print(f'Agent surfaces: {len(surfaces)} -> {run_dir / "reports" / "agent-surface.json"}')
+        print(f'Agent surfaces: {len(surfaces)} -> {reports / "agent-surface.json"}')
+    provenance = write_provenance_posture_artifacts(run_dir)
+    print(f'Provenance posture: {provenance.get("status")} -> {reports / "provenance-posture.json"}')
     env = env_from_context(run_dir)
     prompt = run_dir / 'prompts' / 'exec' / 'recon.prompt.md'
     render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'recon.prompt.md', prompt, env)
