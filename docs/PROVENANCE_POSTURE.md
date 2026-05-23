@@ -52,7 +52,10 @@ The detector reports:
 
 Permission checks distinguish missing capability from least-privilege warnings:
 for example, `contents: write` satisfies a `contents: read` requirement but is
-reported as overbroad posture for reviewer consideration.
+reported as overbroad posture for reviewer consideration. When jobs have their
+own `permissions` blocks, the detector evaluates the job that contains the
+publishing or attestation signals instead of relying only on the first
+permission key in the workflow.
 
 ## Verification limitations
 

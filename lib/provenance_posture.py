@@ -126,6 +126,51 @@ def _permission_summary(text: str) -> dict[str, str]:
     }
 
 
+def _top_level_text(text: str) -> str:
+    match = re.search(r"^jobs\s*:\s*(?:#.*)?$", text, re.IGNORECASE | re.MULTILINE)
+    return text[: match.start()] if match else text
+
+
+def _job_blocks(text: str) -> list[tuple[str, str]]:
+    jobs_started = False
+    current_name = ""
+    current_lines: list[str] = []
+    blocks: list[tuple[str, str]] = []
+    for line in text.splitlines():
+        if not jobs_started:
+            if re.match(r"^jobs\s*:\s*(?:#.*)?$", line, re.IGNORECASE):
+                jobs_started = True
+            continue
+        match = re.match(r"^  ([A-Za-z0-9_-]+)\s*:\s*(?:#.*)?$", line)
+        if match:
+            if current_name:
+                blocks.append((current_name, "\n".join(current_lines)))
+            current_name = match.group(1)
+            current_lines = [line]
+        elif current_name:
+            current_lines.append(line)
+    if current_name:
+        blocks.append((current_name, "\n".join(current_lines)))
+    return blocks
+
+
+def _merge_permissions(base: dict[str, str], override: dict[str, str]) -> dict[str, str]:
+    merged = dict(base)
+    for key, value in override.items():
+        if value:
+            merged[key] = value
+    return merged
+
+
+def _permission_options(text: str) -> list[tuple[str, dict[str, str]]]:
+    global_permissions = _permission_summary(_top_level_text(text))
+    relevant_jobs = []
+    for job_name, job_text in _job_blocks(text):
+        if _categories(job_text) or ATTESTATION_RE.search(job_text) or SBOM_GENERATION_RE.search(job_text):
+            relevant_jobs.append((f"job:{job_name}", _merge_permissions(global_permissions, _permission_summary(job_text))))
+    return relevant_jobs or [("workflow", global_permissions)]
+
+
 def _categories(text: str) -> list[str]:
     found = []
     for category, pattern in CATEGORY_PATTERNS:
@@ -176,6 +221,14 @@ def _permission_findings(categories: list[str], permissions: dict[str, str]) -> 
     return gaps, warnings
 
 
+def _best_permission_assessment(categories: list[str], text: str) -> dict[str, Any]:
+    assessments = []
+    for scope, permissions in _permission_options(text):
+        gaps, warnings = _permission_findings(categories, permissions)
+        assessments.append({"scope": scope, "permissions": permissions, "permission_gaps": gaps, "permission_warnings": warnings})
+    return min(assessments, key=lambda item: (len(item["permission_gaps"]), len(item["permission_warnings"]), item["scope"]))
+
+
 def _recommendations(
     *,
     categories: list[str],
@@ -214,8 +267,10 @@ def _workflow_posture(run_dir: Path, repo_dir: Path, path: Path) -> dict[str, An
     has_attestation = bool(ATTESTATION_RE.search(text))
     has_sbom_attestation = bool(SBOM_ATTESTATION_RE.search(text))
     has_sbom_generation = bool(SBOM_GENERATION_RE.search(text))
-    permissions = _permission_summary(text)
-    permission_gaps, permission_warnings = _permission_findings(categories, permissions)
+    permission_assessment = _best_permission_assessment(categories, text)
+    permissions = permission_assessment["permissions"]
+    permission_gaps = permission_assessment["permission_gaps"]
+    permission_warnings = permission_assessment["permission_warnings"]
     recommendations = _recommendations(
         categories=categories,
         has_attestation=has_attestation,
@@ -232,6 +287,7 @@ def _workflow_posture(run_dir: Path, repo_dir: Path, path: Path) -> dict[str, An
         "has_sbom_generation": has_sbom_generation,
         "has_sbom_attestation": has_sbom_attestation,
         "permissions": permissions,
+        "permission_scope": permission_assessment["scope"],
         "permission_gaps": permission_gaps,
         "permission_warnings": permission_warnings,
         "risk": "medium" if recommendations else "informational",
@@ -312,6 +368,7 @@ def render_provenance_markdown(data: dict[str, Any]) -> str:
                 f"- Attestation detected: {bool(workflow.get('has_attestation'))}",
                 f"- SBOM generation detected: {bool(workflow.get('has_sbom_generation'))}",
                 f"- SBOM attestation detected: {bool(workflow.get('has_sbom_attestation'))}",
+                f"- Permission scope: {workflow.get('permission_scope') or 'workflow'}",
                 f"- Permission gaps: {', '.join(workflow.get('permission_gaps') or []) or 'none detected'}",
                 f"- Permission warnings: {', '.join(workflow.get('permission_warnings') or []) or 'none detected'}",
             ]

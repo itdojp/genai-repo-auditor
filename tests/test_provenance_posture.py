@@ -160,6 +160,47 @@ class ProvenancePostureTests(unittest.TestCase):
         self.assertFalse(workflow["has_attestation"])
         self.assertIn("packages: expected write, observed missing", workflow["permission_gaps"])
 
+    def test_job_scoped_release_permissions_are_used_for_publishing_job(self) -> None:
+        run_dir = self.copy_run()
+        self.write_workflow(
+            run_dir,
+            "multi-job-release.yml",
+            "name: release\n"
+            "on:\n"
+            "  release:\n"
+            "    types: [published]\n"
+            "permissions:\n"
+            "  contents: read\n"
+            "jobs:\n"
+            "  test:\n"
+            "    permissions:\n"
+            "      id-token: none\n"
+            "      attestations: none\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: python -m unittest\n"
+            "  release:\n"
+            "    permissions:\n"
+            "      id-token: write\n"
+            "      contents: read\n"
+            "      attestations: write\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: make release && tar czf dist/app.tar.gz dist/app\n"
+            "      - uses: actions/attest@v4\n"
+            "        with:\n"
+            "          subject-path: dist/app.tar.gz\n"
+            "      - uses: softprops/action-gh-release@v2\n"
+            "        with:\n"
+            "          files: dist/app.tar.gz\n",
+        )
+
+        data = write_provenance_posture_artifacts(run_dir)
+        self.assertEqual("attested", data["status"])
+        workflow = data["workflows"][0]
+        self.assertEqual("job:release", workflow["permission_scope"])
+        self.assertEqual([], workflow["permission_gaps"])
+
     def test_sbom_attestation_is_detected(self) -> None:
         run_dir = self.copy_run()
         self.write_workflow(
