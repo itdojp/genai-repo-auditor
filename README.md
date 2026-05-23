@@ -241,6 +241,7 @@ Do not use this project for:
 - [`docs/REPORTING_AND_STORE.md`](docs/REPORTING_AND_STORE.md)
 - [`docs/REPORT_CONTRACT.md`](docs/REPORT_CONTRACT.md)
 - [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md)
+- [`docs/ADVERSARIAL_FIXTURES.md`](docs/ADVERSARIAL_FIXTURES.md)
 - [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md)
 - [`docs/CODEX_WORK_INSTRUCTIONS.md`](docs/CODEX_WORK_INSTRUCTIONS.md)
 
