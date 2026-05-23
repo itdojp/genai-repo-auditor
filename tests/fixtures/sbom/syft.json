@@ -1,0 +1,35 @@
+{
+  "artifacts": [
+    {
+      "id": "app-id",
+      "name": "demo-app",
+      "version": "0.1.0",
+      "type": "binary",
+      "purl": "pkg:generic/demo-app@0.1.0",
+      "licenses": [{"value": "Apache-2.0"}],
+      "locations": [{"path": "/workspace/package-lock.json"}]
+    },
+    {
+      "id": "direct-id",
+      "name": "direct-lib",
+      "version": "1.2.3",
+      "type": "npm",
+      "purl": "pkg:npm/direct-lib@1.2.3",
+      "licenses": [{"value": "MIT"}],
+      "locations": [{"path": "/workspace/package-lock.json"}]
+    },
+    {
+      "id": "transitive-id",
+      "name": "transitive-lib",
+      "version": "4.5.6",
+      "type": "npm",
+      "purl": "pkg:npm/transitive-lib@4.5.6",
+      "licenses": [{"value": "BSD-3-Clause"}],
+      "locations": [{"path": "/workspace/package-lock.json"}]
+    }
+  ],
+  "artifactRelationships": [
+    {"parent": "app-id", "child": "direct-id", "type": "depends-on"},
+    {"parent": "transitive-id", "child": "direct-id", "type": "dependency-of"}
+  ]
+}

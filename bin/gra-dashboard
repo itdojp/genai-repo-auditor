@@ -18,7 +18,7 @@ STATUSES = ['Confirmed', 'Probable', 'Potential', 'Needs human review', 'Informa
 
 
 def h(x) -> str:
-    return html.escape(str(x or ''))
+    return html.escape('' if x is None else str(x))
 
 
 def main() -> int:
@@ -39,11 +39,16 @@ def main() -> int:
     scanner_results = scanner_index.get('results') or []
     supply_chain_posture = load_json(reports / 'supply-chain-posture.json', {}) or {}
     supply_chain_checks = [c for c in supply_chain_posture.get('checks') or [] if isinstance(c, dict)]
+    dependencies_data = load_json(reports / 'dependencies.json', {}) or {}
+    dependency_components = [c for c in dependencies_data.get('components') or [] if isinstance(c, dict)]
+    dependency_vulnerabilities = [v for v in dependencies_data.get('vulnerabilities') or [] if isinstance(v, dict)]
 
     sev_counts = Counter(f.get('severity', 'Unknown') for f in findings)
     status_counts = Counter(f.get('status', 'Unknown') for f in findings)
     target_status_counts = Counter(t.get('status', 'unknown') for t in targets)
     supply_chain_risk_counts = Counter(c.get('risk', 'informational') for c in supply_chain_checks)
+    dependency_scope_counts = Counter(c.get('scope', 'unknown') for c in dependency_components)
+    dependency_vuln_severity_counts = Counter(v.get('severity', 'Unknown') for v in dependency_vulnerabilities)
     taxonomy_counts = Counter()
     for item in findings + targets:
         for ref in item.get('taxonomies') or []:
@@ -76,6 +81,22 @@ def main() -> int:
             f"<td>{h(c.get('reason'))}</td>"
             f"<td>{h(c.get('remediation'))}</td>"
             f"<td>{h(c.get('target_recommended'))}</td>"
+            "</tr>"
+        )
+
+    dependency_vuln_rows = []
+    severity_order = {'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Informational': 4, 'Unknown': 5}
+    for v in sorted(dependency_vulnerabilities, key=lambda item: (severity_order.get(str(item.get('severity')), 9), str(item.get('id')), str(item.get('component'))))[:20]:
+        paths = v.get('dependency_paths') or []
+        path_text = '; '.join(' -> '.join(str(part) for part in path) for path in paths if isinstance(path, list))
+        dependency_vuln_rows.append(
+            "<tr>"
+            f"<td>{h(v.get('id'))}</td>"
+            f"<td>{h(v.get('severity'))}</td>"
+            f"<td>{h(v.get('component'))}</td>"
+            f"<td>{h(v.get('fixed_version') or 'not provided')}</td>"
+            f"<td>{h(v.get('source'))}</td>"
+            f"<td>{h(path_text or 'not provided')}</td>"
             "</tr>"
         )
 
@@ -123,6 +144,12 @@ def main() -> int:
 <p>{h(supply_chain_posture.get('summary') or 'No OpenSSF Scorecard posture artifact ingested.')}</p>
 <div class='cards'>{''.join(f"<div class='card'><strong>{h(k)}</strong><br>{v}</div>" for k, v in sorted(supply_chain_risk_counts.items())) or "<div class='card'><strong>Checks</strong><br>0</div>"}</div>
 <table><thead><tr><th>Check</th><th>Score</th><th>Scorecard risk</th><th>Assessed risk</th><th>Reason</th><th>Remediation</th><th>Target?</th></tr></thead><tbody>{''.join(supply_chain_rows) or '<tr><td colspan="7">No Scorecard posture checks ingested.</td></tr>'}</tbody></table>
+<h2>Dependency risk</h2>
+<p>Status: <code>{h(dependencies_data.get('status') or 'not ingested')}</code>; components: <code>{h(dependencies_data.get('component_count') if dependencies_data else 0)}</code>; vulnerabilities: <code>{h(dependencies_data.get('vulnerability_count') if dependencies_data else 0)}</code></p>
+<p>{h(dependencies_data.get('summary') or 'No SBOM/dependency graph artifact ingested.')}</p>
+<h3>Dependency scopes</h3><div class='cards'>{''.join(f"<div class='card'><strong>{h(k)}</strong><br>{v}</div>" for k, v in sorted(dependency_scope_counts.items())) or "<div class='card'><strong>Components</strong><br>0</div>"}</div>
+<h3>Dependency vulnerabilities</h3><div class='cards'>{''.join(f"<div class='card'><strong>{h(k)}</strong><br>{v}</div>" for k, v in sorted(dependency_vuln_severity_counts.items())) or "<div class='card'><strong>Vulnerabilities</strong><br>0</div>"}</div>
+<table><thead><tr><th>ID</th><th>Severity</th><th>Component</th><th>Fixed version</th><th>Source</th><th>Dependency paths</th></tr></thead><tbody>{''.join(dependency_vuln_rows) or '<tr><td colspan="6">No dependency vulnerability records ingested.</td></tr>'}</tbody></table>
 <h2>Scanner results</h2>
 <table><thead><tr><th>Tool</th><th>Format</th><th>Path</th><th>Imported at</th><th>Note</th></tr></thead><tbody>{''.join(scanner_rows) or '<tr><td colspan="5">No scanner results ingested.</td></tr>'}</tbody></table>
 </body></html>"""

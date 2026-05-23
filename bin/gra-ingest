@@ -11,6 +11,7 @@ LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
 from gralib import load_context, load_json, utc_now, write_json
+from dependency_posture import should_ingest_dependencies, write_dependency_artifacts
 from scanner_normalize import normalize_scanner_file
 from scorecard_posture import append_scorecard_posture_targets, write_scorecard_posture_artifacts
 
@@ -78,6 +79,15 @@ def main() -> int:
     if safe_tool in {'scorecard', 'openssf-scorecard', 'ossf-scorecard'}:
         write_scorecard_posture_artifacts(run_dir=run_dir, raw_path=dest, raw_result_ref=raw_result_ref)
         added_scorecard_targets = append_scorecard_posture_targets(run_dir)
+    dependency_data = None
+    if should_ingest_dependencies(safe_tool=safe_tool, fmt=fmt):
+        dependency_data = write_dependency_artifacts(
+            run_dir=run_dir,
+            raw_path=dest,
+            raw_result_ref=raw_result_ref,
+            tool=args.tool,
+            requested_format=fmt,
+        )
     print(f'Ingested {src} -> {dest}')
     print(f'Normalized leads -> {normalized_path}')
     if safe_tool in {'scorecard', 'openssf-scorecard', 'ossf-scorecard'}:
@@ -85,6 +95,9 @@ def main() -> int:
         print(f'Wrote {reports / "supply-chain-posture.md"}')
         if added_scorecard_targets:
             print(f'Added {len(added_scorecard_targets)} scorecard-posture target(s)')
+    if dependency_data is not None:
+        print(f'Wrote {reports / "dependencies.json"}')
+        print(f'Wrote {reports / "DEPENDENCY_RISK.md"}')
     print(f'Updated {index_path}')
     return 0
 

@@ -32,6 +32,7 @@ TARGET_STATUSES = {"queued", "in_progress", "reviewed", "skipped", "needs_human_
 TARGET_RISKS = {"critical", "high", "medium", "low", "informational"}
 SCANNER_RESULTS_DIR = Path("reports/scanner-results")
 NORMALIZED_SCANNER_RESULTS_DIR = SCANNER_RESULTS_DIR / "normalized"
+DEPENDENCIES_PATH = Path("reports/dependencies.json")
 REQUIRED_TOP = ["run_id", "repo", "commit", "generated_at", "findings"]
 REQUIRED_FINDING = [
     "id", "fingerprint", "title", "severity", "confidence", "status", "category",
@@ -332,6 +333,81 @@ def validate_scanner_index(run_dir: Path, errors: List[str]) -> bool:
     return True
 
 
+def validate_dependencies(run_dir: Path, errors: List[str]) -> bool:
+    dependencies_path = run_dir / DEPENDENCIES_PATH
+    if not dependencies_path.exists():
+        return False
+    try:
+        dependencies_data = json.loads(dependencies_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        errors.append(f"dependencies.json invalid JSON: {e}")
+        return False
+
+    validate_schema(dependencies_data, load_schema("dependencies.schema.json"), "dependencies", errors)
+    validate_generated_at(dependencies_data.get("generated_at"), "dependencies.generated_at", errors)
+
+    components = dependencies_data.get("components")
+    if not isinstance(components, list):
+        errors.append("dependencies.components: components must be a list")
+        return False
+    vulnerabilities = dependencies_data.get("vulnerabilities")
+    if not isinstance(vulnerabilities, list):
+        errors.append("dependencies.vulnerabilities: vulnerabilities must be a list")
+        return False
+
+    component_ids: set[str] = set()
+    for index, component in enumerate(components):
+        path = f"dependencies.components[{index}]"
+        if not isinstance(component, dict):
+            errors.append(f"{path}: component must be an object")
+            continue
+        cid = str(component.get("id") or "").strip()
+        if not cid:
+            errors.append(f"{path}.id: component id must not be empty")
+        elif cid in component_ids:
+            errors.append(f"{path}.id: duplicate component id {cid}")
+        component_ids.add(cid)
+        if component.get("scope") not in {"root", "direct", "transitive", "unknown"}:
+            errors.append(f"{path}.scope: invalid scope {component.get('scope')}")
+        if not isinstance(component.get("licenses"), list):
+            errors.append(f"{path}.licenses: licenses must be list")
+        paths = component.get("dependency_paths")
+        if not isinstance(paths, list):
+            errors.append(f"{path}.dependency_paths: dependency_paths must be list")
+        else:
+            for path_index, dep_path in enumerate(paths):
+                if not isinstance(dep_path, list) or not all(isinstance(item, str) and item for item in dep_path):
+                    errors.append(f"{path}.dependency_paths[{path_index}]: dependency path must be a list of non-empty strings")
+
+    if dependencies_data.get("component_count") != len(components):
+        errors.append("dependencies.component_count: value does not match components length")
+    if dependencies_data.get("vulnerability_count") != len(vulnerabilities):
+        errors.append("dependencies.vulnerability_count: value does not match vulnerabilities length")
+
+    for index, vulnerability in enumerate(vulnerabilities):
+        path = f"dependencies.vulnerabilities[{index}]"
+        if not isinstance(vulnerability, dict):
+            errors.append(f"{path}: vulnerability must be an object")
+            continue
+        vid = str(vulnerability.get("id") or "").strip()
+        if not vid:
+            errors.append(f"{path}.id: vulnerability id must not be empty")
+        component = str(vulnerability.get("component") or "").strip()
+        if component and component not in component_ids:
+            errors.append(f"{path}.component: component {component} is not present in dependencies.components")
+        if vulnerability.get("severity") not in {"Critical", "High", "Medium", "Low", "Informational", "Unknown"}:
+            errors.append(f"{path}.severity: invalid severity {vulnerability.get('severity')}")
+        paths = vulnerability.get("dependency_paths")
+        if not isinstance(paths, list):
+            errors.append(f"{path}.dependency_paths: dependency_paths must be list")
+        else:
+            for path_index, dep_path in enumerate(paths):
+                if not isinstance(dep_path, list) or not all(isinstance(item, str) and item for item in dep_path):
+                    errors.append(f"{path}.dependency_paths[{path_index}]: dependency path must be a list of non-empty strings")
+
+    return True
+
+
 def validate_affected_locations(finding: Dict[str, Any], path: str, errors: List[str]) -> None:
     locs = finding.get("affected_locations")
     if not isinstance(locs, list):
@@ -451,6 +527,7 @@ def main() -> int:
 
     validate_targets(run_dir, errors, taxonomy_profiles, taxonomy_labels, taxonomy_profiles_loaded)
     scanner_index_validated = validate_scanner_index(run_dir, errors)
+    dependencies_validated = validate_dependencies(run_dir, errors)
 
     if errors:
         for e in errors:
@@ -464,6 +541,8 @@ def main() -> int:
         print("Targets: validated")
     if scanner_index_validated:
         print("Scanner index: validated")
+    if dependencies_validated:
+        print("Dependencies: validated")
     return 0
 
 

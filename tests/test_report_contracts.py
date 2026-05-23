@@ -120,6 +120,7 @@ class ReportContractTests(unittest.TestCase):
         target_schema = self.load_json(SCHEMAS / "targets.schema.json")
         scanner_schema = self.load_json(SCHEMAS / "scanner-index.schema.json")
         manifest_schema = self.load_json(SCHEMAS / "run-manifest.schema.json")
+        dependencies_schema = self.load_json(SCHEMAS / "dependencies.schema.json")
 
         self.assertTrue(set(VALIDATOR.REQUIRED_TOP).issubset(findings_schema["required"]))
         finding_required = findings_schema["properties"]["findings"]["items"]["required"]
@@ -138,6 +139,32 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual({"tool", "path", "format", "imported_at"}, set(scanner_result["required"]))
         for normalized_field in ["normalized_path", "normalized_leads_count", "normalization"]:
             self.assertIn(normalized_field, scanner_result["properties"])
+
+        self.assertEqual(
+            {
+                "schema_version",
+                "run_id",
+                "repo",
+                "commit",
+                "generated_at",
+                "source",
+                "component_count",
+                "vulnerability_count",
+                "components",
+                "vulnerabilities",
+            },
+            set(dependencies_schema["required"]),
+        )
+        component_schema = dependencies_schema["properties"]["components"]["items"]
+        self.assertEqual(
+            {"id", "name", "version", "ecosystem", "scope", "licenses", "manifest", "dependency_paths"},
+            set(component_schema["required"]),
+        )
+        vulnerability_schema = dependencies_schema["properties"]["vulnerabilities"]["items"]
+        self.assertEqual(
+            {"id", "component", "severity", "fixed_version", "source", "evidence_ref", "dependency_paths"},
+            set(vulnerability_schema["required"]),
+        )
 
         self.assertEqual(
             {

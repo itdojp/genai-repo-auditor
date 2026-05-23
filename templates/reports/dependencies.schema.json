@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor Dependencies",
+  "type": "object",
+  "required": ["schema_version", "run_id", "repo", "commit", "generated_at", "source", "component_count", "vulnerability_count", "components", "vulnerabilities"],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "run_id": {"type": "string"},
+    "repo": {"type": "string"},
+    "branch": {"type": "string"},
+    "commit": {"type": "string"},
+    "generated_at": {"type": "string"},
+    "status": {"type": "string"},
+    "summary": {"type": "string"},
+    "source": {
+      "type": "object",
+      "required": ["tool", "format", "detected_format", "raw_result_ref"],
+      "properties": {
+        "tool": {"type": "string"},
+        "format": {"type": "string"},
+        "detected_format": {"type": "string"},
+        "raw_result_ref": {"type": "string"}
+      }
+    },
+    "component_count": {"type": "integer", "minimum": 0},
+    "vulnerability_count": {"type": "integer", "minimum": 0},
+    "scope_counts": {"type": "object"},
+    "parse_error": {"type": "string"},
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "version", "ecosystem", "scope", "licenses", "manifest", "dependency_paths"],
+        "properties": {
+          "id": {"type": "string"},
+          "name": {"type": "string"},
+          "version": {"type": "string"},
+          "ecosystem": {"type": "string"},
+          "scope": {"enum": ["root", "direct", "transitive", "unknown"]},
+          "licenses": {"type": "array", "items": {"type": "string"}},
+          "manifest": {"type": "string"},
+          "dependency_paths": {
+            "type": "array",
+            "items": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "vulnerabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "component", "severity", "fixed_version", "source", "evidence_ref", "dependency_paths"],
+        "properties": {
+          "id": {"type": "string"},
+          "component": {"type": "string"},
+          "severity": {"enum": ["Critical", "High", "Medium", "Low", "Informational", "Unknown"]},
+          "fixed_version": {"type": "string"},
+          "source": {"type": "string"},
+          "evidence_ref": {"type": "string"},
+          "dependency_paths": {
+            "type": "array",
+            "items": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "references": {"type": "array", "items": {"type": "string"}}
+  }
+}

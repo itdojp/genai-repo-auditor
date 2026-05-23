@@ -17,6 +17,7 @@ Read first:
 - {{SCANNER_INDEX}}
 - Normalized lead files referenced by `normalized_path` in scanner-index.json
 - {{REPORTS_DIR}}/supply-chain-posture.json if Scorecard output was ingested
+- {{REPORTS_DIR}}/dependencies.json if SBOM/dependency graph output was ingested
 - Relevant repository files under {{TARGET_REPO_DIR}}/
 
 Rules:
@@ -26,6 +27,7 @@ Rules:
 - Do not report a scanner result unless repository context supports it.
 - If a result needs deeper review, create or update {{REPORTS_DIR}}/targets.json instead of overclaiming.
 - Treat Scorecard supply-chain posture as target-queue input unless repository context confirms a concrete finding.
+- Treat dependency vulnerability records as evidence until manifest context, dependency paths, and reachability are reviewed.
 - Do not modify target repository files.
 - No network, production/staging, external scanning, live exploitation, dependency installation, credential operations, or weaponized exploit code.
 - Do not quote or reconstruct full secret values. Keep any secret evidence redacted.
