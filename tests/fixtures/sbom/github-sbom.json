@@ -1,0 +1,37 @@
+{
+  "sbom": {
+    "SPDXID": "SPDXRef-DOCUMENT",
+    "spdxVersion": "SPDX-2.3",
+    "creationInfo": {
+      "created": "2026-05-23T00:00:00Z",
+      "creators": ["Tool: GitHub.com-Dependency-Graph"]
+    },
+    "name": "github/example",
+    "dataLicense": "CC0-1.0",
+    "documentNamespace": "https://spdx.org/spdxdocs/example",
+    "packages": [
+      {
+        "name": "github/example",
+        "SPDXID": "SPDXRef-Repository",
+        "versionInfo": "main",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "externalRefs": [{"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:github/example@main"}]
+      },
+      {
+        "name": "rails",
+        "SPDXID": "SPDXRef-rails",
+        "versionInfo": "7.0.0",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "MIT",
+        "licenseDeclared": "MIT",
+        "externalRefs": [{"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:gem/rails@7.0.0"}]
+      }
+    ],
+    "relationships": [
+      {"relationshipType": "DESCRIBES", "spdxElementId": "SPDXRef-DOCUMENT", "relatedSpdxElement": "SPDXRef-Repository"},
+      {"relationshipType": "DEPENDS_ON", "spdxElementId": "SPDXRef-Repository", "relatedSpdxElement": "SPDXRef-rails"}
+    ]
+  }
+}

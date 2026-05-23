@@ -1,0 +1,46 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "metadata": {
+    "component": {
+      "bom-ref": "app",
+      "type": "application",
+      "name": "demo-app",
+      "version": "0.1.0",
+      "purl": "pkg:github/example/demo@0.1.0"
+    }
+  },
+  "components": [
+    {
+      "bom-ref": "lib-a",
+      "type": "library",
+      "name": "lib-a",
+      "version": "1.0.0",
+      "purl": "pkg:pypi/lib-a@1.0.0",
+      "licenses": [{"license": {"id": "MIT"}}],
+      "properties": [{"name": "manifest", "value": "requirements.txt"}]
+    },
+    {
+      "bom-ref": "lib-b",
+      "type": "library",
+      "name": "lib-b",
+      "version": "2.0.0",
+      "purl": "pkg:pypi/lib-b@2.0.0",
+      "licenses": [{"license": {"id": "Apache-2.0"}}]
+    }
+  ],
+  "dependencies": [
+    {"ref": "app", "dependsOn": ["lib-a"]},
+    {"ref": "lib-a", "dependsOn": ["lib-b"]},
+    {"ref": "lib-b", "dependsOn": []}
+  ],
+  "vulnerabilities": [
+    {
+      "id": "GHSA-demo-0001",
+      "source": {"name": "osv"},
+      "ratings": [{"severity": "high"}],
+      "recommendation": "Upgrade to 2.0.1",
+      "affects": [{"ref": "lib-b", "versions": [{"version": "2.0.1", "status": "fixed"}]}]
+    }
+  ]
+}

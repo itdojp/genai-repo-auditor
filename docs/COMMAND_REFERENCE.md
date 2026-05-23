@@ -24,7 +24,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Batch operation | `gra-batch` | Batch metadata, per-repository logs, `batch-results.json` |
 | Target queue | `gra-targets` | `reports/targets.json`, target queue updates |
 | Research / recon / variant analysis | `gra-recon`, `gra-research`, `gra-variant` | Recon notes, target research, findings updates, variant reports |
-| Scanner triage | `gra-ingest`, `gra-scanner-triage` | Raw scanner copies, redacted normalized leads, scanner index, Scorecard posture artifacts, triage output |
+| Scanner triage | `gra-ingest`, `gra-scanner-triage` | Raw scanner copies, redacted normalized leads, scanner index, Scorecard posture artifacts, dependency posture artifacts, triage output |
 | Validation | `gra-validate-report` | Report contract validation result |
 | Reporting / persistence | `gra-dashboard`, `gra-sarif`, `gra-store`, `gra-index` | HTML dashboard, SARIF, SQLite store, run index |
 | Issue workflow | `gra-issues` | Dry-run previews or GitHub Issues after human review |
@@ -157,20 +157,22 @@ gra-variant --run runs/OWNER__REPO/RUN_ID --source-file notes/root-cause.md --mo
 
 | Field | Details |
 |---|---|
-| Purpose | Copy scanner output into a run, normalize leads, redact sensitive values, update the scanner index, and produce deterministic supply-chain posture artifacts for OpenSSF Scorecard JSON. |
+| Purpose | Copy scanner output into a run, normalize leads, redact sensitive values, update the scanner index, and produce deterministic posture artifacts for OpenSSF Scorecard JSON and SBOM/dependency graph JSON. |
 | Workflow category | Scanner workflow. |
 | Required inputs | `--run RUN_DIR --tool TOOL --file FILE`. |
-| Key options | `--format FORMAT` (`auto` by default), `--note NOTE`. Use `--tool scorecard` for OpenSSF Scorecard JSON posture ingestion. |
-| Generated outputs | Raw scanner result copy under `reports/scanner-results/`, normalized lead JSON under `reports/scanner-results/normalized/`, and `reports/scanner-results/scanner-index.json`. With `--tool scorecard` / `openssf-scorecard` / `ossf-scorecard`, also writes `reports/supply-chain-posture.json`, `reports/supply-chain-posture.md`, and may append deterministic `TGT-SCORECARD-NNN` targets to `reports/targets.json`. |
+| Key options | `--format FORMAT` (`auto` by default), `--note NOTE`. Use `--tool scorecard` for OpenSSF Scorecard JSON posture ingestion, or `--tool sbom` / `syft` / dependency formats with `--format cyclonedx`, `spdx`, `syft`, or `auto` for SBOM/dependency graph ingestion. Trivy SBOM exports are ingested when the format is CycloneDX or SPDX. |
+| Generated outputs | Raw scanner result copy under `reports/scanner-results/`, normalized lead JSON under `reports/scanner-results/normalized/`, and `reports/scanner-results/scanner-index.json`. With `--tool scorecard` / `openssf-scorecard` / `ossf-scorecard`, also writes `reports/supply-chain-posture.json`, `reports/supply-chain-posture.md`, and may append deterministic `TGT-SCORECARD-NNN` targets to `reports/targets.json`. With `--tool sbom` or dependency formats, also writes `reports/dependencies.json` and `reports/DEPENDENCY_RISK.md`. |
 | Exit status behavior | `0` for successful ingest; `2` when the source file is missing. JSON/context or filesystem failures surface as non-zero Python errors. |
-| Security / disclosure cautions | Scanner output is untrusted input. The command writes redacted normalized leads and redacted Scorecard posture summaries, but raw scanner copies can still contain sensitive data; keep them local and do not commit them. Scorecard posture does not automatically create findings. |
-| Related docs | [`docs/SCANNER_INTEGRATION.md`](SCANNER_INTEGRATION.md), [`docs/SCORECARD_INGESTION.md`](SCORECARD_INGESTION.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md). |
+| Security / disclosure cautions | Scanner output is untrusted input. The command writes redacted normalized leads and redacted posture summaries, but raw scanner copies can still contain sensitive data; keep them local and do not commit them. Scorecard and dependency posture do not automatically create findings. SBOMs can reveal internal package choices and versions. |
+| Related docs | [`docs/SCANNER_INTEGRATION.md`](SCANNER_INTEGRATION.md), [`docs/SCORECARD_INGESTION.md`](SCORECARD_INGESTION.md), [`docs/DEPENDENCY_INGESTION.md`](DEPENDENCY_INGESTION.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md). |
 
 Example:
 
 ```bash
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool semgrep --file scanner-output.json --format json
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool scorecard --file scorecard.json --format json
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool sbom --file bom.json --format cyclonedx
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool syft --file syft.json --format syft
 ```
 
 ## `gra-scanner-triage`
@@ -196,7 +198,7 @@ gra-scanner-triage --run runs/OWNER__REPO/RUN_ID --model gpt-5.5 --effort xhigh
 
 | Field | Details |
 |---|---|
-| Purpose | Validate `findings.json`, optional `targets.json`, issue body references, schema-required fields, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
+| Purpose | Validate `findings.json`, optional `targets.json`, optional scanner index artifacts, optional dependency artifacts, issue body references, schema-required fields, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
 | Workflow category | Validation workflow. |
 | Required inputs | One of `--run RUN_DIR` or `--findings PATH`. |
 | Key options | `--run RUN_DIR`, `--findings PATH`. |
@@ -216,7 +218,7 @@ gra-validate-report --findings runs/OWNER__REPO/RUN_ID/reports/findings.json
 
 | Field | Details |
 |---|---|
-| Purpose | Generate a local HTML dashboard summarizing a run's findings, target queue, Scorecard supply-chain posture, and scanner result index. |
+| Purpose | Generate a local HTML dashboard summarizing a run's findings, target queue, Scorecard supply-chain posture, dependency risk posture, and scanner result index. |
 | Workflow category | Reporting workflow. |
 | Required inputs | `--run RUN_DIR`. |
 | Key options | `--out OUT` to override the default `reports/dashboard.html`. |

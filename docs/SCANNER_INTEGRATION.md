@@ -12,6 +12,7 @@ grype
 checkov
 codeql
 scorecard
+sbom
 custom
 ```
 
@@ -22,6 +23,7 @@ and creates a bounded, redacted normalized lead file for triage.
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool semgrep --file semgrep.json --format json
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool codeql --file codeql.sarif --format sarif
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool scorecard --file scorecard.json --format json
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool sbom --file bom.json --format cyclonedx
 ```
 
 Ingested files are indexed under `reports/scanner-results/scanner-index.json`.
@@ -81,6 +83,32 @@ reports/supply-chain-posture.md
 Low-scoring mapped checks can append deterministic `TGT-SCORECARD-NNN` target
 queue entries. Scorecard posture entries are leads, not confirmed findings. See
 [`docs/SCORECARD_INGESTION.md`](SCORECARD_INGESTION.md) for the full workflow.
+
+## SBOM and dependency graph posture ingestion
+
+SBOM/dependency graph JSON is handled as scanner ingestion plus deterministic
+dependency risk reporting. Supported inputs include CycloneDX JSON, SPDX 2.3
+JSON, GitHub Dependency Graph SBOM export JSON, Trivy SBOM exports in CycloneDX
+or SPDX form, and best-effort Syft native JSON.
+
+```bash
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool sbom --file bom.json --format cyclonedx
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool sbom --file sbom.spdx.json --format spdx
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool syft --file syft.json --format syft
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool trivy --file trivy-cyclonedx.json --format cyclonedx
+```
+
+In addition to the scanner index and normalized leads, this writes:
+
+```text
+reports/dependencies.json
+reports/DEPENDENCY_RISK.md
+```
+
+Dependency vulnerability records are evidence, not confirmed findings. License
+data is included for posture context and does not create security Issues by
+default. See [`docs/DEPENDENCY_INGESTION.md`](DEPENDENCY_INGESTION.md) for the
+full workflow and privacy considerations.
 
 When `scanner-index.json` is present, validate it before triage:
 

@@ -10,6 +10,8 @@ A target should be smaller than a repository audit and larger than a single file
 - GitHub Actions `pull_request_target` and token-permission risks
 - low-scoring OpenSSF Scorecard checks such as `Dangerous-Workflow`,
   `Token-Permissions`, or `SAST`
+- vulnerable direct dependencies or high-severity transitive dependencies from
+  normalized SBOM/dependency graph artifacts
 - admin API privilege boundaries
 - outbound URL fetchers and SSRF-relevant paths
 

@@ -6,6 +6,9 @@
 決定的に生成する補助 posture artifact です。`supply-chain-posture.md` /
 `supply-chain-posture.json` は `gra-ingest --tool scorecard` が OpenSSF
 Scorecard JSON から決定的に生成する補助 posture artifact です。
+`DEPENDENCY_RISK.md` / `dependencies.json` は `gra-ingest --tool sbom` が
+SBOM / dependency graph JSON から決定的に生成する補助 dependency posture
+artifact です。
 
 ```text
 reports/
@@ -16,6 +19,8 @@ reports/
   provenance-posture.json
   supply-chain-posture.md
   supply-chain-posture.json
+  DEPENDENCY_RISK.md
+  dependencies.json
   FINDINGS.md
   findings.json
   AUDIT_LOG.md
@@ -69,6 +74,10 @@ not treated as a finding contract. Deterministic Scorecard ingestion records
 `findings_created: 0` and appends target-queue entries only for bounded
 follow-up checks.
 
+`dependencies.json` is a local dependency posture artifact produced by
+`gra-ingest --tool sbom` or compatible dependency formats. It is advisory input
+for dependency risk review and is not treated as a finding contract.
+
 Important constraints:
 
 - `generated_at` must be parseable ISO-8601.
@@ -89,6 +98,11 @@ Important constraints:
 - If `reports/supply-chain-posture.json` exists, its Scorecard check reasons and
   details must be treated as posture leads. Promote them to findings only after
   repository context confirms concrete file/line evidence and impact.
+- If `reports/dependencies.json` exists, it must match
+  `templates/reports/dependencies.schema.json`; component and vulnerability
+  counts must match array lengths; component IDs must be unique; vulnerability
+  component references must resolve to normalized components; dependency paths
+  must be lists of non-empty strings.
 
 `issue_body_file`, when present, must point to a regular `.md` file under
 `reports/issue-drafts/`, for example:
