@@ -50,6 +50,10 @@ The detector reports:
   attestations, or expected permissions;
 - `not_applicable` when no applicable publishing workflow is detected.
 
+Permission checks distinguish missing capability from least-privilege warnings:
+for example, `contents: write` satisfies a `contents: read` requirement but is
+reported as overbroad posture for reviewer consideration.
+
 ## Verification limitations
 
 This project is local-first. The provenance posture pass can identify workflow

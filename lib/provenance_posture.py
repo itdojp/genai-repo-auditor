@@ -109,8 +109,15 @@ def _permission_value(text: str, name: str) -> str:
     return match.group(1).lower() if match else ""
 
 
+def _global_permission_value(text: str) -> str:
+    pattern = re.compile(r"^\s*permissions\s*:\s*(read-all|write-all)\s*(?:#.*)?$", re.IGNORECASE | re.MULTILINE)
+    match = pattern.search(text)
+    return match.group(1).lower() if match else ""
+
+
 def _permission_summary(text: str) -> dict[str, str]:
     return {
+        "all": _global_permission_value(text),
         "id-token": _permission_value(text, "id-token"),
         "contents": _permission_value(text, "contents"),
         "attestations": _permission_value(text, "attestations"),
@@ -127,22 +134,46 @@ def _categories(text: str) -> list[str]:
     return found
 
 
-def _permission_gaps(categories: list[str], permissions: dict[str, str], has_attestation: bool) -> list[str]:
+def _permission_level(value: str) -> int:
+    if value in {"write", "write-all"}:
+        return 2
+    if value in {"read", "read-all"}:
+        return 1
+    return 0
+
+
+def _effective_permission(permissions: dict[str, str], name: str) -> str:
+    return permissions.get(name) or permissions.get("all") or ""
+
+
+def _expected_permissions(categories: list[str]) -> dict[str, str]:
     if not categories:
-        return []
+        return {}
     required = {
         "id-token": "write",
         "contents": "read",
         "attestations": "write",
     }
-    if "container" in categories and has_attestation:
+    if "container" in categories:
         required["packages"] = "write"
+    return required
+
+
+def _permission_findings(categories: list[str], permissions: dict[str, str]) -> tuple[list[str], list[str]]:
+    required = _expected_permissions(categories)
     gaps = []
+    warnings = []
     for name, expected in required.items():
-        observed = permissions.get(name, "")
-        if observed != expected:
+        observed = _effective_permission(permissions, name)
+        observed_level = _permission_level(observed)
+        expected_level = _permission_level(expected)
+        if observed_level < expected_level:
             gaps.append(f"{name}: expected {expected}, observed {observed or 'missing'}")
-    return gaps
+        elif observed_level > expected_level:
+            warnings.append(f"{name}: expected {expected}, observed {observed} (overbroad)")
+    if permissions.get("all") == "write-all":
+        warnings.append("permissions: write-all grants broad token access; prefer explicit least-privilege permissions")
+    return gaps, warnings
 
 
 def _recommendations(
@@ -152,6 +183,7 @@ def _recommendations(
     has_sbom_generation: bool,
     has_sbom_attestation: bool,
     permission_gaps: list[str],
+    permission_warnings: list[str],
 ) -> list[str]:
     if not categories:
         return []
@@ -162,6 +194,8 @@ def _recommendations(
         recommendations.append("If SBOMs are generated, attest them with actions/attest and the sbom-path input.")
     if permission_gaps:
         recommendations.append("Align workflow token permissions with attestation requirements before publishing artifacts.")
+    if permission_warnings:
+        recommendations.append("Review overbroad workflow token permissions and prefer explicit least-privilege scopes.")
     if "container" in categories and not has_attestation:
         recommendations.append("For container images, attest the image digest and push the attestation to the registry.")
     return recommendations
@@ -181,13 +215,14 @@ def _workflow_posture(run_dir: Path, repo_dir: Path, path: Path) -> dict[str, An
     has_sbom_attestation = bool(SBOM_ATTESTATION_RE.search(text))
     has_sbom_generation = bool(SBOM_GENERATION_RE.search(text))
     permissions = _permission_summary(text)
-    permission_gaps = _permission_gaps(categories, permissions, has_attestation)
+    permission_gaps, permission_warnings = _permission_findings(categories, permissions)
     recommendations = _recommendations(
         categories=categories,
         has_attestation=has_attestation,
         has_sbom_generation=has_sbom_generation,
         has_sbom_attestation=has_sbom_attestation,
         permission_gaps=permission_gaps,
+        permission_warnings=permission_warnings,
     )
     return {
         "path": _display_path(run_dir, repo_dir, path),
@@ -198,9 +233,10 @@ def _workflow_posture(run_dir: Path, repo_dir: Path, path: Path) -> dict[str, An
         "has_sbom_attestation": has_sbom_attestation,
         "permissions": permissions,
         "permission_gaps": permission_gaps,
+        "permission_warnings": permission_warnings,
         "risk": "medium" if recommendations else "informational",
         "recommendations": recommendations,
-        "taxonomies": _taxonomy_refs(permission_gaps) if categories else [],
+        "taxonomies": _taxonomy_refs(permission_gaps + permission_warnings) if categories else [],
     }
 
 
@@ -277,6 +313,7 @@ def render_provenance_markdown(data: dict[str, Any]) -> str:
                 f"- SBOM generation detected: {bool(workflow.get('has_sbom_generation'))}",
                 f"- SBOM attestation detected: {bool(workflow.get('has_sbom_attestation'))}",
                 f"- Permission gaps: {', '.join(workflow.get('permission_gaps') or []) or 'none detected'}",
+                f"- Permission warnings: {', '.join(workflow.get('permission_warnings') or []) or 'none detected'}",
             ]
         )
         for recommendation in workflow.get("recommendations") or []:

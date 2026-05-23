@@ -80,6 +80,8 @@ class ProvenancePostureTests(unittest.TestCase):
         self.assertEqual(["release", "binary_or_archive"], workflow["categories"])
         self.assertFalse(workflow["has_attestation"])
         self.assertIn("id-token: expected write, observed missing", workflow["permission_gaps"])
+        self.assertNotIn("contents: expected read, observed write", " ".join(workflow["permission_gaps"]))
+        self.assertIn("contents: expected read, observed write (overbroad)", workflow["permission_warnings"])
         self.assertIn({"name": "Supply Chain Posture", "id": "SC-ARTIFACT-ATTESTATION", "label": "Artifact Attestation"}, workflow["taxonomies"])
 
         added = append_provenance_posture_targets(run_dir)
@@ -130,6 +132,33 @@ class ProvenancePostureTests(unittest.TestCase):
         self.assertTrue(workflow["has_attestation"])
         self.assertEqual([], workflow["permission_gaps"])
         self.assertEqual([], append_provenance_posture_targets(run_dir))
+
+    def test_container_without_attestation_still_requires_package_permission(self) -> None:
+        run_dir = self.copy_run()
+        self.write_workflow(
+            run_dir,
+            "container.yml",
+            "name: container\n"
+            "on: [push]\n"
+            "permissions:\n"
+            "  id-token: write\n"
+            "  contents: read\n"
+            "  attestations: write\n"
+            "jobs:\n"
+            "  image:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: docker/build-push-action@v6\n"
+            "        with:\n"
+            "          push: true\n"
+            "          tags: ghcr.io/example/demo:latest\n",
+        )
+
+        data = write_provenance_posture_artifacts(run_dir)
+        workflow = data["workflows"][0]
+        self.assertIn("container", workflow["categories"])
+        self.assertFalse(workflow["has_attestation"])
+        self.assertIn("packages: expected write, observed missing", workflow["permission_gaps"])
 
     def test_sbom_attestation_is_detected(self) -> None:
         run_dir = self.copy_run()

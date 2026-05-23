@@ -1,6 +1,9 @@
 # Report contract
 
-Codex は以下を `reports/` に生成する必要があります。
+監査 run は `reports/` に以下のような成果物を持ちます。`AUDIT_*` /
+`FINDINGS.md` / `findings.json` は Codex による監査出力であり、
+`PROVENANCE_POSTURE.md` / `provenance-posture.json` は `gra-recon` が
+決定的に生成する補助 posture artifact です。
 
 ```text
 reports/
