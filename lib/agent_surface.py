@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from contextlib import suppress
 from pathlib import Path
