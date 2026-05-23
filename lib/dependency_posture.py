@@ -160,16 +160,17 @@ def _cyclonedx_components(parsed: dict[str, Any]) -> tuple[dict[str, dict[str, A
             root_name = _first_str(metadata_component.get("name"), root_ref)
             root_version = _first_str(metadata_component.get("version"))
             root_purl = _first_str(metadata_component.get("purl"))
+            root_id = _component_id(purl=root_purl, name=root_name, version=root_version, fallback=root_ref)
             _add_component(
                 {
-                    "id": _component_id(purl=root_purl, name=root_name, version=root_version, fallback=root_ref),
+                    "id": root_id,
                     "name": root_name,
                     "version": root_version,
                     "ecosystem": _purl_ecosystem(root_purl),
                     "scope": "root",
                     "licenses": _license_values(metadata_component.get("licenses")),
                     "manifest": "",
-                    "dependency_paths": [[root_ref]],
+                    "dependency_paths": [[root_id]],
                 },
                 components,
                 ref_to_id,
@@ -462,6 +463,8 @@ def _normalize_vulnerabilities(vulnerabilities: list[dict[str, Any]], component_
         component = _bounded_text(vuln.get("component"))
         if not vid:
             continue
+        if component and component not in component_ids:
+            component = ""
         key = (vid, component)
         if key in seen:
             continue
@@ -472,7 +475,7 @@ def _normalize_vulnerabilities(vulnerabilities: list[dict[str, Any]], component_
         normalized.append(
             {
                 "id": vid,
-                "component": component if component in component_ids else component,
+                "component": component,
                 "severity": severity,
                 "fixed_version": _bounded_text(vuln.get("fixed_version")),
                 "source": _bounded_text(vuln.get("source")) or "unknown",

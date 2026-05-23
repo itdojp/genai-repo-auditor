@@ -46,6 +46,7 @@ class DependencyIngestionTests(unittest.TestCase):
         self.assertEqual("cyclonedx", data["source"]["detected_format"])
         self.assertEqual("vulnerabilities_observed", data["status"])
         components = {component["id"]: component for component in data["components"]}
+        self.assertEqual(["pkg:github/example/demo@0.1.0"], components["pkg:github/example/demo@0.1.0"]["dependency_paths"][0])
         self.assertEqual("direct", components["pkg:pypi/lib-a@1.0.0"]["scope"])
         self.assertEqual("transitive", components["pkg:pypi/lib-b@2.0.0"]["scope"])
         self.assertEqual(["MIT"], components["pkg:pypi/lib-a@1.0.0"]["licenses"])
@@ -54,6 +55,37 @@ class DependencyIngestionTests(unittest.TestCase):
         self.assertEqual("High", vuln["severity"])
         self.assertEqual("2.0.1", vuln["fixed_version"])
         self.assertEqual(["pkg:github/example/demo@0.1.0", "pkg:pypi/lib-a@1.0.0", "pkg:pypi/lib-b@2.0.0"], vuln["dependency_paths"][0])
+
+    def test_cyclonedx_unknown_vulnerability_component_remains_valid_evidence(self) -> None:
+        run_dir = self.copy_run()
+        raw_dir = run_dir / "reports" / "scanner-results"
+        raw_dir.mkdir(parents=True)
+        raw_path = raw_dir / "partial-cyclonedx.json"
+        partial_sbom = json.loads((FIXTURES / "sbom" / "cyclonedx.json").read_text(encoding="utf-8"))
+        partial_sbom["vulnerabilities"][0]["affects"][0]["ref"] = "missing-component-ref"
+        raw_path.write_text(json.dumps(partial_sbom, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+        data = write_dependency_artifacts(
+            run_dir=run_dir,
+            raw_path=raw_path,
+            raw_result_ref="reports/scanner-results/partial-cyclonedx.json",
+            tool="sbom",
+            requested_format="cyclonedx",
+        )
+
+        self.assertEqual("", data["vulnerabilities"][0]["component"])
+        self.assertEqual("missing-component-ref", data["vulnerabilities"][0]["evidence_ref"])
+        validation = subprocess.run(
+            [sys.executable, REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir],
+            cwd=REPO_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(0, validation.returncode, f"stdout:\n{validation.stdout}\nstderr:\n{validation.stderr}")
+        self.assertIn("Dependencies: validated", validation.stdout)
 
     def test_spdx_fixture_preserves_direct_transitive_and_security_refs(self) -> None:
         run_dir = self.copy_run()
