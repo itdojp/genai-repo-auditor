@@ -130,6 +130,7 @@ class ReportContractTests(unittest.TestCase):
         target_required = target_schema["properties"]["targets"]["items"]["required"]
         self.assertTrue(set(VALIDATOR.REQUIRED_TARGET).issubset(target_required))
         target_properties = target_schema["properties"]["targets"]["items"]["properties"]
+        self.assertEqual("^TGT-(?:[A-Z][A-Z0-9]*-)?[0-9]{3,}$", target_properties["id"]["pattern"])
         self.assertIn("taxonomies", target_properties)
         self.assertEqual({"name", "id", "label"}, set(target_properties["taxonomies"]["items"]["required"]))
 

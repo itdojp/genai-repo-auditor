@@ -53,7 +53,8 @@ tools can use report-controlled paths.
 Important constraints:
 
 - `generated_at` must be parseable ISO-8601.
-- `targets[].id` must match `TGT-[0-9]{3,}` and `priority` must be 0–100.
+- `targets[].id` must match `TGT-(?:[A-Z][A-Z0-9]*-)?[0-9]{3,}` and
+  `priority` must be 0–100.
 - `findings[].affected_locations[].file` must be a relative target-repo path.
 - `line` and `end_line` must be positive integers when present.
 - `public_disclosure_risk` is required when `issue_recommended` is true.

@@ -10,6 +10,7 @@ LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
 from gralib import env_from_context, find_target, load_context, load_targets, render_template, run_codex_exec, write_targets
+from agent_surface import append_agent_surface_targets
 
 
 def print_table(targets):
@@ -98,6 +99,9 @@ def main() -> int:
     if not (reports / 'targets.json').exists():
         print('Codex completed but reports/targets.json is missing', file=sys.stderr)
         return 1
+    added_agent_targets = append_agent_surface_targets(run_dir)
+    if added_agent_targets:
+        print(f'Added {len(added_agent_targets)} agent-surface target(s)')
     print(f'Wrote {reports / "targets.json"}')
     print_table(load_targets(run_dir))
     return 0
