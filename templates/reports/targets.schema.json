@@ -30,7 +30,18 @@
           "candidate_files": {"type": "array", "items": {"type": "string"}},
           "recommended_mode": {"enum": ["exec", "goal"]},
           "notes": {"type": "string"},
-          "taxonomies": {"type": "array", "items": {"type": "object", "required": ["name", "id", "label"], "properties": {"name": {"type": "string"}, "id": {"type": "string"}, "label": {"type": "string"}}}}
+          "taxonomies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "id", "label"],
+              "properties": {
+                "name": {"type": "string"},
+                "id": {"type": "string"},
+                "label": {"type": "string"}
+              }
+            }
+          }
         }
       }
     }

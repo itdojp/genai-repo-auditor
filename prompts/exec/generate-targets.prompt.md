@@ -96,8 +96,7 @@ Quality bar:
 - Prioritize Critical/High-risk targets first.
 - Do not create findings here.
 - Every target must have a concrete scope, entry points or candidate files, and review questions.
-- Use controlled taxonomy IDs from templates/taxonomies/ when they apply. Taxonomy
-  classification is advisory and does not replace risk or priority.
+- Use controlled taxonomy IDs from templates/taxonomies/ when they apply. Taxonomy classification is advisory and does not replace risk or priority.
 - Status must be queued unless there is a specific reason to mark skipped or needs_human_review.
 
 Stop condition:
