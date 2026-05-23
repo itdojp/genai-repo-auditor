@@ -22,6 +22,10 @@ gra-dashboard --run runs/OWNER__REPO/RUN_ID
 open runs/OWNER__REPO/RUN_ID/reports/dashboard.html
 ```
 
+The dashboard summarizes findings, target status, taxonomy mappings, OpenSSF
+Scorecard supply-chain posture when `reports/supply-chain-posture.json` exists,
+and the scanner result index.
+
 Generate SARIF:
 
 ```bash

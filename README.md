@@ -162,10 +162,15 @@ GenAI Repo Auditor does not run external scanners by default. It ingests scanner
 ```bash
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool semgrep --file semgrep.json --format json
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool codeql --file codeql.sarif --format sarif
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool scorecard --file scorecard.json --format json
 gra-scanner-triage --run runs/OWNER__REPO/RUN_ID --model gpt-5.5 --effort xhigh
 ```
 
 Scanner results are leads, not findings. A lead is promoted only after reachability, trust boundary impact, mitigation status, and evidence are reviewed.
+
+OpenSSF Scorecard JSON ingestion additionally writes deterministic supply-chain
+posture artifacts and can append bounded `TGT-SCORECARD-NNN` review targets for
+low-scoring checks.
 
 ## Multiple repositories
 
@@ -237,6 +242,7 @@ Do not use this project for:
 - [`docs/TARGET_QUEUE.md`](docs/TARGET_QUEUE.md)
 - [`docs/VARIANT_ANALYSIS.md`](docs/VARIANT_ANALYSIS.md)
 - [`docs/SCANNER_INTEGRATION.md`](docs/SCANNER_INTEGRATION.md)
+- [`docs/SCORECARD_INGESTION.md`](docs/SCORECARD_INGESTION.md)
 - [`docs/ISSUE_WORKFLOW.md`](docs/ISSUE_WORKFLOW.md)
 - [`docs/REPORTING_AND_STORE.md`](docs/REPORTING_AND_STORE.md)
 - [`docs/REPORT_CONTRACT.md`](docs/REPORT_CONTRACT.md)
