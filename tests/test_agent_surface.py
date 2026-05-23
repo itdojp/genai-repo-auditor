@@ -86,6 +86,7 @@ class AgentSurfaceTests(unittest.TestCase):
         mcp = next(surface for surface in surfaces if surface["type"] == "mcp_config")
         self.assertEqual("high", mcp["risk"])
         self.assertIn("shell", mcp["detected_capabilities"])
+        self.assertIn("filesystem", mcp["detected_capabilities"])
         self.assertIn("network", mcp["detected_capabilities"])
         self.assertIn({"name": "MCP Security", "id": "MCP-SCOPE-MINIMIZATION", "label": "Scope Minimization Failure"}, mcp["taxonomies"])
 

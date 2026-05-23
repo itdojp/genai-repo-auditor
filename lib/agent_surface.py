@@ -71,18 +71,23 @@ SKIP_DIRS = {
     "vendor",
 }
 MAX_FILE_BYTES = 512 * 1024
+TOKEN_START = r"(?<![A-Za-z0-9_])"
+TOKEN_END = r"(?![A-Za-z0-9_])"
 
 CAPABILITY_PATTERNS: list[tuple[str, str]] = [
-    ("shell", r"\b(shell|bash|sh|zsh|powershell|cmd\.exe|exec|spawn|subprocess|child_process|terminal)\b"),
-    ("filesystem", r"\b(filesystem|file system|readfile|writefile|fs\.|path\.|/etc/|/var/|/home/|root_path|workspace)\b"),
-    ("network", r"\b(http|https|fetch|request|axios|curl|wget|url|websocket|sse|network)\b"),
-    ("git", r"\b(git|commit|push|pull request|merge request|branch)\b"),
-    ("github", r"\b(github|gh\s+|issues?|pull requests?|secrets?)\b"),
-    ("email", r"\b(email|smtp|sendgrid|mailgun)\b"),
-    ("slack", r"\b(slack|webhook)\b"),
-    ("ticket", r"\b(jira|ticket|linear|incident)\b"),
-    ("deployment", r"\b(deploy|release|kubectl|terraform|cloudformation|aws|gcp|azure)\b"),
-    ("memory", r"\b(memory|vector|embedding|chroma|pinecone|qdrant|weaviate|faiss|milvus|pgvector)\b"),
+    ("shell", rf"{TOKEN_START}(shell|bash|sh|zsh|powershell|cmd\.exe|exec|spawn|subprocess|child_process|terminal){TOKEN_END}"),
+    (
+        "filesystem",
+        rf"({TOKEN_START}(filesystem|file system|readfile|writefile|root_path|workspace){TOKEN_END}|fs\.|path\.|/etc/|/var/|/home/)",
+    ),
+    ("network", rf"{TOKEN_START}(https?|fetch|request|axios|curl|wget|url|websocket|sse|network){TOKEN_END}"),
+    ("git", rf"{TOKEN_START}(git|commit|push|pull request|merge request|branch){TOKEN_END}"),
+    ("github", rf"({TOKEN_START}(github|issues?|pull requests?|secrets?){TOKEN_END}|(^|\s)gh\s+)"),
+    ("email", rf"{TOKEN_START}(email|smtp|sendgrid|mailgun){TOKEN_END}"),
+    ("slack", rf"{TOKEN_START}(slack|webhook){TOKEN_END}"),
+    ("ticket", rf"{TOKEN_START}(jira|ticket|linear|incident){TOKEN_END}"),
+    ("deployment", rf"{TOKEN_START}(deploy|release|kubectl|terraform|cloudformation|aws|gcp|azure){TOKEN_END}"),
+    ("memory", rf"{TOKEN_START}(memory|vector|embedding|chroma|pinecone|qdrant|weaviate|faiss|milvus|pgvector){TOKEN_END}"),
 ]
 AI_SDK_PATTERNS: list[tuple[str, str]] = [
     ("OpenAI", r"\b(openai|from openai import|OpenAI\(|AzureOpenAI|@openai/)\b"),
