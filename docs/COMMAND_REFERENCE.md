@@ -291,19 +291,21 @@ gra-index --runs-dir runs
 
 | Field | Details |
 |---|---|
-| Purpose | Create GitHub Issues from reviewed findings, or preview what would be created in dry-run mode. |
+| Purpose | Create GitHub Issues from reviewed findings, preview what would be created in dry-run mode, or bind approval to an immutable publication plan. |
 | Workflow category | Issue workflow. |
 | Required inputs | `--run RUN_DIR`. The target repository is read from `findings.json` or `context.json`, or overridden with `--repo OWNER/REPO`. The `gh` CLI must be authenticated for apply mode. |
-| Key options | `--repo OWNER/REPO`, `--min-severity Critical\|High\|Medium\|Low\|Informational`, `--statuses LIST`, `--dry-run`, `--apply`, `--allow-public`, `--create-labels`, `--assignee ASSIGNEE`, `--max-issues N`. |
-| Generated outputs | Preview text in dry-run mode, GitHub Issues in apply mode, and `issues-created.json` under the run directory. |
-| Exit status behavior | `0` for successful dry-run or issue creation; `2` for missing repo metadata or unsafe issue body references; `3` when apply mode refuses public or unknown repository visibility without `--allow-public`; `4` when selected findings exceed `--max-issues`; `gh` command failures return non-zero. |
-| Security / disclosure cautions | Default behavior is dry-run. Apply mode refuses public or unknown repositories unless `--allow-public` is explicitly provided. Human review is required before creating issues, especially for security-sensitive findings and issue body drafts. |
+| Key options | `--repo OWNER/REPO`, `--min-severity Critical\|High\|Medium\|Low\|Informational`, `--statuses LIST`, `--dry-run`, `--plan`, `--apply`, `--apply-plan PLAN`, `--replan`, `--allow-public`, `--create-labels`, `--assignee ASSIGNEE`, `--max-issues N`. |
+| Generated outputs | Preview text in dry-run mode, `reports/issue-publication-plan.json` in plan mode, GitHub Issues in apply mode, and `issues-created.json` under the run directory. `issues-created.json` records `plan_sha256` when `--apply-plan` is used. |
+| Exit status behavior | `0` for successful dry-run, plan creation, or issue creation; `2` for missing repo metadata, invalid plans, or unsafe issue body references; `3` when apply mode refuses public or unknown repository visibility without `--allow-public`; `4` when selected findings exceed `--max-issues` or an immutable publication plan no longer matches current findings/drafts; `gh` command failures return non-zero. |
+| Security / disclosure cautions | Default behavior is dry-run. Apply mode refuses public or unknown repositories unless `--allow-public` is explicitly provided. Prefer `--plan` followed by reviewed `--apply-plan` when approval must be bound to exact Issue titles, labels, fingerprints, and body hashes. Human review is required before creating issues, especially for security-sensitive findings and issue body drafts. |
 | Related docs | [`docs/ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
 
 Examples:
 
 ```bash
 gra-issues --run runs/OWNER__REPO/RUN_ID --dry-run
+gra-issues --run runs/OWNER__REPO/RUN_ID --plan
+gra-issues --run runs/OWNER__REPO/RUN_ID --apply-plan runs/OWNER__REPO/RUN_ID/reports/issue-publication-plan.json --create-labels
 gra-issues --run runs/OWNER__REPO/RUN_ID --apply --create-labels
 ```
 

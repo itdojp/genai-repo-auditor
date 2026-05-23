@@ -29,6 +29,7 @@ DEFAULT_LABELS: Dict[str, Tuple[str, str]] = {
     "status-potential": ("fbca04", "Potential finding"),
     "status-needs-human-review": ("5319e7", "Needs human review"),
 }
+PLAN_REL_PATH = Path("reports") / "issue-publication-plan.json"
 
 
 def run(cmd: List[str], *, check: bool = True, capture: bool = True) -> subprocess.CompletedProcess[str]:
@@ -53,6 +54,18 @@ def load_findings(run_dir: Path) -> Dict[str, Any]:
         if p.exists():
             return load_json(p)
     raise FileNotFoundError(f"findings.json not found under {run_dir}")
+
+
+def sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def default_plan_path(run_dir: Path) -> Path:
+    return run_dir / PLAN_REL_PATH
 
 
 def slug(s: str, *, max_len: int = 50) -> str:
@@ -234,6 +247,135 @@ def normalize_labels(finding: Dict[str, Any]) -> List[str]:
     return labels
 
 
+def issue_title(finding: Dict[str, Any]) -> str:
+    return str(finding.get("issue_title") or f"[Security][{finding.get('severity','Unknown')}] {finding.get('title','Security finding')}")
+
+
+def plan_visibility(data: Dict[str, Any], context: Dict[str, Any]) -> str:
+    return str(data.get("visibility") or context.get("visibility") or "UNKNOWN").upper()
+
+
+def plan_finding_entry(repo: str, run_id: str, commit: str, finding: Dict[str, Any], run_dir: Path) -> Tuple[Dict[str, Any], str]:
+    fingerprint = stable_fingerprint(repo, finding)
+    body = render_body(repo, run_id, commit, finding, fingerprint, run_dir)
+    issue_body_file = str(finding.get("issue_body_file") or "")
+    entry: Dict[str, Any] = {
+        "id": str(finding.get("id", "SEC-UNKNOWN")),
+        "fingerprint": fingerprint,
+        "title": issue_title(finding),
+        "issue_body_sha256": sha256_text(body),
+        "issue_body_file": issue_body_file or None,
+        "labels": normalize_labels(finding),
+        "public_disclosure_risk": str(finding.get("public_disclosure_risk") or "Unknown"),
+    }
+    return entry, body
+
+
+def plan_entry_key(entry: Dict[str, Any]) -> str:
+    return f"{entry.get('id', 'SEC-UNKNOWN')}\0{entry.get('fingerprint', '')}"
+
+
+def build_publication_plan(
+    *,
+    repo: str,
+    run_id: str,
+    commit: str,
+    visibility: str,
+    findings: Iterable[Dict[str, Any]],
+    run_dir: Path,
+    generated_at: str,
+) -> Tuple[Dict[str, Any], Dict[str, str]]:
+    selected_findings: List[Dict[str, Any]] = []
+    bodies: Dict[str, str] = {}
+    for finding in findings:
+        entry, body = plan_finding_entry(repo, run_id, commit, finding, run_dir)
+        selected_findings.append(entry)
+        bodies[plan_entry_key(entry)] = body
+    plan = {
+        "schema_version": "1",
+        "run_id": run_id,
+        "repo": repo,
+        "commit": commit,
+        "created_at": generated_at,
+        "visibility": visibility,
+        "selected_findings": selected_findings,
+    }
+    return plan, bodies
+
+
+def write_plan(plan_path: Path, plan: Dict[str, Any]) -> None:
+    plan_path.parent.mkdir(parents=True, exist_ok=True)
+    plan_path.write_text(json.dumps(plan, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def load_plan(plan_path: Path) -> Dict[str, Any]:
+    plan = load_json(plan_path)
+    if not isinstance(plan.get("selected_findings"), list):
+        raise ValueError("issue publication plan must contain selected_findings array")
+    for index, entry in enumerate(plan["selected_findings"]):
+        if not isinstance(entry, dict):
+            raise ValueError(f"selected_findings[{index}] must be an object")
+    return plan
+
+
+def plan_hash(plan_path: Path) -> str:
+    return sha256_file(plan_path)
+
+
+def print_plan_summary(plan_path: Path, plan: Dict[str, Any], *, prefix: str = "Plan") -> None:
+    print(f"{prefix}: {plan_path}")
+    for entry in plan.get("selected_findings") or []:
+        print(f"- {entry.get('id', 'SEC-UNKNOWN')}: issue_body_sha256={entry.get('issue_body_sha256', '')}")
+
+
+def verify_plan_against_findings(
+    *,
+    plan: Dict[str, Any],
+    repo: str,
+    run_id: str,
+    commit: str,
+    current_findings: Iterable[Dict[str, Any]],
+    run_dir: Path,
+) -> Tuple[List[Dict[str, Any]], Dict[str, str], List[str]]:
+    candidates_by_id: Dict[str, List[Tuple[Dict[str, Any], str]]] = {}
+    for finding in current_findings:
+        current_entry, body = plan_finding_entry(repo, run_id, commit, finding, run_dir)
+        candidates_by_id.setdefault(str(current_entry["id"]), []).append((current_entry, body))
+    selected: List[Dict[str, Any]] = []
+    bodies: Dict[str, str] = {}
+    errors: List[str] = []
+
+    if str(plan.get("repo") or "") != repo:
+        errors.append(f"repo mismatch: plan={plan.get('repo')!r} current={repo!r}")
+    if str(plan.get("run_id") or "") != run_id:
+        errors.append(f"run_id mismatch: plan={plan.get('run_id')!r} current={run_id!r}")
+    if str(plan.get("commit") or "") != commit:
+        errors.append(f"commit mismatch: plan={plan.get('commit')!r} current={commit!r}")
+
+    for index, planned in enumerate(plan.get("selected_findings") or []):
+        if not isinstance(planned, dict):
+            errors.append(f"selected_findings[{index}] must be an object")
+            continue
+        finding_id = str(planned.get("id") or "")
+        candidates = candidates_by_id.get(finding_id) or []
+        if not candidates:
+            errors.append(f"{finding_id or 'SEC-UNKNOWN'}: selected finding no longer exists")
+            continue
+        planned_fingerprint = planned.get("fingerprint")
+        current_entry, body = next(
+            ((entry, candidate_body) for entry, candidate_body in candidates if entry.get("fingerprint") == planned_fingerprint),
+            candidates[0],
+        )
+        for field in ["fingerprint", "title", "issue_body_sha256", "issue_body_file", "public_disclosure_risk"]:
+            if planned.get(field) != current_entry.get(field):
+                errors.append(f"{finding_id}: {field} changed after plan creation")
+        if list(planned.get("labels") or []) != current_entry["labels"]:
+            errors.append(f"{finding_id}: labels changed after plan creation")
+        selected.append(current_entry)
+        bodies[plan_entry_key(current_entry)] = body
+    return selected, bodies, errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create GitHub Issues from GenAI Repo Auditor findings.json")
     parser.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
@@ -243,11 +385,19 @@ def main() -> int:
     parser.add_argument("--statuses", default="Confirmed,Probable", help="Comma-separated statuses to publish")
     parser.add_argument("--dry-run", action="store_true", help="Preview issue creation. Default unless --apply is set.")
     parser.add_argument("--apply", action="store_true", help="Actually create issues")
+    parser.add_argument("--plan", action="store_true", help="Write an immutable issue publication plan without creating issues")
+    parser.add_argument("--apply-plan", help="Apply a previously reviewed issue-publication-plan.json")
+    parser.add_argument("--replan", action="store_true", help="Refresh the plan when current findings or issue drafts changed; does not publish")
     parser.add_argument("--allow-public", action="store_true", help="Allow publishing issues to public repositories")
     parser.add_argument("--create-labels", action="store_true", help="Create/update common labels before creating issues")
     parser.add_argument("--assignee", help="Optional assignee, e.g. @me")
     parser.add_argument("--max-issues", type=int, default=50, help="Safety limit")
     args = parser.parse_args()
+
+    if args.plan and args.apply:
+        parser.error("--plan cannot be combined with --apply")
+    if args.plan and args.apply_plan:
+        parser.error("--plan cannot be combined with --apply-plan")
 
     run_dir = Path(args.run).resolve()
     context = load_context(run_dir)
@@ -260,20 +410,93 @@ def main() -> int:
     run_id = str(data.get("run_id") or context.get("run_id") or run_dir.name)
     commit = str(data.get("commit") or context.get("commit") or "")
     statuses = {s.strip() for s in args.statuses.split(",") if s.strip()}
-    dry_run = args.dry_run or not args.apply
+    dry_run = args.dry_run or (not args.apply and not args.apply_plan)
 
-    visibility = gh_repo_visibility(repo) if args.apply else "NOT_CHECKED"
-    if args.apply and visibility in {"PUBLIC", "UNKNOWN", ""} and not args.allow_public:
-        print(f"Refusing to create security issues for repo {repo} with visibility={visibility}. Use --allow-public only when disclosure policy permits.", file=sys.stderr)
-        return 3
-
+    generated_at = str(data.get("generated_at") or context.get("generated_at") or "")
     findings = data.get("findings") or []
     selected = [f for f in findings if isinstance(f, dict) and should_include(f, args.min_severity, statuses)]
     if len(selected) > args.max_issues:
         print(f"Refusing to create {len(selected)} issues; exceeds --max-issues={args.max_issues}.", file=sys.stderr)
         return 4
 
-    if args.create_labels and args.apply:
+    if args.plan:
+        try:
+            plan, _bodies = build_publication_plan(
+                repo=repo,
+                run_id=run_id,
+                commit=commit,
+                visibility=plan_visibility(data, context),
+                findings=selected,
+                run_dir=run_dir,
+                generated_at=generated_at,
+            )
+        except ReportSafetyError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
+        plan_path = default_plan_path(run_dir)
+        write_plan(plan_path, plan)
+        print_plan_summary(plan_path, plan, prefix="Wrote issue publication plan")
+        return 0
+
+    selected_plan_entries: Optional[List[Dict[str, Any]]] = None
+    plan_bodies: Dict[str, str] = {}
+    plan_path: Optional[Path] = None
+    plan_sha256: Optional[str] = None
+    if args.apply_plan:
+        plan_path = Path(args.apply_plan)
+        if not plan_path.is_absolute():
+            plan_path = (Path.cwd() / plan_path).resolve()
+        if args.replan:
+            try:
+                refreshed, _bodies = build_publication_plan(
+                    repo=repo,
+                    run_id=run_id,
+                    commit=commit,
+                    visibility=plan_visibility(data, context),
+                    findings=selected,
+                    run_dir=run_dir,
+                    generated_at=generated_at,
+                )
+                write_plan(plan_path, refreshed)
+                print_plan_summary(plan_path, refreshed, prefix="Rewrote issue publication plan")
+            except ReportSafetyError as exc:
+                print(f"ERROR: {exc}", file=sys.stderr)
+                return 2
+            print("Review the refreshed issue publication plan before applying.", file=sys.stderr)
+            return 0
+        try:
+            plan = load_plan(plan_path)
+            selected_plan_entries, plan_bodies, plan_errors = verify_plan_against_findings(
+                plan=plan,
+                repo=repo,
+                run_id=run_id,
+                commit=commit,
+                current_findings=[f for f in findings if isinstance(f, dict)],
+                run_dir=run_dir,
+            )
+        except (OSError, ValueError, json.JSONDecodeError, ReportSafetyError) as exc:
+            print(f"ERROR: could not read or verify issue publication plan: {exc}", file=sys.stderr)
+            return 2
+        if plan_errors:
+            print("Issue publication plan verification failed:", file=sys.stderr)
+            for error in plan_errors:
+                print(f"- {error}", file=sys.stderr)
+            print("Refresh the plan with --plan or --apply-plan ... --replan, review it, then apply again.", file=sys.stderr)
+            return 4
+        if selected_plan_entries is not None and len(selected_plan_entries) > args.max_issues:
+            print(f"Refusing to create {len(selected_plan_entries)} issues; exceeds --max-issues={args.max_issues}.", file=sys.stderr)
+            return 4
+        plan_sha256 = plan_hash(plan_path)
+        print_plan_summary(plan_path, plan, prefix="Verified issue publication plan")
+        if args.dry_run:
+            dry_run = True
+
+    visibility = gh_repo_visibility(repo) if not dry_run else "NOT_CHECKED"
+    if not dry_run and visibility in {"PUBLIC", "UNKNOWN", ""} and not args.allow_public:
+        print(f"Refusing to create security issues for repo {repo} with visibility={visibility}. Use --allow-public only when disclosure policy permits.", file=sys.stderr)
+        return 3
+
+    if args.create_labels and not dry_run:
         create_default_labels(repo)
 
     result = {
@@ -282,20 +505,38 @@ def main() -> int:
         "commit": commit,
         "visibility": visibility,
         "dry_run": dry_run,
+        "plan_path": str(plan_path) if plan_path else str(default_plan_path(run_dir)),
+        "plan_sha256": plan_sha256,
         "created": [],
         "skipped": [],
     }
 
-    for finding in selected:
-        fingerprint = stable_fingerprint(repo, finding)
-        finding_id = finding.get("id", "SEC-UNKNOWN")
-        title = finding.get("issue_title") or f"[Security][{finding.get('severity','Unknown')}] {finding.get('title','Security finding')}"
-        labels = normalize_labels(finding)
+    issue_entries: List[Tuple[Dict[str, Any], str]] = []
+    if selected_plan_entries is not None:
+        issue_entries = [(entry, plan_bodies.get(plan_entry_key(entry), "")) for entry in selected_plan_entries]
+    else:
         try:
-            body = render_body(repo, run_id, commit, finding, fingerprint, run_dir)
+            preview_plan, preview_bodies = build_publication_plan(
+                repo=repo,
+                run_id=run_id,
+                commit=commit,
+                visibility=plan_visibility(data, context),
+                findings=selected,
+                run_dir=run_dir,
+                generated_at=generated_at,
+            )
         except ReportSafetyError as exc:
-            print(f"ERROR: {finding_id}: {exc}", file=sys.stderr)
+            print(f"ERROR: {exc}", file=sys.stderr)
             return 2
+        print_plan_summary(default_plan_path(run_dir), preview_plan)
+        issue_entries = [(entry, preview_bodies.get(plan_entry_key(entry), "")) for entry in preview_plan["selected_findings"]]
+
+    for entry, body in issue_entries:
+        fingerprint = str(entry["fingerprint"])
+        finding_id = str(entry.get("id", "SEC-UNKNOWN"))
+        title = str(entry["title"])
+        labels = list(entry.get("labels") or [])
+        body_hash = str(entry.get("issue_body_sha256") or sha256_text(body))
 
         existing = None if dry_run else issue_exists(repo, fingerprint)
         if existing:
@@ -309,7 +550,8 @@ def main() -> int:
             print(f"Title: {title}")
             print(f"Labels: {', '.join(labels)}")
             print(f"Fingerprint: {fingerprint}")
-            result["created"].append({"id": finding_id, "dry_run": True, "title": title, "fingerprint": fingerprint})
+            print(f"Issue body SHA256: {body_hash}")
+            result["created"].append({"id": finding_id, "dry_run": True, "title": title, "fingerprint": fingerprint, "issue_body_sha256": body_hash})
             continue
 
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".md", delete=False) as tmp:
