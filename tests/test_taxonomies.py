@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -13,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
-from taxonomies import load_taxonomy_profiles, taxonomy_label_map  # noqa: E402
+from taxonomies import TaxonomyProfileError, load_taxonomy_profiles, taxonomy_label_map, validate_taxonomy_refs  # noqa: E402
 
 
 class TaxonomyTests(unittest.TestCase):
@@ -40,10 +41,11 @@ class TaxonomyTests(unittest.TestCase):
     def write_json(self, path: Path, data: dict) -> None:
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    def run_cmd(self, *args: str | Path) -> subprocess.CompletedProcess[str]:
+    def run_cmd(self, *args: str | Path, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [str(arg) for arg in args],
             cwd=REPO_ROOT,
+            env=env,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -78,6 +80,51 @@ class TaxonomyTests(unittest.TestCase):
         labels = taxonomy_label_map(profiles)
         self.assertEqual(labels[("OWASP LLM Top 10 2025", "LLM01")], "Prompt Injection")
         self.assertEqual(labels[("MCP Security", "MCP-TOKEN-PASSTHROUGH")], "Token Passthrough")
+
+    def test_taxonomy_profile_loader_rejects_malformed_and_duplicate_profiles(self) -> None:
+        malformed_dir = self.work_dir / "malformed-taxonomies"
+        malformed_dir.mkdir()
+        (malformed_dir / "bad.json").write_text('{"name": "Broken", "entries": [', encoding="utf-8")
+        with self.assertRaisesRegex(TaxonomyProfileError, "invalid taxonomy JSON"):
+            load_taxonomy_profiles(malformed_dir)
+
+        duplicate_dir = self.work_dir / "duplicate-taxonomies"
+        duplicate_dir.mkdir()
+        profile = {"name": "Duplicate Taxonomy", "entries": [{"id": "DUP-1", "label": "Duplicate"}]}
+        self.write_json(duplicate_dir / "a.json", profile)
+        self.write_json(duplicate_dir / "b.json", profile)
+        with self.assertRaisesRegex(TaxonomyProfileError, "duplicate taxonomy profile name"):
+            load_taxonomy_profiles(duplicate_dir)
+
+    def test_validate_report_reports_malformed_taxonomy_profiles_without_traceback(self) -> None:
+        run_dir = self.copy_run()
+        taxonomy_dir = self.work_dir / "bad-taxonomies"
+        taxonomy_dir.mkdir()
+        (taxonomy_dir / "bad.json").write_text('{"name": "Broken", "entries": [', encoding="utf-8")
+        env = os.environ.copy()
+        env["GENAI_REPO_AUDITOR_TAXONOMY_DIR"] = str(taxonomy_dir)
+
+        cp = self.run_cmd(REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir, env=env)
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("taxonomy profiles:", cp.stderr)
+        self.assertIn("invalid taxonomy JSON", cp.stderr)
+        self.assertNotIn("Traceback", cp.stderr)
+
+    def test_validate_taxonomy_refs_requires_label_without_schema_precheck(self) -> None:
+        profiles = load_taxonomy_profiles()
+        labels = taxonomy_label_map(profiles)
+        errors: list[str] = []
+        validate_taxonomy_refs(
+            [{"name": "OWASP LLM Top 10 2025", "id": "LLM01"}],
+            "findings.findings[0].taxonomies",
+            errors,
+            profiles,
+            labels,
+        )
+        self.assertEqual(
+            ["findings.findings[0].taxonomies[0].label: taxonomy label must be non-empty string"],
+            errors,
+        )
 
     def test_validate_report_accepts_controlled_taxonomy_ids(self) -> None:
         run_dir = self.copy_run()

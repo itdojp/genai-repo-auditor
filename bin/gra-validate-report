@@ -18,7 +18,12 @@ from report_safety import (  # noqa: E402
     safe_issue_body_path,
     validate_relative_repo_path,
 )
-from taxonomies import load_taxonomy_profiles, validate_taxonomy_refs  # noqa: E402
+from taxonomies import (  # noqa: E402
+    TaxonomyProfileError,
+    load_taxonomy_profiles,
+    taxonomy_label_map,
+    validate_taxonomy_refs,
+)
 
 SEVERITIES = {"Critical", "High", "Medium", "Low", "Informational"}
 CONFIDENCES = {"High", "Medium", "Low"}
@@ -137,7 +142,13 @@ def validate_generated_at(value: Any, path: str, errors: List[str]) -> None:
         errors.append(f"{path}: generated_at must be valid ISO-8601 datetime")
 
 
-def validate_targets(run_dir: Path, errors: List[str]) -> None:
+def validate_targets(
+    run_dir: Path,
+    errors: List[str],
+    taxonomy_profiles: dict[str, dict[str, Any]],
+    taxonomy_labels: dict[tuple[str, str], str],
+    taxonomy_profiles_loaded: bool,
+) -> None:
     targets_path = run_dir / "reports" / "targets.json"
     if not targets_path.exists():
         return
@@ -155,7 +166,6 @@ def validate_targets(run_dir: Path, errors: List[str]) -> None:
         errors.append("targets.targets: targets must be a list")
         return
     seen = set()
-    taxonomy_profiles = load_taxonomy_profiles()
     for i, t in enumerate(targets):
         path = f"targets.targets[{i}]"
         if not isinstance(t, dict):
@@ -181,7 +191,8 @@ def validate_targets(run_dir: Path, errors: List[str]) -> None:
         for key in ["entry_points", "trust_boundaries", "sinks", "review_questions"]:
             if key in t and not isinstance(t.get(key), list):
                 errors.append(f"{path}.{key}: {key} must be list")
-        validate_taxonomy_refs(t.get("taxonomies"), f"{path}.taxonomies", errors, taxonomy_profiles)
+        if taxonomy_profiles_loaded:
+            validate_taxonomy_refs(t.get("taxonomies"), f"{path}.taxonomies", errors, taxonomy_profiles, taxonomy_labels)
 
 
 def validate_run_artifact_path(
@@ -378,6 +389,16 @@ def main() -> int:
         print(f"ERROR: invalid JSON: {e}", file=sys.stderr)
         return 1
 
+    taxonomy_profiles: dict[str, dict[str, Any]] = {}
+    taxonomy_labels: dict[tuple[str, str], str] = {}
+    taxonomy_profiles_loaded = True
+    try:
+        taxonomy_profiles = load_taxonomy_profiles()
+        taxonomy_labels = taxonomy_label_map(taxonomy_profiles)
+    except TaxonomyProfileError as exc:
+        taxonomy_profiles_loaded = False
+        errors.append(f"taxonomy profiles: {exc}")
+
     validate_schema(data, load_schema("findings.schema.json"), "findings", errors)
     validate_generated_at(data.get("generated_at"), "findings.generated_at", errors)
     for secret_error in iter_secret_findings(data, field_path="findings"):
@@ -391,7 +412,6 @@ def main() -> int:
 
     findings = data.get("findings") if isinstance(data.get("findings"), list) else []
     fingerprints: set[str] = set()
-    taxonomy_profiles = load_taxonomy_profiles()
     for i, f in enumerate(findings):
         path_prefix = f"findings.findings[{i}]"
         if not isinstance(f, dict):
@@ -412,7 +432,8 @@ def main() -> int:
             errors.append(f"{path_prefix}.labels: labels must be list")
         if not isinstance(f.get("issue_recommended"), bool):
             errors.append(f"{path_prefix}.issue_recommended: issue_recommended must be boolean")
-        validate_taxonomy_refs(f.get("taxonomies"), f"{path_prefix}.taxonomies", errors, taxonomy_profiles)
+        if taxonomy_profiles_loaded:
+            validate_taxonomy_refs(f.get("taxonomies"), f"{path_prefix}.taxonomies", errors, taxonomy_profiles, taxonomy_labels)
         if f.get("issue_recommended"):
             if "public_disclosure_risk" not in f:
                 errors.append(f"{path_prefix}.public_disclosure_risk: required when issue_recommended is true")
@@ -428,7 +449,7 @@ def main() -> int:
             except ReportSafetyError as exc:
                 errors.append(str(exc))
 
-    validate_targets(run_dir, errors)
+    validate_targets(run_dir, errors, taxonomy_profiles, taxonomy_labels, taxonomy_profiles_loaded)
     scanner_index_validated = validate_scanner_index(run_dir, errors)
 
     if errors:
