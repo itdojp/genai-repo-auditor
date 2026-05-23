@@ -1,0 +1,18 @@
+{
+  "schema_version": "1",
+  "name": "Supply Chain Posture",
+  "version": "1",
+  "source_url": "https://github.com/ossf/scorecard",
+  "entries": [
+    {"id": "SC-CICD-TOKEN-PERMISSIONS", "label": "CI/CD Token Permissions"},
+    {"id": "SC-DANGEROUS-WORKFLOW", "label": "Dangerous Workflow"},
+    {"id": "SC-PINNED-DEPENDENCIES", "label": "Pinned Dependencies"},
+    {"id": "SC-BRANCH-PROTECTION", "label": "Branch Protection"},
+    {"id": "SC-CODE-REVIEW", "label": "Code Review"},
+    {"id": "SC-DEPENDENCY-UPDATE", "label": "Dependency Update Tooling"},
+    {"id": "SC-SECURITY-POLICY", "label": "Security Policy"},
+    {"id": "SC-SAST", "label": "Static Analysis Coverage"},
+    {"id": "SC-SIGNED-RELEASES", "label": "Signed Releases"},
+    {"id": "SC-ARTIFACT-ATTESTATION", "label": "Artifact Attestation"}
+  ]
+}

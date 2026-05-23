@@ -124,8 +124,14 @@ class ReportContractTests(unittest.TestCase):
         self.assertTrue(set(VALIDATOR.REQUIRED_TOP).issubset(findings_schema["required"]))
         finding_required = findings_schema["properties"]["findings"]["items"]["required"]
         self.assertTrue(set(VALIDATOR.REQUIRED_FINDING).issubset(finding_required))
+        finding_properties = findings_schema["properties"]["findings"]["items"]["properties"]
+        self.assertIn("taxonomies", finding_properties)
+        self.assertEqual({"name", "id", "label"}, set(finding_properties["taxonomies"]["items"]["required"]))
         target_required = target_schema["properties"]["targets"]["items"]["required"]
         self.assertTrue(set(VALIDATOR.REQUIRED_TARGET).issubset(target_required))
+        target_properties = target_schema["properties"]["targets"]["items"]["properties"]
+        self.assertIn("taxonomies", target_properties)
+        self.assertEqual({"name", "id", "label"}, set(target_properties["taxonomies"]["items"]["required"]))
 
         scanner_result = scanner_schema["properties"]["results"]["items"]
         self.assertEqual({"tool", "path", "format", "imported_at"}, set(scanner_result["required"]))

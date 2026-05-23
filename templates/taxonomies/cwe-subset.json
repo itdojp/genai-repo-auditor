@@ -1,0 +1,24 @@
+{
+  "schema_version": "1",
+  "name": "CWE Subset",
+  "version": "4.x-subset",
+  "source_url": "https://cwe.mitre.org/",
+  "entries": [
+    {"id": "CWE-20", "label": "Improper Input Validation"},
+    {"id": "CWE-22", "label": "Path Traversal"},
+    {"id": "CWE-78", "label": "OS Command Injection"},
+    {"id": "CWE-79", "label": "Cross-Site Scripting"},
+    {"id": "CWE-89", "label": "SQL Injection"},
+    {"id": "CWE-94", "label": "Code Injection"},
+    {"id": "CWE-200", "label": "Exposure of Sensitive Information"},
+    {"id": "CWE-269", "label": "Improper Privilege Management"},
+    {"id": "CWE-287", "label": "Improper Authentication"},
+    {"id": "CWE-352", "label": "Cross-Site Request Forgery"},
+    {"id": "CWE-400", "label": "Uncontrolled Resource Consumption"},
+    {"id": "CWE-502", "label": "Deserialization of Untrusted Data"},
+    {"id": "CWE-611", "label": "XXE"},
+    {"id": "CWE-918", "label": "Server-Side Request Forgery"},
+    {"id": "CWE-862", "label": "Missing Authorization"},
+    {"id": "CWE-863", "label": "Incorrect Authorization"}
+  ]
+}

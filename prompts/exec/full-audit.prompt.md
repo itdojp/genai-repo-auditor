@@ -16,6 +16,7 @@ First read:
 - findings.schema.json
 - targets.schema.json if present
 - scanner-index.schema.json if present
+- templates/taxonomies/*.json if present, for controlled taxonomy IDs
 - {{TARGET_REPO_DIR}}/README and architecture docs if present
 - {{TARGET_REPO_DIR}}/package manifests and lockfiles
 - {{TARGET_REPO_DIR}}/Dockerfiles, container files, IaC files if present
@@ -123,6 +124,9 @@ findings.json required shape:
       "lifecycle": "Candidate|Probable|Confirmed|Invalid|Accepted Risk|Informational|Needs human review",
       "scanner_refs": [],
       "variant_of": null,
+      "taxonomies": [
+        {"name": "OWASP LLM Top 10 2025", "id": "LLM01", "label": "Prompt Injection"}
+      ],
       "affected_locations": [{"file": "path/to/file", "line": 123, "end_line": null}],
       "entry_point": "route/job/webhook/CLI/workflow entry point",
       "trust_boundary": "boundary crossed",
@@ -141,6 +145,10 @@ findings.json required shape:
     }
   ]
 }
+
+Use controlled taxonomy IDs from templates/taxonomies/ when they apply. Do not
+invent ad hoc taxonomy names or IDs. Taxonomy classification is advisory and
+does not replace severity, confidence, or status.
 
 Issue draft format:
 

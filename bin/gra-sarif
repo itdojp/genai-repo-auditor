@@ -35,6 +35,12 @@ def main() -> int:
     seen_rules = set()
     for f in findings:
         rule_id = str(f.get('id') or f.get('fingerprint') or 'SEC-UNKNOWN')
+        cwe_ids = [str(x) for x in f.get('cwe') or [] if str(x).startswith('CWE-')]
+        taxonomy_refs = [x for x in f.get('taxonomies') or [] if isinstance(x, dict)]
+        for ref in taxonomy_refs:
+            if ref.get('name') == 'CWE Subset' and str(ref.get('id', '')).startswith('CWE-'):
+                cwe_ids.append(str(ref.get('id')))
+        taxonomy_tags = sorted({*(cwe_ids), *(f"{ref.get('name')}:{ref.get('id')}" for ref in taxonomy_refs if ref.get('name') and ref.get('id'))})
         if rule_id not in seen_rules:
             seen_rules.add(rule_id)
             rules.append({
@@ -49,6 +55,9 @@ def main() -> int:
                     'status': f.get('status'),
                     'category': f.get('category'),
                     'fingerprint': f.get('fingerprint'),
+                    'cwe': sorted(set(cwe_ids)),
+                    'taxonomies': taxonomy_refs,
+                    'tags': taxonomy_tags,
                 },
             })
         locs = []
@@ -75,6 +84,7 @@ def main() -> int:
                 'trust_boundary': f.get('trust_boundary'),
                 'source_to_sink': f.get('source_to_sink'),
                 'validation_status': f.get('validation_status'),
+                'taxonomies': taxonomy_refs,
                 'run_id': ctx.get('run_id', run_dir.name),
                 'repo': ctx.get('repo'),
                 'commit': ctx.get('commit'),

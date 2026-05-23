@@ -16,6 +16,7 @@ Read first:
 - findings.schema.json
 - targets.schema.json if present
 - scanner-index.schema.json if present
+- templates/taxonomies/*.json if present, for controlled taxonomy IDs
 - {{TARGET_REPO_DIR}}/README and architecture docs if present
 - {{TARGET_REPO_DIR}}/package manifests and lockfiles
 - {{TARGET_REPO_DIR}}/Dockerfiles, container files, IaC files if present
@@ -82,7 +83,7 @@ Required output files:
 - {{REPORTS_DIR}}/issue-drafts/SEC-XXX.md for issue_recommended findings
 
 Finding requirements:
-Each finding must include ID, fingerprint, title, severity, confidence, status, lifecycle, category, target_id where applicable, affected files/lines, entry point, trust boundary, source-to-sink/call path, root cause, evidence, impact, validation status, minimal remediation, regression test idea, issue recommendation, public disclosure risk, and scanner or variant references when applicable.
+Each finding must include ID, fingerprint, title, severity, confidence, status, lifecycle, category, target_id where applicable, affected files/lines, entry point, trust boundary, source-to-sink/call path, root cause, evidence, impact, validation status, minimal remediation, regression test idea, issue recommendation, public disclosure risk, and scanner or variant references when applicable. Add controlled `taxonomies` entries from templates/taxonomies/ when relevant; do not invent ad hoc taxonomy IDs.
 
 Stop condition:
 - All required output files exist.

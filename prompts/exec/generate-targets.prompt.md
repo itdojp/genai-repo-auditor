@@ -16,6 +16,7 @@ Read first:
 - AGENTS.md
 - context.json
 - targets.schema.json if present
+- templates/taxonomies/*.json if present, for controlled taxonomy IDs
 - {{REPORTS_DIR}}/THREAT_MODEL.md if present
 - {{REPORTS_DIR}}/ATTACK_SURFACE.md if present
 - {{REPORTS_DIR}}/AUDIT_SUMMARY.md if present
@@ -81,6 +82,9 @@ Create or update {{REPORTS_DIR}}/targets.json using this strict shape:
       "security_invariants": ["Every tenant-scoped query must filter by tenant_id derived from the authenticated session"],
       "review_questions": ["Can user-controlled IDs select records outside the caller tenant?"],
       "candidate_files": ["repo/path/to/file.ts"],
+      "taxonomies": [
+        {"name": "Supply Chain Posture", "id": "SC-CICD-TOKEN-PERMISSIONS", "label": "CI/CD Token Permissions"}
+      ],
       "recommended_mode": "exec",
       "notes": "Any constraints or caveats"
     }
@@ -92,6 +96,7 @@ Quality bar:
 - Prioritize Critical/High-risk targets first.
 - Do not create findings here.
 - Every target must have a concrete scope, entry points or candidate files, and review questions.
+- Use controlled taxonomy IDs from templates/taxonomies/ when they apply. Taxonomy classification is advisory and does not replace risk or priority.
 - Status must be queued unless there is a specific reason to mark skipped or needs_human_review.
 
 Stop condition:
