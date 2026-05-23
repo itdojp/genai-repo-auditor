@@ -3,7 +3,9 @@
 監査 run は `reports/` に以下のような成果物を持ちます。`AUDIT_*` /
 `FINDINGS.md` / `findings.json` は Codex による監査出力であり、
 `PROVENANCE_POSTURE.md` / `provenance-posture.json` は `gra-recon` が
-決定的に生成する補助 posture artifact です。
+決定的に生成する補助 posture artifact です。`supply-chain-posture.md` /
+`supply-chain-posture.json` は `gra-ingest --tool scorecard` が OpenSSF
+Scorecard JSON から決定的に生成する補助 posture artifact です。
 
 ```text
 reports/
@@ -12,6 +14,8 @@ reports/
   ATTACK_SURFACE.md
   PROVENANCE_POSTURE.md
   provenance-posture.json
+  supply-chain-posture.md
+  supply-chain-posture.json
   FINDINGS.md
   findings.json
   AUDIT_LOG.md
@@ -59,6 +63,12 @@ tools can use report-controlled paths.
 it is advisory input for target generation and is not treated as a finding
 contract.
 
+`supply-chain-posture.json` is a local posture artifact produced by
+`gra-ingest --tool scorecard`; it is advisory input for target generation and is
+not treated as a finding contract. Deterministic Scorecard ingestion records
+`findings_created: 0` and appends target-queue entries only for bounded
+follow-up checks.
+
 Important constraints:
 
 - `generated_at` must be parseable ISO-8601.
@@ -76,6 +86,9 @@ Important constraints:
   `.json` files under `reports/scanner-results/normalized/`, and
   `normalized_leads_count`, `raw_bytes`, and `normalization` metadata must match
   the referenced normalized artifact.
+- If `reports/supply-chain-posture.json` exists, its Scorecard check reasons and
+  details must be treated as posture leads. Promote them to findings only after
+  repository context confirms concrete file/line evidence and impact.
 
 `issue_body_file`, when present, must point to a regular `.md` file under
 `reports/issue-drafts/`, for example:

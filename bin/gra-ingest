@@ -12,6 +12,7 @@ sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
 from gralib import load_context, load_json, utc_now, write_json
 from scanner_normalize import normalize_scanner_file
+from scorecard_posture import append_scorecard_posture_targets, write_scorecard_posture_artifacts
 
 
 def main() -> int:
@@ -35,7 +36,8 @@ def main() -> int:
     if fmt == 'auto':
         suffix = src.suffix.lower().lstrip('.')
         fmt = suffix or 'unknown'
-    dest_dir = run_dir / 'reports' / 'scanner-results'
+    reports = run_dir / ctx.get('reports_dir', 'reports')
+    dest_dir = reports / 'scanner-results'
     dest_dir.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256(src.read_bytes()).hexdigest()[:12]
     safe_tool = ''.join(ch if ch.isalnum() or ch in '-_' else '-' for ch in args.tool.lower())
@@ -72,8 +74,17 @@ def main() -> int:
     }
     data.setdefault('results', []).append(entry)
     write_json(index_path, data)
+    added_scorecard_targets = []
+    if safe_tool in {'scorecard', 'openssf-scorecard', 'ossf-scorecard'}:
+        write_scorecard_posture_artifacts(run_dir=run_dir, raw_path=dest, raw_result_ref=raw_result_ref)
+        added_scorecard_targets = append_scorecard_posture_targets(run_dir)
     print(f'Ingested {src} -> {dest}')
     print(f'Normalized leads -> {normalized_path}')
+    if safe_tool in {'scorecard', 'openssf-scorecard', 'ossf-scorecard'}:
+        print(f'Wrote {reports / "supply-chain-posture.json"}')
+        print(f'Wrote {reports / "supply-chain-posture.md"}')
+        if added_scorecard_targets:
+            print(f'Added {len(added_scorecard_targets)} scorecard-posture target(s)')
     print(f'Updated {index_path}')
     return 0
 

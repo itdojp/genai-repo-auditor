@@ -8,6 +8,8 @@ A target should be smaller than a repository audit and larger than a single file
 - webhook authenticity and replay handling
 - file upload parser and path traversal paths
 - GitHub Actions `pull_request_target` and token-permission risks
+- low-scoring OpenSSF Scorecard checks such as `Dangerous-Workflow`,
+  `Token-Permissions`, or `SAST`
 - admin API privilege boundaries
 - outbound URL fetchers and SSRF-relevant paths
 
@@ -16,6 +18,11 @@ Generate targets:
 ```bash
 gra-targets --run runs/OWNER__REPO/RUN_ID --generate
 ```
+
+Deterministic posture helpers can append bounded target IDs after target
+generation. Examples include `TGT-AGENT-NNN` for agent-surface discovery,
+`TGT-PROVENANCE-NNN` for release provenance posture, and `TGT-SCORECARD-NNN`
+for OpenSSF Scorecard supply-chain posture.
 
 List targets:
 

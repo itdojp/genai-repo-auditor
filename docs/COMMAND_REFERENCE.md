@@ -24,7 +24,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Batch operation | `gra-batch` | Batch metadata, per-repository logs, `batch-results.json` |
 | Target queue | `gra-targets` | `reports/targets.json`, target queue updates |
 | Research / recon / variant analysis | `gra-recon`, `gra-research`, `gra-variant` | Recon notes, target research, findings updates, variant reports |
-| Scanner triage | `gra-ingest`, `gra-scanner-triage` | Raw scanner copies, redacted normalized leads, scanner index, triage output |
+| Scanner triage | `gra-ingest`, `gra-scanner-triage` | Raw scanner copies, redacted normalized leads, scanner index, Scorecard posture artifacts, triage output |
 | Validation | `gra-validate-report` | Report contract validation result |
 | Reporting / persistence | `gra-dashboard`, `gra-sarif`, `gra-store`, `gra-index` | HTML dashboard, SARIF, SQLite store, run index |
 | Issue workflow | `gra-issues` | Dry-run previews or GitHub Issues after human review |
@@ -81,10 +81,10 @@ gra-batch --repo-list examples/repos.txt.example --concurrency 1 --mode exec
 | Workflow category | Target workflow. |
 | Required inputs | `--run RUN_DIR` and exactly one action: `--generate`, `--list`, `--show TGT-ID`, or `--mark TGT-ID STATUS`. |
 | Key options | `--model MODEL`, `--effort EFFORT`, `--network`. `--mark` accepts `queued`, `in_progress`, `reviewed`, `skipped`, or `needs_human_review`. |
-| Generated outputs | For `--generate`: `prompts/exec/generate-targets.prompt.md`, `codex-targets-events.jsonl`, `codex-targets-stderr.txt`, `codex-targets-final.md`, and the expected `reports/targets.json`. If `reports/agent-surface.json` exists, high-risk AI agent / MCP surfaces are appended as `TGT-AGENT-NNN` targets. If `reports/provenance-posture.json` exists, release provenance posture recommendations are appended as `TGT-PROVENANCE-NNN` targets. For `--mark`: updated target status in `reports/targets.json`. `--list` and `--show` write to stdout only. |
+| Generated outputs | For `--generate`: `prompts/exec/generate-targets.prompt.md`, `codex-targets-events.jsonl`, `codex-targets-stderr.txt`, `codex-targets-final.md`, and the expected `reports/targets.json`. If `reports/agent-surface.json` exists, high-risk AI agent / MCP surfaces are appended as `TGT-AGENT-NNN` targets. If `reports/provenance-posture.json` exists, release provenance posture recommendations are appended as `TGT-PROVENANCE-NNN` targets. If `reports/supply-chain-posture.json` exists, low-scoring OpenSSF Scorecard posture checks with `target_recommended: true` are appended as `TGT-SCORECARD-NNN` targets. For `--mark`: updated target status in `reports/targets.json`. `--list` and `--show` write to stdout only. |
 | Exit status behavior | `0` for successful list/show/mark/generate; `1` when Codex completes but `reports/targets.json` is missing after generation; `2` for missing context, unknown target, or invalid target status. Codex execution status is returned for generation failures. |
 | Security / disclosure cautions | Target queues are local planning artifacts. Review generated scope before using it to drive deeper research. Avoid network access unless the audit plan explicitly requires it. |
-| Related docs | [`docs/TARGET_QUEUE.md`](TARGET_QUEUE.md), [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md), [`docs/AGENT_SURFACE_DISCOVERY.md`](AGENT_SURFACE_DISCOVERY.md), [`docs/PROVENANCE_POSTURE.md`](PROVENANCE_POSTURE.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md). |
+| Related docs | [`docs/TARGET_QUEUE.md`](TARGET_QUEUE.md), [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md), [`docs/AGENT_SURFACE_DISCOVERY.md`](AGENT_SURFACE_DISCOVERY.md), [`docs/PROVENANCE_POSTURE.md`](PROVENANCE_POSTURE.md), [`docs/SCORECARD_INGESTION.md`](SCORECARD_INGESTION.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md). |
 
 Examples:
 
@@ -157,19 +157,20 @@ gra-variant --run runs/OWNER__REPO/RUN_ID --source-file notes/root-cause.md --mo
 
 | Field | Details |
 |---|---|
-| Purpose | Copy scanner output into a run, normalize leads, redact sensitive values, and update the scanner index. |
+| Purpose | Copy scanner output into a run, normalize leads, redact sensitive values, update the scanner index, and produce deterministic supply-chain posture artifacts for OpenSSF Scorecard JSON. |
 | Workflow category | Scanner workflow. |
 | Required inputs | `--run RUN_DIR --tool TOOL --file FILE`. |
-| Key options | `--format FORMAT` (`auto` by default), `--note NOTE`. |
-| Generated outputs | Raw scanner result copy under `reports/scanner-results/`, normalized lead JSON under `reports/scanner-results/normalized/`, and `reports/scanner-results/scanner-index.json`. |
+| Key options | `--format FORMAT` (`auto` by default), `--note NOTE`. Use `--tool scorecard` for OpenSSF Scorecard JSON posture ingestion. |
+| Generated outputs | Raw scanner result copy under `reports/scanner-results/`, normalized lead JSON under `reports/scanner-results/normalized/`, and `reports/scanner-results/scanner-index.json`. With `--tool scorecard` / `openssf-scorecard` / `ossf-scorecard`, also writes `reports/supply-chain-posture.json`, `reports/supply-chain-posture.md`, and may append deterministic `TGT-SCORECARD-NNN` targets to `reports/targets.json`. |
 | Exit status behavior | `0` for successful ingest; `2` when the source file is missing. JSON/context or filesystem failures surface as non-zero Python errors. |
-| Security / disclosure cautions | Scanner output is untrusted input. The command writes redacted normalized leads, but raw scanner copies can still contain sensitive data; keep them local and do not commit them. |
-| Related docs | [`docs/SCANNER_INTEGRATION.md`](SCANNER_INTEGRATION.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md). |
+| Security / disclosure cautions | Scanner output is untrusted input. The command writes redacted normalized leads and redacted Scorecard posture summaries, but raw scanner copies can still contain sensitive data; keep them local and do not commit them. Scorecard posture does not automatically create findings. |
+| Related docs | [`docs/SCANNER_INTEGRATION.md`](SCANNER_INTEGRATION.md), [`docs/SCORECARD_INGESTION.md`](SCORECARD_INGESTION.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md). |
 
 Example:
 
 ```bash
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool semgrep --file scanner-output.json --format json
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool scorecard --file scorecard.json --format json
 ```
 
 ## `gra-scanner-triage`
@@ -215,7 +216,7 @@ gra-validate-report --findings runs/OWNER__REPO/RUN_ID/reports/findings.json
 
 | Field | Details |
 |---|---|
-| Purpose | Generate a local HTML dashboard summarizing a run's findings, target queue, and scanner result index. |
+| Purpose | Generate a local HTML dashboard summarizing a run's findings, target queue, Scorecard supply-chain posture, and scanner result index. |
 | Workflow category | Reporting workflow. |
 | Required inputs | `--run RUN_DIR`. |
 | Key options | `--out OUT` to override the default `reports/dashboard.html`. |

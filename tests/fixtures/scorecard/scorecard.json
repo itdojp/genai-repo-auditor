@@ -1,0 +1,63 @@
+{
+  "date": "2026-05-23T00:00:00Z",
+  "repo": {
+    "name": "github.com/example/demo",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "scorecard": {
+    "version": "v5.2.1",
+    "commit": "example-scorecard-commit"
+  },
+  "score": 4.2,
+  "checks": [
+    {
+      "name": "Dangerous-Workflow",
+      "score": 0,
+      "reason": "pull_request_target workflow checks out untrusted code; token ghp_abcdefghijklmnopqrstuvwxyz123456 is a redaction fixture",
+      "details": [
+        "Warn: .github/workflows/release.yml uses pull_request_target and github.event.pull_request.head.sha checkout",
+        "Warn: inline shell uses github.event.issue.title directly with sk_live_123456789abcdef fixture",
+        "Warn: private key fixture -----BEGIN PRIVATE KEY-----abc-----END PRIVATE KEY----- must be redacted"
+      ],
+      "documentation": {
+        "url": "https://github.com/ossf/scorecard/blob/main/docs/checks.md#dangerous-workflow"
+      }
+    },
+    {
+      "name": "Token-Permissions",
+      "score": 2,
+      "reason": "top-level workflow permissions are write-all",
+      "details": ["Warn: contents: write is declared at workflow scope"],
+      "documentation": {
+        "url": "https://github.com/ossf/scorecard/blob/main/docs/checks.md#token-permissions"
+      }
+    },
+    {
+      "name": "Pinned-Dependencies",
+      "score": 4,
+      "reason": "unpinned GitHub Actions and container tags detected",
+      "details": ["Warn: docker/build-push-action@v6 is not pinned to a full-length commit SHA"],
+      "documentation": {
+        "url": "https://github.com/ossf/scorecard/blob/main/docs/checks.md#pinned-dependencies"
+      }
+    },
+    {
+      "name": "SAST",
+      "score": 0,
+      "reason": "no SAST tool detected",
+      "details": ["Info: no CodeQL, SonarCloud, or equivalent SAST workflow detected"],
+      "documentation": {
+        "url": "https://github.com/ossf/scorecard/blob/main/docs/checks.md#sast"
+      }
+    },
+    {
+      "name": "Security-Policy",
+      "score": 10,
+      "reason": "security policy file detected with private reporting guidance",
+      "details": ["Info: SECURITY.md contains a contact channel"],
+      "documentation": {
+        "url": "https://github.com/ossf/scorecard/blob/main/docs/checks.md#security-policy"
+      }
+    }
+  ]
+}

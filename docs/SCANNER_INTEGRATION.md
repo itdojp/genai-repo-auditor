@@ -11,6 +11,7 @@ trivy
 grype
 checkov
 codeql
+scorecard
 custom
 ```
 
@@ -20,6 +21,7 @@ and creates a bounded, redacted normalized lead file for triage.
 ```bash
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool semgrep --file semgrep.json --format json
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool codeql --file codeql.sarif --format sarif
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool scorecard --file scorecard.json --format json
 ```
 
 Ingested files are indexed under `reports/scanner-results/scanner-index.json`.
@@ -52,6 +54,33 @@ Normalized leads use bounded evidence and secret redaction:
 
 Raw scanner outputs remain local artifacts. Prompts and triage should use
 `normalized_path` by default and must not quote or reconstruct full secrets.
+
+## OpenSSF Scorecard posture ingestion
+
+OpenSSF Scorecard is handled as scanner ingestion plus deterministic
+supply-chain posture reporting. Run Scorecard externally in an authorized
+environment, for example:
+
+```bash
+scorecard --repo=github.com/OWNER/REPO --format=json --show-details > scorecard.json
+```
+
+Then import the JSON result:
+
+```bash
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool scorecard --file scorecard.json --format json
+```
+
+In addition to the scanner index and normalized leads, this writes:
+
+```text
+reports/supply-chain-posture.json
+reports/supply-chain-posture.md
+```
+
+Low-scoring mapped checks can append deterministic `TGT-SCORECARD-NNN` target
+queue entries. Scorecard posture entries are leads, not confirmed findings. See
+[`docs/SCORECARD_INGESTION.md`](SCORECARD_INGESTION.md) for the full workflow.
 
 When `scanner-index.json` is present, validate it before triage:
 

@@ -30,17 +30,20 @@ def main() -> int:
 
     run_dir = Path(args.run).resolve()
     ctx = load_context(run_dir)
-    reports = run_dir / 'reports'
+    reports = run_dir / ctx.get('reports_dir', 'reports')
     findings_data = load_json(reports / 'findings.json', {}) or {}
     findings = [f for f in findings_data.get('findings', []) if isinstance(f, dict)]
     targets_data = load_json(reports / 'targets.json', {}) or {}
     targets = [t for t in targets_data.get('targets', []) if isinstance(t, dict)]
     scanner_index = load_json(reports / 'scanner-results' / 'scanner-index.json', {}) or {}
     scanner_results = scanner_index.get('results') or []
+    supply_chain_posture = load_json(reports / 'supply-chain-posture.json', {}) or {}
+    supply_chain_checks = [c for c in supply_chain_posture.get('checks') or [] if isinstance(c, dict)]
 
     sev_counts = Counter(f.get('severity', 'Unknown') for f in findings)
     status_counts = Counter(f.get('status', 'Unknown') for f in findings)
     target_status_counts = Counter(t.get('status', 'unknown') for t in targets)
+    supply_chain_risk_counts = Counter(c.get('risk', 'informational') for c in supply_chain_checks)
     taxonomy_counts = Counter()
     for item in findings + targets:
         for ref in item.get('taxonomies') or []:
@@ -61,6 +64,20 @@ def main() -> int:
     for r in scanner_results:
         if isinstance(r, dict):
             scanner_rows.append(f"<tr><td>{h(r.get('tool'))}</td><td>{h(r.get('format'))}</td><td>{h(r.get('path'))}</td><td>{h(r.get('imported_at'))}</td><td>{h(r.get('note'))}</td></tr>")
+
+    supply_chain_rows = []
+    for c in sorted(supply_chain_checks, key=lambda item: (str(item.get('risk')), str(item.get('name')))):
+        supply_chain_rows.append(
+            "<tr>"
+            f"<td>{h(c.get('name'))}</td>"
+            f"<td>{h(c.get('score_display') or c.get('score'))}</td>"
+            f"<td>{h(c.get('scorecard_risk'))}</td>"
+            f"<td>{h(c.get('risk'))}</td>"
+            f"<td>{h(c.get('reason'))}</td>"
+            f"<td>{h(c.get('remediation'))}</td>"
+            f"<td>{h(c.get('target_recommended'))}</td>"
+            "</tr>"
+        )
 
     taxonomy_rows = []
     for key, count in sorted(taxonomy_counts.items()):
@@ -101,6 +118,11 @@ def main() -> int:
 <table><thead><tr><th>ID</th><th>Severity</th><th>Confidence</th><th>Status</th><th>Category</th><th>Title</th><th>Locations</th></tr></thead><tbody>{''.join(rows) or '<tr><td colspan="7">No findings.</td></tr>'}</tbody></table>
 <h2>Targets</h2>
 <table><thead><tr><th>ID</th><th>Risk</th><th>Priority</th><th>Status</th><th>Category</th><th>Title</th></tr></thead><tbody>{''.join(target_rows) or '<tr><td colspan="6">No targets.</td></tr>'}</tbody></table>
+<h2>Supply-chain posture</h2>
+<p>Status: <code>{h(supply_chain_posture.get('status') or 'not ingested')}</code>; overall Scorecard score: <code>{h(supply_chain_posture.get('overall_score') if supply_chain_posture else '')}</code></p>
+<p>{h(supply_chain_posture.get('summary') or 'No OpenSSF Scorecard posture artifact ingested.')}</p>
+<div class='cards'>{''.join(f"<div class='card'><strong>{h(k)}</strong><br>{v}</div>" for k, v in sorted(supply_chain_risk_counts.items())) or "<div class='card'><strong>Checks</strong><br>0</div>"}</div>
+<table><thead><tr><th>Check</th><th>Score</th><th>Scorecard risk</th><th>Assessed risk</th><th>Reason</th><th>Remediation</th><th>Target?</th></tr></thead><tbody>{''.join(supply_chain_rows) or '<tr><td colspan="7">No Scorecard posture checks ingested.</td></tr>'}</tbody></table>
 <h2>Scanner results</h2>
 <table><thead><tr><th>Tool</th><th>Format</th><th>Path</th><th>Imported at</th><th>Note</th></tr></thead><tbody>{''.join(scanner_rows) or '<tr><td colspan="5">No scanner results ingested.</td></tr>'}</tbody></table>
 </body></html>"""
