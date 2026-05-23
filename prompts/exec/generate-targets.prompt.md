@@ -20,6 +20,7 @@ Read first:
 - {{REPORTS_DIR}}/THREAT_MODEL.md if present
 - {{REPORTS_DIR}}/ATTACK_SURFACE.md if present
 - {{REPORTS_DIR}}/AUDIT_SUMMARY.md if present
+- {{REPORTS_DIR}}/agent-surface.json if present
 - {{TARGET_REPO_DIR}}/README and architecture docs if present
 - {{TARGET_REPO_DIR}}/package manifests and lockfiles
 - {{TARGET_REPO_DIR}}/.github/workflows if present
@@ -56,6 +57,7 @@ Target categories to consider:
 - container_iac
 - business_logic
 - dependency_build_scripts
+- ai_agent_mcp_surface
 - variant_analysis_seed
 
 Required output:
@@ -96,6 +98,7 @@ Quality bar:
 - Prioritize Critical/High-risk targets first.
 - Do not create findings here.
 - Every target must have a concrete scope, entry points or candidate files, and review questions.
+- If {{REPORTS_DIR}}/agent-surface.json exists, include high-risk AI agent and MCP surfaces as bounded targets unless they are already covered.
 - Use controlled taxonomy IDs from templates/taxonomies/ when they apply. Taxonomy classification is advisory and does not replace risk or priority.
 - Status must be queued unless there is a specific reason to mark skipped or needs_human_review.
 

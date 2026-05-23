@@ -108,14 +108,16 @@ def normalize_repo_slug(repo: str) -> str:
 
 
 def load_targets(run_dir: Path) -> List[Dict[str, Any]]:
-    data = load_json(run_dir / 'reports' / 'targets.json', {}) or {}
+    ctx = load_context(run_dir)
+    data = load_json(run_dir / ctx.get('reports_dir', 'reports') / 'targets.json', {}) or {}
     targets = data.get('targets') or []
     return [t for t in targets if isinstance(t, dict)]
 
 
 def write_targets(run_dir: Path, targets: List[Dict[str, Any]]) -> None:
     ctx = load_context(run_dir)
-    data = load_json(run_dir / 'reports' / 'targets.json', {}) or {}
+    reports_dir = run_dir / ctx.get('reports_dir', 'reports')
+    data = load_json(reports_dir / 'targets.json', {}) or {}
     data.update({
         'run_id': ctx.get('run_id', run_dir.name),
         'repo': ctx.get('repo', ''),
@@ -124,7 +126,7 @@ def write_targets(run_dir: Path, targets: List[Dict[str, Any]]) -> None:
         'generated_at': data.get('generated_at') or utc_now(),
         'targets': targets,
     })
-    write_json(run_dir / 'reports' / 'targets.json', data)
+    write_json(reports_dir / 'targets.json', data)
 
 
 def find_target(run_dir: Path, target_id: str) -> Dict[str, Any]:

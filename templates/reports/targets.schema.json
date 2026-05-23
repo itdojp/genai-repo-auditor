@@ -15,7 +15,7 @@
         "type": "object",
         "required": ["id", "category", "title", "risk", "priority", "status", "scope", "entry_points", "trust_boundaries", "sinks", "review_questions", "recommended_mode"],
         "properties": {
-          "id": {"type": "string", "pattern": "^TGT-[0-9]{3,}$"},
+          "id": {"type": "string", "pattern": "^TGT-(?:[A-Z][A-Z0-9]*-)?[0-9]{3,}$"},
           "category": {"type": "string"},
           "title": {"type": "string"},
           "risk": {"enum": ["critical", "high", "medium", "low", "informational"]},

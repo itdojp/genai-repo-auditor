@@ -175,8 +175,8 @@ def validate_targets(
         for key in REQUIRED_TARGET:
             if key not in t:
                 errors.append(f"{path}.{key}: missing target key")
-        if not re.fullmatch(r"TGT-[0-9]{3,}", tid):
-            errors.append(f"{path}.id: target id must match ^TGT-[0-9]{{3,}}$ (got {tid})")
+        if not re.fullmatch(r"TGT-(?:[A-Z][A-Z0-9]*-)?[0-9]{3,}", tid):
+            errors.append(f"{path}.id: target id must match ^TGT-(?:[A-Z][A-Z0-9]*-)?[0-9]{{3,}}$ (got {tid})")
         if tid in seen:
             errors.append(f"{path}.id: duplicate target id {tid}")
         seen.add(tid)

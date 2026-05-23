@@ -243,6 +243,7 @@ Do not use this project for:
 - [`docs/TAXONOMIES.md`](docs/TAXONOMIES.md)
 - [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md)
 - [`docs/ADVERSARIAL_FIXTURES.md`](docs/ADVERSARIAL_FIXTURES.md)
+- [`docs/AGENT_SURFACE_DISCOVERY.md`](docs/AGENT_SURFACE_DISCOVERY.md)
 - [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md)
 - [`docs/CODEX_WORK_INSTRUCTIONS.md`](docs/CODEX_WORK_INSTRUCTIONS.md)
 
