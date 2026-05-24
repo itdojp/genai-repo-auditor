@@ -258,11 +258,11 @@ gra-sarif --run runs/OWNER__REPO/RUN_ID --out runs/OWNER__REPO/RUN_ID/reports/fi
 
 | Field | Details |
 |---|---|
-| Purpose | Import run metadata, targets, findings, scanner results, and created issue records into a local SQLite database. |
+| Purpose | Import run metadata, targets, findings, scanner results, created issue records, and optional posture artifacts into a local SQLite database. |
 | Workflow category | Reporting / persistence workflow. |
 | Required inputs | `--run RUN_DIR`. |
 | Key options | `--db DB` to override the default `<lab>/runs/security-audit.sqlite`. |
-| Generated outputs | SQLite database with `runs`, `targets`, `findings`, `scanner_results`, and `issues` tables. |
+| Generated outputs | SQLite database with `runs`, `targets`, `findings`, `scanner_results`, `issues`, and `posture_artifacts` tables. `posture_artifacts` records run manifests, agent-surface discovery, Scorecard posture, provenance posture, and dependency posture when those artifacts exist. |
 | Exit status behavior | `0` when import completes; parser status `2` for usage errors. SQLite or filesystem failures surface as non-zero Python errors. |
 | Security / disclosure cautions | The SQLite store can aggregate sensitive audit data across repositories. Keep it local, restrict access, and avoid committing it. |
 | Related docs | [`docs/REPORTING_AND_STORE.md`](REPORTING_AND_STORE.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
@@ -277,13 +277,13 @@ gra-store --run runs/OWNER__REPO/RUN_ID --db runs/security-audit.sqlite
 
 | Field | Details |
 |---|---|
-| Purpose | Build a lightweight index across audit runs by scanning for `reports/findings.json`. |
+| Purpose | Build a lightweight index across audit runs by scanning for `reports/findings.json` and summarizing optional posture artifacts when present. |
 | Workflow category | Reporting / index workflow. |
 | Required inputs | Existing runs directory. Defaults to `runs`. |
 | Key options | `--runs-dir RUNS_DIR`. |
-| Generated outputs | `index.json` and `index.md` in the selected runs directory. |
+| Generated outputs | `index.json` and `index.md` in the selected runs directory. Each run includes finding counts plus posture summary fields for artifact count, agent surfaces, Scorecard checks, provenance workflows, dependency components, and dependency vulnerabilities. |
 | Exit status behavior | `0` when index files are written. The selected runs directory must exist and be writable. |
-| Security / disclosure cautions | The generated index summarizes findings and run paths. Keep it local if repository names, run paths, or finding counts are sensitive. |
+| Security / disclosure cautions | The generated index summarizes findings, posture counts, and run paths. Keep it local if repository names, run paths, finding counts, or dependency vulnerability counts are sensitive. |
 | Related docs | [`docs/REPORTING_AND_STORE.md`](REPORTING_AND_STORE.md), [`docs/NORMAL_WORKFLOW.md`](NORMAL_WORKFLOW.md). |
 
 Example:

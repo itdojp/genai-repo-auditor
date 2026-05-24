@@ -123,6 +123,131 @@ class CliWorkflowTests(unittest.TestCase):
         manifest = self.load_manifest(run_dir)
         return {str(item["path"]) for item in manifest["artifacts"]}
 
+    def write_optional_posture_artifacts(self, run_dir: Path) -> None:
+        reports = run_dir / "reports"
+        (run_dir / "run-manifest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "1",
+                    "generated_at": "2026-05-24T00:00:00Z",
+                    "artifacts": [
+                        {"path": "reports/findings.json", "kind": "file", "size_bytes": 1},
+                        {"path": "reports/targets.json", "kind": "file", "size_bytes": 1},
+                        {"path": "reports/dependencies.json", "kind": "file", "size_bytes": 1},
+                    ],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (reports / "agent-surface.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "1",
+                    "run_id": "fixture-run",
+                    "repo": "example/demo",
+                    "generated_at": "2026-05-24T00:00:01Z",
+                    "agent_surfaces": [
+                        {"id": "AGS-001", "type": "mcp_config", "risk": "high"},
+                        {"id": "AGS-002", "type": "prompt_template", "risk": "medium"},
+                    ],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (reports / "supply-chain-posture.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "1",
+                    "run_id": "fixture-run",
+                    "repo": "example/demo",
+                    "generated_at": "2026-05-24T00:00:02Z",
+                    "status": "needs_review",
+                    "checks": [
+                        {"name": "Token-Permissions", "target_recommended": True},
+                        {"name": "Pinned-Dependencies", "target_recommended": False},
+                    ],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (reports / "provenance-posture.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "1",
+                    "run_id": "fixture-run",
+                    "repo": "example/demo",
+                    "generated_at": "2026-05-24T00:00:03Z",
+                    "status": "attested",
+                    "workflows": [
+                        {
+                            "path": "repo/.github/workflows/release.yml",
+                            "publishes_artifacts": True,
+                            "has_attestation": True,
+                        }
+                    ],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (reports / "dependencies.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "1",
+                    "run_id": "fixture-run",
+                    "repo": "example/demo",
+                    "commit": "0000000000000000000000000000000000000000",
+                    "generated_at": "2026-05-24T00:00:04Z",
+                    "status": "vulnerabilities_observed",
+                    "component_count": 2,
+                    "vulnerability_count": 1,
+                    "components": [
+                        {
+                            "id": "pkg:pypi/demo@1.0.0",
+                            "name": "demo",
+                            "version": "1.0.0",
+                            "ecosystem": "pypi",
+                            "scope": "direct",
+                            "licenses": ["MIT"],
+                            "manifest": "repo/requirements.txt",
+                            "dependency_paths": [["demo"]],
+                        },
+                        {
+                            "id": "pkg:pypi/transitive@2.0.0",
+                            "name": "transitive",
+                            "version": "2.0.0",
+                            "ecosystem": "pypi",
+                            "scope": "transitive",
+                            "licenses": [],
+                            "manifest": "repo/requirements.txt",
+                            "dependency_paths": [["demo", "transitive"]],
+                        },
+                    ],
+                    "vulnerabilities": [
+                        {
+                            "id": "CVE-2099-0001",
+                            "component": "pkg:pypi/demo@1.0.0",
+                            "severity": "High",
+                            "fixed_version": "1.0.1",
+                            "source": "fixture",
+                            "evidence_ref": "reports/scanner-results/fixture.json",
+                            "dependency_paths": [["demo"]],
+                        }
+                    ],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
     def write_agent_surface_fixture_repo(self, run_dir: Path) -> None:
         repo = run_dir / "repo"
         (repo / ".vscode").mkdir(parents=True, exist_ok=True)
@@ -1691,7 +1816,117 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("Imported run", cp_store.stdout)
         with sqlite3.connect(db_path) as conn:
             count = conn.execute("select count(*) from findings").fetchone()[0]
+            posture_count = conn.execute("select count(*) from posture_artifacts").fetchone()[0]
         self.assertEqual(count, 1)
+        self.assertEqual(posture_count, 0)
+
+    def test_gra_store_and_index_persist_optional_posture_artifacts(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.write_optional_posture_artifacts(run_dir)
+        (run_dir / "reports" / "run-manifest.json").write_text(
+            json.dumps({"schema_version": "1", "generated_at": "2026-05-24T00:00:05Z", "artifacts": []}) + "\n",
+            encoding="utf-8",
+        )
+
+        db_path = self.work_dir / "posture.sqlite"
+        self.run_cmd([REPO_ROOT / "bin" / "gra-store", "--run", run_dir, "--db", db_path], check=True)
+        self.run_cmd([REPO_ROOT / "bin" / "gra-store", "--run", run_dir, "--db", db_path], check=True)
+
+        with sqlite3.connect(db_path) as conn:
+            rows = conn.execute(
+                "select artifact_type, path, status, item_count, data_json "
+                "from posture_artifacts order by artifact_type, path"
+            ).fetchall()
+        self.assertEqual(len(rows), 5)
+        posture_by_type = {row[0]: row for row in rows}
+        self.assertEqual(posture_by_type["run_manifest"][1], "run-manifest.json")
+        self.assertEqual(posture_by_type["run_manifest"][3], 3)
+        self.assertEqual(posture_by_type["agent_surface"][3], 2)
+        self.assertEqual(posture_by_type["supply_chain_posture"][2], "needs_review")
+        self.assertEqual(posture_by_type["supply_chain_posture"][3], 2)
+        self.assertEqual(posture_by_type["provenance_posture"][2], "attested")
+        self.assertEqual(posture_by_type["provenance_posture"][3], 1)
+        self.assertEqual(posture_by_type["dependencies"][2], "vulnerabilities_observed")
+        self.assertEqual(posture_by_type["dependencies"][3], 2)
+        dependency_data = json.loads(posture_by_type["dependencies"][4])
+        self.assertEqual(dependency_data["vulnerability_count"], 1)
+
+        indexed_run = self.runs_dir / "example__demo" / "fixture-run"
+        indexed_run.parent.mkdir(parents=True)
+        shutil.copytree(run_dir, indexed_run)
+        cp_index = self.run_cmd([REPO_ROOT / "bin" / "gra-index", "--runs-dir", self.runs_dir], check=True)
+        self.assertIn("index.json", cp_index.stdout)
+
+        index = json.loads((self.runs_dir / "index.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(index["runs"]), 1)
+        item = index["runs"][0]
+        self.assertEqual(item["posture_artifact_count"], 5)
+        self.assertEqual(item["agent_surface_count"], 2)
+        self.assertEqual(item["scorecard_check_count"], 2)
+        self.assertEqual(item["provenance_workflow_count"], 1)
+        self.assertEqual(item["dependency_component_count"], 2)
+        self.assertEqual(item["dependency_vulnerability_count"], 1)
+        posture = item["posture"]
+        self.assertEqual(posture["run_manifest_artifact_count"], 3)
+        self.assertEqual(posture["statuses"]["dependencies"], "vulnerabilities_observed")
+        self.assertEqual(posture["statuses"]["supply_chain_posture"], "needs_review")
+        index_md = (self.runs_dir / "index.md").read_text(encoding="utf-8")
+        self.assertIn("Posture artifacts", index_md)
+        self.assertIn("Agent surfaces", index_md)
+        self.assertIn("Vulnerabilities", index_md)
+
+    def test_gra_store_skips_symlinked_posture_artifacts(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        outside = self.work_dir / "outside-dependencies.json"
+        outside.write_text(
+            json.dumps(
+                {
+                    "schema_version": "1",
+                    "status": "vulnerabilities_observed",
+                    "component_count": 1,
+                    "vulnerability_count": 0,
+                    "components": [],
+                    "vulnerabilities": [],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "reports" / "dependencies.json").symlink_to(outside)
+
+        db_path = self.work_dir / "symlink-posture.sqlite"
+        self.run_cmd([REPO_ROOT / "bin" / "gra-store", "--run", run_dir, "--db", db_path], check=True)
+        with sqlite3.connect(db_path) as conn:
+            posture_count = conn.execute("select count(*) from posture_artifacts").fetchone()[0]
+        self.assertEqual(posture_count, 0)
+
+    def test_gra_store_supports_report_run_manifest_path(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        reports = run_dir / "reports"
+        (reports / "run-manifest.json").write_text(
+            json.dumps({"schema_version": "1", "generated_at": "2026-05-24T00:00:00Z", "artifacts": []}) + "\n",
+            encoding="utf-8",
+        )
+        db_path = self.work_dir / "manifest-fallback.sqlite"
+        self.run_cmd([REPO_ROOT / "bin" / "gra-store", "--run", run_dir, "--db", db_path], check=True)
+        with sqlite3.connect(db_path) as conn:
+            row = conn.execute(
+                "select artifact_type, path, status, item_count from posture_artifacts"
+            ).fetchone()
+        self.assertEqual(row, ("run_manifest", "reports/run-manifest.json", "present", 0))
+
+    def test_gra_index_tolerates_malformed_context_when_summarizing_posture(self) -> None:
+        indexed_run = self.runs_dir / "example__demo" / "fixture-run"
+        indexed_run.parent.mkdir(parents=True)
+        shutil.copytree(FIXTURES / "minimal-run", indexed_run)
+        (indexed_run / "context.json").write_text("{not-json\n", encoding="utf-8")
+
+        cp_index = self.run_cmd([REPO_ROOT / "bin" / "gra-index", "--runs-dir", self.runs_dir], check=True)
+        self.assertIn("index.json", cp_index.stdout)
+        index = json.loads((self.runs_dir / "index.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(index["runs"]), 1)
+        self.assertEqual(index["runs"][0]["run_id"], "fixture-run")
+        self.assertEqual(index["runs"][0]["posture_artifact_count"], 0)
 
     def test_gra_ingest_normalizes_and_redacts_secret_scanner_outputs(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
 from version import auditor_version
+from posture_artifacts import posture_index_summary
 
 SEVERITIES = ["Critical", "High", "Medium", "Low", "Informational"]
 STATUSES = ["Confirmed", "Probable", "Potential", "Needs human review", "Informational", "Invalid"]
@@ -43,6 +44,7 @@ def main() -> int:
                 counts[sev] += 1
             if st in statuses:
                 statuses[st] += 1
+        posture = posture_index_summary(run_dir)
         items.append({
             "run_dir": str(run_dir),
             "repo": data.get("repo"),
@@ -52,16 +54,39 @@ def main() -> int:
             "finding_count": len(findings),
             "severity_counts": counts,
             "status_counts": statuses,
+            "posture": posture,
+            "posture_artifact_count": posture["posture_artifact_count"],
+            "agent_surface_count": posture["agent_surface_count"],
+            "scorecard_check_count": posture["scorecard_check_count"],
+            "provenance_workflow_count": posture["provenance_workflow_count"],
+            "dependency_component_count": posture["dependency_component_count"],
+            "dependency_vulnerability_count": posture["dependency_vulnerability_count"],
         })
 
     items.sort(key=lambda x: (str(x.get("repo")), str(x.get("run_id"))))
     out_json = runs_dir / "index.json"
     out_json.write_text(json.dumps({"runs": items}, indent=2) + "\n", encoding="utf-8")
 
-    lines = ["# GenAI Repo Auditor Run Index", "", "| Repo | Run ID | Findings | Critical | High | Medium | Run dir |", "|---|---|---:|---:|---:|---:|---|"]
+    lines = [
+        "# GenAI Repo Auditor Run Index",
+        "",
+        (
+            "| Repo | Run ID | Findings | Critical | High | Medium | "
+            "Posture artifacts | Agent surfaces | Scorecard checks | Provenance workflows | Components | Vulnerabilities | Run dir |"
+        ),
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+    ]
     for item in items:
         c = item["severity_counts"]
-        lines.append(f"| {item.get('repo') or ''} | {item.get('run_id') or ''} | {item.get('finding_count', 0)} | {c.get('Critical',0)} | {c.get('High',0)} | {c.get('Medium',0)} | `{item.get('run_dir')}` |")
+        posture = item["posture"]
+        lines.append(
+            f"| {item.get('repo') or ''} | {item.get('run_id') or ''} | {item.get('finding_count', 0)} | "
+            f"{c.get('Critical', 0)} | {c.get('High', 0)} | {c.get('Medium', 0)} | "
+            f"{posture.get('posture_artifact_count', 0)} | {posture.get('agent_surface_count', 0)} | "
+            f"{posture.get('scorecard_check_count', 0)} | {posture.get('provenance_workflow_count', 0)} | "
+            f"{posture.get('dependency_component_count', 0)} | {posture.get('dependency_vulnerability_count', 0)} | "
+            f"`{item.get('run_dir')}` |"
+        )
     out_md = runs_dir / "index.md"
     out_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
