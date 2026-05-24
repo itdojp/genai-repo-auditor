@@ -107,6 +107,16 @@ def _safe_tool_name(tool: str) -> str:
     return "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in str(tool).lower())
 
 
+def _scanner_vulnerability_request(*, safe_tool: str, fmt: str) -> bool:
+    return safe_tool in {"trivy", "grype"} and fmt.lower() in {
+        "json",
+        "trivy",
+        "trivy-json",
+        "grype",
+        "grype-json",
+    }
+
+
 def _dependency_scanner_format(parsed: Any, *, tool: str, requested_format: str, detected_format: str) -> str:
     safe_tool = _safe_tool_name(tool)
     requested = (requested_format or "").lower()
@@ -800,7 +810,8 @@ def analyze_dependencies(
         for vulnerability in (existing_data or {}).get("vulnerabilities", [])
         if isinstance(vulnerability, dict)
     ]
-    merge_existing = detected_format in {"trivy", "grype"} and bool(existing_components or existing_vulnerabilities)
+    scanner_source = detected_format if detected_format in {"trivy", "grype"} else ""
+    merge_existing = bool(scanner_source) and bool(existing_components or existing_vulnerabilities)
     components: list[dict[str, Any]] = []
     vulnerabilities: list[dict[str, Any]] = []
     try:
@@ -819,6 +830,11 @@ def analyze_dependencies(
         components = []
         vulnerabilities = []
     if merge_existing:
+        existing_vulnerabilities = [
+            vulnerability
+            for vulnerability in existing_vulnerabilities
+            if str(vulnerability.get("source") or "").lower() != scanner_source
+        ]
         components = [*existing_components, *components]
         vulnerabilities = [*existing_vulnerabilities, *vulnerabilities]
     normalized_components = _normalize_components(components)
@@ -959,7 +975,7 @@ def render_dependency_markdown(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def write_dependency_artifacts(*, run_dir: Path, raw_path: Path, raw_result_ref: str, tool: str, requested_format: str) -> dict[str, Any]:
+def write_dependency_artifacts(*, run_dir: Path, raw_path: Path, raw_result_ref: str, tool: str, requested_format: str) -> dict[str, Any] | None:
     reports = _reports_dir(run_dir)
     reports.mkdir(parents=True, exist_ok=True)
     existing_data = load_json(reports / "dependencies.json", {}) or {}
@@ -973,6 +989,9 @@ def write_dependency_artifacts(*, run_dir: Path, raw_path: Path, raw_result_ref:
         requested_format=requested_format,
         existing_data=existing_data,
     )
+    safe_tool = _safe_tool_name(tool)
+    if _scanner_vulnerability_request(safe_tool=safe_tool, fmt=requested_format) and data.get("source", {}).get("detected_format") not in {"trivy", "grype"}:
+        return None
     write_json(reports / "dependencies.json", data)
     (reports / "DEPENDENCY_RISK.md").write_text(render_dependency_markdown(data), encoding="utf-8")
     return data
@@ -1136,6 +1155,4 @@ def should_ingest_dependencies(*, safe_tool: str, fmt: str) -> bool:
         "cyclonedx",
         "spdx",
         "syft",
-    } or fmt.lower() in {"cyclonedx", "cyclonedx-json", "spdx", "github-spdx", "github-dependency-graph", "syft", "syft-json"} or (
-        safe_tool in {"trivy", "grype"} and fmt.lower() in {"json", "trivy", "trivy-json", "grype", "grype-json"}
-    )
+    } or fmt.lower() in {"cyclonedx", "cyclonedx-json", "spdx", "github-spdx", "github-dependency-graph", "syft", "syft-json"} or _scanner_vulnerability_request(safe_tool=safe_tool, fmt=fmt)

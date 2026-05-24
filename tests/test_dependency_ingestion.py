@@ -207,6 +207,90 @@ class DependencyIngestionTests(unittest.TestCase):
         )
         self.assertEqual(0, validation.returncode, f"stdout:\n{validation.stdout}\nstderr:\n{validation.stderr}")
 
+    def test_trivy_reingest_replaces_prior_trivy_vulnerability_evidence(self) -> None:
+        run_dir = self.copy_run()
+        raw_dir = run_dir / "reports" / "scanner-results"
+        raw_dir.mkdir(parents=True)
+        sbom_path = raw_dir / "cyclonedx.json"
+        shutil.copy2(FIXTURES / "sbom" / "cyclonedx.json", sbom_path)
+        write_dependency_artifacts(
+            run_dir=run_dir,
+            raw_path=sbom_path,
+            raw_result_ref="reports/scanner-results/cyclonedx.json",
+            tool="sbom",
+            requested_format="cyclonedx",
+        )
+        trivy_path = raw_dir / "trivy-vulnerabilities.json"
+        shutil.copy2(FIXTURES / "sbom" / "trivy-vulnerabilities.json", trivy_path)
+        data = write_dependency_artifacts(
+            run_dir=run_dir,
+            raw_path=trivy_path,
+            raw_result_ref="reports/scanner-results/trivy-vulnerabilities.json",
+            tool="trivy",
+            requested_format="json",
+        )
+        self.assertIsNotNone(data)
+        self.assertIn("CVE-2026-TRIVY-0001", {vulnerability["id"] for vulnerability in data["vulnerabilities"]})
+
+        clean_trivy = raw_dir / "trivy-clean.json"
+        clean_trivy.write_text(
+            json.dumps(
+                {
+                    "SchemaVersion": 2,
+                    "ArtifactName": "example/demo",
+                    "Results": [{"Target": "requirements.txt", "Type": "python-pkg", "Vulnerabilities": []}],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        data = write_dependency_artifacts(
+            run_dir=run_dir,
+            raw_path=clean_trivy,
+            raw_result_ref="reports/scanner-results/trivy-clean.json",
+            tool="trivy",
+            requested_format="json",
+        )
+        self.assertIsNotNone(data)
+        vulnerabilities = {vulnerability["id"]: vulnerability for vulnerability in data["vulnerabilities"]}
+        self.assertIn("GHSA-demo-0001", vulnerabilities)
+        self.assertNotIn("CVE-2026-TRIVY-0001", vulnerabilities)
+        self.assertNotIn("CVE-2026-TRIVY-UNMATCHED", vulnerabilities)
+
+    def test_unrecognized_trivy_json_does_not_overwrite_dependency_posture(self) -> None:
+        run_dir = self.copy_run()
+        raw_dir = run_dir / "reports" / "scanner-results"
+        raw_dir.mkdir(parents=True)
+        sbom_path = raw_dir / "cyclonedx.json"
+        shutil.copy2(FIXTURES / "sbom" / "cyclonedx.json", sbom_path)
+        write_dependency_artifacts(
+            run_dir=run_dir,
+            raw_path=sbom_path,
+            raw_result_ref="reports/scanner-results/cyclonedx.json",
+            tool="sbom",
+            requested_format="cyclonedx",
+        )
+        dependencies_path = run_dir / "reports" / "dependencies.json"
+        before = json.loads(dependencies_path.read_text(encoding="utf-8"))
+        unsupported_trivy = raw_dir / "trivy-unsupported.json"
+        unsupported_trivy.write_text(
+            json.dumps({"SchemaVersion": 2, "ArtifactName": "example/demo", "UnsupportedResults": []}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        data = write_dependency_artifacts(
+            run_dir=run_dir,
+            raw_path=unsupported_trivy,
+            raw_result_ref="reports/scanner-results/trivy-unsupported.json",
+            tool="trivy",
+            requested_format="json",
+        )
+
+        self.assertIsNone(data)
+        after = json.loads(dependencies_path.read_text(encoding="utf-8"))
+        self.assertEqual(before, after)
+
     def test_grype_vulnerability_json_links_existing_dependency_components(self) -> None:
         run_dir = self.copy_run()
         raw_dir = run_dir / "reports" / "scanner-results"
