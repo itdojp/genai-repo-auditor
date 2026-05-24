@@ -134,6 +134,21 @@ reports/findings.sarif
 runs/security-audit.sqlite
 ```
 
+## Offline staged regression fixture
+
+The normal Python integration suite includes an offline staged workflow fixture:
+
+```bash
+python3 -m unittest tests.integration.test_cli_workflows.CliWorkflowTests.test_offline_staged_posture_workflow_fixture -v
+```
+
+The fixture uses a mocked `gh` clone, mocked `codex exec`, and local Scorecard /
+SBOM JSON fixtures. It exercises prepare, recon, target generation, Scorecard
+and dependency ingestion, validation, dashboard, SARIF, SQLite store, and run
+index generation without real GitHub, Codex, scanner, network, or external
+repository access. It asserts that posture-derived targets are generated and
+that run artifact references remain run-relative.
+
 ## Issue creation
 
 Always review reports manually before creating GitHub Issues.
