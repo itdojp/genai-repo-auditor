@@ -11,7 +11,7 @@ LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
 from gralib import load_context, load_json, utc_now, write_json
-from dependency_posture import should_ingest_dependencies, write_dependency_artifacts
+from dependency_posture import append_dependency_posture_targets, should_ingest_dependencies, write_dependency_artifacts
 from scanner_normalize import normalize_scanner_file
 from scorecard_posture import append_scorecard_posture_targets, write_scorecard_posture_artifacts
 
@@ -98,6 +98,9 @@ def main() -> int:
     if dependency_data is not None:
         print(f'Wrote {reports / "dependencies.json"}')
         print(f'Wrote {reports / "DEPENDENCY_RISK.md"}')
+        added_dependency_targets = append_dependency_posture_targets(run_dir)
+        if added_dependency_targets:
+            print(f'Added {len(added_dependency_targets)} dependency-posture target(s)')
     print(f'Updated {index_path}')
     return 0
 

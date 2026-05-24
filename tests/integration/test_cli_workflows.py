@@ -17,6 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 FIXTURE_FINGERPRINT = "0123456789abcdef01234567"
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+from dependency_posture import write_dependency_artifacts  # noqa: E402
 from gralib import env_from_context  # noqa: E402
 
 
@@ -850,6 +851,38 @@ class CliWorkflowTests(unittest.TestCase):
 
         calls = self.read_codex_calls(codex_log)
         self.assertEqual(len(calls), 2, calls)
+
+    def test_gra_targets_generate_appends_dependency_posture_targets(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        raw_dir = run_dir / "reports" / "scanner-results"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        raw_path = raw_dir / "cyclonedx.json"
+        shutil.copy2(FIXTURES / "sbom" / "cyclonedx.json", raw_path)
+        write_dependency_artifacts(
+            run_dir=run_dir,
+            raw_path=raw_path,
+            raw_result_ref="reports/scanner-results/cyclonedx.json",
+            tool="sbom",
+            requested_format="cyclonedx",
+        )
+        env, codex_log = self.env_with_codex_log()
+
+        cp_targets = self.run_cmd([REPO_ROOT / "bin" / "gra-targets", "--run", run_dir, "--generate"], env=env, check=True)
+        self.assertIn("Added 1 dependency-posture target(s)", cp_targets.stdout)
+        targets = json.loads((run_dir / "reports" / "targets.json").read_text(encoding="utf-8"))["targets"]
+        dependency_targets = [target for target in targets if str(target.get("id", "")).startswith("TGT-DEPENDENCY-")]
+        self.assertEqual(1, len(dependency_targets))
+        self.assertEqual("Dependency Risk", dependency_targets[0]["category"])
+        self.assertEqual("high", dependency_targets[0]["risk"])
+        self.assertIn("GHSA-demo-0001", dependency_targets[0]["scope"])
+        self.assertIn("pkg:pypi/lib-b@2.0.0", dependency_targets[0]["scope"])
+        self.assertIn("reports/dependencies.json", dependency_targets[0]["notes"])
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("OK:", cp_validate.stdout)
+
+        calls = self.read_codex_calls(codex_log)
+        self.assertEqual(len(calls), 1, calls)
 
     def test_gra_research_exec_marks_target_reviewed_and_writes_codex_artifacts(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

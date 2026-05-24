@@ -11,6 +11,7 @@ sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
 from gralib import env_from_context, find_target, load_context, load_targets, render_template, run_codex_exec, write_targets
 from agent_surface import append_agent_surface_targets
+from dependency_posture import append_dependency_posture_targets
 from provenance_posture import append_provenance_posture_targets
 from scorecard_posture import append_scorecard_posture_targets
 
@@ -110,6 +111,9 @@ def main() -> int:
     added_scorecard_targets = append_scorecard_posture_targets(run_dir)
     if added_scorecard_targets:
         print(f'Added {len(added_scorecard_targets)} scorecard-posture target(s)')
+    added_dependency_targets = append_dependency_posture_targets(run_dir)
+    if added_dependency_targets:
+        print(f'Added {len(added_dependency_targets)} dependency-posture target(s)')
     print(f'Wrote {reports / "targets.json"}')
     print_table(load_targets(run_dir))
     return 0

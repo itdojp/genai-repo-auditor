@@ -12,7 +12,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 sys.path.insert(0, str(REPO_ROOT / "lib"))
-from dependency_posture import analyze_dependencies, should_ingest_dependencies, write_dependency_artifacts  # noqa: E402
+from dependency_posture import (  # noqa: E402
+    MAX_NOTE_CHARS,
+    analyze_dependencies,
+    append_dependency_posture_targets,
+    should_ingest_dependencies,
+    write_dependency_artifacts,
+)
 
 
 class DependencyIngestionTests(unittest.TestCase):
@@ -172,6 +178,7 @@ class DependencyIngestionTests(unittest.TestCase):
         )
         self.assertEqual(0, ingest.returncode, f"stdout:\n{ingest.stdout}\nstderr:\n{ingest.stderr}")
         self.assertIn("dependencies.json", ingest.stdout)
+        self.assertIn("Added 1 dependency-posture target(s)", ingest.stdout)
         self.assertTrue((run_dir / "reports" / "dependencies.json").exists())
         self.assertTrue((run_dir / "reports" / "DEPENDENCY_RISK.md").exists())
 
@@ -210,6 +217,128 @@ class DependencyIngestionTests(unittest.TestCase):
         self.assertIn("Dependency risk", dashboard_html)
         self.assertIn("GHSA-demo-0001", dashboard_html)
         self.assertIn("pkg:pypi/lib-b@2.0.0", dashboard_html)
+
+    def test_dependency_targets_cover_transitive_vulnerabilities_and_idempotency(self) -> None:
+        run_dir = self.copy_run()
+        raw_dir = run_dir / "reports" / "scanner-results"
+        raw_dir.mkdir(parents=True)
+        raw_path = raw_dir / "cyclonedx.json"
+        shutil.copy2(FIXTURES / "sbom" / "cyclonedx.json", raw_path)
+        write_dependency_artifacts(
+            run_dir=run_dir,
+            raw_path=raw_path,
+            raw_result_ref="reports/scanner-results/cyclonedx.json",
+            tool="sbom",
+            requested_format="cyclonedx",
+        )
+
+        added = append_dependency_posture_targets(run_dir)
+        self.assertEqual(["TGT-DEPENDENCY-001"], [target["id"] for target in added])
+        target = added[0]
+        self.assertEqual("Dependency Risk", target["category"])
+        self.assertEqual("high", target["risk"])
+        self.assertEqual(70, target["priority"])
+        self.assertIn("GHSA-demo-0001", target["scope"])
+        self.assertIn("pkg:pypi/lib-b@2.0.0", target["scope"])
+        self.assertIn("reports/dependencies.json", target["notes"])
+        self.assertIn("evidence", " ".join(target["security_invariants"]).lower())
+        self.assertEqual([], append_dependency_posture_targets(run_dir))
+
+        validation = subprocess.run(
+            [sys.executable, REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir],
+            cwd=REPO_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(0, validation.returncode, f"stdout:\n{validation.stdout}\nstderr:\n{validation.stderr}")
+
+    def test_dependency_targets_cover_direct_vulnerabilities(self) -> None:
+        run_dir = self.copy_run()
+        data = analyze_dependencies(
+            run_dir=run_dir,
+            raw_path=FIXTURES / "sbom" / "cyclonedx.json",
+            raw_result_ref="reports/scanner-results/cyclonedx.json",
+            tool="sbom",
+            requested_format="cyclonedx",
+        )
+        components = {component["id"]: component for component in data["components"]}
+        direct_component = "pkg:pypi/lib-a@1.0.0"
+        data["vulnerabilities"] = [
+            {
+                "id": "CVE-direct-0001",
+                "component": direct_component,
+                "severity": "Critical",
+                "fixed_version": "1.0.1",
+                "source": "fixture",
+                "evidence_ref": "CVE-direct-0001",
+                "dependency_paths": components[direct_component]["dependency_paths"],
+            }
+        ]
+        data["vulnerability_count"] = 1
+        dependencies_path = run_dir / "reports" / "dependencies.json"
+        dependencies_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+        added = append_dependency_posture_targets(run_dir)
+        self.assertEqual(1, len(added))
+        self.assertEqual("critical", added[0]["risk"])
+        self.assertEqual(95, added[0]["priority"])
+        self.assertEqual(["requirements.txt"], added[0]["entry_points"])
+
+    def test_dependency_targets_skip_missing_paths_and_unknown_reachability(self) -> None:
+        run_dir = self.copy_run()
+        data = analyze_dependencies(
+            run_dir=run_dir,
+            raw_path=FIXTURES / "sbom" / "cyclonedx.json",
+            raw_result_ref="reports/scanner-results/cyclonedx.json",
+            tool="sbom",
+            requested_format="cyclonedx",
+        )
+        data["vulnerabilities"][0]["dependency_paths"] = []
+        dependencies_path = run_dir / "reports" / "dependencies.json"
+        dependencies_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+        self.assertEqual([], append_dependency_posture_targets(run_dir))
+
+    def test_dependency_targets_handle_malformed_files_and_bound_notes(self) -> None:
+        malformed_run = self.copy_run()
+        malformed_path = malformed_run / "reports" / "dependencies.json"
+        malformed_path.write_text("[]\n", encoding="utf-8")
+        self.assertEqual([], append_dependency_posture_targets(malformed_run))
+
+        shutil.rmtree(malformed_run)
+        run_dir = self.copy_run()
+        data = analyze_dependencies(
+            run_dir=run_dir,
+            raw_path=FIXTURES / "sbom" / "cyclonedx.json",
+            raw_result_ref="reports/scanner-results/cyclonedx.json",
+            tool="sbom",
+            requested_format="cyclonedx",
+        )
+        component_id = "pkg:pypi/lib-b@2.0.0"
+        components = {component["id"]: component for component in data["components"]}
+        components[component_id]["version"] = "9" * 200
+        data["vulnerabilities"] = [
+            {
+                "id": "GHSA-" + "x" * 200,
+                "component": component_id,
+                "severity": "High",
+                "fixed_version": "1." + "2" * 200,
+                "source": "fixture-" + "source" * 100,
+                "evidence_ref": "evidence",
+                "dependency_paths": [[component_id, "pkg:generic/" + "nested" * 120]],
+            }
+        ]
+        data["vulnerability_count"] = 1
+        dependencies_path = run_dir / "reports" / "dependencies.json"
+        dependencies_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+        added = append_dependency_posture_targets(run_dir)
+        self.assertEqual(1, len(added))
+        self.assertLessEqual(len(added[0]["notes"]), MAX_NOTE_CHARS)
+        self.assertTrue(added[0]["notes"].endswith("...<truncated>"))
 
     def test_dependency_validator_rejects_count_drift_and_unknown_components(self) -> None:
         run_dir = self.copy_run()

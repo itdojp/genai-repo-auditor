@@ -107,8 +107,11 @@ reports/DEPENDENCY_RISK.md
 
 Dependency vulnerability records are evidence, not confirmed findings. License
 data is included for posture context and does not create security Issues by
-default. See [`docs/DEPENDENCY_INGESTION.md`](DEPENDENCY_INGESTION.md) for the
-full workflow and privacy considerations.
+default. High-signal dependency vulnerabilities with dependency paths can append
+deterministic `TGT-DEPENDENCY-NNN` queue entries for review, but those entries
+remain posture targets until reachability is confirmed. See
+[`docs/DEPENDENCY_INGESTION.md`](DEPENDENCY_INGESTION.md) for the full workflow
+and privacy considerations.
 
 When `scanner-index.json` is present, validate it before triage:
 
