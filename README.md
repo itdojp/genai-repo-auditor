@@ -164,6 +164,8 @@ gra-ingest --run runs/OWNER__REPO/RUN_ID --tool semgrep --file semgrep.json --fo
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool codeql --file codeql.sarif --format sarif
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool scorecard --file scorecard.json --format json
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool sbom --file bom.json --format cyclonedx
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool trivy --file trivy.json --format json
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool grype --file grype.json --format json
 gra-scanner-triage --run runs/OWNER__REPO/RUN_ID --model gpt-5.5 --effort xhigh
 ```
 
@@ -177,6 +179,9 @@ SBOM and dependency graph ingestion writes `reports/dependencies.json` and
 direct Critical/High vulnerability records and transitive high-severity records
 with dependency paths can append bounded `TGT-DEPENDENCY-NNN` review targets;
 they remain posture evidence until repository reachability is confirmed.
+Trivy and Grype vulnerability JSON can also add dependency vulnerability evidence
+and link records to existing SBOM-derived components when package identifiers
+match.
 
 ## Multiple repositories
 

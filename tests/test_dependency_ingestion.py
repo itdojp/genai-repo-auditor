@@ -147,10 +147,162 @@ class DependencyIngestionTests(unittest.TestCase):
             components["pkg:npm/transitive-lib@4.5.6"]["dependency_paths"][0],
         )
 
-    def test_trivy_sbom_format_alias_triggers_dependency_ingestion(self) -> None:
+    def test_scanner_dependency_formats_trigger_dependency_ingestion(self) -> None:
         self.assertTrue(should_ingest_dependencies(safe_tool="trivy", fmt="cyclonedx"))
         self.assertTrue(should_ingest_dependencies(safe_tool="trivy", fmt="spdx"))
-        self.assertFalse(should_ingest_dependencies(safe_tool="trivy", fmt="json"))
+        self.assertTrue(should_ingest_dependencies(safe_tool="trivy", fmt="json"))
+        self.assertTrue(should_ingest_dependencies(safe_tool="grype", fmt="json"))
+
+    def test_trivy_vulnerability_json_links_existing_dependency_components(self) -> None:
+        run_dir = self.copy_run()
+        raw_dir = run_dir / "reports" / "scanner-results"
+        raw_dir.mkdir(parents=True)
+        sbom_path = raw_dir / "cyclonedx.json"
+        shutil.copy2(FIXTURES / "sbom" / "cyclonedx.json", sbom_path)
+        write_dependency_artifacts(
+            run_dir=run_dir,
+            raw_path=sbom_path,
+            raw_result_ref="reports/scanner-results/cyclonedx.json",
+            tool="sbom",
+            requested_format="cyclonedx",
+        )
+        trivy_path = raw_dir / "trivy-vulnerabilities.json"
+        shutil.copy2(FIXTURES / "sbom" / "trivy-vulnerabilities.json", trivy_path)
+
+        data = write_dependency_artifacts(
+            run_dir=run_dir,
+            raw_path=trivy_path,
+            raw_result_ref="reports/scanner-results/trivy-vulnerabilities.json",
+            tool="trivy",
+            requested_format="json",
+        )
+
+        self.assertEqual("trivy", data["source"]["detected_format"])
+        components = {component["id"]: component for component in data["components"]}
+        self.assertIn("pkg:pypi/lib-b@2.0.0", components)
+        self.assertEqual("transitive", components["pkg:pypi/lib-b@2.0.0"]["scope"])
+        vulnerabilities = {vulnerability["id"]: vulnerability for vulnerability in data["vulnerabilities"]}
+        self.assertIn("GHSA-demo-0001", vulnerabilities)
+        trivy_vuln = vulnerabilities["CVE-2026-TRIVY-0001"]
+        self.assertEqual("pkg:pypi/lib-b@2.0.0", trivy_vuln["component"])
+        self.assertEqual("Critical", trivy_vuln["severity"])
+        self.assertEqual("2.0.1", trivy_vuln["fixed_version"])
+        self.assertEqual("trivy", trivy_vuln["source"])
+        self.assertEqual(
+            ["pkg:github/example/demo@0.1.0", "pkg:pypi/lib-a@1.0.0", "pkg:pypi/lib-b@2.0.0"],
+            trivy_vuln["dependency_paths"][0],
+        )
+        unmatched = vulnerabilities["CVE-2026-TRIVY-UNMATCHED"]
+        self.assertEqual("", unmatched["component"])
+        self.assertEqual([], unmatched["dependency_paths"])
+
+        validation = subprocess.run(
+            [sys.executable, REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir],
+            cwd=REPO_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(0, validation.returncode, f"stdout:\n{validation.stdout}\nstderr:\n{validation.stderr}")
+
+    def test_grype_vulnerability_json_links_existing_dependency_components(self) -> None:
+        run_dir = self.copy_run()
+        raw_dir = run_dir / "reports" / "scanner-results"
+        raw_dir.mkdir(parents=True)
+        sbom_path = raw_dir / "cyclonedx.json"
+        shutil.copy2(FIXTURES / "sbom" / "cyclonedx.json", sbom_path)
+        write_dependency_artifacts(
+            run_dir=run_dir,
+            raw_path=sbom_path,
+            raw_result_ref="reports/scanner-results/cyclonedx.json",
+            tool="sbom",
+            requested_format="cyclonedx",
+        )
+        grype_path = raw_dir / "grype-vulnerabilities.json"
+        shutil.copy2(FIXTURES / "sbom" / "grype-vulnerabilities.json", grype_path)
+
+        data = write_dependency_artifacts(
+            run_dir=run_dir,
+            raw_path=grype_path,
+            raw_result_ref="reports/scanner-results/grype-vulnerabilities.json",
+            tool="grype",
+            requested_format="json",
+        )
+
+        self.assertEqual("grype", data["source"]["detected_format"])
+        components = {component["id"]: component for component in data["components"]}
+        self.assertIn("pkg:pypi/lib-a@1.0.0", components)
+        self.assertEqual("direct", components["pkg:pypi/lib-a@1.0.0"]["scope"])
+        vulnerabilities = {vulnerability["id"]: vulnerability for vulnerability in data["vulnerabilities"]}
+        grype_vuln = vulnerabilities["GHSA-GRYPE-0001"]
+        self.assertEqual("pkg:pypi/lib-a@1.0.0", grype_vuln["component"])
+        self.assertEqual("High", grype_vuln["severity"])
+        self.assertEqual("1.0.1", grype_vuln["fixed_version"])
+        self.assertEqual("grype", grype_vuln["source"])
+        self.assertEqual(
+            ["pkg:github/example/demo@0.1.0", "pkg:pypi/lib-a@1.0.0"],
+            grype_vuln["dependency_paths"][0],
+        )
+        unmatched = vulnerabilities["GHSA-GRYPE-UNMATCHED"]
+        self.assertEqual("", unmatched["component"])
+        self.assertEqual([], unmatched["dependency_paths"])
+
+        validation = subprocess.run(
+            [sys.executable, REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir],
+            cwd=REPO_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(0, validation.returncode, f"stdout:\n{validation.stdout}\nstderr:\n{validation.stderr}")
+
+    def test_gra_ingest_trivy_json_updates_dependency_evidence_and_targets(self) -> None:
+        run_dir = self.copy_run()
+        raw_dir = run_dir / "reports" / "scanner-results"
+        raw_dir.mkdir(parents=True)
+        sbom_path = raw_dir / "cyclonedx.json"
+        shutil.copy2(FIXTURES / "sbom" / "cyclonedx.json", sbom_path)
+        write_dependency_artifacts(
+            run_dir=run_dir,
+            raw_path=sbom_path,
+            raw_result_ref="reports/scanner-results/cyclonedx.json",
+            tool="sbom",
+            requested_format="cyclonedx",
+        )
+
+        ingest = subprocess.run(
+            [
+                sys.executable,
+                REPO_ROOT / "bin" / "gra-ingest",
+                "--run",
+                run_dir,
+                "--tool",
+                "trivy",
+                "--file",
+                FIXTURES / "sbom" / "trivy-vulnerabilities.json",
+                "--format",
+                "json",
+            ],
+            cwd=REPO_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(0, ingest.returncode, f"stdout:\n{ingest.stdout}\nstderr:\n{ingest.stderr}")
+        self.assertIn("dependencies.json", ingest.stdout)
+        self.assertIn("Added 2 dependency-posture target(s)", ingest.stdout)
+        dependencies = json.loads((run_dir / "reports" / "dependencies.json").read_text(encoding="utf-8"))
+        vulnerabilities = {vulnerability["id"]: vulnerability for vulnerability in dependencies["vulnerabilities"]}
+        self.assertEqual("pkg:pypi/lib-b@2.0.0", vulnerabilities["CVE-2026-TRIVY-0001"]["component"])
+        targets = json.loads((run_dir / "reports" / "targets.json").read_text(encoding="utf-8"))["targets"]
+        dependency_target_scopes = [target["scope"] for target in targets if str(target.get("id", "")).startswith("TGT-DEPENDENCY-")]
+        self.assertTrue(any("CVE-2026-TRIVY-0001" in scope for scope in dependency_target_scopes))
 
     def test_gra_ingest_writes_dependency_artifacts_dashboard_and_validates(self) -> None:
         run_dir = self.copy_run()

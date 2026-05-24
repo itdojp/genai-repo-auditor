@@ -13,6 +13,9 @@ Supported normalized inputs:
 - Syft native JSON inventory shape (`artifacts` / `artifactRelationships`) on a
   best-effort basis
 - Trivy SBOM exports when emitted as CycloneDX JSON or SPDX JSON
+- Trivy vulnerability JSON (`Results[].Vulnerabilities[]`) as local
+  vulnerability evidence
+- Grype vulnerability JSON (`matches[]`) as local vulnerability evidence
 
 Official references:
 
@@ -20,6 +23,8 @@ Official references:
 - CycloneDX specification overview: https://cyclonedx.org/specification/overview/
 - SPDX 2.3 package information: https://spdx.github.io/spdx-spec/v2.3/package-information/
 - SPDX 2.3 relationships: https://spdx.github.io/spdx-spec/v2.3/relationships-between-SPDX-elements/
+- Trivy reporting formats: https://trivy.dev/docs/latest/configuration/reporting/
+- Grype result interpretation: https://oss.anchore.com/docs/guides/vulnerability/interpreting-results/
 
 ## Ingest an SBOM
 
@@ -42,6 +47,20 @@ Syft native JSON or Trivy SBOM JSON:
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool syft --file syft.json --format syft
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool trivy --file trivy-cyclonedx.json --format cyclonedx
 ```
+
+Trivy or Grype vulnerability JSON:
+
+```bash
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool trivy --file trivy.json --format json
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool grype --file grype.json --format json
+```
+
+When `reports/dependencies.json` already contains SBOM-derived components,
+Trivy/Grype vulnerability records are linked to those components by package URL,
+package name/version/ecosystem, or equivalent deterministic package identifiers.
+If a vulnerability cannot be linked deterministically, the vulnerability evidence
+is still retained with an empty component reference so validation does not create
+or accept dangling component links. No external advisory service is queried.
 
 The command still writes the normal scanner artifacts under
 `reports/scanner-results/`. For dependency inputs it also writes:

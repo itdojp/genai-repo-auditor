@@ -89,13 +89,16 @@ queue entries. Scorecard posture entries are leads, not confirmed findings. See
 SBOM/dependency graph JSON is handled as scanner ingestion plus deterministic
 dependency risk reporting. Supported inputs include CycloneDX JSON, SPDX 2.3
 JSON, GitHub Dependency Graph SBOM export JSON, Trivy SBOM exports in CycloneDX
-or SPDX form, and best-effort Syft native JSON.
+or SPDX form, best-effort Syft native JSON, and Trivy/Grype vulnerability JSON
+that can be linked to dependency components when identifiers match.
 
 ```bash
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool sbom --file bom.json --format cyclonedx
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool sbom --file sbom.spdx.json --format spdx
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool syft --file syft.json --format syft
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool trivy --file trivy-cyclonedx.json --format cyclonedx
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool trivy --file trivy.json --format json
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool grype --file grype.json --format json
 ```
 
 In addition to the scanner index and normalized leads, this writes:
