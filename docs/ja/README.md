@@ -15,6 +15,7 @@
 
 - [`ISSUE_WORKFLOW.ja.md`](ISSUE_WORKFLOW.ja.md): GitHub Issue 作成前の確認、dry-run、apply、公開 repository での開示制御。
 - [`SCANNER_INTEGRATION.ja.md`](SCANNER_INTEGRATION.ja.md): 既存 scanner output の取り込み、正規化、redaction、triage の前提。
+- [`ADVANCED_POSTURE_WORKFLOWS.ja.md`](ADVANCED_POSTURE_WORKFLOWS.ja.md): AI agent / MCP surface、taxonomy、provenance、Scorecard、SBOM / dependency、release readiness の高度な posture workflow。
 - [`CODEX_WORK_INSTRUCTIONS.ja.md`](CODEX_WORK_INSTRUCTIONS.ja.md): Codex CLI でこの repository を保守するための作業指示。
 
 ## 英語版ドキュメント
