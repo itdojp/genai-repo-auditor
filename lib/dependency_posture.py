@@ -6,12 +6,14 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
-from gralib import load_context, utc_now, write_json
+from gralib import load_context, load_json, load_targets, utc_now, write_json, write_targets
 from scanner_normalize import redact_text
 
 MAX_PATHS_PER_COMPONENT = 5
 MAX_PATH_DEPTH = 12
 MAX_TEXT_CHARS = 500
+MAX_TARGETS = 20
+MAX_NOTE_CHARS = 500
 SEVERITY_ORDER = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Informational": 4, "Unknown": 5}
 REFERENCES = [
     "https://docs.github.com/en/rest/dependency-graph/sboms",
@@ -660,6 +662,148 @@ def write_dependency_artifacts(*, run_dir: Path, raw_path: Path, raw_result_ref:
     write_json(reports / "dependencies.json", data)
     (reports / "DEPENDENCY_RISK.md").write_text(render_dependency_markdown(data), encoding="utf-8")
     return data
+
+
+def _target_id(index: int) -> str:
+    return f"TGT-DEPENDENCY-{index:03d}"
+
+
+def _dependency_target_risk(severity: str) -> str:
+    return "critical" if severity == "Critical" else "high"
+
+
+def _dependency_target_priority(severity: str, scope: str) -> int:
+    if severity == "Critical" and scope == "direct":
+        return 95
+    if severity == "High" and scope == "direct":
+        return 85
+    if severity == "Critical":
+        return 80
+    return 70
+
+
+def _dependency_target_scope(vulnerability: dict[str, Any]) -> str:
+    return f"Dependency vulnerability: {vulnerability.get('id', '')} on {vulnerability.get('component', '')}"
+
+
+def _dependency_target_note(vulnerability: dict[str, Any], component: dict[str, Any]) -> str:
+    paths = vulnerability.get("dependency_paths") if isinstance(vulnerability.get("dependency_paths"), list) else []
+    path_text = "; ".join(" -> ".join(str(part) for part in path) for path in paths if isinstance(path, list))
+    pieces = [
+        "Generated from reports/dependencies.json.",
+        f"Dependency vulnerability evidence: {vulnerability.get('id', '')}.",
+        f"Component: {component.get('name') or vulnerability.get('component', '')} {component.get('version') or ''}.",
+        f"Scope: {component.get('scope') or 'unknown'}.",
+        f"Severity: {vulnerability.get('severity') or 'Unknown'}.",
+        f"Fixed version: {vulnerability.get('fixed_version') or 'not provided'}.",
+        f"Source: {vulnerability.get('source') or 'unknown'}.",
+        f"Dependency paths: {path_text or 'not provided'}.",
+        "Treat this as dependency evidence until manifest context and reachability are reviewed.",
+    ]
+    note = " ".join(piece for piece in pieces if piece)
+    return note[:MAX_NOTE_CHARS] + ("...<truncated>" if len(note) > MAX_NOTE_CHARS else "")
+
+
+def _dependency_targets_from_data(data: dict[str, Any]) -> list[dict[str, Any]]:
+    components = {
+        str(component.get("id")): component
+        for component in data.get("components") or []
+        if isinstance(component, dict) and component.get("id")
+    }
+    candidates: list[dict[str, Any]] = []
+    for vulnerability in data.get("vulnerabilities") or []:
+        if not isinstance(vulnerability, dict):
+            continue
+        severity = str(vulnerability.get("severity") or "Unknown")
+        component_id = str(vulnerability.get("component") or "")
+        component = components.get(component_id)
+        paths = vulnerability.get("dependency_paths")
+        if severity not in {"Critical", "High"} or not component or not isinstance(paths, list) or not paths:
+            continue
+        scope = str(component.get("scope") or "unknown")
+        if scope not in {"direct", "transitive"}:
+            continue
+        if not any(isinstance(path, list) and path for path in paths):
+            continue
+        candidates.append({"vulnerability": vulnerability, "component": component})
+    candidates.sort(
+        key=lambda item: (
+            SEVERITY_ORDER.get(str(item["vulnerability"].get("severity") or "Unknown"), 9),
+            str(item["component"].get("scope") or "unknown") != "direct",
+            str(item["vulnerability"].get("id") or ""),
+            str(item["vulnerability"].get("component") or ""),
+        )
+    )
+    targets: list[dict[str, Any]] = []
+    for item in candidates[:MAX_TARGETS]:
+        vulnerability = item["vulnerability"]
+        component = item["component"]
+        severity = str(vulnerability.get("severity") or "Unknown")
+        component_id = str(vulnerability.get("component") or "")
+        component_scope = str(component.get("scope") or "unknown")
+        manifest = str(component.get("manifest") or "")
+        dependency_paths = vulnerability.get("dependency_paths") or []
+        first_path = next((path for path in dependency_paths if isinstance(path, list) and path), [])
+        entry_points = [manifest] if manifest else [component_id]
+        target = {
+            "category": "Dependency Risk",
+            "title": f"Review {severity} dependency vulnerability {vulnerability.get('id', '')}",
+            "risk": _dependency_target_risk(severity),
+            "priority": _dependency_target_priority(severity, component_scope),
+            "status": "queued",
+            "scope": _dependency_target_scope(vulnerability),
+            "entry_points": entry_points,
+            "trust_boundaries": ["upstream dependency package -> repository build or runtime"],
+            "sinks": [component_id, str(component.get("ecosystem") or "unknown")],
+            "security_invariants": [
+                "Dependency posture records are evidence and must not be treated as confirmed findings without reachability review.",
+                "Dependency remediation should preserve intended package constraints and release process controls.",
+            ],
+            "review_questions": [
+                "Is the vulnerable dependency reachable from repository runtime, build, or deployment paths?",
+                "Is the affected version constrained by a manifest or lockfile in this repository?",
+                "Is the fixed version compatible with the repository's supported dependency range?",
+                "Should this remain an informational dependency posture item or be promoted to a confirmed finding?",
+            ],
+            "candidate_files": [manifest] if manifest else [],
+            "recommended_mode": "exec",
+            "notes": _dependency_target_note(vulnerability, component),
+            "taxonomies": [
+                {"name": "Supply Chain Posture", "id": "SC-DEPENDENCY-UPDATE", "label": "Dependency Update Tooling"}
+            ],
+        }
+        if first_path:
+            target["review_questions"].append("Does the dependency path reflect a direct or transitive dependency used by the audited code path?")
+        targets.append(target)
+    return targets
+
+
+def append_dependency_posture_targets(run_dir: Path) -> list[dict[str, Any]]:
+    reports = _reports_dir(run_dir)
+    data = load_json(reports / "dependencies.json", {}) or {}
+    generated_targets = _dependency_targets_from_data(data)
+    if not generated_targets:
+        return []
+    targets = load_targets(run_dir)
+    existing_scopes = {str(target.get("scope")) for target in targets if isinstance(target, dict)}
+    existing_ids = {str(target.get("id")) for target in targets if isinstance(target, dict)}
+    next_index = 1
+    added: list[dict[str, Any]] = []
+    for target in generated_targets:
+        scope = str(target.get("scope") or "")
+        if not scope or scope in existing_scopes:
+            continue
+        while _target_id(next_index) in existing_ids:
+            next_index += 1
+        target["id"] = _target_id(next_index)
+        targets.append(target)
+        added.append(target)
+        existing_ids.add(target["id"])
+        existing_scopes.add(scope)
+        next_index += 1
+    if added:
+        write_targets(run_dir, targets)
+    return added
 
 
 def should_ingest_dependencies(*, safe_tool: str, fmt: str) -> bool:

@@ -24,7 +24,10 @@ gra-targets --run runs/OWNER__REPO/RUN_ID --generate
 Deterministic posture helpers can append bounded target IDs after target
 generation. Examples include `TGT-AGENT-NNN` for agent-surface discovery,
 `TGT-PROVENANCE-NNN` for release provenance posture, and `TGT-SCORECARD-NNN`
-for OpenSSF Scorecard supply-chain posture.
+for OpenSSF Scorecard supply-chain posture. When `reports/dependencies.json`
+exists, high-signal dependency vulnerability records with dependency paths can
+append `TGT-DEPENDENCY-NNN` entries. These entries are review targets only; they
+do not confirm dependency vulnerabilities as findings.
 
 List targets:
 

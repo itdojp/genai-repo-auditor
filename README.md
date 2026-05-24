@@ -173,7 +173,10 @@ OpenSSF Scorecard JSON ingestion additionally writes deterministic supply-chain
 posture artifacts and can append bounded `TGT-SCORECARD-NNN` review targets for
 low-scoring checks.
 SBOM and dependency graph ingestion writes `reports/dependencies.json` and
-`reports/DEPENDENCY_RISK.md` for local dependency posture review.
+`reports/DEPENDENCY_RISK.md` for local dependency posture review. High-signal
+direct Critical/High vulnerability records and transitive high-severity records
+with dependency paths can append bounded `TGT-DEPENDENCY-NNN` review targets;
+they remain posture evidence until repository reachability is confirmed.
 
 ## Multiple repositories
 

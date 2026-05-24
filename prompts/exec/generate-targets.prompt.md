@@ -105,7 +105,7 @@ Quality bar:
 - If {{REPORTS_DIR}}/agent-surface.json exists, include high-risk AI agent and MCP surfaces as bounded targets unless they are already covered.
 - If {{REPORTS_DIR}}/provenance-posture.json exists, include release, package, container, or binary artifact workflows that need provenance posture review as bounded supply-chain targets.
 - If {{REPORTS_DIR}}/supply-chain-posture.json exists, include OpenSSF Scorecard checks with `target_recommended: true` as bounded supply-chain targets unless deterministic `TGT-SCORECARD-NNN` targets already cover them.
-- If {{REPORTS_DIR}}/dependencies.json exists, include vulnerable direct dependencies or high-severity vulnerable transitive dependencies as bounded dependency review targets only when dependency paths are present.
+- If {{REPORTS_DIR}}/dependencies.json exists, include vulnerable direct dependencies or high-severity vulnerable transitive dependencies as bounded dependency review targets only when dependency paths are present. Do not duplicate deterministic `TGT-DEPENDENCY-NNN` targets that already cover the same dependency vulnerability, and do not treat dependency posture records as confirmed findings.
 - Use controlled taxonomy IDs from templates/taxonomies/ when they apply. Taxonomy classification is advisory and does not replace risk or priority.
 - Status must be queued unless there is a specific reason to mark skipped or needs_human_review.
 

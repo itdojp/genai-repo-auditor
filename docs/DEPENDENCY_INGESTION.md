@@ -51,6 +51,12 @@ reports/dependencies.json
 reports/DEPENDENCY_RISK.md
 ```
 
+For bounded high-signal cases, `gra-ingest` also appends deterministic
+`TGT-DEPENDENCY-NNN` queue entries to `reports/targets.json`. A target is created
+only when the normalized vulnerability is Critical or High severity, the
+component is direct or transitive, and at least one dependency path is present.
+The queue generation is idempotent and avoids duplicate scopes.
+
 ## Normalized dependency model
 
 `dependencies.json` contains normalized components and vulnerability records:
@@ -101,6 +107,10 @@ uniqueness, dependency path shape, and vulnerability component references.
 `gra-dashboard` includes dependency counts, scope distribution, vulnerability
 severity counts, and the top dependency vulnerability records.
 
+`gra-targets --generate` also re-runs the dependency posture helper when
+`reports/dependencies.json` already exists, so dependency review targets can be
+added after the initial target queue is generated without re-ingesting the SBOM.
+
 ## Safety and issue policy
 
 SBOMs can reveal internal dependency choices, package versions, private package
@@ -110,5 +120,7 @@ artifacts local unless publication is explicitly approved.
 Dependency vulnerability records are evidence, not automatically confirmed
 findings. Promote a dependency issue only after repository manifests, dependency
 paths, scanner evidence, exploitability context, and reachable usage are reviewed.
+`TGT-DEPENDENCY-NNN` target entries preserve this policy: they are bounded
+review work items, not confirmed findings or automatic Issue candidates.
 License data is included for posture context and should not create security Issues
 unless an explicit policy enables license compliance workflows.
