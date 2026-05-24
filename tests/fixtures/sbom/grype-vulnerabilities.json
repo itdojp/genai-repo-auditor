@@ -1,0 +1,39 @@
+{
+  "matches": [
+    {
+      "vulnerability": {
+        "id": "GHSA-GRYPE-0001",
+        "severity": "High",
+        "fix": {
+          "versions": ["1.0.1"],
+          "state": "fixed"
+        },
+        "dataSource": "https://github.com/advisories/GHSA-GRYPE-0001"
+      },
+      "artifact": {
+        "id": "pkg:pypi/lib-a@1.0.0",
+        "name": "lib-a",
+        "version": "1.0.0",
+        "type": "python",
+        "purl": "pkg:pypi/lib-a@1.0.0",
+        "locations": [{"path": "requirements.txt"}]
+      },
+      "matchDetails": [{"matcher": "python-matcher"}]
+    },
+    {
+      "vulnerability": {
+        "id": "GHSA-GRYPE-UNMATCHED",
+        "severity": "Medium",
+        "fix": {"versions": []},
+        "dataSource": "https://github.com/advisories/GHSA-GRYPE-UNMATCHED"
+      },
+      "artifact": {
+        "id": "unknown-artifact",
+        "type": "unknown",
+        "locations": [{"path": "unknown.lock"}]
+      },
+      "matchDetails": [{"matcher": "unknown-matcher"}]
+    }
+  ],
+  "source": {"type": "directory", "target": "."}
+}

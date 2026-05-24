@@ -103,6 +103,34 @@ def _detect_format(parsed: Any, requested_format: str) -> str:
     return "unknown"
 
 
+def _safe_tool_name(tool: str) -> str:
+    return "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in str(tool).lower())
+
+
+def _scanner_vulnerability_request(*, safe_tool: str, fmt: str) -> bool:
+    return safe_tool in {"trivy", "grype"} and fmt.lower() in {
+        "json",
+        "trivy",
+        "trivy-json",
+        "grype",
+        "grype-json",
+    }
+
+
+def _dependency_scanner_format(parsed: Any, *, tool: str, requested_format: str, detected_format: str) -> str:
+    safe_tool = _safe_tool_name(tool)
+    requested = (requested_format or "").lower()
+    if detected_format in {"cyclonedx", "spdx", "github-spdx", "syft"}:
+        return detected_format
+    if safe_tool == "trivy" or requested in {"trivy", "trivy-json"}:
+        if isinstance(parsed, dict) and isinstance(parsed.get("Results"), list):
+            return "trivy"
+    if safe_tool == "grype" or requested in {"grype", "grype-json"}:
+        if isinstance(parsed, dict) and isinstance(parsed.get("matches"), list):
+            return "grype"
+    return detected_format
+
+
 def _load_sbom(raw_path: Path) -> tuple[Any, str]:
     text = raw_path.read_text(encoding="utf-8")
     return json.loads(text), ""
@@ -427,6 +455,257 @@ def _parse_syft(parsed: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict
     return list(components.values()), []
 
 
+def _purl_name_version(purl: str) -> tuple[str, str]:
+    if not purl.startswith("pkg:"):
+        return "", ""
+    body = purl.split("?", 1)[0].split("#", 1)[0]
+    if "@" not in body:
+        return body.rsplit("/", 1)[-1], ""
+    before_version, version = body.rsplit("@", 1)
+    return before_version.rsplit("/", 1)[-1], version
+
+
+def _scanner_ecosystem(value: str) -> str:
+    token = value.lower()
+    mapping = {
+        "python": "pypi",
+        "python-pkg": "pypi",
+        "pip": "pypi",
+        "npm": "npm",
+        "node": "npm",
+        "node-pkg": "npm",
+        "yarn": "npm",
+        "pnpm": "npm",
+        "gem": "gem",
+        "ruby": "gem",
+        "go": "golang",
+        "gomod": "golang",
+        "go-module": "golang",
+        "gobinary": "golang",
+        "jar": "maven",
+        "maven": "maven",
+        "java": "maven",
+        "composer": "composer",
+        "php": "composer",
+        "cargo": "cargo",
+        "rust": "cargo",
+        "nuget": "nuget",
+        "dotnet": "nuget",
+        "deb": "deb",
+        "debian": "deb",
+        "ubuntu": "deb",
+        "rpm": "rpm",
+        "redhat": "rpm",
+        "centos": "rpm",
+        "alpine": "apk",
+        "apk": "apk",
+    }
+    return mapping.get(token, token or "unknown")
+
+
+def _scanner_component_id(*, purl: str, name: str, version: str, ecosystem: str, fallback: str) -> str:
+    if purl:
+        return purl
+    if name and version and ecosystem and ecosystem != "unknown":
+        return f"pkg:{ecosystem}/{name}@{version}"
+    return _component_id(purl="", name=name, version=version, fallback=fallback)
+
+
+def _component_lookup(components: list[dict[str, Any]]) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+    for component in components:
+        if not isinstance(component, dict):
+            continue
+        cid = _bounded_text(component.get("id"))
+        name = _bounded_text(component.get("name")).lower()
+        version = _bounded_text(component.get("version"))
+        ecosystem = _bounded_text(component.get("ecosystem")).lower()
+        if cid:
+            lookup[f"id:{cid}"] = cid
+        if name and version and ecosystem:
+            lookup[f"name-version-ecosystem:{name}@{version}:{ecosystem}"] = cid
+        if name and version:
+            lookup[f"name-version:{name}@{version}"] = cid
+    return lookup
+
+
+def _resolve_component_id(
+    *,
+    lookup: dict[str, str],
+    purl: str,
+    name: str,
+    version: str,
+    ecosystem: str,
+) -> str:
+    candidates = []
+    if purl:
+        candidates.append(f"id:{purl}")
+    if name and version and ecosystem:
+        candidates.append(f"name-version-ecosystem:{name.lower()}@{version}:{ecosystem.lower()}")
+    if name and version:
+        candidates.append(f"name-version:{name.lower()}@{version}")
+    for candidate in candidates:
+        if candidate in lookup:
+            return lookup[candidate]
+    return ""
+
+
+def _component_by_id(components: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {
+        str(component.get("id")): component
+        for component in components
+        if isinstance(component, dict) and component.get("id")
+    }
+
+
+def _scanner_component(
+    *,
+    component_id: str,
+    name: str,
+    version: str,
+    ecosystem: str,
+    manifest: str,
+    purl: str,
+    existing_by_id: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    if not component_id:
+        return None
+    existing = existing_by_id.get(component_id)
+    if existing:
+        return dict(existing)
+    purl_name, purl_version = _purl_name_version(purl)
+    ecosystem_value = ecosystem if ecosystem and ecosystem != "unknown" else _purl_ecosystem(purl)
+    return {
+        "id": component_id,
+        "name": name or purl_name or component_id,
+        "version": version or purl_version,
+        "ecosystem": ecosystem_value,
+        "scope": "unknown",
+        "licenses": [],
+        "manifest": manifest,
+        "dependency_paths": [],
+    }
+
+
+def _parse_trivy(parsed: dict[str, Any], existing_components: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    lookup = _component_lookup(existing_components)
+    existing_by_id = _component_by_id(existing_components)
+    components: dict[str, dict[str, Any]] = {}
+    vulnerabilities: list[dict[str, Any]] = []
+    for result in _as_list(parsed.get("Results")):
+        if not isinstance(result, dict):
+            continue
+        result_type = _first_str(result.get("Type"))
+        ecosystem = _scanner_ecosystem(result_type)
+        manifest = _first_str(result.get("Target"))
+        for vuln in _as_list(result.get("Vulnerabilities")):
+            if not isinstance(vuln, dict):
+                continue
+            vid = _first_str(vuln.get("VulnerabilityID"), vuln.get("VulnerabilityId"), vuln.get("ID"))
+            if not vid:
+                continue
+            identifier = vuln.get("PkgIdentifier") if isinstance(vuln.get("PkgIdentifier"), dict) else {}
+            purl = _first_str(identifier.get("PURL"), vuln.get("PURL"))
+            name = _first_str(vuln.get("PkgName"), vuln.get("PkgID"))
+            version = _first_str(vuln.get("InstalledVersion"))
+            if purl:
+                purl_name, purl_version = _purl_name_version(purl)
+                name = name or purl_name
+                version = version or purl_version
+            component_id = _resolve_component_id(lookup=lookup, purl=purl, name=name, version=version, ecosystem=ecosystem)
+            if not component_id and (purl or (name and version)):
+                component_id = _scanner_component_id(
+                    purl=purl,
+                    name=name,
+                    version=version,
+                    ecosystem=ecosystem,
+                    fallback=_first_str(vuln.get("PkgID"), vid),
+                )
+            component = _scanner_component(
+                component_id=component_id,
+                name=name,
+                version=version,
+                ecosystem=ecosystem,
+                manifest=manifest,
+                purl=purl,
+                existing_by_id=existing_by_id,
+            )
+            if component:
+                components[component["id"]] = component
+            vulnerabilities.append(
+                {
+                    "id": vid,
+                    "component": component_id if component else "",
+                    "severity": _first_str(vuln.get("Severity")).title() or "Unknown",
+                    "fixed_version": _first_str(vuln.get("FixedVersion")),
+                    "source": "trivy",
+                    "evidence_ref": _first_str(vuln.get("PrimaryURL"), vuln.get("PkgID"), vid),
+                    "dependency_paths": component.get("dependency_paths", []) if component else [],
+                }
+            )
+    return list(components.values()), vulnerabilities
+
+
+def _parse_grype(parsed: dict[str, Any], existing_components: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    lookup = _component_lookup(existing_components)
+    existing_by_id = _component_by_id(existing_components)
+    components: dict[str, dict[str, Any]] = {}
+    vulnerabilities: list[dict[str, Any]] = []
+    for match in _as_list(parsed.get("matches")):
+        if not isinstance(match, dict):
+            continue
+        vuln = match.get("vulnerability") if isinstance(match.get("vulnerability"), dict) else {}
+        artifact = match.get("artifact") if isinstance(match.get("artifact"), dict) else {}
+        vid = _first_str(vuln.get("id"))
+        if not vid:
+            continue
+        purl = _first_str(artifact.get("purl"))
+        name = _first_str(artifact.get("name"))
+        version = _first_str(artifact.get("version"))
+        ecosystem = _scanner_ecosystem(_first_str(artifact.get("type")))
+        if purl:
+            purl_name, purl_version = _purl_name_version(purl)
+            name = name or purl_name
+            version = version or purl_version
+            ecosystem = _purl_ecosystem(purl) or ecosystem
+        locations = [location for location in _as_list(artifact.get("locations")) if isinstance(location, dict)]
+        manifest = _first_str(locations[0].get("path") if locations else "")
+        component_id = _resolve_component_id(lookup=lookup, purl=purl, name=name, version=version, ecosystem=ecosystem)
+        if not component_id and (purl or (name and version)):
+            component_id = _scanner_component_id(
+                purl=purl,
+                name=name,
+                version=version,
+                ecosystem=ecosystem,
+                fallback=_first_str(artifact.get("id"), vid),
+            )
+        component = _scanner_component(
+            component_id=component_id,
+            name=name,
+            version=version,
+            ecosystem=ecosystem,
+            manifest=manifest,
+            purl=purl,
+            existing_by_id=existing_by_id,
+        )
+        if component:
+            components[component["id"]] = component
+        fix = vuln.get("fix") if isinstance(vuln.get("fix"), dict) else {}
+        fixed_versions = [_bounded_text(version) for version in _as_list(fix.get("versions")) if _bounded_text(version)]
+        vulnerabilities.append(
+            {
+                "id": vid,
+                "component": component_id if component else "",
+                "severity": _first_str(vuln.get("severity")).title() or "Unknown",
+                "fixed_version": ", ".join(fixed_versions),
+                "source": "grype",
+                "evidence_ref": _first_str(vuln.get("dataSource"), artifact.get("id"), vid),
+                "dependency_paths": component.get("dependency_paths", []) if component else [],
+            }
+        )
+    return list(components.values()), vulnerabilities
+
+
 def _normalize_components(components: list[dict[str, Any]]) -> list[dict[str, Any]]:
     normalized = []
     seen: set[str] = set()
@@ -495,7 +774,15 @@ def _normalize_vulnerabilities(vulnerabilities: list[dict[str, Any]], component_
     return sorted(normalized, key=lambda item: (SEVERITY_ORDER.get(item["severity"], 9), item["id"], item["component"]))
 
 
-def analyze_dependencies(*, run_dir: Path, raw_path: Path, raw_result_ref: str, tool: str, requested_format: str) -> dict[str, Any]:
+def analyze_dependencies(
+    *,
+    run_dir: Path,
+    raw_path: Path,
+    raw_result_ref: str,
+    tool: str,
+    requested_format: str,
+    existing_data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     ctx = load_context(run_dir)
     parse_error = ""
     parsed: Any = {}
@@ -504,6 +791,27 @@ def analyze_dependencies(*, run_dir: Path, raw_path: Path, raw_result_ref: str, 
     except Exception as exc:  # noqa: BLE001 - dependency artifact should record bad local input safely
         parse_error = _bounded_text(exc)
     detected_format = _detect_format(parsed, requested_format) if not parse_error else "invalid"
+    if not parse_error:
+        detected_format = _dependency_scanner_format(
+            parsed,
+            tool=tool,
+            requested_format=requested_format,
+            detected_format=detected_format,
+        )
+    if not isinstance(existing_data, dict):
+        existing_data = {}
+    existing_components = [
+        component
+        for component in (existing_data or {}).get("components", [])
+        if isinstance(component, dict)
+    ]
+    existing_vulnerabilities = [
+        vulnerability
+        for vulnerability in (existing_data or {}).get("vulnerabilities", [])
+        if isinstance(vulnerability, dict)
+    ]
+    scanner_source = detected_format if detected_format in {"trivy", "grype"} else ""
+    merge_existing = bool(scanner_source) and bool(existing_components or existing_vulnerabilities)
     components: list[dict[str, Any]] = []
     vulnerabilities: list[dict[str, Any]] = []
     try:
@@ -513,10 +821,22 @@ def analyze_dependencies(*, run_dir: Path, raw_path: Path, raw_result_ref: str, 
             components, vulnerabilities = _parse_spdx(parsed)
         elif detected_format == "syft":
             components, vulnerabilities = _parse_syft(parsed)
+        elif detected_format == "trivy":
+            components, vulnerabilities = _parse_trivy(parsed, existing_components)
+        elif detected_format == "grype":
+            components, vulnerabilities = _parse_grype(parsed, existing_components)
     except Exception as exc:  # noqa: BLE001 - keep ingestion deterministic for untrusted SBOM shapes
         parse_error = _bounded_text(exc)
         components = []
         vulnerabilities = []
+    if merge_existing:
+        existing_vulnerabilities = [
+            vulnerability
+            for vulnerability in existing_vulnerabilities
+            if str(vulnerability.get("source") or "").lower() != scanner_source
+        ]
+        components = [*existing_components, *components]
+        vulnerabilities = [*existing_vulnerabilities, *vulnerabilities]
     normalized_components = _normalize_components(components)
     component_ids = {component["id"] for component in normalized_components}
     normalized_vulns = _normalize_vulnerabilities(vulnerabilities, component_ids)
@@ -655,10 +975,23 @@ def render_dependency_markdown(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def write_dependency_artifacts(*, run_dir: Path, raw_path: Path, raw_result_ref: str, tool: str, requested_format: str) -> dict[str, Any]:
+def write_dependency_artifacts(*, run_dir: Path, raw_path: Path, raw_result_ref: str, tool: str, requested_format: str) -> dict[str, Any] | None:
     reports = _reports_dir(run_dir)
     reports.mkdir(parents=True, exist_ok=True)
-    data = analyze_dependencies(run_dir=run_dir, raw_path=raw_path, raw_result_ref=raw_result_ref, tool=tool, requested_format=requested_format)
+    existing_data = load_json(reports / "dependencies.json", {}) or {}
+    if not isinstance(existing_data, dict):
+        existing_data = {}
+    data = analyze_dependencies(
+        run_dir=run_dir,
+        raw_path=raw_path,
+        raw_result_ref=raw_result_ref,
+        tool=tool,
+        requested_format=requested_format,
+        existing_data=existing_data,
+    )
+    safe_tool = _safe_tool_name(tool)
+    if _scanner_vulnerability_request(safe_tool=safe_tool, fmt=requested_format) and data.get("source", {}).get("detected_format") not in {"trivy", "grype"}:
+        return None
     write_json(reports / "dependencies.json", data)
     (reports / "DEPENDENCY_RISK.md").write_text(render_dependency_markdown(data), encoding="utf-8")
     return data
@@ -822,4 +1155,4 @@ def should_ingest_dependencies(*, safe_tool: str, fmt: str) -> bool:
         "cyclonedx",
         "spdx",
         "syft",
-    } or fmt.lower() in {"cyclonedx", "cyclonedx-json", "spdx", "github-spdx", "github-dependency-graph", "syft", "syft-json"}
+    } or fmt.lower() in {"cyclonedx", "cyclonedx-json", "spdx", "github-spdx", "github-dependency-graph", "syft", "syft-json"} or _scanner_vulnerability_request(safe_tool=safe_tool, fmt=fmt)

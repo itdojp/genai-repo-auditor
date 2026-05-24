@@ -157,10 +157,10 @@ gra-variant --run runs/OWNER__REPO/RUN_ID --source-file notes/root-cause.md --mo
 
 | Field | Details |
 |---|---|
-| Purpose | Copy scanner output into a run, normalize leads, redact sensitive values, update the scanner index, and produce deterministic posture artifacts for OpenSSF Scorecard JSON and SBOM/dependency graph JSON. |
+| Purpose | Copy scanner output into a run, normalize leads, redact sensitive values, update the scanner index, and produce deterministic posture artifacts for OpenSSF Scorecard JSON, SBOM/dependency graph JSON, and supported dependency vulnerability JSON. |
 | Workflow category | Scanner workflow. |
 | Required inputs | `--run RUN_DIR --tool TOOL --file FILE`. |
-| Key options | `--format FORMAT` (`auto` by default), `--note NOTE`. Use `--tool scorecard` for OpenSSF Scorecard JSON posture ingestion, or `--tool sbom` / `syft` / dependency formats with `--format cyclonedx`, `spdx`, `syft`, or `auto` for SBOM/dependency graph ingestion. Trivy SBOM exports are ingested when the format is CycloneDX or SPDX. |
+| Key options | `--format FORMAT` (`auto` by default), `--note NOTE`. Use `--tool scorecard` for OpenSSF Scorecard JSON posture ingestion, or `--tool sbom` / `syft` / dependency formats with `--format cyclonedx`, `spdx`, `syft`, or `auto` for SBOM/dependency graph ingestion. Trivy SBOM exports are ingested when the format is CycloneDX or SPDX. Trivy and Grype vulnerability JSON are ingested with `--tool trivy --format json` or `--tool grype --format json`. |
 | Generated outputs | Raw scanner result copy under `reports/scanner-results/`, normalized lead JSON under `reports/scanner-results/normalized/`, and `reports/scanner-results/scanner-index.json`. With `--tool scorecard` / `openssf-scorecard` / `ossf-scorecard`, also writes `reports/supply-chain-posture.json`, `reports/supply-chain-posture.md`, and may append deterministic `TGT-SCORECARD-NNN` targets to `reports/targets.json`. With `--tool sbom` or dependency formats, also writes `reports/dependencies.json`, `reports/DEPENDENCY_RISK.md`, and may append deterministic `TGT-DEPENDENCY-NNN` targets to `reports/targets.json`. |
 | Exit status behavior | `0` for successful ingest; `2` when the source file is missing. JSON/context or filesystem failures surface as non-zero Python errors. |
 | Security / disclosure cautions | Scanner output is untrusted input. The command writes redacted normalized leads and redacted posture summaries, but raw scanner copies can still contain sensitive data; keep them local and do not commit them. Scorecard and dependency posture do not automatically create findings. SBOMs can reveal internal package choices and versions. |
@@ -173,6 +173,8 @@ gra-ingest --run runs/OWNER__REPO/RUN_ID --tool semgrep --file scanner-output.js
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool scorecard --file scorecard.json --format json
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool sbom --file bom.json --format cyclonedx
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool syft --file syft.json --format syft
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool trivy --file trivy.json --format json
+gra-ingest --run runs/OWNER__REPO/RUN_ID --tool grype --file grype.json --format json
 ```
 
 ## `gra-scanner-triage`
