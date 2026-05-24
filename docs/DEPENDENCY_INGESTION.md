@@ -111,6 +111,38 @@ The queue generation is idempotent and avoids duplicate scopes.
 Scope values are `root`, `direct`, `transitive`, or `unknown`. Dependency paths
 are preserved when the input format provides graph relationships.
 
+## Boundary behavior
+
+Dependency ingestion is intentionally local, best-effort, and bounded for CI and
+operator workstations. Current normalized output limits are:
+
+- input JSON file size: 20 MiB;
+- normalized components: 1,000 records;
+- normalized vulnerability records: 1,000 records;
+- dependency relationship edges: 5,000 records;
+- dependency graph path expansion steps: 10,000 steps;
+- dependency paths per component or vulnerability: 5 paths;
+- dependency path depth: 12 graph nodes.
+
+If the input file exceeds the size limit, `reports/dependencies.json` is still
+written for SBOM-style imports with `status: invalid`, empty normalized arrays,
+and a bounded `parse_error`. Trivy/Grype vulnerability imports that do not match
+the expected scanner shape are skipped so an existing dependency posture file is
+not overwritten.
+
+When component or vulnerability inputs exceed the normalized output limits, the normalized artifact
+includes a `limits` object and the summary notes that bounded output may omit
+records from the raw local artifact. Operators should inspect the raw SBOM or
+scanner file locally when full inventory coverage is required. Cyclic dependency
+graphs are not expanded indefinitely; repeated nodes in the active path are
+skipped and path depth/count limits are applied.
+
+Malformed or partial records are normalized defensively. Unsupported license,
+advisory, relationship, and vulnerability shapes are ignored or preserved as
+unlinked evidence instead of producing dangling component references. Markdown
+summaries escape HTML-sensitive text and apply the scanner redaction rules to
+secret-like evidence before rendering.
+
 ## Validation and dashboard
 
 Validate dependency artifacts together with the normal report contract:

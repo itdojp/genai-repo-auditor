@@ -131,6 +131,8 @@ reports/DEPENDENCY_RISK.md
 
 サポートされる入力は CycloneDX JSON、SPDX 2.3 JSON、GitHub Dependency Graph SBOM export、Syft native JSON、Trivy SBOM JSON、Trivy vulnerability JSON、Grype vulnerability JSON です。Trivy / Grype の vulnerability JSON は、既存の SBOM-derived component に package URL や name/version/ecosystem で関連付けられます。関連付けできない場合も evidence は保持しますが、dangling component link は作りません。
 
+Dependency ingestion は CI と operator workstation での実行を想定して境界値を持ちます。入力 JSON は 20 MiB まで、normalized component / vulnerability はそれぞれ最大 1,000 件、dependency relationship edge は最大 5,000 件、graph path expansion は最大 10,000 step、dependency path は 5 件・深さ 12 node までです。上限を超えた場合、`reports/dependencies.json` の `limits` と summary で output truncation を確認し、完全な inventory が必要な場合は raw SBOM / scanner artifact をローカルで確認してください。
+
 高シグナルな Critical / High vulnerability evidence は `TGT-DEPENDENCY-NNN` として target queue に追加されることがあります。これは dependency reachability と manifest context を確認するための review item です。詳細は英語版 [`DEPENDENCY_INGESTION.md`](../DEPENDENCY_INGESTION.md) を参照してください。
 
 ## Reporting, store, index
