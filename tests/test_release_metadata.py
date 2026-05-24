@@ -50,7 +50,7 @@ class ReleaseMetadataTests(unittest.TestCase):
     def test_changelog_has_matching_current_version_section(self) -> None:
         version = project_version()
         section = changelog_section(version)
-        self.assertRegex(section.splitlines()[0], rf"^## v{re.escape(version)}(?: - \d{{4}}-\d{{2}}-\d{{2}})?$")
+        self.assertRegex(section.splitlines()[0], rf"^## v{re.escape(version)} - \d{{4}}-\d{{2}}-\d{{2}}$")
         entries = [line for line in section.splitlines()[1:] if line.startswith("- ")]
         self.assertTrue(entries, f"CHANGELOG.md section for v{version} must contain release notes")
 
