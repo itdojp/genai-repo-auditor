@@ -25,6 +25,20 @@
     "component_count": {"type": "integer", "minimum": 0},
     "vulnerability_count": {"type": "integer", "minimum": 0},
     "scope_counts": {"type": "object"},
+    "limits": {
+      "type": "object",
+      "properties": {
+        "max_input_bytes": {"type": "integer", "minimum": 0},
+        "max_components": {"type": "integer", "minimum": 0},
+        "max_vulnerabilities": {"type": "integer", "minimum": 0},
+        "max_relationship_edges": {"type": "integer", "minimum": 0},
+        "max_path_expansions": {"type": "integer", "minimum": 0},
+        "max_dependency_paths_per_component": {"type": "integer", "minimum": 0},
+        "max_dependency_path_depth": {"type": "integer", "minimum": 0},
+        "component_limit_reached": {"type": "boolean"},
+        "vulnerability_limit_reached": {"type": "boolean"}
+      }
+    },
     "parse_error": {"type": "string"},
     "components": {
       "type": "array",

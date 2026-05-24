@@ -14,6 +14,11 @@ MAX_PATH_DEPTH = 12
 MAX_TEXT_CHARS = 500
 MAX_TARGETS = 20
 MAX_NOTE_CHARS = 500
+MAX_DEPENDENCY_INPUT_BYTES = 20 * 1024 * 1024
+MAX_DEPENDENCY_COMPONENTS = 1000
+MAX_DEPENDENCY_VULNERABILITIES = 1000
+MAX_DEPENDENCY_RELATIONSHIPS = 5000
+MAX_DEPENDENCY_PATH_EXPANSIONS = 10000
 SEVERITY_ORDER = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Informational": 4, "Unknown": 5}
 REFERENCES = [
     "https://docs.github.com/en/rest/dependency-graph/sboms",
@@ -51,6 +56,21 @@ def _as_list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
+def _limited_items(value: Any, limit: int) -> list[Any]:
+    return _as_list(value)[:limit]
+
+
+def _limited_dicts(value: Any, limit: int) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for item in _as_list(value):
+        if not isinstance(item, dict):
+            continue
+        if len(out) >= limit:
+            break
+        out.append(item)
+    return out
+
+
 def _first_str(*values: Any) -> str:
     for value in values:
         text = _bounded_text(value)
@@ -78,7 +98,8 @@ def _license_values(raw: Any) -> list[str]:
     values: list[str] = []
     if isinstance(raw, str):
         values.append(raw)
-    for item in _as_list(raw):
+    items = [raw] if isinstance(raw, dict) else _as_list(raw)
+    for item in items:
         if isinstance(item, str):
             values.append(item)
         elif isinstance(item, dict):
@@ -132,12 +153,19 @@ def _dependency_scanner_format(parsed: Any, *, tool: str, requested_format: str,
 
 
 def _load_sbom(raw_path: Path) -> tuple[Any, str]:
+    size = raw_path.stat().st_size
+    if size > MAX_DEPENDENCY_INPUT_BYTES:
+        raise ValueError(
+            f"dependency input exceeds maximum dependency input size of {MAX_DEPENDENCY_INPUT_BYTES} bytes"
+        )
     text = raw_path.read_text(encoding="utf-8")
     return json.loads(text), ""
 
 
 def _add_component(component: dict[str, Any], components: dict[str, dict[str, Any]], ref_to_id: dict[str, str], ref: str) -> None:
     cid = component["id"]
+    if not cid:
+        return
     components.setdefault(cid, component)
     if ref:
         ref_to_id[ref] = cid
@@ -147,17 +175,23 @@ def _add_component(component: dict[str, Any], components: dict[str, dict[str, An
 def _paths_from_graph(root_refs: list[str], graph: dict[str, list[str]]) -> dict[str, list[list[str]]]:
     paths: dict[str, list[list[str]]] = {}
     queue: deque[list[str]] = deque([[root] for root in root_refs if root])
-    while queue:
+    expansions = 0
+    while queue and expansions < MAX_DEPENDENCY_PATH_EXPANSIONS:
         path = queue.popleft()
         current = path[-1]
         for child in graph.get(current, []):
+            if expansions >= MAX_DEPENDENCY_PATH_EXPANSIONS:
+                break
+            expansions += 1
             if child in path:
                 continue
             next_path = [*path, child]
             paths.setdefault(child, [])
+            appended = False
             if len(paths[child]) < MAX_PATHS_PER_COMPONENT:
                 paths[child].append(next_path)
-            if len(next_path) < MAX_PATH_DEPTH:
+                appended = True
+            if appended and len(next_path) < MAX_PATH_DEPTH:
                 queue.append(next_path)
     return paths
 
@@ -175,6 +209,21 @@ def _component_path_strings(paths: list[list[str]], ref_to_id: dict[str, str]) -
     for path in paths[:MAX_PATHS_PER_COMPONENT]:
         out.append([ref_to_id.get(ref, ref) for ref in path])
     return out
+
+
+def _add_graph_edges(graph: dict[str, list[str]], parent: str, children: Any, current_edges: int) -> int:
+    if not parent:
+        return current_edges
+    graph.setdefault(parent, [])
+    for child in _as_list(children):
+        if current_edges >= MAX_DEPENDENCY_RELATIONSHIPS:
+            break
+        child_ref = _first_str(child)
+        if not child_ref:
+            continue
+        graph[parent].append(child_ref)
+        current_edges += 1
+    return current_edges
 
 
 def _cyclonedx_components(parsed: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, str], dict[str, list[str]], list[str]]:
@@ -207,6 +256,8 @@ def _cyclonedx_components(parsed: dict[str, Any]) -> tuple[dict[str, dict[str, A
                 root_ref,
             )
     for item in _as_list(parsed.get("components")):
+        if len(components) >= MAX_DEPENDENCY_COMPONENTS + 1:
+            break
         if not isinstance(item, dict):
             continue
         ref = _first_str(item.get("bom-ref"), item.get("purl"), item.get("name"))
@@ -233,10 +284,10 @@ def _cyclonedx_components(parsed: dict[str, Any]) -> tuple[dict[str, dict[str, A
             ref_to_id,
             ref,
         )
-    for dep in _as_list(parsed.get("dependencies")):
-        if isinstance(dep, dict):
-            ref = _first_str(dep.get("ref"))
-            graph[ref] = [_first_str(child) for child in _as_list(dep.get("dependsOn")) if _first_str(child)]
+    edge_count = 0
+    for dep in _limited_dicts(parsed.get("dependencies"), MAX_DEPENDENCY_RELATIONSHIPS):
+        ref = _first_str(dep.get("ref"))
+        edge_count = _add_graph_edges(graph, ref, dep.get("dependsOn"), edge_count)
     if not root_refs and graph:
         depended = {child for children in graph.values() for child in children}
         roots = [ref for ref in graph if ref not in depended]
@@ -247,6 +298,8 @@ def _cyclonedx_components(parsed: dict[str, Any]) -> tuple[dict[str, dict[str, A
 def _cyclonedx_vulnerabilities(parsed: dict[str, Any], ref_to_id: dict[str, str], paths: dict[str, list[list[str]]]) -> list[dict[str, Any]]:
     vulnerabilities: list[dict[str, Any]] = []
     for vuln in _as_list(parsed.get("vulnerabilities")):
+        if len(vulnerabilities) > MAX_DEPENDENCY_VULNERABILITIES:
+            break
         if not isinstance(vuln, dict):
             continue
         vid = _first_str(vuln.get("id"), vuln.get("bom-ref"))
@@ -265,6 +318,8 @@ def _cyclonedx_vulnerabilities(parsed: dict[str, Any], ref_to_id: dict[str, str]
             fixed_version = match.group(1) if match else ""
         affects = _as_list(vuln.get("affects")) or [{}]
         for affected in affects:
+            if len(vulnerabilities) > MAX_DEPENDENCY_VULNERABILITIES:
+                break
             ref = _first_str(affected.get("ref") if isinstance(affected, dict) else "")
             component = ref_to_id.get(ref, ref)
             for version in _as_list(affected.get("versions") if isinstance(affected, dict) else None):
@@ -338,12 +393,18 @@ def _spdx_security_refs(package: dict[str, Any]) -> list[dict[str, str]]:
 
 def _parse_spdx(parsed: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     sbom = parsed.get("sbom") if isinstance(parsed.get("sbom"), dict) else parsed
-    packages = [pkg for pkg in _as_list(sbom.get("packages")) if isinstance(pkg, dict)]
+    packages: list[dict[str, Any]] = []
     spdx_to_id: dict[str, str] = {}
     components: dict[str, dict[str, Any]] = {}
-    for package in packages:
+    for package in _as_list(sbom.get("packages")):
+        if len(components) >= MAX_DEPENDENCY_COMPONENTS + 1:
+            break
+        if not isinstance(package, dict):
+            continue
         spdx_id = _first_str(package.get("SPDXID"))
         cid = _spdx_package_id(package)
+        if not cid:
+            continue
         spdx_to_id[spdx_id] = cid
         purl = cid if cid.startswith("pkg:") else ""
         components[cid] = {
@@ -356,20 +417,24 @@ def _parse_spdx(parsed: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict
             "manifest": "",
             "dependency_paths": [],
         }
+        packages.append(package)
     graph: dict[str, list[str]] = {}
     root_refs: list[str] = []
-    for rel in _as_list(sbom.get("relationships")):
-        if not isinstance(rel, dict):
-            continue
+    edge_count = 0
+    for rel in _limited_dicts(sbom.get("relationships"), MAX_DEPENDENCY_RELATIONSHIPS):
         rel_type = _first_str(rel.get("relationshipType")).upper()
         source = _first_str(rel.get("spdxElementId"))
         target = _first_str(rel.get("relatedSpdxElement"))
         if rel_type == "DESCRIBES" and target:
             root_refs.append(target)
+        if edge_count >= MAX_DEPENDENCY_RELATIONSHIPS:
+            continue
         if rel_type == "DEPENDS_ON" and source and target:
             graph.setdefault(source, []).append(target)
+            edge_count += 1
         elif (rel_type == "DEPENDENCY_OF" or rel_type.endswith("_DEPENDENCY_OF")) and source and target:
             graph.setdefault(target, []).append(source)
+            edge_count += 1
     if not root_refs and graph:
         depended = {child for children in graph.values() for child in children}
         root_refs = [ref for ref in graph if ref not in depended][:1]
@@ -385,8 +450,12 @@ def _parse_spdx(parsed: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict
             components[cid]["dependency_paths"] = _component_path_strings(paths.get(spdx_id, []), spdx_to_id)
     vulnerabilities: list[dict[str, Any]] = []
     for package in packages:
+        if len(vulnerabilities) > MAX_DEPENDENCY_VULNERABILITIES:
+            break
         cid = spdx_to_id.get(_first_str(package.get("SPDXID")), "")
         for sec_ref in _spdx_security_refs(package):
+            if len(vulnerabilities) > MAX_DEPENDENCY_VULNERABILITIES:
+                break
             vulnerability_id = sec_ref["locator"].rsplit("/", 1)[-1] if sec_ref["locator"].startswith("http") else sec_ref["locator"]
             severity = "Unknown"
             match = re.search(r"severity\s*[:=]\s*(critical|high|medium|low|informational)", sec_ref.get("comment", ""), re.IGNORECASE)
@@ -415,6 +484,8 @@ def _parse_syft(parsed: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict
     syft_to_id: dict[str, str] = {}
     graph: dict[str, list[str]] = {}
     for artifact in _as_list(parsed.get("artifacts")):
+        if len(components) >= MAX_DEPENDENCY_COMPONENTS + 1:
+            break
         if not isinstance(artifact, dict):
             continue
         name = _first_str(artifact.get("name"))
@@ -426,7 +497,9 @@ def _parse_syft(parsed: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict
         if locations and isinstance(locations[0], dict):
             manifest = _first_str(locations[0].get("path"))
         cid = _component_id(purl=purl, name=name, version=version, fallback=artifact_id)
-        syft_to_id[artifact_id] = cid
+        if not cid:
+            continue
+        syft_to_id[artifact_id or cid] = cid
         components[cid] = {
             "id": cid,
             "name": name,
@@ -437,15 +510,20 @@ def _parse_syft(parsed: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict
             "manifest": manifest,
             "dependency_paths": [],
         }
-    for rel in _as_list(parsed.get("artifactRelationships")):
-        if isinstance(rel, dict) and _first_str(rel.get("type")).lower() in {"depends-on", "dependency-of"}:
+    edge_count = 0
+    for rel in _limited_dicts(parsed.get("artifactRelationships"), MAX_DEPENDENCY_RELATIONSHIPS):
+        if _first_str(rel.get("type")).lower() in {"depends-on", "dependency-of"}:
+            if edge_count >= MAX_DEPENDENCY_RELATIONSHIPS:
+                break
             rel_type = _first_str(rel.get("type")).lower()
             parent = _first_str(rel.get("parent"), rel.get("from"))
             child = _first_str(rel.get("child"), rel.get("to"))
             if parent and child and rel_type == "depends-on":
                 graph.setdefault(parent, []).append(child)
+                edge_count += 1
             elif parent and child and rel_type == "dependency-of":
                 graph.setdefault(child, []).append(parent)
+                edge_count += 1
     depended = {child for children in graph.values() for child in children}
     root_refs = [ref for ref in graph if ref not in depended][:1]
     paths = _paths_from_graph(root_refs, graph)
@@ -593,12 +671,16 @@ def _parse_trivy(parsed: dict[str, Any], existing_components: list[dict[str, Any
     components: dict[str, dict[str, Any]] = {}
     vulnerabilities: list[dict[str, Any]] = []
     for result in _as_list(parsed.get("Results")):
+        if len(vulnerabilities) > MAX_DEPENDENCY_VULNERABILITIES:
+            break
         if not isinstance(result, dict):
             continue
         result_type = _first_str(result.get("Type"))
         ecosystem = _scanner_ecosystem(result_type)
         manifest = _first_str(result.get("Target"))
         for vuln in _as_list(result.get("Vulnerabilities")):
+            if len(vulnerabilities) > MAX_DEPENDENCY_VULNERABILITIES:
+                break
             if not isinstance(vuln, dict):
                 continue
             vid = _first_str(vuln.get("VulnerabilityID"), vuln.get("VulnerabilityId"), vuln.get("ID"))
@@ -652,6 +734,8 @@ def _parse_grype(parsed: dict[str, Any], existing_components: list[dict[str, Any
     components: dict[str, dict[str, Any]] = {}
     vulnerabilities: list[dict[str, Any]] = []
     for match in _as_list(parsed.get("matches")):
+        if len(vulnerabilities) > MAX_DEPENDENCY_VULNERABILITIES:
+            break
         if not isinstance(match, dict):
             continue
         vuln = match.get("vulnerability") if isinstance(match.get("vulnerability"), dict) else {}
@@ -706,7 +790,7 @@ def _parse_grype(parsed: dict[str, Any], existing_components: list[dict[str, Any
     return list(components.values()), vulnerabilities
 
 
-def _normalize_components(components: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _normalize_components(components: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], bool]:
     normalized = []
     seen: set[str] = set()
     for component in components:
@@ -733,10 +817,11 @@ def _normalize_components(components: list[dict[str, Any]]) -> list[dict[str, An
                 ][:MAX_PATHS_PER_COMPONENT],
             }
         )
-    return sorted(normalized, key=lambda item: (item["scope"] != "root", item["ecosystem"], item["name"], item["version"]))
+    ordered = sorted(normalized, key=lambda item: (item["scope"] != "root", item["ecosystem"], item["name"], item["version"]))
+    return ordered[:MAX_DEPENDENCY_COMPONENTS], len(ordered) > MAX_DEPENDENCY_COMPONENTS
 
 
-def _normalize_vulnerabilities(vulnerabilities: list[dict[str, Any]], component_ids: set[str]) -> list[dict[str, Any]]:
+def _normalize_vulnerabilities(vulnerabilities: list[dict[str, Any]], component_ids: set[str]) -> tuple[list[dict[str, Any]], bool]:
     normalized = []
     seen: set[tuple[str, str]] = set()
     for vuln in vulnerabilities:
@@ -771,7 +856,22 @@ def _normalize_vulnerabilities(vulnerabilities: list[dict[str, Any]], component_
                 ][:MAX_PATHS_PER_COMPONENT],
             }
         )
-    return sorted(normalized, key=lambda item: (SEVERITY_ORDER.get(item["severity"], 9), item["id"], item["component"]))
+    ordered = sorted(normalized, key=lambda item: (SEVERITY_ORDER.get(item["severity"], 9), item["id"], item["component"]))
+    return ordered[:MAX_DEPENDENCY_VULNERABILITIES], len(ordered) > MAX_DEPENDENCY_VULNERABILITIES
+
+
+def _dependency_limits(*, component_limit_reached: bool, vulnerability_limit_reached: bool) -> dict[str, Any]:
+    return {
+        "max_input_bytes": MAX_DEPENDENCY_INPUT_BYTES,
+        "max_components": MAX_DEPENDENCY_COMPONENTS,
+        "max_vulnerabilities": MAX_DEPENDENCY_VULNERABILITIES,
+        "max_relationship_edges": MAX_DEPENDENCY_RELATIONSHIPS,
+        "max_path_expansions": MAX_DEPENDENCY_PATH_EXPANSIONS,
+        "max_dependency_paths_per_component": MAX_PATHS_PER_COMPONENT,
+        "max_dependency_path_depth": MAX_PATH_DEPTH,
+        "component_limit_reached": component_limit_reached,
+        "vulnerability_limit_reached": vulnerability_limit_reached,
+    }
 
 
 def analyze_dependencies(
@@ -837,9 +937,13 @@ def analyze_dependencies(
         ]
         components = [*existing_components, *components]
         vulnerabilities = [*existing_vulnerabilities, *vulnerabilities]
-    normalized_components = _normalize_components(components)
+    normalized_components, component_limit_reached = _normalize_components(components)
     component_ids = {component["id"] for component in normalized_components}
-    normalized_vulns = _normalize_vulnerabilities(vulnerabilities, component_ids)
+    normalized_vulns, vulnerability_limit_reached = _normalize_vulnerabilities(vulnerabilities, component_ids)
+    limits = _dependency_limits(
+        component_limit_reached=component_limit_reached,
+        vulnerability_limit_reached=vulnerability_limit_reached,
+    )
     direct_count = sum(1 for component in normalized_components if component.get("scope") == "direct")
     transitive_count = sum(1 for component in normalized_components if component.get("scope") == "transitive")
     unknown_count = sum(1 for component in normalized_components if component.get("scope") == "unknown")
@@ -855,6 +959,8 @@ def analyze_dependencies(
     else:
         status = "no_components"
         summary = "No dependency components were found in the SBOM/dependency input."
+    if not parse_error and (limits["component_limit_reached"] or limits["vulnerability_limit_reached"]):
+        summary += " Normalized output reached one or more dependency ingestion limits; review the raw local artifact for omitted records."
     return {
         "schema_version": "1",
         "run_id": ctx.get("run_id", run_dir.name),
@@ -865,10 +971,10 @@ def analyze_dependencies(
         "status": status,
         "summary": summary,
         "source": {
-            "tool": tool,
-            "format": requested_format,
+            "tool": _bounded_text(tool),
+            "format": _bounded_text(requested_format),
             "detected_format": detected_format,
-            "raw_result_ref": raw_result_ref,
+            "raw_result_ref": _bounded_text(raw_result_ref),
         },
         "component_count": len(normalized_components),
         "vulnerability_count": len(normalized_vulns),
@@ -878,6 +984,7 @@ def analyze_dependencies(
             "unknown": unknown_count,
             "root": sum(1 for component in normalized_components if component.get("scope") == "root"),
         },
+        "limits": limits,
         "parse_error": parse_error,
         "components": normalized_components,
         "vulnerabilities": normalized_vulns,
@@ -925,6 +1032,24 @@ def render_dependency_markdown(data: dict[str, Any]) -> str:
     scope_counts = data.get("scope_counts") if isinstance(data.get("scope_counts"), dict) else {}
     for scope in ["root", "direct", "transitive", "unknown"]:
         lines.append(f"- {scope.title()} components: `{scope_counts.get(scope, 0)}`")
+    limits = data.get("limits") if isinstance(data.get("limits"), dict) else {}
+    if limits:
+        lines.extend(
+            [
+                "",
+                "## Ingestion limits",
+                "",
+                f"- Max input bytes: `{limits.get('max_input_bytes', '')}`",
+                f"- Max normalized components: `{limits.get('max_components', '')}`",
+                f"- Max normalized vulnerabilities: `{limits.get('max_vulnerabilities', '')}`",
+                f"- Max relationship edges: `{limits.get('max_relationship_edges', '')}`",
+                f"- Max graph path expansions: `{limits.get('max_path_expansions', '')}`",
+                f"- Max dependency paths per component: `{limits.get('max_dependency_paths_per_component', '')}`",
+                f"- Max dependency path depth: `{limits.get('max_dependency_path_depth', '')}`",
+                f"- Component output truncated: `{limits.get('component_limit_reached', False)}`",
+                f"- Vulnerability output truncated: `{limits.get('vulnerability_limit_reached', False)}`",
+            ]
+        )
     lines.extend(["", "## Vulnerable components", ""])
     vulnerabilities = [v for v in _as_list(data.get("vulnerabilities")) if isinstance(v, dict)]
     if not vulnerabilities:
