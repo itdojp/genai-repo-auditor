@@ -12,7 +12,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 sys.path.insert(0, str(REPO_ROOT / "lib"))
-from dependency_posture import analyze_dependencies, append_dependency_posture_targets, should_ingest_dependencies, write_dependency_artifacts  # noqa: E402
+from dependency_posture import (  # noqa: E402
+    MAX_NOTE_CHARS,
+    analyze_dependencies,
+    append_dependency_posture_targets,
+    should_ingest_dependencies,
+    write_dependency_artifacts,
+)
 
 
 class DependencyIngestionTests(unittest.TestCase):
@@ -295,6 +301,44 @@ class DependencyIngestionTests(unittest.TestCase):
         dependencies_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
         self.assertEqual([], append_dependency_posture_targets(run_dir))
+
+    def test_dependency_targets_handle_malformed_files_and_bound_notes(self) -> None:
+        malformed_run = self.copy_run()
+        malformed_path = malformed_run / "reports" / "dependencies.json"
+        malformed_path.write_text("[]\n", encoding="utf-8")
+        self.assertEqual([], append_dependency_posture_targets(malformed_run))
+
+        shutil.rmtree(malformed_run)
+        run_dir = self.copy_run()
+        data = analyze_dependencies(
+            run_dir=run_dir,
+            raw_path=FIXTURES / "sbom" / "cyclonedx.json",
+            raw_result_ref="reports/scanner-results/cyclonedx.json",
+            tool="sbom",
+            requested_format="cyclonedx",
+        )
+        component_id = "pkg:pypi/lib-b@2.0.0"
+        components = {component["id"]: component for component in data["components"]}
+        components[component_id]["version"] = "9" * 200
+        data["vulnerabilities"] = [
+            {
+                "id": "GHSA-" + "x" * 200,
+                "component": component_id,
+                "severity": "High",
+                "fixed_version": "1." + "2" * 200,
+                "source": "fixture-" + "source" * 100,
+                "evidence_ref": "evidence",
+                "dependency_paths": [[component_id, "pkg:generic/" + "nested" * 120]],
+            }
+        ]
+        data["vulnerability_count"] = 1
+        dependencies_path = run_dir / "reports" / "dependencies.json"
+        dependencies_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+        added = append_dependency_posture_targets(run_dir)
+        self.assertEqual(1, len(added))
+        self.assertLessEqual(len(added[0]["notes"]), MAX_NOTE_CHARS)
+        self.assertTrue(added[0]["notes"].endswith("...<truncated>"))
 
     def test_dependency_validator_rejects_count_drift_and_unknown_components(self) -> None:
         run_dir = self.copy_run()

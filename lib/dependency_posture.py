@@ -701,7 +701,11 @@ def _dependency_target_note(vulnerability: dict[str, Any], component: dict[str, 
         "Treat this as dependency evidence until manifest context and reachability are reviewed.",
     ]
     note = " ".join(piece for piece in pieces if piece)
-    return note[:MAX_NOTE_CHARS] + ("...<truncated>" if len(note) > MAX_NOTE_CHARS else "")
+    if len(note) <= MAX_NOTE_CHARS:
+        return note
+    suffix = "...<truncated>"
+    prefix_length = max(0, MAX_NOTE_CHARS - len(suffix))
+    return (note[:prefix_length] + suffix)[:MAX_NOTE_CHARS]
 
 
 def _dependency_targets_from_data(data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -781,6 +785,8 @@ def _dependency_targets_from_data(data: dict[str, Any]) -> list[dict[str, Any]]:
 def append_dependency_posture_targets(run_dir: Path) -> list[dict[str, Any]]:
     reports = _reports_dir(run_dir)
     data = load_json(reports / "dependencies.json", {}) or {}
+    if not isinstance(data, dict):
+        return []
     generated_targets = _dependency_targets_from_data(data)
     if not generated_targets:
         return []
