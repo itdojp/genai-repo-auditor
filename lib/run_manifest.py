@@ -42,6 +42,14 @@ def artifact_entry(run_dir: Path, rel_path: str, *, kind: str | None = None) -> 
     return entry
 
 
+def reports_artifact(run_dir: Path, rel_path: str = "") -> str:
+    ctx = load_json(run_dir / "context.json", {}) or {}
+    reports = manifest_relative_path(run_dir, ctx.get("reports_dir"), "reports")
+    if not rel_path:
+        return reports
+    return (Path(reports) / rel_path).as_posix()
+
+
 def collect_artifacts(run_dir: Path) -> list[dict[str, Any]]:
     candidates = [
         ("context.json", "file"),
@@ -56,26 +64,26 @@ def collect_artifacts(run_dir: Path) -> list[dict[str, Any]]:
         (SCHEMA_FILENAME, "file"),
         ("prompt.exec.md", "file"),
         ("prompt.goal.md", "file"),
-        ("reports", "dir"),
-        ("reports/findings.json", "file"),
-        ("reports/FINDINGS.md", "file"),
-        ("reports/targets.json", "file"),
-        ("reports/COVERAGE.md", "file"),
-        ("reports/gapfill-targets.json", "file"),
-        ("reports/validation.json", "file"),
-        ("reports/VALIDATION.md", "file"),
-        ("reports/chains.json", "file"),
-        ("reports/ATTACK_CHAINS.md", "file"),
-        ("reports/proofs.json", "file"),
-        ("reports/PROOFS.md", "file"),
-        ("reports/proofs", "dir"),
-        ("reports/scanner-results/scanner-index.json", "file"),
-        ("reports/dashboard.html", "file"),
-        ("reports/findings.sarif", "file"),
-        ("reports/issue-drafts", "dir"),
-        ("reports/scanner-results", "dir"),
-        ("reports/target-research", "dir"),
-        ("reports/variant-analysis", "dir"),
+        (reports_artifact(run_dir), "dir"),
+        (reports_artifact(run_dir, "findings.json"), "file"),
+        (reports_artifact(run_dir, "FINDINGS.md"), "file"),
+        (reports_artifact(run_dir, "targets.json"), "file"),
+        (reports_artifact(run_dir, "COVERAGE.md"), "file"),
+        (reports_artifact(run_dir, "gapfill-targets.json"), "file"),
+        (reports_artifact(run_dir, "validation.json"), "file"),
+        (reports_artifact(run_dir, "VALIDATION.md"), "file"),
+        (reports_artifact(run_dir, "chains.json"), "file"),
+        (reports_artifact(run_dir, "ATTACK_CHAINS.md"), "file"),
+        (reports_artifact(run_dir, "proofs.json"), "file"),
+        (reports_artifact(run_dir, "PROOFS.md"), "file"),
+        (reports_artifact(run_dir, "proofs"), "dir"),
+        (reports_artifact(run_dir, "scanner-results/scanner-index.json"), "file"),
+        (reports_artifact(run_dir, "dashboard.html"), "file"),
+        (reports_artifact(run_dir, "findings.sarif"), "file"),
+        (reports_artifact(run_dir, "issue-drafts"), "dir"),
+        (reports_artifact(run_dir, "scanner-results"), "dir"),
+        (reports_artifact(run_dir, "target-research"), "dir"),
+        (reports_artifact(run_dir, "variant-analysis"), "dir"),
         ("codex-events.jsonl", "file"),
         ("codex-final.md", "file"),
         ("codex-stderr.txt", "file"),

@@ -19,6 +19,7 @@ FIXTURE_FINGERPRINT = "0123456789abcdef01234567"
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 from dependency_posture import write_dependency_artifacts  # noqa: E402
 from gralib import env_from_context  # noqa: E402
+from run_manifest import collect_artifacts  # noqa: E402
 
 
 class CliWorkflowTests(unittest.TestCase):
@@ -1515,6 +1516,11 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertTrue((run_dir / "custom-reports" / "gapfill-targets.json").exists())
         self.assertTrue((run_dir / "custom-reports" / "target-research" / "TGT-001-gapfill.md").exists())
         self.assertFalse((run_dir / "reports" / "COVERAGE.md").exists())
+        artifact_paths = {entry["path"] for entry in collect_artifacts(run_dir)}
+        self.assertIn("custom-reports/COVERAGE.md", artifact_paths)
+        self.assertIn("custom-reports/gapfill-targets.json", artifact_paths)
+        self.assertIn("custom-reports/target-research", artifact_paths)
+        self.assertNotIn("reports/COVERAGE.md", artifact_paths)
 
         cp_goal = self.run_cmd(
             [REPO_ROOT / "bin" / "gra-gapfill", "--run", run_dir, "--target", "TGT-001", "--mode", "goal"],
