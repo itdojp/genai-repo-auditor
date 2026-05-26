@@ -26,14 +26,18 @@ For Critical / High candidates, run or review the independent adversarial
 validation stage before publication:
 
 ```bash
+gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
 gra-chains --run runs/OWNER__REPO/RUN_ID
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
 
-Then inspect `reports/ATTACK_CHAINS.md`, `reports/proofs.json`,
+Then inspect `reports/COVERAGE.md`, `reports/gapfill-targets.json`,
+`reports/ATTACK_CHAINS.md`, `reports/proofs.json`,
 `reports/PROOFS.md`, `reports/validation.json`, and `reports/VALIDATION.md`.
+High-risk targets with shallow coverage or unresolved gapfill recommendations
+should be reviewed before claiming complete coverage in public Issue wording.
 `downgrade`, `invalidate`, and `needs-human-review` decisions should block direct
 publication until the finding metadata and issue draft have been revised or a
 human reviewer explicitly accepts the residual uncertainty. The validation stage

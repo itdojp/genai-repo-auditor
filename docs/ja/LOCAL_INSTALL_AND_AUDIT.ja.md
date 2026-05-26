@@ -189,6 +189,7 @@ gra-validate-report --run "$RUN_DIR"
 任意のローカル成果物を生成します。
 
 ```bash
+gra-gapfill --run "$RUN_DIR" --generate
 gra-chains --run "$RUN_DIR"
 gra-proofs --run "$RUN_DIR" --all-critical-high
 gra-adversarial-validate --run "$RUN_DIR" --all-critical-high
@@ -198,7 +199,8 @@ gra-sarif --run "$RUN_DIR"
 gra-store --run "$RUN_DIR"
 ```
 
-対応前に `reports/FINDINGS.md`、`reports/findings.json`、`reports/ATTACK_CHAINS.md`、
+対応前に `reports/FINDINGS.md`、`reports/findings.json`、`reports/COVERAGE.md`、
+`reports/gapfill-targets.json`、`reports/ATTACK_CHAINS.md`、
 `reports/PROOFS.md`、`reports/VALIDATION.md`、`reports/issue-drafts/` を確認して
 ください。AI 出力は人間による検証が必要な分析結果として扱います。
 

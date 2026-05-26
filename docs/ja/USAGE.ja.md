@@ -50,6 +50,7 @@ gra-audit \
 ```bash
 RUN_DIR="$GRA_HOME/runs/OWNER__REPO/RUN_ID"
 gra-validate-report --run "$RUN_DIR"
+gra-gapfill --run "$RUN_DIR" --generate
 gra-chains --run "$RUN_DIR"
 gra-proofs --run "$RUN_DIR" --all-critical-high
 gra-adversarial-validate --run "$RUN_DIR" --all-critical-high
@@ -58,6 +59,7 @@ gra-issues --run "$RUN_DIR" --dry-run
 ```
 
 Issue 作成は、finding、evidence、non-public by default の
+`reports/COVERAGE.md`、`reports/gapfill-targets.json`、
 `reports/ATTACK_CHAINS.md`、local/private by default の
 `reports/PROOFS.md`、`reports/VALIDATION.md`、
 `reports/issue-drafts/*.md`、公開可否を人間が確認した後だけ実行します。
@@ -78,6 +80,8 @@ runs/OWNER__REPO/RUN_ID/
   reports/
     findings.json             # validation / issue workflow の入力
     FINDINGS.md
+    COVERAGE.md               # target coverage / gapfill の summary
+    gapfill-targets.json      # gapfill requeue の機械可読出力
     chains.json               # defensive chain synthesis の機械可読出力
     ATTACK_CHAINS.md          # non-public by default の chain summary
     proofs.json               # safe local proof artifact の機械可読出力

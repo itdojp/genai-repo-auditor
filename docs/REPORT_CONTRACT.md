@@ -121,6 +121,13 @@ Important constraints:
   from 1 to 20, `expected_output` must be
   `finding-or-no-finding-with-coverage`, and `chain_relevance` must be `none`,
   `possible-link`, or `candidate-chain-step`.
+- Optional `targets[].coverage` metadata is validated when present:
+  `review_depth` must be `none`, `shallow`, `medium`, or `deep`; reviewed,
+  skipped, command, and unresolved-question fields must be string lists;
+  `gapfill_recommended` must be boolean; and `gapfill_reason` must be a string.
+  `gra-gapfill --generate` uses this metadata to write `reports/COVERAGE.md`,
+  `reports/gapfill-targets.json`, and bounded `TGT-GAPFILL-NNN` follow-up
+  targets without treating coverage gaps as findings.
 - `findings[].affected_locations[].file` must be a relative target-repo path.
 - `line` and `end_line` must be positive integers when present.
 - `public_disclosure_risk` is required when `issue_recommended` is true.

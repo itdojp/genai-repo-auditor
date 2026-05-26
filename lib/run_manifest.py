@@ -60,6 +60,8 @@ def collect_artifacts(run_dir: Path) -> list[dict[str, Any]]:
         ("reports/findings.json", "file"),
         ("reports/FINDINGS.md", "file"),
         ("reports/targets.json", "file"),
+        ("reports/COVERAGE.md", "file"),
+        ("reports/gapfill-targets.json", "file"),
         ("reports/validation.json", "file"),
         ("reports/VALIDATION.md", "file"),
         ("reports/chains.json", "file"),

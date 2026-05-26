@@ -31,6 +31,7 @@ STATUSES = {"Confirmed", "Probable", "Potential", "Informational", "Invalid", "N
 ASSESSMENT_STATUSES = {"Confirmed", "Probable", "Potential", "Invalid", "Not assessed"}
 TARGET_STATUSES = {"queued", "in_progress", "reviewed", "skipped", "needs_human_review"}
 TARGET_RISKS = {"critical", "high", "medium", "low", "informational"}
+TARGET_REVIEW_DEPTHS = {"none", "shallow", "medium", "deep"}
 SCANNER_RESULTS_DIR = Path("reports/scanner-results")
 NORMALIZED_SCANNER_RESULTS_DIR = SCANNER_RESULTS_DIR / "normalized"
 DEPENDENCIES_PATH = Path("reports/dependencies.json")
@@ -238,6 +239,21 @@ def validate_targets(
                 errors.append(f"{path}.max_files: max_files must be integer")
             elif not 1 <= int(max_files) <= 20:
                 errors.append(f"{path}.max_files: max_files must be between 1 and 20")
+        if "coverage" in t:
+            coverage = t.get("coverage")
+            coverage_path = f"{path}.coverage"
+            if not isinstance(coverage, dict):
+                errors.append(f"{coverage_path}: coverage must be an object")
+            else:
+                if "review_depth" in coverage and coverage.get("review_depth") not in TARGET_REVIEW_DEPTHS:
+                    errors.append(f"{coverage_path}.review_depth: invalid review depth {coverage.get('review_depth')}")
+                for key in ["files_reviewed", "files_skipped", "commands_run", "unresolved_questions"]:
+                    if key in coverage:
+                        validate_string_list(coverage.get(key), f"{coverage_path}.{key}", errors)
+                if "gapfill_recommended" in coverage and not isinstance(coverage.get("gapfill_recommended"), bool):
+                    errors.append(f"{coverage_path}.gapfill_recommended: expected type boolean, got {json_type_name(coverage.get('gapfill_recommended'))}")
+                if "gapfill_reason" in coverage and not isinstance(coverage.get("gapfill_reason"), str):
+                    errors.append(f"{coverage_path}.gapfill_reason: expected type string, got {json_type_name(coverage.get('gapfill_reason'))}")
         if taxonomy_profiles_loaded:
             validate_taxonomy_refs(t.get("taxonomies"), f"{path}.taxonomies", errors, taxonomy_profiles, taxonomy_labels)
 

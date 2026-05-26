@@ -24,11 +24,16 @@ issue_recommended: true
 Critical / High 候補は、公開前に独立した adversarial validation も実行または確認します。
 
 ```bash
+gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
 gra-chains --run runs/OWNER__REPO/RUN_ID
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
+
+`reports/COVERAGE.md` と `reports/gapfill-targets.json` で high-risk target
+に shallow coverage や unresolved gapfill recommendation が残っていないか
+確認してください。
 
 `reports/ATTACK_CHAINS.md` は non-public by default の内部資料です。
 chain implications を remediation priority と disclosure planning に使い、

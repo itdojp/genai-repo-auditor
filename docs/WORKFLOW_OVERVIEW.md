@@ -23,6 +23,8 @@ gra-audit --mode exec
   ↓
 findings.json を検証
   ↓
+必要に応じて gra-gapfill で shallow coverage を requeue
+  ↓
 gra-chains で defensive chain を整理
   ↓
 Critical / High は safe local proof artifact を生成
@@ -61,6 +63,7 @@ gra-batch --repo-list repos.txt --concurrency 1 --mode exec
 Issue化:
 
 ```bash
+gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
 gra-chains --run runs/OWNER__REPO/RUN_ID
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
@@ -75,6 +78,7 @@ gra-issues --run runs/OWNER__REPO/RUN_ID --apply --create-labels
 - `/goal` 深掘り: `docs/GOAL_DEEP_DIVE_WORKFLOW.md`
 - 複数repo: `docs/MULTI_REPO.md`
 - Issue化: `docs/ISSUE_WORKFLOW.md`
+- Target coverage / gapfill: `docs/TARGET_QUEUE.md`
 - Defensive chain synthesis: `docs/ATTACK_CHAINS.md`
 - Safe local proofs: `docs/SAFE_LOCAL_PROOFS.md`
 - Adversarial validation: `docs/ADVERSARIAL_VALIDATION.md`

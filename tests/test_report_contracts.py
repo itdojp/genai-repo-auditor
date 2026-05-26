@@ -148,6 +148,14 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual(["finding-or-no-finding-with-coverage"], target_properties["expected_output"]["enum"])
         self.assertEqual(["none", "possible-link", "candidate-chain-step"], target_properties["chain_relevance"]["enum"])
         self.assertEqual("string", target_properties["security_invariants"]["items"]["type"])
+        coverage_properties = target_properties["coverage"]["properties"]
+        self.assertEqual(["none", "shallow", "medium", "deep"], coverage_properties["review_depth"]["enum"])
+        self.assertEqual("string", coverage_properties["files_reviewed"]["items"]["type"])
+        self.assertEqual("string", coverage_properties["files_skipped"]["items"]["type"])
+        self.assertEqual("string", coverage_properties["commands_run"]["items"]["type"])
+        self.assertEqual("string", coverage_properties["unresolved_questions"]["items"]["type"])
+        self.assertEqual("boolean", coverage_properties["gapfill_recommended"]["type"])
+        self.assertEqual("string", coverage_properties["gapfill_reason"]["type"])
         self.assertIn("taxonomies", target_properties)
         self.assertEqual({"name", "id", "label"}, set(target_properties["taxonomies"]["items"]["required"]))
 
