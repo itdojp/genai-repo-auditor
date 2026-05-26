@@ -30,6 +30,7 @@ gra-index --runs-dir runs
 ```
 
 この staged workflow は、広範な一括監査を避け、recon、target queue、scanner / SBOM evidence、validation、reporting を分けて確認するための運用単位です。
+Target queue は、attack class、attacker model、security invariant、entry point、sink、`max_files`、expected output、chain relevance を使って、1 つの狭い検証単位に収まる粒度で管理します。`max_files` は 1..20 の範囲で、通常は 4..8 files 程度に抑え、広すぎる auth / workflow / dependency review は複数 target に分割してください。
 
 CI では offline fixture でこの流れを回帰確認しています。詳細は英語版 [`STAGED_AGENTIC_WORKFLOW.md`](../STAGED_AGENTIC_WORKFLOW.md) を参照してください。
 

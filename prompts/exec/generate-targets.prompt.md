@@ -85,7 +85,12 @@ Create or update {{REPORTS_DIR}}/targets.json using this strict shape:
       "entry_points": ["repo/path/to/route.ts"],
       "trust_boundaries": ["authenticated user -> tenant-scoped resources"],
       "sinks": ["database queries returning tenant data"],
+      "attack_class": "Authz",
       "security_invariants": ["Every tenant-scoped query must filter by tenant_id derived from the authenticated session"],
+      "attacker_model": "authenticated tenant user",
+      "max_files": 6,
+      "expected_output": "finding-or-no-finding-with-coverage",
+      "chain_relevance": "possible-link",
       "review_questions": ["Can user-controlled IDs select records outside the caller tenant?"],
       "candidate_files": ["repo/path/to/file.ts"],
       "taxonomies": [
@@ -101,7 +106,10 @@ Quality bar:
 - 5 to 25 targets is usually enough.
 - Prioritize Critical/High-risk targets first.
 - Do not create findings here.
-- Every target must have a concrete scope, entry points or candidate files, and review questions.
+- Every target must have a concrete scope, entry points or candidate files, sensitive sinks, security invariants, and review questions.
+- Prefer targets that can be completed by inspecting no more than `max_files` files. Set `max_files` to an integer from 1 to 20; use 4 to 8 for normal code-path research.
+- Set `attack_class`, `attacker_model`, `expected_output`, and `chain_relevance` when the target is security-research oriented. Use `expected_output: "finding-or-no-finding-with-coverage"` unless there is a documented reason to omit the field.
+- Avoid broad targets such as "review authentication" or "review all workflows"; split them by entry point, trust boundary, invariant, and sink.
 - If {{REPORTS_DIR}}/agent-surface.json exists, include high-risk AI agent and MCP surfaces as bounded targets unless they are already covered.
 - If {{REPORTS_DIR}}/provenance-posture.json exists, include release, package, container, or binary artifact workflows that need provenance posture review as bounded supply-chain targets.
 - If {{REPORTS_DIR}}/supply-chain-posture.json exists, include OpenSSF Scorecard checks with `target_recommended: true` as bounded supply-chain targets unless deterministic `TGT-SCORECARD-NNN` targets already cover them.

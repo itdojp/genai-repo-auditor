@@ -143,6 +143,15 @@ def validate_generated_at(value: Any, path: str, errors: List[str]) -> None:
         errors.append(f"{path}: generated_at must be valid ISO-8601 datetime")
 
 
+def validate_string_list(value: Any, path: str, errors: List[str]) -> None:
+    if not isinstance(value, list):
+        errors.append(f"{path}: must be list")
+        return
+    for index, item in enumerate(value):
+        if not isinstance(item, str):
+            errors.append(f"{path}[{index}]: expected type string, got {json_type_name(item)}")
+
+
 def validate_targets(
     run_dir: Path,
     errors: List[str],
@@ -189,9 +198,22 @@ def validate_targets(
             errors.append(f"{path}.priority: priority must be integer")
         elif not 0 <= int(t["priority"]) <= 100:
             errors.append(f"{path}.priority: priority must be between 0 and 100")
-        for key in ["entry_points", "trust_boundaries", "sinks", "review_questions"]:
-            if key in t and not isinstance(t.get(key), list):
-                errors.append(f"{path}.{key}: {key} must be list")
+        for key in [
+            "entry_points",
+            "trust_boundaries",
+            "sinks",
+            "security_invariants",
+            "review_questions",
+            "candidate_files",
+        ]:
+            if key in t:
+                validate_string_list(t.get(key), f"{path}.{key}", errors)
+        if "max_files" in t:
+            max_files = t.get("max_files")
+            if not isinstance(max_files, int) or isinstance(max_files, bool):
+                errors.append(f"{path}.max_files: max_files must be integer")
+            elif not 1 <= int(max_files) <= 20:
+                errors.append(f"{path}.max_files: max_files must be between 1 and 20")
         if taxonomy_profiles_loaded:
             validate_taxonomy_refs(t.get("taxonomies"), f"{path}.taxonomies", errors, taxonomy_profiles, taxonomy_labels)
 

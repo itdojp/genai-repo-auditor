@@ -15,6 +15,40 @@ A target should be smaller than a repository audit and larger than a single file
 - admin API privilege boundaries
 - outbound URL fetchers and SSRF-relevant paths
 
+## Target quality fields
+
+Targets can carry optional quality-gate metadata that keeps Codex CLI research
+bounded and reviewable:
+
+- `attack_class`: the suspected class, such as `Authz`, `IDOR`, `SSRF`,
+  `Webhook`, `CI/CD`, `Secrets`, or `Supply Chain`.
+- `security_invariants`: one or more concrete invariants that must hold, for
+  example "tenant-scoped reads must filter by the session tenant".
+- `attacker_model`: the actor whose control should be considered, such as
+  `unauthenticated`, `authenticated-user`, `tenant-user`, `pr-author`, or
+  `external-webhook`.
+- `max_files`: the intended inspection bound. It must be an integer from 1 to
+  20; normal target research should usually stay between 4 and 8 files.
+- `expected_output`: use `finding-or-no-finding-with-coverage` so a completed
+  target records either a candidate finding or explicit no-finding coverage
+  notes.
+- `chain_relevance`: `none`, `possible-link`, or `candidate-chain-step`.
+
+Good target:
+
+```text
+Review tenant isolation for repo/src/routes/projects.ts getProject/updateProject.
+Invariant: every project read/write must filter by tenant_id derived from session.
+Attacker model: authenticated tenant user.
+Sinks: ProjectRepository.findById, ProjectRepository.update.
+Max files: 6.
+Expected output: finding-or-no-finding-with-coverage.
+```
+
+Avoid targets such as "Review auth and authorization". Split broad targets by
+entry point, trust boundary, invariant, and sink before handing them to
+`gra-research` or a supervised `/goal`.
+
 Generate targets:
 
 ```bash

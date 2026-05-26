@@ -1217,10 +1217,15 @@ def _dependency_targets_from_data(data: dict[str, Any]) -> list[dict[str, Any]]:
             "entry_points": entry_points,
             "trust_boundaries": ["upstream dependency package -> repository build or runtime"],
             "sinks": [component_id, str(component.get("ecosystem") or "unknown")],
+            "attack_class": "Supply Chain",
             "security_invariants": [
                 "Dependency posture records are evidence and must not be treated as confirmed findings without reachability review.",
                 "Dependency remediation should preserve intended package constraints and release process controls.",
             ],
+            "attacker_model": "remote attacker reaching vulnerable dependency or build-time supply-chain actor",
+            "max_files": 6,
+            "expected_output": "finding-or-no-finding-with-coverage",
+            "chain_relevance": "possible-link",
             "review_questions": [
                 "Is the vulnerable dependency reachable from repository runtime, build, or deployment paths?",
                 "Is the affected version constrained by a manifest or lockfile in this repository?",
