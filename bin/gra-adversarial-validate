@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -14,6 +13,12 @@ from gralib import env_from_context, find_finding, load_context, load_findings, 
 
 HIGH_SEVERITIES = {'Critical', 'High'}
 VALIDATION_STATUSES = {'Confirmed', 'Probable', 'Potential'}
+
+
+def require_findings_file(run_dir: Path) -> None:
+    findings_path = run_dir / 'reports' / 'findings.json'
+    if not findings_path.exists():
+        raise FileNotFoundError(f'findings.json not found: {findings_path}')
 
 
 def load_chains(run_dir: Path) -> list[dict[str, Any]]:
@@ -42,12 +47,14 @@ def subject_record(subject_type: str, subject_id: str, data: dict[str, Any]) -> 
 
 def select_subjects(run_dir: Path, args: argparse.Namespace) -> tuple[str, list[dict[str, Any]]]:
     if args.finding:
+        require_findings_file(run_dir)
         finding = find_finding(run_dir, args.finding)
         return args.finding, [subject_record('finding', args.finding, finding)]
     if args.chain:
         chain = find_chain(run_dir, args.chain)
         return args.chain, [subject_record('chain', args.chain, chain)]
 
+    require_findings_file(run_dir)
     subjects: list[dict[str, Any]] = []
     for finding in load_findings(run_dir):
         severity = str(finding.get('severity') or '')
@@ -123,7 +130,7 @@ def main() -> int:
     ctx = load_context(run_dir)
     try:
         selection_id, selected_subjects = select_subjects(run_dir, args)
-    except KeyError as e:
+    except (FileNotFoundError, KeyError) as e:
         print(str(e), file=sys.stderr)
         return 2
 

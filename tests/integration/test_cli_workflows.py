@@ -1521,6 +1521,23 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("You must not create new findings.", prompt.read_text(encoding="utf-8"))
         self.assertEqual(self.read_codex_calls(codex_log), [])
 
+    def test_gra_adversarial_validate_all_critical_high_requires_findings_json(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        (run_dir / "reports" / "findings.json").unlink()
+        env, codex_log = self.env_with_codex_log()
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-adversarial-validate",
+                "--run",
+                run_dir,
+                "--all-critical-high",
+            ],
+            env=env,
+        )
+        self.assertEqual(cp.returncode, 2)
+        self.assertIn("findings.json not found", cp.stderr)
+        self.assertEqual(self.read_codex_calls(codex_log), [])
+
     def test_gra_adversarial_validate_chain_goal_uses_chains_json(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         chains = {
