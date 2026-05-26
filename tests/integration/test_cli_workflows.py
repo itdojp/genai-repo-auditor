@@ -1883,6 +1883,13 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("proof artifact path must not contain '..'", cp_invalid.stderr)
         self.assertIn("command appears unsafe", cp_invalid.stderr)
 
+        wrong_type_run = self.copy_fixture_run("minimal-run")
+        (wrong_type_run / "reports" / "proofs.json").write_text("[]\n", encoding="utf-8")
+        cp_wrong_type = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", wrong_type_run])
+        self.assertNotEqual(cp_wrong_type.returncode, 0)
+        self.assertIn("proofs: expected type object, got array", cp_wrong_type.stderr)
+        self.assertNotIn("Traceback", cp_wrong_type.stderr)
+
     def test_validate_report_accepts_valid_fixture_and_rejects_invalid_fixtures(self) -> None:
         valid_run = self.copy_fixture_run("minimal-run")
         cp_valid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", valid_run])

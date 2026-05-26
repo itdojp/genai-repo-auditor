@@ -725,6 +725,8 @@ def validate_proofs(run_dir: Path, findings: list[dict[str, Any]], errors: List[
         return True
 
     validate_schema(proofs_data, load_schema("proofs.schema.json"), "proofs", errors)
+    if not isinstance(proofs_data, dict):
+        return True
     validate_generated_at(proofs_data.get("generated_at"), "proofs.generated_at", errors)
 
     proofs = proofs_data.get("proofs")
