@@ -40,6 +40,7 @@ runs/OWNER__REPO/RUN_ID/
   targets.schema.json
   validation.schema.json
   chains.schema.json
+  proofs.schema.json
   repo/
   reports/
   prompt.exec.md
@@ -70,6 +71,7 @@ prompts/goal/deep-dive-category.goal.md     # 単一カテゴリの深掘り
 prompts/goal/research-target.goal.md        # 単一targetの調査
 prompts/goal/variant-analysis.goal.md       # variant analysis
 prompts/goal/synthesize-chains.goal.md      # defensive chain synthesis
+prompts/goal/safe-proof.goal.md             # safe local proof artifact
 prompts/goal/adversarial-validate.goal.md   # finding / chain の反証・降格確認
 ```
 
@@ -102,6 +104,7 @@ ORG/repo-c
 
 ```bash
 gra-chains --run runs/ORG__repo-a/RUN_ID
+gra-proofs --run runs/ORG__repo-a/RUN_ID --all-critical-high
 gra-adversarial-validate --run runs/ORG__repo-a/RUN_ID --all-critical-high
 gra-validate-report --run runs/ORG__repo-a/RUN_ID
 gra-issues --run runs/ORG__repo-a/RUN_ID --dry-run
@@ -110,9 +113,9 @@ gra-issues --run runs/ORG__repo-a/RUN_ID --apply --create-labels
 
 既定では `Critical` / `High` かつ `Confirmed` / `Probable` のみ作成します。
 Issue 作成前に non-public by default の `reports/ATTACK_CHAINS.md` と
-`reports/VALIDATION.md` を確認し、chain implications と `downgrade`、
-`invalidate`、`needs-human-review` の subject を finding または Issue draft に
-反映します。
+local/private by default の `reports/PROOFS.md`、`reports/VALIDATION.md` を
+確認し、chain implications、safe proof limitations、`downgrade`、
+`invalidate`、`needs-human-review` の subject を finding または Issue draft に反映します。
 
 ## run index
 

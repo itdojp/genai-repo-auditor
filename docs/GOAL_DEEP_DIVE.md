@@ -111,6 +111,7 @@ runs/OWNER__REPO/RUN_ID/
   targets.schema.json
   validation.schema.json
   chains.schema.json
+  proofs.schema.json
   repo/
   reports/
   prompt.goal.md
@@ -123,6 +124,7 @@ runs/OWNER__REPO/RUN_ID/
       research-target.goal.md
       variant-analysis.goal.md
       synthesize-chains.goal.md
+      safe-proof.goal.md
       adversarial-validate.goal.md
 ```
 
@@ -171,6 +173,7 @@ cat runs/OWNER__REPO/RUN_ID/prompt.goal.md
 - reports/FINDINGS.md
 - reports/findings.json
 - reports/ATTACK_CHAINS.md
+- reports/PROOFS.md
 - reports/VALIDATION.md
 - reports/issue-drafts/*.md
 - reports/AUDIT_LOG.md
@@ -275,6 +278,7 @@ Codex TUI に貼ります。
 - reports/AUDIT_LOG.md に進捗とコマンドが残っているか
 - Critical / High が十分な証拠なしに断定されていないか
 - reports/ATTACK_CHAINS.md が non-public by default として扱われているか
+- reports/PROOFS.md が local/private by default として扱われているか
 - reports/VALIDATION.md の downgrade / invalidate / needs-human-review が反映されているか
 - secret 値が全文出力されていないか
 - public repo で disclosure risk が考慮されているか
@@ -291,6 +295,7 @@ sed -n '1,200p' runs/OWNER__REPO/RUN_ID/reports/AUDIT_LOG.md
 
 ```bash
 gra-chains --run runs/OWNER__REPO/RUN_ID
+gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
@@ -306,8 +311,8 @@ cat runs/OWNER__REPO/RUN_ID/prompts/goal/validate-findings.goal.md
 ## 10. Issue化
 
 深掘りで status / confidence / issue_recommended が更新され、
-`ATTACK_CHAINS.md` と `VALIDATION.md` のレビュー結果が Issue draft に反映された
-後に dry-run します。
+`ATTACK_CHAINS.md`、`PROOFS.md`、`VALIDATION.md` のレビュー結果が
+Issue draft に反映された後に dry-run します。
 
 ```bash
 gra-issues \

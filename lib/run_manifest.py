@@ -50,6 +50,9 @@ def collect_artifacts(run_dir: Path) -> list[dict[str, Any]]:
         ("findings.schema.json", "file"),
         ("targets.schema.json", "file"),
         ("scanner-index.schema.json", "file"),
+        ("validation.schema.json", "file"),
+        ("chains.schema.json", "file"),
+        ("proofs.schema.json", "file"),
         (SCHEMA_FILENAME, "file"),
         ("prompt.exec.md", "file"),
         ("prompt.goal.md", "file"),
@@ -57,6 +60,13 @@ def collect_artifacts(run_dir: Path) -> list[dict[str, Any]]:
         ("reports/findings.json", "file"),
         ("reports/FINDINGS.md", "file"),
         ("reports/targets.json", "file"),
+        ("reports/validation.json", "file"),
+        ("reports/VALIDATION.md", "file"),
+        ("reports/chains.json", "file"),
+        ("reports/ATTACK_CHAINS.md", "file"),
+        ("reports/proofs.json", "file"),
+        ("reports/PROOFS.md", "file"),
+        ("reports/proofs", "dir"),
         ("reports/scanner-results/scanner-index.json", "file"),
         ("reports/dashboard.html", "file"),
         ("reports/findings.sarif", "file"),
@@ -91,7 +101,15 @@ def collect_artifacts(run_dir: Path) -> list[dict[str, Any]]:
 
 def collect_schemas(run_dir: Path) -> list[dict[str, str]]:
     schemas = []
-    for name in ["findings.schema.json", "targets.schema.json", "scanner-index.schema.json", SCHEMA_FILENAME]:
+    for name in [
+        "findings.schema.json",
+        "targets.schema.json",
+        "scanner-index.schema.json",
+        "validation.schema.json",
+        "chains.schema.json",
+        "proofs.schema.json",
+        SCHEMA_FILENAME,
+    ]:
         path = run_dir / name
         if path.exists():
             schemas.append({"name": name, "path": name})

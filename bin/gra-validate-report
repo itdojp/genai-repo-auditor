@@ -36,11 +36,27 @@ NORMALIZED_SCANNER_RESULTS_DIR = SCANNER_RESULTS_DIR / "normalized"
 DEPENDENCIES_PATH = Path("reports/dependencies.json")
 VALIDATION_PATH = Path("reports/validation.json")
 CHAINS_PATH = Path("reports/chains.json")
+PROOFS_PATH = Path("reports/proofs.json")
+PROOFS_DIR = Path("reports/proofs")
 VALIDATION_DECISIONS = {"confirm", "downgrade", "invalidate", "needs-human-review"}
 VALIDATION_SUBJECT_TYPES = {"finding", "chain"}
 VALIDATION_SEVERITIES = SEVERITIES | {"Unknown"}
 VALIDATION_CONFIDENCES = CONFIDENCES | {"Unknown"}
 CHAIN_STATUSES = {"Confirmed", "Probable", "Potential", "Invalid", "Needs human review"}
+PROOF_TYPES = {
+    "static-trace",
+    "unit-test-plan",
+    "local-regression-test",
+    "config-check",
+    "parser-only-local-input",
+    "mocked-local-service",
+}
+PROOF_STATUSES = {"confirmed", "failed", "not-run", "needs-human-review"}
+UNSAFE_PROOF_COMMAND_RE = re.compile(
+    r"\b(?:curl|wget|nmap|nc|netcat|ssh|scp|ftp|telnet|kubectl|docker|pip|npm|yarn|pnpm|bundle|gem|cargo|go\s+get|gh)\b|"
+    r"https?://|--network|--allow-public",
+    re.IGNORECASE,
+)
 REQUIRED_TOP = ["run_id", "repo", "commit", "generated_at", "findings"]
 REQUIRED_FINDING = [
     "id", "fingerprint", "title", "severity", "confidence", "status", "category",
@@ -248,7 +264,11 @@ def validate_run_artifact_path(
         raise ReportSafetyError(f"{field_path}: normalized scanner artifact must be a .json file")
 
     target = run_dir / rel
-    validate_no_symlink_components(run_dir, rel, field_path=field_path)
+    current = run_dir
+    for part in rel.parts:
+        current = current / part
+        if current.is_symlink():
+            raise ReportSafetyError(f"{field_path}: proof artifact path must not contain symlink components: {rel.as_posix()}")
     expected_root = (run_dir / required_root).resolve(strict=False)
     resolved_target = target.resolve(strict=False)
     try:
@@ -671,6 +691,94 @@ def validate_adversarial_validation(run_dir: Path, findings: list[dict[str, Any]
     return True
 
 
+def validate_proof_artifact_path(run_dir: Path, value: Any, *, field_path: str) -> None:
+    if not isinstance(value, str) or not value.strip():
+        raise ReportSafetyError(f"{field_path}: path must be a non-empty string")
+    rel = Path(value)
+    if rel.is_absolute():
+        raise ReportSafetyError(f"{field_path}: proof artifact path must be relative to the run directory")
+    if ".." in rel.parts:
+        raise ReportSafetyError(f"{field_path}: proof artifact path must not contain '..'")
+    if rel == PROOFS_DIR or PROOFS_DIR not in (rel, *rel.parents):
+        raise ReportSafetyError(f"{field_path}: proof artifact path must stay under {PROOFS_DIR.as_posix()}")
+    validate_no_symlink_components(run_dir, rel, field_path=field_path)
+    expected_root = (run_dir / PROOFS_DIR).resolve(strict=False)
+    resolved_target = (run_dir / rel).resolve(strict=False)
+    try:
+        resolved_target.relative_to(expected_root)
+    except ValueError as exc:
+        raise ReportSafetyError(f"{field_path}: proof artifact path must not escape {PROOFS_DIR.as_posix()}") from exc
+    if not (run_dir / rel).exists():
+        raise ReportSafetyError(f"{field_path}: proof artifact not found: {rel.as_posix()}")
+    if not (run_dir / rel).is_file():
+        raise ReportSafetyError(f"{field_path}: proof artifact must be a regular file: {rel.as_posix()}")
+
+
+def validate_proofs(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
+    proofs_path = run_dir / PROOFS_PATH
+    if not proofs_path.exists():
+        return False
+    try:
+        proofs_data = json.loads(proofs_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"proofs.json invalid JSON: {exc}")
+        return True
+
+    validate_schema(proofs_data, load_schema("proofs.schema.json"), "proofs", errors)
+    validate_generated_at(proofs_data.get("generated_at"), "proofs.generated_at", errors)
+
+    proofs = proofs_data.get("proofs")
+    if not isinstance(proofs, list):
+        errors.append("proofs.proofs: proofs must be a list")
+        return True
+
+    finding_ids = {str(finding.get("id")) for finding in findings if isinstance(finding, dict) and finding.get("id")}
+    seen_ids: set[str] = set()
+    for index, proof in enumerate(proofs):
+        path = f"proofs.proofs[{index}]"
+        if not isinstance(proof, dict):
+            errors.append(f"{path}: proof must be an object")
+            continue
+
+        proof_id = str(proof.get("id") or "").strip()
+        if not re.fullmatch(r"PROOF-[0-9]{3,}", proof_id):
+            errors.append(f"{path}.id: proof id must match ^PROOF-[0-9]{{3,}}$")
+        elif proof_id in seen_ids:
+            errors.append(f"{path}.id: duplicate proof id {proof_id}")
+        seen_ids.add(proof_id)
+
+        finding_id = str(proof.get("finding_id") or "").strip()
+        if finding_id not in finding_ids:
+            errors.append(f"{path}.finding_id: finding {finding_id!r} is not present in reports/findings.json")
+        if proof.get("proof_type") not in PROOF_TYPES:
+            errors.append(f"{path}.proof_type: invalid proof type {proof.get('proof_type')}")
+        if proof.get("status") not in PROOF_STATUSES:
+            errors.append(f"{path}.status: invalid status {proof.get('status')}")
+        if proof.get("safe_by_design") is not True:
+            errors.append(f"{path}.safe_by_design: must be true for safe local proof artifacts")
+        if not isinstance(proof.get("evidence"), str):
+            errors.append(f"{path}.evidence: expected type string, got {json_type_name(proof.get('evidence'))}")
+
+        for key in ["files_created", "commands_run", "limitations"]:
+            validate_string_list(proof.get(key), f"{path}.{key}", errors)
+
+        files_created = proof.get("files_created") if isinstance(proof.get("files_created"), list) else []
+        for file_index, file_ref in enumerate(files_created):
+            try:
+                validate_proof_artifact_path(run_dir, file_ref, field_path=f"{path}.files_created[{file_index}]")
+            except ReportSafetyError as exc:
+                errors.append(str(exc))
+
+        commands_run = proof.get("commands_run") if isinstance(proof.get("commands_run"), list) else []
+        for command_index, command in enumerate(commands_run):
+            if isinstance(command, str) and UNSAFE_PROOF_COMMAND_RE.search(command):
+                errors.append(
+                    f"{path}.commands_run[{command_index}]: command appears unsafe for local proof artifacts: {command!r}"
+                )
+
+    return True
+
+
 def validate_affected_locations(finding: Dict[str, Any], path: str, errors: List[str]) -> None:
     locs = finding.get("affected_locations")
     if not isinstance(locs, list):
@@ -816,6 +924,7 @@ def main() -> int:
     dependencies_validated = validate_dependencies(run_dir, errors)
     chains_validated = validate_chains(run_dir, findings, errors)
     adversarial_validation_validated = validate_adversarial_validation(run_dir, findings, errors)
+    proofs_validated = validate_proofs(run_dir, findings, errors)
 
     if errors:
         for e in errors:
@@ -835,6 +944,8 @@ def main() -> int:
         print("Chains: validated")
     if adversarial_validation_validated:
         print("Adversarial validations: validated")
+    if proofs_validated:
+        print("Proofs: validated")
     return 0
 
 

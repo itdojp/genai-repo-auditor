@@ -29,15 +29,17 @@
    ↓
 7. gra-chains で既存 evidence の defensive chain を整理
    ↓
-8. Critical / High は gra-adversarial-validate で反証・降格余地を確認
+8. Critical / High は gra-proofs で safe local proof artifact を生成
    ↓
-9. 人間が FINDINGS.md / ATTACK_CHAINS.md / VALIDATION.md / issue-drafts を確認
+9. Critical / High は gra-adversarial-validate で反証・降格余地を確認
    ↓
-10. gra-issues --dry-run
+10. 人間が FINDINGS.md / ATTACK_CHAINS.md / PROOFS.md / VALIDATION.md / issue-drafts を確認
    ↓
-11. gra-issues --apply
+11. gra-issues --dry-run
    ↓
-12. GitHub Issue 上で修正PR・期限・担当者を管理
+12. gra-issues --apply
+   ↓
+13. GitHub Issue 上で修正PR・期限・担当者を管理
 ```
 
 ## セットアップ
@@ -101,6 +103,7 @@ runs/OWNER__REPO/RUN_ID/
   targets.schema.json       # targets.json の契約
   validation.schema.json    # validation.json の契約
   chains.schema.json        # chains.json の契約
+  proofs.schema.json        # proofs.json の契約
   repo/                     # clone された対象repo。原則 read-only 扱い
   reports/
     AUDIT_SUMMARY.md
@@ -110,6 +113,9 @@ runs/OWNER__REPO/RUN_ID/
     findings.json
     ATTACK_CHAINS.md
     chains.json
+    PROOFS.md
+    proofs.json
+    proofs/
     VALIDATION.md
     validation.json
     AUDIT_LOG.md
@@ -147,6 +153,7 @@ gra-validate-report --run runs/OWNER__REPO/RUN_ID
 - fingerprint が空でないこと
 - Issue 推奨 finding に issue draft が存在すること
 - chain output がある場合は既存 finding / target / scanner ref を参照していること
+- proof output がある場合は既存 finding を参照し、safe_by_design が true であること
 - adversarial validation output がある場合は subject、decision、evidence list が妥当であること
 
 ## レポート確認
@@ -158,6 +165,7 @@ reports/AUDIT_SUMMARY.md
 reports/FINDINGS.md
 reports/findings.json
 reports/ATTACK_CHAINS.md
+reports/PROOFS.md
 reports/VALIDATION.md
 reports/issue-drafts/*.md
 report-validation.txt
@@ -170,6 +178,7 @@ codex-final.md
 - Critical / High は file:line, entry point, trust boundary, call path が必須
 - Confirmed / Probable 以外は原則 Issue 化しない
 - `ATTACK_CHAINS.md` は non-public by default として扱い、public Issue にそのまま貼らない
+- `PROOFS.md` は local/private by default として扱い、public Issue にそのまま貼らない
 - `VALIDATION.md` の downgrade / invalidate / needs-human-review は公開前に修正または明示承認する
 - Generic hardening advice は Issue 化しない
 - public repo では public_disclosure_risk を確認する
@@ -182,6 +191,7 @@ Critical / High の Issue 候補は、公開前に独立した反証・降格チ
 
 ```bash
 gra-chains --run runs/OWNER__REPO/RUN_ID
+gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
@@ -189,6 +199,11 @@ gra-validate-report --run runs/OWNER__REPO/RUN_ID
 `gra-chains` は既存 finding / target / scanner ref を防御的に接続し、
 `ATTACK_CHAINS.md` を non-public by default の内部資料として出力します。
 このステージは exploit payload や weaponized step を生成してはいけません。
+
+`gra-proofs` は既存 finding に対して safe local proof artifact を生成します。
+これは local/private by default の検証補助資料であり、working exploit、
+credential extraction、live service probing、dependency installation、
+target repo modification を含めてはいけません。
 
 Adversarial validation は新しい finding を作りません。`reports/VALIDATION.md` の
 `downgrade`、`invalidate`、`needs-human-review` は、Issue draft と

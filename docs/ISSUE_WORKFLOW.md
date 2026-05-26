@@ -27,19 +27,21 @@ validation stage before publication:
 
 ```bash
 gra-chains --run runs/OWNER__REPO/RUN_ID
+gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
 
-Then inspect `reports/ATTACK_CHAINS.md`, `reports/validation.json`, and
-`reports/VALIDATION.md`.
+Then inspect `reports/ATTACK_CHAINS.md`, `reports/proofs.json`,
+`reports/PROOFS.md`, `reports/validation.json`, and `reports/VALIDATION.md`.
 `downgrade`, `invalidate`, and `needs-human-review` decisions should block direct
 publication until the finding metadata and issue draft have been revised or a
 human reviewer explicitly accepts the residual uncertainty. The validation stage
 must not create new findings; it only records decisions about existing findings
 or chains. `ATTACK_CHAINS.md` is non-public by default and should be used for
 remediation prioritization and disclosure planning, not copied wholesale into
-public Issues.
+public Issues. Proof artifacts are also local/private by default; use them to
+refine Issue wording, not as public exploit evidence.
 
 ## dry-run
 
@@ -75,7 +77,8 @@ runs/OWNER__REPO/RUN_ID/reports/issue-publication-plan.json
 The plan records the selected finding IDs, fingerprints, titles, labels, issue
 body files, issue body SHA-256 hashes, public disclosure risk, run ID, repo, and
 commit. Review the plan, referenced issue drafts, any `reports/ATTACK_CHAINS.md`
-chain implications, and any `reports/VALIDATION.md` decisions before publishing.
+chain implications, any `reports/PROOFS.md` proof limitations, and any
+`reports/VALIDATION.md` decisions before publishing.
 
 After review, apply the exact plan:
 

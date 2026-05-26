@@ -49,15 +49,21 @@ public repository への GitHub Issue 作成はデフォルトで拒否されま
 ## chain / validation artifact
 
 `reports/chains.json`、`reports/ATTACK_CHAINS.md`、`reports/validation.json`、
-`reports/VALIDATION.md` はローカルレビュー用 artifact です。
-`ATTACK_CHAINS.md` は複数の弱点を高影響の remediation path として接続し得る
-ため、non-public by default として扱います。修正優先度、Issue 文言の調整、
-追加レビュー要否の判断に使い、public Issue や advisory に全文を貼り付けないで
-ください。
+`reports/VALIDATION.md`、`reports/proofs.json`、`reports/PROOFS.md`、
+`reports/proofs/` はローカルレビュー用 artifact です。`ATTACK_CHAINS.md` と
+proof artifact は、複数の弱点や検証手順を内部向けに整理し得るため、
+non-public by default として扱います。修正優先度、Issue 文言の調整、
+追加レビュー要否の判断に使い、public Issue や advisory に全文を貼り付けないでください。
 
 Defensive chain synthesis は既存 finding、target、scanner ref、validation note
 だけを接続します。exploit payload、weaponized step、live probing instruction、
 新規 finding を生成してはいけません。
+
+Safe local proof generation は static trace、unit-test plan、local regression
+plan、parser-only input、config check、mocked local behavior などの benign
+local artifact に限定します。live service への auth bypass 実行、credential
+extraction、dependency installation、network scanning、production/staging probing、
+target repository modification、exploit code の生成は禁止です。
 
 ## scanner outputs
 
@@ -77,7 +83,8 @@ Defensive chain synthesis は既存 finding、target、scanner ref、validation 
 
 防御的検証は、static call-path review、既存 test、local unit test、benign local
 input を使って行います。Defensive chain synthesis は non-public な remediation
-planning に限定し、exploit chaining は対象外のままです。
+planning に限定し、safe proof artifact は local/private な validation aid に
+限定します。Exploit chaining と exploit proof generation は対象外のままです。
 
 ## repository CI hardening
 

@@ -123,6 +123,7 @@ class ReportContractTests(unittest.TestCase):
         dependencies_schema = self.load_json(SCHEMAS / "dependencies.schema.json")
         validation_schema = self.load_json(SCHEMAS / "validation.schema.json")
         chains_schema = self.load_json(SCHEMAS / "chains.schema.json")
+        proofs_schema = self.load_json(SCHEMAS / "proofs.schema.json")
 
         self.assertTrue(set(VALIDATOR.REQUIRED_TOP).issubset(findings_schema["required"]))
         finding_required = findings_schema["properties"]["findings"]["items"]["required"]
@@ -249,6 +250,38 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual("^CHAIN-[0-9]{3,}$", chain_properties["id"]["pattern"])
         self.assertEqual(["Confirmed", "Probable", "Potential", "Invalid", "Needs human review"], chain_properties["status"]["enum"])
         self.assertEqual("string", chain_properties["safe_validation_plan"]["items"]["type"])
+
+        self.assertEqual({"run_id", "repo", "generated_at", "proofs"}, set(proofs_schema["required"]))
+        proof_item = proofs_schema["properties"]["proofs"]["items"]
+        self.assertEqual(
+            {
+                "id",
+                "finding_id",
+                "proof_type",
+                "status",
+                "safe_by_design",
+                "files_created",
+                "commands_run",
+                "evidence",
+                "limitations",
+            },
+            set(proof_item["required"]),
+        )
+        proof_properties = proof_item["properties"]
+        self.assertEqual("^PROOF-[0-9]{3,}$", proof_properties["id"]["pattern"])
+        self.assertEqual(
+            [
+                "static-trace",
+                "unit-test-plan",
+                "local-regression-test",
+                "config-check",
+                "parser-only-local-input",
+                "mocked-local-service",
+            ],
+            proof_properties["proof_type"]["enum"],
+        )
+        self.assertEqual(["confirmed", "failed", "not-run", "needs-human-review"], proof_properties["status"]["enum"])
+        self.assertEqual("boolean", proof_properties["safe_by_design"]["type"])
 
     def test_valid_minimal_fixture_passes_validator(self) -> None:
         run_dir = self.copy_run()

@@ -93,6 +93,7 @@ prepare
   -> variant-analysis
   -> scanner-triage
   -> chain-synthesis
+  -> safe-local-proofs
   -> adversarial-validation
   -> reporting
   -> issue creation

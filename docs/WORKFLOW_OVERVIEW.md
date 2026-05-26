@@ -25,6 +25,8 @@ findings.json を検証
   ↓
 gra-chains で defensive chain を整理
   ↓
+Critical / High は safe local proof artifact を生成
+  ↓
 Critical / High は adversarial validation で反証・降格余地を確認
   ↓
 Critical / High が十分に裏付けられている?
@@ -60,6 +62,7 @@ Issue化:
 
 ```bash
 gra-chains --run runs/OWNER__REPO/RUN_ID
+gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 gra-issues --run runs/OWNER__REPO/RUN_ID --dry-run
@@ -73,6 +76,7 @@ gra-issues --run runs/OWNER__REPO/RUN_ID --apply --create-labels
 - 複数repo: `docs/MULTI_REPO.md`
 - Issue化: `docs/ISSUE_WORKFLOW.md`
 - Defensive chain synthesis: `docs/ATTACK_CHAINS.md`
+- Safe local proofs: `docs/SAFE_LOCAL_PROOFS.md`
 - Adversarial validation: `docs/ADVERSARIAL_VALIDATION.md`
 - レポート契約: `docs/REPORT_CONTRACT.md`
 - セキュリティモデル: `docs/SECURITY_MODEL.md`

@@ -72,15 +72,22 @@ public repository への GitHub Issue 作成はデフォルト拒否です。脆
 ## Chain and validation artifacts
 
 `reports/chains.json`, `reports/ATTACK_CHAINS.md`, `reports/validation.json`,
-and `reports/VALIDATION.md` are local review artifacts. `ATTACK_CHAINS.md` is
-non-public by default because it may connect multiple weaknesses into a
-higher-impact remediation path. Use these artifacts to prioritize fixes,
-revise issue wording, or require additional review; do not publish them
-wholesale to public Issues or advisories.
+`reports/VALIDATION.md`, `reports/proofs.json`, `reports/PROOFS.md`, and
+`reports/proofs/` are local review artifacts. `ATTACK_CHAINS.md` and proof
+artifacts are non-public by default because they may connect weaknesses or
+describe validation steps that should remain internal. Use these artifacts to
+prioritize fixes, revise issue wording, or require additional review; do not
+publish them wholesale to public Issues or advisories.
 
 Defensive chain synthesis is limited to existing findings, targets, scanner
 refs, and validation notes. It must not produce exploit payloads, weaponized
 steps, live probing instructions, or new findings.
+
+Safe local proof generation is limited to benign local artifacts such as static
+traces, unit-test plans, local regression plans, parser-only inputs, config
+checks, or mocked local behavior. It must not run live-service auth bypasses,
+extract credentials, install dependencies, scan networks, probe production or
+staging systems, modify the target repository, or produce exploit code.
 
 ## Deliberately excluded capabilities
 
@@ -96,7 +103,9 @@ The lab intentionally excludes or blocks the following by default:
 
 Defensive validation should use static call-path review, existing tests, local
 unit tests, and benign local inputs only. Defensive chain synthesis is allowed
-only as non-public remediation planning; exploit chaining remains out of scope.
+only as non-public remediation planning; safe proof artifacts are allowed only
+as local/private validation aids. Exploit chaining and exploit proof generation
+remain out of scope.
 
 ## Scanner outputs are untrusted
 

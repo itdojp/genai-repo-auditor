@@ -12,6 +12,7 @@ prepare
   -> research target(s)
   -> validate findings
   -> synthesize defensive chains
+  -> generate safe local proofs
   -> adversarial validation
   -> variant analysis
   -> scanner triage
@@ -144,6 +145,40 @@ reports/ATTACK_CHAINS.md
 `ATTACK_CHAINS.md` is non-public by default. Use it to prioritize remediation
 and decide where additional adversarial validation is needed before Issue
 publication.
+
+## Safe local proofs
+
+Use `gra-proofs` to create local/private proof artifacts for existing findings.
+This stage is for benign validation only. It can record static traces,
+unit-test plans, local regression plans, parser-only local input descriptions,
+config checks, or mocked local behavior; it must not generate exploit code,
+install dependencies, modify the target repository, contact live services, or
+scan networks.
+
+```bash
+gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high --model gpt-5.5 --effort xhigh
+gra-validate-report --run runs/OWNER__REPO/RUN_ID
+```
+
+For a single finding or supervised review:
+
+```bash
+gra-proofs --run runs/OWNER__REPO/RUN_ID --finding SEC-001
+gra-proofs --run runs/OWNER__REPO/RUN_ID --finding SEC-001 --mode goal
+```
+
+Outputs:
+
+```text
+reports/proofs/<selection>.subjects.json
+reports/proofs.json
+reports/PROOFS.md
+reports/proofs/
+```
+
+`PROOFS.md` and files under `reports/proofs/` are local/private by default.
+Use them to refine validation status and Issue wording; do not copy them
+wholesale into public Issues.
 
 ## Variant analysis
 
