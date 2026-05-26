@@ -77,7 +77,7 @@ gra-batch --repo-list examples/repos.txt.example --concurrency 1 --mode exec
 
 | Field | Details |
 |---|---|
-| Purpose | Generate and manage the target queue for staged audits. |
+| Purpose | Generate and manage the target queue for staged audits, including optional bounded-research quality fields such as attack class, attacker model, invariants, `max_files`, expected output, and chain relevance. |
 | Workflow category | Target workflow. |
 | Required inputs | `--run RUN_DIR` and exactly one action: `--generate`, `--list`, `--show TGT-ID`, or `--mark TGT-ID STATUS`. |
 | Key options | `--model MODEL`, `--effort EFFORT`, `--network`. `--mark` accepts `queued`, `in_progress`, `reviewed`, `skipped`, or `needs_human_review`. |
@@ -200,7 +200,7 @@ gra-scanner-triage --run runs/OWNER__REPO/RUN_ID --model gpt-5.5 --effort xhigh
 
 | Field | Details |
 |---|---|
-| Purpose | Validate `findings.json`, optional `targets.json`, optional scanner index artifacts, optional dependency artifacts, issue body references, schema-required fields, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
+| Purpose | Validate `findings.json`, optional `targets.json`, optional scanner index artifacts, optional dependency artifacts, issue body references, schema-required fields, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
 | Workflow category | Validation workflow. |
 | Required inputs | One of `--run RUN_DIR` or `--findings PATH`. |
 | Key options | `--run RUN_DIR`, `--findings PATH`. |

@@ -1000,6 +1000,8 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertTrue(agent_targets)
         self.assertIn("repo/.vscode/mcp.json", {target["scope"] for target in agent_targets})
         self.assertTrue(all(target["risk"] == "high" for target in agent_targets))
+        self.assertTrue(all(target["expected_output"] == "finding-or-no-finding-with-coverage" for target in agent_targets))
+        self.assertTrue(all(1 <= target["max_files"] <= 20 for target in agent_targets))
         self.assertTrue(any(ref.get("name") == "MCP Security" for target in agent_targets for ref in target.get("taxonomies", [])))
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
@@ -1023,6 +1025,8 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(1, len(provenance_targets))
         self.assertEqual("repo/.github/workflows/release.yml", provenance_targets[0]["scope"])
         self.assertEqual("medium", provenance_targets[0]["risk"])
+        self.assertEqual("Supply Chain", provenance_targets[0]["attack_class"])
+        self.assertEqual("finding-or-no-finding-with-coverage", provenance_targets[0]["expected_output"])
         self.assertTrue(any(ref.get("id") == "SC-ARTIFACT-ATTESTATION" for ref in provenance_targets[0].get("taxonomies", [])))
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
@@ -1056,6 +1060,8 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("GHSA-demo-0001", dependency_targets[0]["scope"])
         self.assertIn("pkg:pypi/lib-b@2.0.0", dependency_targets[0]["scope"])
         self.assertIn("reports/dependencies.json", dependency_targets[0]["notes"])
+        self.assertEqual("Supply Chain", dependency_targets[0]["attack_class"])
+        self.assertEqual("finding-or-no-finding-with-coverage", dependency_targets[0]["expected_output"])
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
         self.assertIn("OK:", cp_validate.stdout)
@@ -1255,6 +1261,7 @@ class CliWorkflowTests(unittest.TestCase):
         prompt_text = prompt.read_text(encoding="utf-8")
         self.assertIn("Target ID: TGT-001", prompt_text)
         self.assertIn("Target file: reports/target-research/TGT-001.target.json", prompt_text)
+        self.assertIn("Respect `max_files` when present", prompt_text)
         self.assertNotIn("{{", prompt_text)
 
         self.assertEqual(self.target_by_id(run_dir, "TGT-001")["status"], "reviewed")
@@ -1321,7 +1328,9 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("Prepared supervised /goal target research run.", cp.stdout)
         prompt = run_dir / "prompts" / "goal" / "research-TGT-001.goal.md"
         self.assertTrue(prompt.exists())
-        self.assertTrue(prompt.read_text(encoding="utf-8").startswith("/goal "))
+        prompt_text = prompt.read_text(encoding="utf-8")
+        self.assertTrue(prompt_text.startswith("/goal "))
+        self.assertIn("Respect `max_files` when present", prompt_text)
         self.assertEqual(self.target_by_id(run_dir, "TGT-001")["status"], "queued")
         self.assertEqual(self.read_codex_calls(codex_log), [])
         self.assertFalse((run_dir / "codex-research-TGT-001-final.md").exists())
@@ -1412,6 +1421,50 @@ class CliWorkflowTests(unittest.TestCase):
         cp_empty = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", empty_run])
         self.assertEqual(cp_empty.returncode, 0, cp_empty.stderr)
         self.assertIn("Findings: 0", cp_empty.stdout)
+
+    def test_validate_report_target_quality_fields(self) -> None:
+        valid_run = self.copy_fixture_run("minimal-run")
+        targets_path = valid_run / "reports" / "targets.json"
+        targets_data = json.loads(targets_path.read_text(encoding="utf-8"))
+        target = targets_data["targets"][0]
+        target.update(
+            {
+                "attack_class": "Authz",
+                "attacker_model": "authenticated tenant user",
+                "security_invariants": [
+                    "Every tenant-scoped read must filter by tenant_id derived from the session."
+                ],
+                "max_files": 6,
+                "expected_output": "finding-or-no-finding-with-coverage",
+                "chain_relevance": "possible-link",
+            }
+        )
+        targets_path.write_text(json.dumps(targets_data, indent=2) + "\n", encoding="utf-8")
+
+        cp_valid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", valid_run])
+        self.assertEqual(cp_valid.returncode, 0, cp_valid.stderr)
+        self.assertIn("Targets: validated", cp_valid.stdout)
+
+        invalid_run = self.copy_fixture_run("minimal-run")
+        invalid_targets_path = invalid_run / "reports" / "targets.json"
+        invalid_targets_data = json.loads(invalid_targets_path.read_text(encoding="utf-8"))
+        invalid_target = invalid_targets_data["targets"][0]
+        invalid_target.update(
+            {
+                "security_invariants": ["valid invariant", 123],
+                "max_files": 0,
+                "expected_output": "finding-only",
+                "chain_relevance": "exploit-chain",
+            }
+        )
+        invalid_targets_path.write_text(json.dumps(invalid_targets_data, indent=2) + "\n", encoding="utf-8")
+
+        cp_invalid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", invalid_run])
+        self.assertNotEqual(cp_invalid.returncode, 0)
+        self.assertIn("security_invariants[1]", cp_invalid.stderr)
+        self.assertIn("max_files must be between 1 and 20", cp_invalid.stderr)
+        self.assertIn("expected_output", cp_invalid.stderr)
+        self.assertIn("chain_relevance", cp_invalid.stderr)
 
     def test_validate_report_rejects_safety_invalid_fields(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

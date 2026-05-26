@@ -40,6 +40,12 @@ Forbidden actions:
 
 Work method:
 - Work in checkpoints and keep {{REPORTS_DIR}}/AUDIT_LOG.md updated.
+- Read the target seed JSON and follow its `attack_class`, `attacker_model`,
+  `security_invariants`, `expected_output`, and `chain_relevance` fields when
+  present.
+- Respect `max_files` when present. If more files are required, record the
+  coverage gap or unresolved question instead of broadening into a repository
+  audit.
 - Identify entry points, trust boundaries, invariants, and sensitive sinks.
 - Trace source-to-sink paths.
 - Check existing mitigations before reporting.
@@ -52,6 +58,8 @@ Required outputs:
 - Updates to {{REPORTS_DIR}}/FINDINGS.md and {{REPORTS_DIR}}/findings.json only if findings are discovered
 - Issue drafts for issue_recommended findings
 - Updated {{REPORTS_DIR}}/AUDIT_LOG.md
+- Coverage notes that state the inspected files, any files skipped, and whether
+  the target reached its expected output of finding-or-no-finding-with-coverage
 
 Stop condition:
 - target research report exists

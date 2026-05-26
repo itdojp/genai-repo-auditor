@@ -471,10 +471,15 @@ def append_provenance_posture_targets(run_dir: Path) -> list[dict[str, Any]]:
             "entry_points": [scope],
             "trust_boundaries": ["source repository workflow -> published artifact consumers"],
             "sinks": ["release assets", "packages", "container registries"],
+            "attack_class": "Supply Chain",
             "security_invariants": [
                 "Published artifacts should be attributable to a trusted workflow and commit.",
                 "Attestation token permissions should be least privilege and explicit.",
             ],
+            "attacker_model": "workflow actor or compromised release path",
+            "max_files": 6,
+            "expected_output": "finding-or-no-finding-with-coverage",
+            "chain_relevance": "possible-link",
             "review_questions": [
                 "Does this workflow publish artifacts consumed outside the repository?",
                 "Are provenance and SBOM attestations generated for the published artifacts?",

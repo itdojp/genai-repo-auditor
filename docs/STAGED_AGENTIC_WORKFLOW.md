@@ -55,6 +55,12 @@ reports/targets.json
 ```
 
 Targets are bounded review units. They prevent a large repository audit from becoming an uncontrolled, broad sweep.
+For high-signal vulnerability research, each target should state the attack
+class, attacker model, security invariants, entry points, sinks, `max_files`
+inspection bound, expected output, and chain relevance when known. Keep
+`max_files` within 1..20 and prefer smaller 4..8 file reviews for normal target
+research. See [Target Queue](TARGET_QUEUE.md) for examples of good and bad
+target granularity.
 
 ## Research one target
 

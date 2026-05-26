@@ -132,6 +132,12 @@ class ReportContractTests(unittest.TestCase):
         self.assertTrue(set(VALIDATOR.REQUIRED_TARGET).issubset(target_required))
         target_properties = target_schema["properties"]["targets"]["items"]["properties"]
         self.assertEqual("^TGT-(?:[A-Z][A-Z0-9]*-)?[0-9]{3,}$", target_properties["id"]["pattern"])
+        self.assertEqual("integer", target_properties["max_files"]["type"])
+        self.assertEqual(1, target_properties["max_files"]["minimum"])
+        self.assertEqual(20, target_properties["max_files"]["maximum"])
+        self.assertEqual(["finding-or-no-finding-with-coverage"], target_properties["expected_output"]["enum"])
+        self.assertEqual(["none", "possible-link", "candidate-chain-step"], target_properties["chain_relevance"]["enum"])
+        self.assertEqual("string", target_properties["security_invariants"]["items"]["type"])
         self.assertIn("taxonomies", target_properties)
         self.assertEqual({"name", "id", "label"}, set(target_properties["taxonomies"]["items"]["required"]))
 
