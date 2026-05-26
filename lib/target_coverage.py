@@ -24,6 +24,11 @@ def string_list(value: Any) -> list[str]:
     return [item for item in value if isinstance(item, str) and item.strip()]
 
 
+def reports_dir(run_dir: Path) -> Path:
+    ctx = load_context(run_dir)
+    return run_dir / ctx.get("reports_dir", "reports")
+
+
 def review_depth(target: dict[str, Any]) -> str:
     return str(coverage_for(target).get("review_depth") or "unknown")
 
@@ -176,7 +181,7 @@ def write_coverage_markdown(
     candidates: list[dict[str, Any]],
     generated: list[dict[str, Any]],
 ) -> Path:
-    reports = run_dir / "reports"
+    reports = reports_dir(run_dir)
     generated_by_source = {str(t.get("source_target_id") or ""): str(t.get("id") or "") for t in generated}
     lines = [
         "# Target Coverage Ledger",
@@ -223,7 +228,7 @@ def write_coverage_markdown(
 
 
 def write_gapfill_plan(run_dir: Path, source: dict[str, Any], gapfill_target: dict[str, Any]) -> Path:
-    path = run_dir / "reports" / "target-research" / f"{source.get('id')}-gapfill.md"
+    path = reports_dir(run_dir) / "target-research" / f"{source.get('id')}-gapfill.md"
     coverage = coverage_for(source)
     lines = [
         f"# Gapfill plan for {source.get('id')}",
@@ -291,7 +296,7 @@ def generate_gapfill_artifacts(run_dir: Path) -> dict[str, Any]:
     if changed:
         write_targets(run_dir, targets)
 
-    reports = run_dir / ctx.get("reports_dir", "reports")
+    reports = reports_dir(run_dir)
     reports.mkdir(parents=True, exist_ok=True)
     coverage_path = write_coverage_markdown(run_dir, targets=targets, candidates=candidates, generated=generated)
     payload = {

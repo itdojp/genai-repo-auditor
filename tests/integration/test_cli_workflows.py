@@ -1490,6 +1490,42 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(len(calls), 1, calls)
         self.assertIn(str(final_path), calls[0])
 
+    def test_gra_gapfill_respects_configured_reports_dir(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        ctx_path = run_dir / "context.json"
+        ctx = json.loads(ctx_path.read_text(encoding="utf-8"))
+        ctx["reports_dir"] = "custom-reports"
+        ctx_path.write_text(json.dumps(ctx, indent=2) + "\n", encoding="utf-8")
+        shutil.move(str(run_dir / "reports"), str(run_dir / "custom-reports"))
+        targets_path = run_dir / "custom-reports" / "targets.json"
+        targets_data = json.loads(targets_path.read_text(encoding="utf-8"))
+        targets_data["targets"][0]["coverage"] = {
+            "review_depth": "shallow",
+            "files_reviewed": ["repo/app.py"],
+            "files_skipped": ["repo/legacy_app.py"],
+            "unresolved_questions": ["Legacy route ordering unresolved."],
+            "gapfill_recommended": True,
+            "gapfill_reason": "Custom reports_dir gapfill fixture.",
+        }
+        targets_path.write_text(json.dumps(targets_data, indent=2) + "\n", encoding="utf-8")
+
+        cp_generate = self.run_cmd([REPO_ROOT / "bin" / "gra-gapfill", "--run", run_dir, "--generate"], check=True)
+        self.assertIn(str(run_dir / "custom-reports" / "COVERAGE.md"), cp_generate.stdout)
+        self.assertTrue((run_dir / "custom-reports" / "COVERAGE.md").exists())
+        self.assertTrue((run_dir / "custom-reports" / "gapfill-targets.json").exists())
+        self.assertTrue((run_dir / "custom-reports" / "target-research" / "TGT-001-gapfill.md").exists())
+        self.assertFalse((run_dir / "reports" / "COVERAGE.md").exists())
+
+        cp_goal = self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-gapfill", "--run", run_dir, "--target", "TGT-001", "--mode", "goal"],
+            check=True,
+        )
+        self.assertIn(str(run_dir / "custom-reports" / "target-research" / "TGT-001-gapfill.target.json"), cp_goal.stdout)
+        prompt = run_dir / "prompts" / "goal" / "gapfill-TGT-001.goal.md"
+        prompt_text = prompt.read_text(encoding="utf-8")
+        self.assertIn("Gapfill seed file: custom-reports/target-research/TGT-001-gapfill.target.json", prompt_text)
+        self.assertIn("Coverage ledger: custom-reports/COVERAGE.md", prompt_text)
+
     def test_gra_variant_exec_renders_seed_and_writes_codex_artifacts(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         env, codex_log = self.env_with_codex_log()
