@@ -19,6 +19,7 @@
 - [`CODEX_WORK_INSTRUCTIONS.ja.md`](CODEX_WORK_INSTRUCTIONS.ja.md): Codex CLI でこの repository を保守するための作業指示。
 
 Defensive chain synthesis の詳細は英語版 [`docs/ATTACK_CHAINS.md`](../ATTACK_CHAINS.md) を canonical source として参照してください。
+Safe local proof artifact の詳細は英語版 [`docs/SAFE_LOCAL_PROOFS.md`](../SAFE_LOCAL_PROOFS.md) を canonical source として参照してください。
 
 ## 英語版ドキュメント
 

@@ -25,6 +25,8 @@ Read first:
 - {{REPORTS_DIR}}/FINDINGS.md if present
 - {{REPORTS_DIR}}/chains.json if present
 - {{REPORTS_DIR}}/ATTACK_CHAINS.md if present
+- {{REPORTS_DIR}}/proofs.json if present
+- {{REPORTS_DIR}}/PROOFS.md if present
 - relevant target repository files only for the selected subject(s)
 
 Forbidden actions:

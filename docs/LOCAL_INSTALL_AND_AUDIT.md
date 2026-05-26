@@ -188,12 +188,18 @@ gra-validate-report --run "$RUN_DIR"
 Generate optional local outputs:
 
 ```bash
+gra-chains --run "$RUN_DIR"
+gra-proofs --run "$RUN_DIR" --all-critical-high
+gra-adversarial-validate --run "$RUN_DIR" --all-critical-high
+gra-validate-report --run "$RUN_DIR"
 gra-dashboard --run "$RUN_DIR"
 gra-sarif --run "$RUN_DIR"
 gra-store --run "$RUN_DIR"
 ```
 
-Review `reports/FINDINGS.md`, `reports/findings.json`, and `reports/issue-drafts/` before taking action. Treat AI output as analysis that requires human verification.
+Review `reports/FINDINGS.md`, `reports/findings.json`, `reports/ATTACK_CHAINS.md`,
+`reports/PROOFS.md`, `reports/VALIDATION.md`, and `reports/issue-drafts/` before
+taking action. Treat AI output as analysis that requires human verification.
 
 ## Optional GitHub Issue workflow
 

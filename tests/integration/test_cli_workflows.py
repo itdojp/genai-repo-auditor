@@ -565,6 +565,28 @@ class CliWorkflowTests(unittest.TestCase):
                 chains_md_src = fixture_dir / "reports" / "ATTACK_CHAINS.md"
                 if chains_md_src.exists():
                     shutil.copy2(chains_md_src, reports / "ATTACK_CHAINS.md")
+                proofs_src = fixture_dir / "reports" / "proofs.json"
+                if proofs_src.exists():
+                    proofs = load_json(proofs_src, {})
+                    proofs.update(
+                        {
+                            "run_id": ctx.get("run_id", run_dir.name),
+                            "repo": ctx.get("repo", proofs.get("repo", "")),
+                            "branch": ctx.get("branch", proofs.get("branch", "")),
+                            "commit": ctx.get("commit", proofs.get("commit", "")),
+                        }
+                    )
+                    write_json(reports / "proofs.json", proofs)
+                proofs_md_src = fixture_dir / "reports" / "PROOFS.md"
+                if proofs_md_src.exists():
+                    shutil.copy2(proofs_md_src, reports / "PROOFS.md")
+                proofs_dir_src = fixture_dir / "reports" / "proofs"
+                if proofs_dir_src.exists():
+                    proofs_dest = reports / "proofs"
+                    proofs_dest.mkdir(parents=True, exist_ok=True)
+                    for src in proofs_dir_src.iterdir():
+                        if src.is_file():
+                            shutil.copy2(src, proofs_dest / src.name)
                 drafts_src = fixture_dir / "reports" / "issue-drafts"
                 if drafts_src.exists():
                     drafts_dest = reports / "issue-drafts"
@@ -1593,6 +1615,116 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(["CHAIN-001"], [item["subject_id"] for item in subjects["subjects"]])
         self.assertEqual(self.read_codex_calls(codex_log), [])
 
+    def test_gra_proofs_finding_exec_writes_safe_local_proof_artifacts(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        env, codex_log = self.env_with_codex_log(GRA_MOCK_FIXTURE_DIR=str(FIXTURES / "proof-output"))
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-proofs",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--model",
+                "gpt-fixture",
+                "--effort",
+                "medium",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Running Codex safe local proof generation for SEC-001", cp.stdout)
+        self.assertIn("Codex status: 0", cp.stdout)
+
+        subjects = json.loads((run_dir / "reports" / "proofs" / "sec-001.subjects.json").read_text(encoding="utf-8"))
+        self.assertEqual(["SEC-001"], [item["finding_id"] for item in subjects["subjects"]])
+        prompt = run_dir / "prompts" / "exec" / "safe-proof-sec-001.prompt.md"
+        prompt_text = prompt.read_text(encoding="utf-8")
+        self.assertIn("No working exploit scripts.", prompt_text)
+        self.assertIn("No weaponized payloads", prompt_text)
+        self.assertIn("No external network requests.", prompt_text)
+        self.assertIn("Do not modify files under repo/.", prompt_text)
+        self.assertIn("reports/proofs.json", prompt_text)
+        self.assertIn("reports/proofs/sec-001.subjects.json", prompt_text)
+        self.assertNotIn("{{", prompt_text)
+
+        proofs = json.loads((run_dir / "reports" / "proofs.json").read_text(encoding="utf-8"))
+        self.assertEqual("PROOF-001", proofs["proofs"][0]["id"])
+        self.assertEqual("SEC-001", proofs["proofs"][0]["finding_id"])
+        self.assertIs(proofs["proofs"][0]["safe_by_design"], True)
+        self.assertEqual(["reports/proofs/SEC-001-test-plan.md"], proofs["proofs"][0]["files_created"])
+        self.assertIn("Local/private by default", (run_dir / "reports" / "PROOFS.md").read_text(encoding="utf-8"))
+        self.assertTrue((run_dir / "reports" / "proofs" / "SEC-001-test-plan.md").exists())
+
+        final_path = run_dir / "codex-safe-proof-sec-001-final.md"
+        events_path = run_dir / "codex-safe-proof-sec-001-events.jsonl"
+        stderr_path = run_dir / "codex-safe-proof-sec-001-stderr.txt"
+        self.assertEqual(final_path.read_text(encoding="utf-8"), "mock codex mode=success\n")
+        self.assertIn('"status": "ok"', events_path.read_text(encoding="utf-8"))
+        self.assertTrue(stderr_path.exists())
+        calls = self.read_codex_calls(codex_log)
+        self.assertEqual(len(calls), 1, calls)
+        self.assertIn(str(final_path), calls[0])
+        self.assertIn('model_reasoning_effort="medium"', calls[0])
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Proofs: validated", cp_validate.stdout)
+
+    def test_gra_proofs_all_critical_high_goal_selects_relevant_findings(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        findings_path = run_dir / "reports" / "findings.json"
+        findings = json.loads(findings_path.read_text(encoding="utf-8"))
+        base = findings["findings"][0]
+        findings["findings"].extend(
+            [
+                {**base, "id": "SEC-002", "fingerprint": "fixture-fingerprint-0002", "severity": "Low", "status": "Confirmed"},
+                {**base, "id": "SEC-003", "fingerprint": "fixture-fingerprint-0003", "severity": "High", "status": "Invalid"},
+                {**base, "id": "SEC-004", "fingerprint": "fixture-fingerprint-0004", "severity": "Critical", "status": "Potential"},
+            ]
+        )
+        findings_path.write_text(json.dumps(findings, indent=2) + "\n", encoding="utf-8")
+
+        env, codex_log = self.env_with_codex_log()
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-proofs",
+                "--run",
+                run_dir,
+                "--all-critical-high",
+                "--mode",
+                "goal",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Prepared supervised /goal safe local proof run.", cp.stdout)
+        subjects = json.loads((run_dir / "reports" / "proofs" / "critical-high.subjects.json").read_text(encoding="utf-8"))
+        self.assertEqual(["SEC-001", "SEC-004"], [item["finding_id"] for item in subjects["subjects"]])
+        prompt = run_dir / "prompts" / "goal" / "safe-proof-critical-high.goal.md"
+        prompt_text = prompt.read_text(encoding="utf-8")
+        self.assertTrue(prompt_text.startswith("/goal "))
+        self.assertIn("No working exploit scripts.", prompt_text)
+        self.assertIn("Do not modify files under repo/.", prompt_text)
+        self.assertIn("Every proof must set safe_by_design to true.", prompt_text)
+        self.assertEqual(self.read_codex_calls(codex_log), [])
+
+    def test_gra_proofs_all_critical_high_requires_findings_json(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        (run_dir / "reports" / "findings.json").unlink()
+        env, codex_log = self.env_with_codex_log()
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-proofs",
+                "--run",
+                run_dir,
+                "--all-critical-high",
+            ],
+            env=env,
+        )
+        self.assertEqual(cp.returncode, 2)
+        self.assertIn("findings.json not found", cp.stderr)
+        self.assertEqual(self.read_codex_calls(codex_log), [])
+
     def test_gra_chains_exec_renders_prompt_and_writes_chain_artifacts(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         env, codex_log = self.env_with_codex_log(GRA_MOCK_FIXTURE_DIR=str(FIXTURES / "chain-output"))
@@ -1721,6 +1853,42 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("scanner artifact path must not contain symlink components", cp.stderr)
         self.assertIn("external-ref", cp.stderr)
         self.assertIn("is not present in reports/scanner-results/scanner-index.json", cp.stderr)
+
+    def test_validate_report_safe_proofs_rejects_unsafe_values(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        proofs = json.loads((FIXTURES / "proof-output" / "reports" / "proofs.json").read_text(encoding="utf-8"))
+        proofs_dir = run_dir / "reports" / "proofs"
+        proofs_dir.mkdir(parents=True, exist_ok=True)
+        (proofs_dir / "SEC-001-test-plan.md").write_text("# Safe local proof\n", encoding="utf-8")
+        (run_dir / "reports" / "proofs.json").write_text(json.dumps(proofs, indent=2) + "\n", encoding="utf-8")
+
+        cp_valid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir])
+        self.assertEqual(cp_valid.returncode, 0, cp_valid.stderr)
+        self.assertIn("Proofs: validated", cp_valid.stdout)
+
+        invalid_run = self.copy_fixture_run("minimal-run")
+        invalid = json.loads((FIXTURES / "proof-output" / "reports" / "proofs.json").read_text(encoding="utf-8"))
+        invalid["proofs"][0]["finding_id"] = "SEC-404"
+        invalid["proofs"][0]["proof_type"] = "exploit-script"
+        invalid["proofs"][0]["safe_by_design"] = False
+        invalid["proofs"][0]["files_created"] = ["reports/proofs/../../repo/exploit.py"]
+        invalid["proofs"][0]["commands_run"] = ["curl https://example.com/payload"]
+        (invalid_run / "reports" / "proofs.json").write_text(json.dumps(invalid, indent=2) + "\n", encoding="utf-8")
+
+        cp_invalid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", invalid_run])
+        self.assertNotEqual(cp_invalid.returncode, 0)
+        self.assertIn("SEC-404", cp_invalid.stderr)
+        self.assertIn("invalid proof type", cp_invalid.stderr)
+        self.assertIn("safe_by_design", cp_invalid.stderr)
+        self.assertIn("proof artifact path must not contain '..'", cp_invalid.stderr)
+        self.assertIn("command appears unsafe", cp_invalid.stderr)
+
+        wrong_type_run = self.copy_fixture_run("minimal-run")
+        (wrong_type_run / "reports" / "proofs.json").write_text("[]\n", encoding="utf-8")
+        cp_wrong_type = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", wrong_type_run])
+        self.assertNotEqual(cp_wrong_type.returncode, 0)
+        self.assertIn("proofs: expected type object, got array", cp_wrong_type.stderr)
+        self.assertNotIn("Traceback", cp_wrong_type.stderr)
 
     def test_validate_report_accepts_valid_fixture_and_rejects_invalid_fixtures(self) -> None:
         valid_run = self.copy_fixture_run("minimal-run")

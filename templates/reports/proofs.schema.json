@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor Safe Local Proofs",
+  "type": "object",
+  "required": ["run_id", "repo", "generated_at", "proofs"],
+  "properties": {
+    "run_id": {"type": "string"},
+    "repo": {"type": "string"},
+    "branch": {"type": ["string", "null"]},
+    "commit": {"type": ["string", "null"]},
+    "generated_at": {"type": "string"},
+    "proofs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "finding_id",
+          "proof_type",
+          "status",
+          "safe_by_design",
+          "files_created",
+          "commands_run",
+          "evidence",
+          "limitations"
+        ],
+        "properties": {
+          "id": {"type": "string", "pattern": "^PROOF-[0-9]{3,}$"},
+          "finding_id": {"type": "string"},
+          "proof_type": {"enum": ["static-trace", "unit-test-plan", "local-regression-test", "config-check", "parser-only-local-input", "mocked-local-service"]},
+          "status": {"enum": ["confirmed", "failed", "not-run", "needs-human-review"]},
+          "safe_by_design": {"type": "boolean"},
+          "files_created": {"type": "array", "items": {"type": "string"}},
+          "commands_run": {"type": "array", "items": {"type": "string"}},
+          "evidence": {"type": "string"},
+          "limitations": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  }
+}

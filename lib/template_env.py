@@ -35,6 +35,11 @@ DEFAULT_TEMPLATE_VALUES: Dict[str, str] = {
     'VALIDATION_OUTPUT_MD': 'reports/VALIDATION.md',
     'CHAINS_OUTPUT_JSON': 'reports/chains.json',
     'CHAINS_OUTPUT_MD': 'reports/ATTACK_CHAINS.md',
+    'PROOF_SELECTION': '',
+    'PROOF_SUBJECTS_FILE': '',
+    'PROOFS_OUTPUT_JSON': 'reports/proofs.json',
+    'PROOFS_OUTPUT_MD': 'reports/PROOFS.md',
+    'PROOFS_DIR': 'reports/proofs',
 }
 
 

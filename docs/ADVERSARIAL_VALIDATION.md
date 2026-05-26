@@ -18,6 +18,8 @@ Typical triggers:
 - Findings promoted from scanner, dependency, or posture leads.
 - Findings linked to chain hypotheses through `chain_membership`.
 - Chain hypotheses produced by `gra-chains` in `reports/chains.json`.
+- Safe local proof limitations or `needs-human-review` proof outcomes from
+  `gra-proofs` in `reports/proofs.json`.
 - Any finding that will be shared outside the immediate audit team.
 
 This stage must not create new findings. If the validator notices unrelated risk,
@@ -36,6 +38,7 @@ Validate all Critical / High findings whose status is `Confirmed`, `Probable`, o
 
 ```bash
 gra-chains --run runs/OWNER__REPO/RUN_ID
+gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 ```
 
@@ -64,6 +67,8 @@ Optional chain validation input:
 
 ```text
 reports/chains.json
+reports/proofs.json
+reports/PROOFS.md
 ```
 
 The command writes a bounded subject file under:

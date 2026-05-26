@@ -1,0 +1,20 @@
+{
+  "run_id": "fixture-run",
+  "repo": "example/demo",
+  "branch": "main",
+  "commit": "abc123fixture",
+  "generated_at": "2026-05-26T00:00:00Z",
+  "proofs": [
+    {
+      "id": "PROOF-001",
+      "finding_id": "SEC-001",
+      "proof_type": "unit-test-plan",
+      "status": "not-run",
+      "safe_by_design": true,
+      "files_created": ["reports/proofs/SEC-001-test-plan.md"],
+      "commands_run": [],
+      "evidence": "Benign regression test plan demonstrates how to validate the finding locally without exploit payloads.",
+      "limitations": ["No dependency installation performed", "No live service was contacted"]
+    }
+  ]
+}

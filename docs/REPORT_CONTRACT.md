@@ -12,7 +12,9 @@ artifact です。`VALIDATION.md` / `validation.json` は
 `gra-adversarial-validate` が既存 finding / chain を反証・降格・確認・
 human-review 判定する独立 validation artifact です。`ATTACK_CHAINS.md` /
 `chains.json` は `gra-chains` が既存 finding / target / scanner ref を
-防御的に接続する chain synthesis artifact です。
+防御的に接続する chain synthesis artifact です。`PROOFS.md` /
+`proofs.json` / `proofs/` は `gra-proofs` が既存 finding に対して生成する
+safe local proof artifact です。
 
 ```text
 reports/
@@ -29,6 +31,10 @@ reports/
   findings.json
   ATTACK_CHAINS.md
   chains.json
+  PROOFS.md
+  proofs.json
+  proofs/
+    SEC-001-test-plan.md
   VALIDATION.md
   validation.json
   AUDIT_LOG.md
@@ -68,11 +74,11 @@ findings[].labels
 ## validation and safety constraints
 
 `gra-validate-report` validates `findings.json`, optional `targets.json`,
-optional chain synthesis output, optional adversarial validation output,
-optional scanner index artifacts, and optional dependency/posture artifacts
-against the bundled JSON schemas using the Python standard library. It also
-applies local safety rules before downstream tools can use report-controlled
-paths.
+optional chain synthesis output, optional proof artifacts, optional adversarial
+validation output, optional scanner index artifacts, and optional
+dependency/posture artifacts against the bundled JSON schemas using the Python
+standard library. It also applies local safety rules before downstream tools can
+use report-controlled paths.
 
 `provenance-posture.json` is a local posture artifact produced by `gra-recon`;
 it is advisory input for target generation and is not treated as a finding
@@ -98,6 +104,12 @@ source by itself.
 compose into a plausible reachability or impact chain. It must not include
 working exploits, exploit payloads, weaponized steps, or live probing
 instructions. `ATTACK_CHAINS.md` is non-public by default.
+
+`proofs.json` is a local/private safe proof artifact produced by `gra-proofs`.
+It records benign validation artifacts for existing findings only. It must not
+include exploit scripts, credential extraction, auth-bypass execution against
+live services, network scanning, production/staging probing, dependency
+installation, target repository modification, or weaponized payloads.
 
 Important constraints:
 
@@ -159,6 +171,14 @@ Important constraints:
   existing finding, target, or scanner ref. Finding references must exist in
   `reports/findings.json`; target references must exist in `reports/targets.json`;
   scanner refs must exist in `reports/scanner-results/scanner-index.json`.
+- If `reports/proofs.json` exists, it must match
+  `templates/reports/proofs.schema.json`. Each proof ID must match
+  `PROOF-NNN`, `finding_id` must reference an existing finding,
+  `proof_type` must be an approved safe local proof type, `status` must be
+  `confirmed`, `failed`, `not-run`, or `needs-human-review`,
+  `safe_by_design` must be `true`, proof file references must stay under
+  `reports/proofs/`, and command records must not contain obvious network,
+  dependency-installation, public-disclosure, or live-service operations.
 
 `issue_body_file`, when present, must point to a regular `.md` file under
 `reports/issue-drafts/`, for example:
@@ -209,3 +229,15 @@ public Issue や advisory にそのまま貼り付けないでください。
 Chain synthesis は exploit generation ではありません。working exploit、
 payload、weaponized step、production/staging probing、credential access を
 含めてはいけません。
+
+## safe local proof output
+
+`reports/proofs.json`、`reports/PROOFS.md`、`reports/proofs/` は、既存
+finding を benign local evidence で確認・失敗・未実行・human-review 判定する
+ための artifact です。local/private by default として扱い、public Issue や
+advisory にそのまま貼り付けないでください。
+
+Safe proof は exploit generation ではありません。working exploit script、
+exploit code、weaponized payload、credential extraction、live service への
+auth bypass 実行、network scanning、production/staging probing、dependency
+installation、target repository modification を含めてはいけません。

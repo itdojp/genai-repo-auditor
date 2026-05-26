@@ -15,6 +15,7 @@ runs/OWNER__REPO/RUN_ID/
       research-target.goal.md
       variant-analysis.goal.md
       synthesize-chains.goal.md
+      safe-proof.goal.md
       adversarial-validate.goal.md
       validate-findings.goal.md
 ```
@@ -30,6 +31,7 @@ runs/OWNER__REPO/RUN_ID/
 | `prompts/goal/research-target.goal.md` | target queue の単一 target を調査する。 |
 | `prompts/goal/variant-analysis.goal.md` | 既存 finding または root cause から variant を探索する。 |
 | `prompts/goal/synthesize-chains.goal.md` | 既存 finding / target / scanner ref を防御的に接続する。 |
+| `prompts/goal/safe-proof.goal.md` | 既存 finding の safe local proof artifact を生成する。 |
 | `prompts/goal/adversarial-validate.goal.md` | finding または chain の反証・降格・human-review 要否を確認する。 |
 | `prompts/goal/validate-findings.goal.md` | Critical / High findings の false positive を減らすための検証。 |
 
@@ -41,9 +43,10 @@ runs/OWNER__REPO/RUN_ID/
 3. 必要に応じて prompts/goal/deep-dive-category.goal.md
 4. 必要に応じて prompts/goal/research-target.goal.md または prompts/goal/variant-analysis.goal.md
 5. prompts/goal/synthesize-chains.goal.md
-6. prompts/goal/adversarial-validate.goal.md または prompts/goal/validate-findings.goal.md
-7. gra-validate-report
-8. Issue dry-run
+6. prompts/goal/safe-proof.goal.md
+7. prompts/goal/adversarial-validate.goal.md または prompts/goal/validate-findings.goal.md
+8. gra-validate-report
+9. Issue dry-run
 ```
 
 ## 起動例
@@ -90,6 +93,7 @@ cp runs/OWNER__REPO/RUN_ID/prompts/goal/deep-dive-category.goal.md .codex-local/
 ```bash
 RUN="runs/OWNER__REPO/RUN_ID"
 gra-chains --run "$RUN"
+gra-proofs --run "$RUN" --all-critical-high
 gra-adversarial-validate --run "$RUN" --all-critical-high
 gra-validate-report --run "$RUN"
 ```
