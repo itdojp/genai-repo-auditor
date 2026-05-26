@@ -69,6 +69,7 @@ prompts/goal/validate-findings.goal.md      # Critical/High finding の検証
 prompts/goal/deep-dive-finding.goal.md      # 単一findingの深掘り
 prompts/goal/deep-dive-category.goal.md     # 単一カテゴリの深掘り
 prompts/goal/research-target.goal.md        # 単一targetの調査
+prompts/goal/gapfill-target.goal.md         # target coverage gapfill
 prompts/goal/variant-analysis.goal.md       # variant analysis
 prompts/goal/synthesize-chains.goal.md      # defensive chain synthesis
 prompts/goal/safe-proof.goal.md             # safe local proof artifact
@@ -104,6 +105,7 @@ ORG/repo-c
 
 ```bash
 gra-chains --run runs/ORG__repo-a/RUN_ID
+gra-gapfill --run runs/ORG__repo-a/RUN_ID --generate
 gra-proofs --run runs/ORG__repo-a/RUN_ID --all-critical-high
 gra-adversarial-validate --run runs/ORG__repo-a/RUN_ID --all-critical-high
 gra-validate-report --run runs/ORG__repo-a/RUN_ID
@@ -116,6 +118,24 @@ Issue 作成前に non-public by default の `reports/ATTACK_CHAINS.md` と
 local/private by default の `reports/PROOFS.md`、`reports/VALIDATION.md` を
 確認し、chain implications、safe proof limitations、`downgrade`、
 `invalidate`、`needs-human-review` の subject を finding または Issue draft に反映します。
+
+## target coverage gapfill
+
+通常の `gra-research` または `/goal` での単一 target 調査後、`coverage`
+metadata に浅い review、skip した file、未解決 question が残っている場合は
+gapfill を実行します。
+
+```bash
+gra-gapfill --run runs/ORG__repo-a/RUN_ID --list
+gra-gapfill --run runs/ORG__repo-a/RUN_ID --generate
+gra-gapfill --run runs/ORG__repo-a/RUN_ID --target TGT-001 --mode goal
+```
+
+`--generate` は `reports/COVERAGE.md`、`reports/gapfill-targets.json`、
+`reports/target-research/TGT-XXX-gapfill.md` を生成し、`TGT-GAPFILL-NNN`
+を target queue に追加します。gapfill は bounded review であり、target
+repository modification、dependency installation、live service access、
+exploit instruction を含めてはいけません。
 
 ## run index
 

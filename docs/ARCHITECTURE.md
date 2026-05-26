@@ -89,6 +89,7 @@ prepare
   -> recon
   -> targets
   -> research-target
+  -> gapfill
   -> validate
   -> variant-analysis
   -> scanner-triage
@@ -111,7 +112,11 @@ The target queue is stored in:
 reports/targets.json
 ```
 
-Each target is a bounded review unit. `gra-research` can run against a single target with `codex exec` or prepare a supervised `/goal` deep dive.
+Each target is a bounded review unit. `gra-research` can run against a single
+target with `codex exec` or prepare a supervised `/goal` deep dive. Optional
+`coverage` metadata records review depth, reviewed/skipped files, commands,
+unresolved questions, and whether `gra-gapfill` should requeue a bounded
+follow-up target.
 
 ## Scanner result boundary
 

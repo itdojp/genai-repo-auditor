@@ -10,6 +10,7 @@ prepare
   -> recon
   -> targets
   -> research target(s)
+  -> coverage gapfill
   -> validate findings
   -> synthesize defensive chains
   -> generate safe local proofs
@@ -85,6 +86,49 @@ reports/FINDINGS.md
 reports/findings.json
 reports/issue-drafts/SEC-XXX.md
 ```
+
+Target research should update the target's optional `coverage` metadata in
+`reports/targets.json`, including review depth, reviewed/skipped files,
+commands, unresolved questions, and whether bounded gapfill is recommended.
+
+## Coverage gapfill
+
+After normal research or supervised `/goal` target review, use `gra-gapfill` to
+avoid leaving high-risk areas shallowly reviewed.
+
+```bash
+gra-gapfill --run runs/OWNER__REPO/RUN_ID --list
+gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
+```
+
+Outputs:
+
+```text
+reports/COVERAGE.md
+reports/gapfill-targets.json
+reports/target-research/TGT-XXX-gapfill.md
+```
+
+`--generate` appends deterministic `TGT-GAPFILL-NNN` queue entries for source
+targets whose `coverage` metadata has `gapfill_recommended: true`, shallow
+Critical/High review depth, or unresolved high-risk questions. It reuses
+existing gapfill targets for the same source target on repeated runs.
+
+Run one bounded gapfill:
+
+```bash
+gra-gapfill --run runs/OWNER__REPO/RUN_ID --target TGT-001 --mode exec --model gpt-5.5 --effort xhigh
+```
+
+For a supervised `/goal` gapfill:
+
+```bash
+gra-gapfill --run runs/OWNER__REPO/RUN_ID --target TGT-001 --mode goal --model gpt-5.5 --effort xhigh
+```
+
+Gapfill is not a new broad audit. It must focus on skipped files and unresolved
+questions from the source target, stay within `max_files`, avoid network access
+unless explicitly approved, and never modify the target repository.
 
 ## Adversarial validation
 

@@ -71,13 +71,19 @@ public repository への GitHub Issue 作成はデフォルト拒否です。脆
 
 ## Chain and validation artifacts
 
-`reports/chains.json`, `reports/ATTACK_CHAINS.md`, `reports/validation.json`,
+`reports/COVERAGE.md`, `reports/gapfill-targets.json`, `reports/chains.json`,
+`reports/ATTACK_CHAINS.md`, `reports/validation.json`,
 `reports/VALIDATION.md`, `reports/proofs.json`, `reports/PROOFS.md`, and
-`reports/proofs/` are local review artifacts. `ATTACK_CHAINS.md` and proof
+`reports/proofs/` are local review artifacts. Coverage/gapfill artifacts,
+`ATTACK_CHAINS.md`, and proof
 artifacts are non-public by default because they may connect weaknesses or
 describe validation steps that should remain internal. Use these artifacts to
 prioritize fixes, revise issue wording, or require additional review; do not
 publish them wholesale to public Issues or advisories.
+
+Gapfill is bounded local follow-up for incomplete target coverage. It must not
+broaden into a full audit, modify the target repository, install dependencies,
+contact live services, or generate exploit instructions.
 
 Defensive chain synthesis is limited to existing findings, targets, scanner
 refs, and validation notes. It must not produce exploit payloads, weaponized

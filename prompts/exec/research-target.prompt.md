@@ -46,6 +46,9 @@ Method:
 - Respect `max_files` when present. If more files are needed, stop at the
   bounded coverage limit and record the unresolved question instead of widening
   into a broad audit.
+- Maintain the target's `coverage` ledger in `reports/targets.json` when
+  possible: `review_depth`, `files_reviewed`, `files_skipped`, `commands_run`,
+  `unresolved_questions`, `gapfill_recommended`, and `gapfill_reason`.
 - Identify entry points, trust boundaries, security invariants, and sensitive sinks for this target.
 - Trace user-controlled or attacker-influenced inputs to sensitive operations.
 - Check whether middleware, framework behavior, validation, policy, or configuration mitigates the candidate issue.
@@ -64,6 +67,11 @@ Required outputs:
    - findings discovered or confirmation that none were found
    - coverage notes, including whether `max_files` constrained the review
    - unresolved questions
+
+   Also update this target's `coverage` object in {{REPORTS_DIR}}/targets.json
+   when the information is known. Set `gapfill_recommended: true` when a
+   high-risk area remains unreviewed or only shallowly reviewed; otherwise set
+   it to false with a concise `gapfill_reason`.
 
 2. Update {{REPORTS_DIR}}/FINDINGS.md and {{REPORTS_DIR}}/findings.json if any findings are discovered.
    - Preserve existing findings.

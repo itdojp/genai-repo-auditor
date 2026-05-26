@@ -27,19 +27,21 @@
    ↓
 6. gra-validate-report でレポート契約を検証
    ↓
-7. gra-chains で既存 evidence の defensive chain を整理
+7. 必要に応じて gra-gapfill で shallow coverage を requeue
    ↓
-8. Critical / High は gra-proofs で safe local proof artifact を生成
+8. gra-chains で既存 evidence の defensive chain を整理
    ↓
-9. Critical / High は gra-adversarial-validate で反証・降格余地を確認
+9. Critical / High は gra-proofs で safe local proof artifact を生成
    ↓
-10. 人間が FINDINGS.md / ATTACK_CHAINS.md / PROOFS.md / VALIDATION.md / issue-drafts を確認
+10. Critical / High は gra-adversarial-validate で反証・降格余地を確認
    ↓
-11. gra-issues --dry-run
+11. 人間が FINDINGS.md / COVERAGE.md / ATTACK_CHAINS.md / PROOFS.md / VALIDATION.md / issue-drafts を確認
    ↓
-12. gra-issues --apply
+12. gra-issues --dry-run
    ↓
-13. GitHub Issue 上で修正PR・期限・担当者を管理
+13. gra-issues --apply
+   ↓
+14. GitHub Issue 上で修正PR・期限・担当者を管理
 ```
 
 ## セットアップ
@@ -153,6 +155,8 @@ gra-validate-report --run runs/OWNER__REPO/RUN_ID
 - fingerprint が空でないこと
 - Issue 推奨 finding に issue draft が存在すること
 - chain output がある場合は既存 finding / target / scanner ref を参照していること
+- target coverage metadata がある場合は review_depth、files_reviewed/skipped、
+  unresolved_questions、gapfill_recommended が妥当であること
 - proof output がある場合は既存 finding を参照し、safe_by_design が true であること
 - adversarial validation output がある場合は subject、decision、evidence list が妥当であること
 
@@ -164,6 +168,7 @@ gra-validate-report --run runs/OWNER__REPO/RUN_ID
 reports/AUDIT_SUMMARY.md
 reports/FINDINGS.md
 reports/findings.json
+reports/COVERAGE.md
 reports/ATTACK_CHAINS.md
 reports/PROOFS.md
 reports/VALIDATION.md
@@ -180,6 +185,8 @@ codex-final.md
 - `ATTACK_CHAINS.md` は non-public by default として扱い、public Issue にそのまま貼らない
 - `PROOFS.md` は local/private by default として扱い、public Issue にそのまま貼らない
 - `VALIDATION.md` の downgrade / invalidate / needs-human-review は公開前に修正または明示承認する
+- `COVERAGE.md` と `gapfill-targets.json` で high-risk target の shallow
+  review や unresolved question が残っていないか確認する
 - Generic hardening advice は Issue 化しない
 - public repo では public_disclosure_risk を確認する
 - secret 値が全文出力されていないことを確認する
@@ -190,6 +197,7 @@ codex-final.md
 Critical / High の Issue 候補は、公開前に独立した反証・降格チェックを行います。
 
 ```bash
+gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
 gra-chains --run runs/OWNER__REPO/RUN_ID
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high

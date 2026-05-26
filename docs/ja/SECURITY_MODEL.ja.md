@@ -48,12 +48,17 @@ public repository への GitHub Issue 作成はデフォルトで拒否されま
 
 ## chain / validation artifact
 
+`reports/COVERAGE.md`、`reports/gapfill-targets.json`、
 `reports/chains.json`、`reports/ATTACK_CHAINS.md`、`reports/validation.json`、
 `reports/VALIDATION.md`、`reports/proofs.json`、`reports/PROOFS.md`、
-`reports/proofs/` はローカルレビュー用 artifact です。`ATTACK_CHAINS.md` と
-proof artifact は、複数の弱点や検証手順を内部向けに整理し得るため、
+`reports/proofs/` はローカルレビュー用 artifact です。coverage / gapfill
+artifact、`ATTACK_CHAINS.md`、proof artifact は、複数の弱点や検証手順を内部向けに整理し得るため、
 non-public by default として扱います。修正優先度、Issue 文言の調整、
 追加レビュー要否の判断に使い、public Issue や advisory に全文を貼り付けないでください。
+
+Gapfill は incomplete target coverage の bounded local follow-up です。
+full audit に広げたり、target repository modification、dependency
+installation、live service access、exploit instruction を含めたりしてはいけません。
 
 Defensive chain synthesis は既存 finding、target、scanner ref、validation note
 だけを接続します。exploit payload、weaponized step、live probing instruction、

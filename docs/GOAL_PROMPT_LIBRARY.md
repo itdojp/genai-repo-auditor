@@ -13,6 +13,7 @@ runs/OWNER__REPO/RUN_ID/
       deep-dive-finding.goal.md
       deep-dive-category.goal.md
       research-target.goal.md
+      gapfill-target.goal.md
       variant-analysis.goal.md
       synthesize-chains.goal.md
       safe-proof.goal.md
@@ -29,6 +30,7 @@ runs/OWNER__REPO/RUN_ID/
 | `prompts/goal/deep-dive-finding.goal.md` | 既存 finding 1件を深く検証する。`TARGET_FINDING_ID` を置換して使う。 |
 | `prompts/goal/deep-dive-category.goal.md` | 認可、CI/CD、Secretsなど特定カテゴリを深く調べる。`TARGET_CATEGORY` と `TARGET_SCOPE` を置換して使う。 |
 | `prompts/goal/research-target.goal.md` | target queue の単一 target を調査する。 |
+| `prompts/goal/gapfill-target.goal.md` | coverage gap が残る単一 target を bounded follow-up する。 |
 | `prompts/goal/variant-analysis.goal.md` | 既存 finding または root cause から variant を探索する。 |
 | `prompts/goal/synthesize-chains.goal.md` | 既存 finding / target / scanner ref を防御的に接続する。 |
 | `prompts/goal/safe-proof.goal.md` | 既存 finding の safe local proof artifact を生成する。 |
@@ -42,11 +44,12 @@ runs/OWNER__REPO/RUN_ID/
 2. 必要に応じて prompts/goal/deep-dive-finding.goal.md
 3. 必要に応じて prompts/goal/deep-dive-category.goal.md
 4. 必要に応じて prompts/goal/research-target.goal.md または prompts/goal/variant-analysis.goal.md
-5. prompts/goal/synthesize-chains.goal.md
-6. prompts/goal/safe-proof.goal.md
-7. prompts/goal/adversarial-validate.goal.md または prompts/goal/validate-findings.goal.md
-8. gra-validate-report
-9. Issue dry-run
+5. coverage gap が残る場合は prompts/goal/gapfill-target.goal.md
+6. prompts/goal/synthesize-chains.goal.md
+7. prompts/goal/safe-proof.goal.md
+8. prompts/goal/adversarial-validate.goal.md または prompts/goal/validate-findings.goal.md
+9. gra-validate-report
+10. Issue dry-run
 ```
 
 ## 起動例

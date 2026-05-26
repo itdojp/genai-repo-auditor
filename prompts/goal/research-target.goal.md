@@ -46,6 +46,9 @@ Work method:
 - Respect `max_files` when present. If more files are required, record the
   coverage gap or unresolved question instead of broadening into a repository
   audit.
+- Maintain the target's `coverage` ledger in `reports/targets.json` when
+  possible: `review_depth`, `files_reviewed`, `files_skipped`, `commands_run`,
+  `unresolved_questions`, `gapfill_recommended`, and `gapfill_reason`.
 - Identify entry points, trust boundaries, invariants, and sensitive sinks.
 - Trace source-to-sink paths.
 - Check existing mitigations before reporting.
@@ -60,6 +63,9 @@ Required outputs:
 - Updated {{REPORTS_DIR}}/AUDIT_LOG.md
 - Coverage notes that state the inspected files, any files skipped, and whether
   the target reached its expected output of finding-or-no-finding-with-coverage
+- Updated `coverage` metadata in {{REPORTS_DIR}}/targets.json when the review
+  can state depth, reviewed/skipped files, unresolved questions, and whether
+  a bounded `gra-gapfill` follow-up is recommended.
 - Structured assessment fields for any new finding: `bug_existence`,
   `attacker_reachability`, `boundary_crossing`, `impact_assessment`, and
   `assessment_notes`. Separate code-defect evidence from reachability,

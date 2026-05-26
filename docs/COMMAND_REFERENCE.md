@@ -12,7 +12,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 - Most commands operate on a run directory such as `runs/OWNER__REPO/RUN_ID`.
 - `--network` enables network access inside the Codex sandbox for commands that call Codex. It is disabled by default and should remain disabled unless an approved workflow requires it.
 - `--model` defaults to `gpt-5.5` and `--effort` defaults to `xhigh` for Codex-driven commands. Command-line `--model` / `--effort` options are the portable override mechanism across Codex-driven commands.
-- Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
+- Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
 - Python commands use `argparse`; missing required arguments or invalid choices normally exit with status `2`.
 - Generated audit artifacts, cloned target repositories, scanner raw outputs, issue drafts, and local stores should remain local and should not be committed.
 
@@ -23,6 +23,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Prepare / full audit | `gra-audit` | Run directory, cloned target, rendered prompts, Codex output, reports |
 | Batch operation | `gra-batch` | Batch metadata, per-repository logs, `batch-results.json` |
 | Target queue | `gra-targets` | `reports/targets.json`, target queue updates |
+| Target coverage gapfill | `gra-gapfill` | `reports/COVERAGE.md`, `reports/gapfill-targets.json`, bounded gapfill target research |
 | Research / recon / variant analysis | `gra-recon`, `gra-research`, `gra-variant` | Recon notes, target research, findings updates, variant reports |
 | Adversarial validation | `gra-adversarial-validate` | Bounded validation prompt, subject seed JSON, `reports/validation.json`, `reports/VALIDATION.md` |
 | Chain synthesis | `gra-chains` | Defensive chain prompt, `reports/chains.json`, `reports/ATTACK_CHAINS.md` |
@@ -84,7 +85,7 @@ gra-batch --repo-list examples/repos.txt.example --concurrency 1 --mode exec
 | Workflow category | Target workflow. |
 | Required inputs | `--run RUN_DIR` and exactly one action: `--generate`, `--list`, `--show TGT-ID`, or `--mark TGT-ID STATUS`. |
 | Key options | `--model MODEL`, `--effort EFFORT`, `--network`. `--mark` accepts `queued`, `in_progress`, `reviewed`, `skipped`, or `needs_human_review`. |
-| Generated outputs | For `--generate`: `prompts/exec/generate-targets.prompt.md`, `codex-targets-events.jsonl`, `codex-targets-stderr.txt`, `codex-targets-final.md`, and the expected `reports/targets.json`. If `reports/agent-surface.json` exists, high-risk AI agent / MCP surfaces are appended as `TGT-AGENT-NNN` targets. If `reports/provenance-posture.json` exists, release provenance posture recommendations are appended as `TGT-PROVENANCE-NNN` targets. If `reports/supply-chain-posture.json` exists, low-scoring OpenSSF Scorecard posture checks with `target_recommended: true` are appended as `TGT-SCORECARD-NNN` targets. If `reports/dependencies.json` exists, high-signal dependency vulnerability records with dependency paths are appended as `TGT-DEPENDENCY-NNN` targets. For `--mark`: updated target status in `reports/targets.json`. `--list` and `--show` write to stdout only. |
+| Generated outputs | For `--generate`: `prompts/exec/generate-targets.prompt.md`, `codex-targets-events.jsonl`, `codex-targets-stderr.txt`, `codex-targets-final.md`, and the expected `reports/targets.json`. Targets can include optional `coverage` metadata for review depth, reviewed/skipped files, commands, unresolved questions, and gapfill recommendation. If `reports/agent-surface.json` exists, high-risk AI agent / MCP surfaces are appended as `TGT-AGENT-NNN` targets. If `reports/provenance-posture.json` exists, release provenance posture recommendations are appended as `TGT-PROVENANCE-NNN` targets. If `reports/supply-chain-posture.json` exists, low-scoring OpenSSF Scorecard posture checks with `target_recommended: true` are appended as `TGT-SCORECARD-NNN` targets. If `reports/dependencies.json` exists, high-signal dependency vulnerability records with dependency paths are appended as `TGT-DEPENDENCY-NNN` targets. For `--mark`: updated target status in `reports/targets.json`. `--list` and `--show` write to stdout only. |
 | Exit status behavior | `0` for successful list/show/mark/generate; `1` when Codex completes but `reports/targets.json` is missing after generation; `2` for missing context, unknown target, or invalid target status. Codex execution status is returned for generation failures. |
 | Security / disclosure cautions | Target queues are local planning artifacts. Review generated scope before using it to drive deeper research. Avoid network access unless the audit plan explicitly requires it. |
 | Related docs | [`docs/TARGET_QUEUE.md`](TARGET_QUEUE.md), [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md), [`docs/AGENT_SURFACE_DISCOVERY.md`](AGENT_SURFACE_DISCOVERY.md), [`docs/PROVENANCE_POSTURE.md`](PROVENANCE_POSTURE.md), [`docs/SCORECARD_INGESTION.md`](SCORECARD_INGESTION.md), [`docs/DEPENDENCY_INGESTION.md`](DEPENDENCY_INGESTION.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md). |
@@ -134,6 +135,28 @@ Examples:
 ```bash
 gra-research --run runs/OWNER__REPO/RUN_ID --target TGT-001 --mode exec
 gra-research --run runs/OWNER__REPO/RUN_ID --target TGT-001 --mode goal
+```
+
+## `gra-gapfill`
+
+| Field | Details |
+|---|---|
+| Purpose | Summarize target coverage and requeue high-risk targets whose `coverage` metadata shows shallow, incomplete, or explicitly recommended follow-up review. |
+| Workflow category | Target coverage workflow. |
+| Required inputs | `--run RUN_DIR` and exactly one action: `--list`, `--generate`, or `--target TGT-ID`. |
+| Key options | `--mode exec\|goal` for `--target`, `--model MODEL`, `--effort EFFORT`, `--network`. |
+| Generated outputs | `--list` prints candidates. `--generate` writes `reports/COVERAGE.md`, `reports/gapfill-targets.json`, one plan per source target under `reports/target-research/TGT-XXX-gapfill.md`, and appends deterministic `TGT-GAPFILL-NNN` targets to `reports/targets.json` without duplicating existing source-target requeues. `--target` renders `prompts/exec/gapfill-<TGT-ID>.prompt.md` or `prompts/goal/gapfill-<TGT-ID>.goal.md`, writes a seed JSON under `reports/target-research/`, and in exec mode writes Codex event/output files. |
+| Exit status behavior | `0` for successful list/generate/goal setup or successful exec; `2` for missing context or unknown target; exec mode returns Codex execution status. |
+| Security / disclosure cautions | Gapfill is bounded local review. It must not broaden into a full audit, modify the target repository, install dependencies, contact live services, or generate exploit instructions. |
+| Related docs | [`docs/TARGET_QUEUE.md`](TARGET_QUEUE.md), [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
+
+Examples:
+
+```bash
+gra-gapfill --run runs/OWNER__REPO/RUN_ID --list
+gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
+gra-gapfill --run runs/OWNER__REPO/RUN_ID --target TGT-004 --mode exec
+gra-gapfill --run runs/OWNER__REPO/RUN_ID --target TGT-004 --mode goal
 ```
 
 ## `gra-variant`

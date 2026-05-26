@@ -40,6 +40,9 @@ DEFAULT_TEMPLATE_VALUES: Dict[str, str] = {
     'PROOFS_OUTPUT_JSON': 'reports/proofs.json',
     'PROOFS_OUTPUT_MD': 'reports/PROOFS.md',
     'PROOFS_DIR': 'reports/proofs',
+    'GAPFILL_TARGET_FILE': '',
+    'GAPFILL_OUTPUT_MD': '',
+    'GAPFILL_COVERAGE_FILE': 'reports/COVERAGE.md',
 }
 
 

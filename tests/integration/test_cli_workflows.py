@@ -19,6 +19,7 @@ FIXTURE_FINGERPRINT = "0123456789abcdef01234567"
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 from dependency_posture import write_dependency_artifacts  # noqa: E402
 from gralib import env_from_context  # noqa: E402
+from run_manifest import collect_artifacts  # noqa: E402
 
 
 class CliWorkflowTests(unittest.TestCase):
@@ -1391,6 +1392,146 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(self.read_codex_calls(codex_log), [])
         self.assertFalse((run_dir / "codex-research-TGT-001-final.md").exists())
 
+    def test_gra_gapfill_lists_generates_and_prepares_goal_prompt(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        targets_path = run_dir / "reports" / "targets.json"
+        targets_data = json.loads(targets_path.read_text(encoding="utf-8"))
+        targets_data["targets"][0].update(
+            {
+                "status": "reviewed",
+                "max_files": 6,
+                "expected_output": "finding-or-no-finding-with-coverage",
+                "chain_relevance": "possible-link",
+                "coverage": {
+                    "review_depth": "shallow",
+                    "files_reviewed": ["repo/app.py"],
+                    "files_skipped": ["repo/legacy_app.py"],
+                    "commands_run": ["python3 -m unittest"],
+                    "unresolved_questions": ["Could not determine legacy route ordering."],
+                    "gapfill_recommended": True,
+                    "gapfill_reason": "High-risk command surface only partially reviewed.",
+                },
+            }
+        )
+        targets_path.write_text(json.dumps(targets_data, indent=2) + "\n", encoding="utf-8")
+
+        cp_list = self.run_cmd([REPO_ROOT / "bin" / "gra-gapfill", "--run", run_dir, "--list"], check=True)
+        self.assertIn("TGT-001", cp_list.stdout)
+        self.assertIn("shallow", cp_list.stdout)
+        self.assertIn("partially reviewed", cp_list.stdout)
+
+        cp_generate = self.run_cmd([REPO_ROOT / "bin" / "gra-gapfill", "--run", run_dir, "--generate"], check=True)
+        self.assertIn("Generated or reused 1 gapfill target", cp_generate.stdout)
+        self.assertTrue((run_dir / "reports" / "COVERAGE.md").exists())
+        self.assertTrue((run_dir / "reports" / "gapfill-targets.json").exists())
+        self.assertTrue((run_dir / "reports" / "target-research" / "TGT-001-gapfill.md").exists())
+        gapfill_data = json.loads((run_dir / "reports" / "gapfill-targets.json").read_text(encoding="utf-8"))
+        self.assertEqual(1, gapfill_data["candidate_count"])
+        self.assertEqual("TGT-001", gapfill_data["candidates"][0]["source_target_id"])
+        self.assertEqual("TGT-GAPFILL-001", gapfill_data["candidates"][0]["gapfill_target_id"])
+        gapfill_target = self.target_by_id(run_dir, "TGT-GAPFILL-001")
+        self.assertEqual("queued", gapfill_target["status"])
+        self.assertEqual("TGT-001", gapfill_target["source_target_id"])
+        self.assertEqual("finding-or-no-finding-with-coverage", gapfill_target["expected_output"])
+        self.assertLessEqual(gapfill_target["max_files"], 8)
+        self.assertIn("repo/legacy_app.py", gapfill_target["candidate_files"])
+
+        cp_generate_again = self.run_cmd([REPO_ROOT / "bin" / "gra-gapfill", "--run", run_dir, "--generate"], check=True)
+        self.assertIn("Generated or reused 1 gapfill target", cp_generate_again.stdout)
+        targets = json.loads(targets_path.read_text(encoding="utf-8"))["targets"]
+        self.assertEqual(1, len([target for target in targets if target.get("id") == "TGT-GAPFILL-001"]))
+
+        env, codex_log = self.env_with_codex_log()
+        cp_goal = self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-gapfill", "--run", run_dir, "--target", "TGT-001", "--mode", "goal"],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Prepared supervised /goal gapfill review run.", cp_goal.stdout)
+        prompt = run_dir / "prompts" / "goal" / "gapfill-TGT-001.goal.md"
+        self.assertTrue(prompt.exists())
+        prompt_text = prompt.read_text(encoding="utf-8")
+        self.assertIn("Gapfill seed file: reports/target-research/TGT-001-gapfill.target.json", prompt_text)
+        self.assertIn("Focus on `files_skipped`, `unresolved_questions`, and `gapfill_reason`", prompt_text)
+        self.assertNotIn("{{", prompt_text)
+        self.assertEqual(self.read_codex_calls(codex_log), [])
+
+    def test_gra_gapfill_exec_renders_seed_and_writes_codex_artifacts(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        env, codex_log = self.env_with_codex_log()
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-gapfill",
+                "--run",
+                run_dir,
+                "--target",
+                "TGT-001",
+                "--mode",
+                "exec",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Running Codex gapfill review for TGT-001", cp.stdout)
+        self.assertIn("Codex status: 0", cp.stdout)
+        seed = run_dir / "reports" / "target-research" / "TGT-001-gapfill.target.json"
+        self.assertEqual(json.loads(seed.read_text(encoding="utf-8"))["target"]["id"], "TGT-001")
+        prompt = run_dir / "prompts" / "exec" / "gapfill-TGT-001.prompt.md"
+        prompt_text = prompt.read_text(encoding="utf-8")
+        self.assertIn("Gapfill seed file: reports/target-research/TGT-001-gapfill.target.json", prompt_text)
+        self.assertIn("Do not broaden into a full repository audit", prompt_text)
+        self.assertNotIn("{{", prompt_text)
+        final_path = run_dir / "codex-gapfill-TGT-001-final.md"
+        events_path = run_dir / "codex-gapfill-TGT-001-events.jsonl"
+        stderr_path = run_dir / "codex-gapfill-TGT-001-stderr.txt"
+        self.assertEqual(final_path.read_text(encoding="utf-8"), "mock codex mode=success\n")
+        self.assertIn('"status": "ok"', events_path.read_text(encoding="utf-8"))
+        self.assertTrue(stderr_path.exists())
+        calls = self.read_codex_calls(codex_log)
+        self.assertEqual(len(calls), 1, calls)
+        self.assertIn(str(final_path), calls[0])
+
+    def test_gra_gapfill_respects_configured_reports_dir(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        ctx_path = run_dir / "context.json"
+        ctx = json.loads(ctx_path.read_text(encoding="utf-8"))
+        ctx["reports_dir"] = "custom-reports"
+        ctx_path.write_text(json.dumps(ctx, indent=2) + "\n", encoding="utf-8")
+        shutil.move(str(run_dir / "reports"), str(run_dir / "custom-reports"))
+        targets_path = run_dir / "custom-reports" / "targets.json"
+        targets_data = json.loads(targets_path.read_text(encoding="utf-8"))
+        targets_data["targets"][0]["coverage"] = {
+            "review_depth": "shallow",
+            "files_reviewed": ["repo/app.py"],
+            "files_skipped": ["repo/legacy_app.py"],
+            "unresolved_questions": ["Legacy route ordering unresolved."],
+            "gapfill_recommended": True,
+            "gapfill_reason": "Custom reports_dir gapfill fixture.",
+        }
+        targets_path.write_text(json.dumps(targets_data, indent=2) + "\n", encoding="utf-8")
+
+        cp_generate = self.run_cmd([REPO_ROOT / "bin" / "gra-gapfill", "--run", run_dir, "--generate"], check=True)
+        self.assertIn(str(run_dir / "custom-reports" / "COVERAGE.md"), cp_generate.stdout)
+        self.assertTrue((run_dir / "custom-reports" / "COVERAGE.md").exists())
+        self.assertTrue((run_dir / "custom-reports" / "gapfill-targets.json").exists())
+        self.assertTrue((run_dir / "custom-reports" / "target-research" / "TGT-001-gapfill.md").exists())
+        self.assertFalse((run_dir / "reports" / "COVERAGE.md").exists())
+        artifact_paths = {entry["path"] for entry in collect_artifacts(run_dir)}
+        self.assertIn("custom-reports/COVERAGE.md", artifact_paths)
+        self.assertIn("custom-reports/gapfill-targets.json", artifact_paths)
+        self.assertIn("custom-reports/target-research", artifact_paths)
+        self.assertNotIn("reports/COVERAGE.md", artifact_paths)
+
+        cp_goal = self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-gapfill", "--run", run_dir, "--target", "TGT-001", "--mode", "goal"],
+            check=True,
+        )
+        self.assertIn(str(run_dir / "custom-reports" / "target-research" / "TGT-001-gapfill.target.json"), cp_goal.stdout)
+        prompt = run_dir / "prompts" / "goal" / "gapfill-TGT-001.goal.md"
+        prompt_text = prompt.read_text(encoding="utf-8")
+        self.assertIn("Gapfill seed file: custom-reports/target-research/TGT-001-gapfill.target.json", prompt_text)
+        self.assertIn("Coverage ledger: custom-reports/COVERAGE.md", prompt_text)
+
     def test_gra_variant_exec_renders_seed_and_writes_codex_artifacts(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         env, codex_log = self.env_with_codex_log()
@@ -1932,6 +2073,15 @@ class CliWorkflowTests(unittest.TestCase):
                 "max_files": 6,
                 "expected_output": "finding-or-no-finding-with-coverage",
                 "chain_relevance": "possible-link",
+                "coverage": {
+                    "review_depth": "shallow",
+                    "files_reviewed": ["repo/app.py"],
+                    "files_skipped": ["repo/legacy_app.py"],
+                    "commands_run": ["python3 -m unittest"],
+                    "unresolved_questions": ["Could not confirm legacy route ordering."],
+                    "gapfill_recommended": True,
+                    "gapfill_reason": "High-risk command surface only partially reviewed.",
+                },
             }
         )
         targets_path.write_text(json.dumps(targets_data, indent=2) + "\n", encoding="utf-8")
@@ -1950,6 +2100,12 @@ class CliWorkflowTests(unittest.TestCase):
                 "max_files": 0,
                 "expected_output": "finding-only",
                 "chain_relevance": "exploit-chain",
+                "coverage": {
+                    "review_depth": "broad",
+                    "files_reviewed": ["valid", 123],
+                    "gapfill_recommended": "yes",
+                    "gapfill_reason": ["not", "string"],
+                },
             }
         )
         invalid_targets_path.write_text(json.dumps(invalid_targets_data, indent=2) + "\n", encoding="utf-8")
@@ -1960,6 +2116,10 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("max_files must be between 1 and 20", cp_invalid.stderr)
         self.assertIn("expected_output", cp_invalid.stderr)
         self.assertIn("chain_relevance", cp_invalid.stderr)
+        self.assertIn("coverage.review_depth", cp_invalid.stderr)
+        self.assertIn("coverage.files_reviewed[1]", cp_invalid.stderr)
+        self.assertIn("coverage.gapfill_recommended", cp_invalid.stderr)
+        self.assertIn("coverage.gapfill_reason", cp_invalid.stderr)
 
     def test_validate_report_finding_assessment_fields(self) -> None:
         valid_run = self.copy_fixture_run("minimal-run")

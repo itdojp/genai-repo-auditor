@@ -33,6 +33,15 @@ bounded and reviewable:
   target records either a candidate finding or explicit no-finding coverage
   notes.
 - `chain_relevance`: `none`, `possible-link`, or `candidate-chain-step`.
+- `coverage`: optional ledger metadata recorded by `gra-research` or a
+  supervised `/goal` review. It can include:
+  - `review_depth`: `none`, `shallow`, `medium`, or `deep`
+  - `files_reviewed`
+  - `files_skipped`
+  - `commands_run`
+  - `unresolved_questions`
+  - `gapfill_recommended`
+  - `gapfill_reason`
 
 Good target:
 
@@ -102,3 +111,66 @@ Deep research with `/goal`:
 ```bash
 gra-research --run runs/OWNER__REPO/RUN_ID --target TGT-001 --mode goal
 ```
+
+## Coverage ledger and gapfill
+
+After normal target research or supervised `/goal` review, record the target
+coverage in `reports/targets.json`. A reviewed target should state whether it
+reached the expected `finding-or-no-finding-with-coverage` outcome. If it did
+not, keep the review bounded and mark a gapfill instead of expanding into a
+broad audit.
+
+Example coverage metadata:
+
+```json
+{
+  "coverage": {
+    "review_depth": "shallow",
+    "files_reviewed": ["repo/src/auth.ts"],
+    "files_skipped": ["repo/src/legacy_auth.ts"],
+    "commands_run": [],
+    "unresolved_questions": ["Could not determine middleware ordering for admin routes"],
+    "gapfill_recommended": true,
+    "gapfill_reason": "High-risk authz surface only partially reviewed"
+  }
+}
+```
+
+List candidates:
+
+```bash
+gra-gapfill --run runs/OWNER__REPO/RUN_ID --list
+```
+
+Generate the local coverage ledger and deterministic follow-up targets:
+
+```bash
+gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
+```
+
+Outputs:
+
+```text
+reports/COVERAGE.md
+reports/gapfill-targets.json
+reports/target-research/TGT-XXX-gapfill.md
+```
+
+The generated queue entries use `TGT-GAPFILL-NNN` IDs and preserve the source
+target as `source_target_id`. Re-running `--generate` reuses existing gapfill
+targets for the same source target instead of duplicating them.
+
+Run a single gapfill in exec mode:
+
+```bash
+gra-gapfill --run runs/OWNER__REPO/RUN_ID --target TGT-001 --mode exec
+```
+
+Prepare a supervised `/goal` gapfill:
+
+```bash
+gra-gapfill --run runs/OWNER__REPO/RUN_ID --target TGT-001 --mode goal
+```
+
+Gapfill remains defensive and local-only: do not modify the target repository,
+install dependencies, contact live services, or generate exploit instructions.

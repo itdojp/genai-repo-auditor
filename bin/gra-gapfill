@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / 'lib'))
+from version import auditor_version
+from gralib import env_from_context, find_target, load_context, load_targets, render_template, run_codex_exec
+from target_coverage import (
+    gapfill_candidates,
+    gapfill_reason,
+    generate_gapfill_artifacts,
+    review_depth,
+    string_list,
+)
+
+
+def print_candidates(candidates: list[dict]) -> None:
+    if not candidates:
+        print("No gapfill candidates.")
+        return
+    print(f"{'ID':<14} {'RISK':<10} {'PRIO':<5} {'DEPTH':<8} REASON")
+    for target in candidates:
+        print(
+            f"{str(target.get('id', '')):<14} {str(target.get('risk', '')):<10} "
+            f"{str(target.get('priority', '')):<5} {review_depth(target):<8} {gapfill_reason(target)}"
+        )
+
+
+def write_target_seed(run_dir: Path, target: dict) -> Path:
+    ctx = load_context(run_dir)
+    reports = run_dir / ctx.get("reports_dir", "reports")
+    coverage = target.get("coverage") if isinstance(target.get("coverage"), dict) else {}
+    seed = {
+        "target": target,
+        "coverage": coverage,
+        "gapfill_reason": gapfill_reason(target),
+        "files_reviewed": string_list(coverage.get("files_reviewed")),
+        "files_skipped": string_list(coverage.get("files_skipped")),
+        "unresolved_questions": string_list(coverage.get("unresolved_questions")),
+    }
+    path = reports / "target-research" / f"{target.get('id')}-gapfill.target.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(seed, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="List, generate, or run bounded target coverage gapfill reviews")
+    parser.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
+    parser.add_argument('--run', required=True, help='Run directory')
+    action = parser.add_mutually_exclusive_group(required=True)
+    action.add_argument('--list', action='store_true', help='List targets that need bounded gapfill review')
+    action.add_argument('--generate', action='store_true', help='Generate reports/COVERAGE.md, gapfill-targets.json, and queued gapfill targets')
+    action.add_argument('--target', metavar='TGT-ID', help='Run or prepare a gapfill review for one source target')
+    parser.add_argument('--mode', choices=['exec', 'goal'], default='exec')
+    parser.add_argument('--model', default='gpt-5.5')
+    parser.add_argument('--effort', default='xhigh')
+    parser.add_argument('--network', action='store_true', help='Allow Codex sandbox network access. Not recommended.')
+    args = parser.parse_args()
+
+    run_dir = Path(args.run).resolve()
+    if not (run_dir / "context.json").exists():
+        print(f"context.json not found under {run_dir}", file=sys.stderr)
+        return 2
+    ctx = load_context(run_dir)
+
+    if args.list:
+        print_candidates(gapfill_candidates(load_targets(run_dir)))
+        return 0
+
+    if args.generate:
+        payload = generate_gapfill_artifacts(run_dir)
+        print(f"Wrote {run_dir / ctx.get('reports_dir', 'reports') / 'COVERAGE.md'}")
+        print(f"Wrote {run_dir / ctx.get('reports_dir', 'reports') / 'gapfill-targets.json'}")
+        print_candidates(gapfill_candidates(load_targets(run_dir)))
+        print(f"Generated or reused {payload['generated_target_count']} gapfill target(s)")
+        return 0
+
+    try:
+        target = find_target(run_dir, args.target)
+    except KeyError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    target_seed = write_target_seed(run_dir, target)
+    reports_dir = run_dir / ctx.get("reports_dir", "reports")
+    coverage_file = reports_dir / "COVERAGE.md"
+    output_md = reports_dir / "target-research" / f"{args.target}-gapfill.md"
+    env = env_from_context(
+        run_dir,
+        {
+            "TARGET_ID": str(args.target),
+            "TARGET_CATEGORY": str(target.get("category", "")),
+            "TARGET_SCOPE": str(target.get("scope", "")),
+            "TARGET_FILE": str(target_seed.relative_to(run_dir)),
+            "GAPFILL_TARGET_FILE": str(target_seed.relative_to(run_dir)),
+            "GAPFILL_OUTPUT_MD": str(output_md.relative_to(run_dir)),
+            "GAPFILL_COVERAGE_FILE": str(coverage_file.relative_to(run_dir)),
+        },
+    )
+
+    if args.mode == "goal":
+        prompt = run_dir / "prompts" / "goal" / f"gapfill-{args.target}.goal.md"
+        render_template(LAB_ROOT, LAB_ROOT / "prompts" / "goal" / "gapfill-target.goal.md", prompt, env)
+        print("Prepared supervised /goal gapfill review run.")
+        print(f"Run directory: {run_dir}")
+        print(f"Target file: {target_seed}")
+        print(f"Goal prompt: {prompt}")
+        network_value = "true" if args.network else "false"
+        print("\nStart Codex:")
+        print(f'  codex --cd "{run_dir}" --skip-git-repo-check --model "{args.model}" --enable goals --sandbox workspace-write --ask-for-approval on-request -c \'model_reasoning_effort="{args.effort}"\' -c \'web_search="disabled"\' -c \'sandbox_workspace_write.network_access={network_value}\'')
+        print("\nThen paste the contents of the goal prompt.")
+        return 0
+
+    prompt = run_dir / "prompts" / "exec" / f"gapfill-{args.target}.prompt.md"
+    render_template(LAB_ROOT, LAB_ROOT / "prompts" / "exec" / "gapfill-target.prompt.md", prompt, env)
+    print(f"Running Codex gapfill review for {args.target}: {target.get('title', '')}".strip())
+    status = run_codex_exec(
+        run_dir=run_dir,
+        prompt_file=prompt,
+        model=args.model,
+        effort=args.effort,
+        network=args.network,
+        output_last=run_dir / f"codex-gapfill-{args.target}-final.md",
+        events_file=run_dir / f"codex-gapfill-{args.target}-events.jsonl",
+        stderr_file=run_dir / f"codex-gapfill-{args.target}-stderr.txt",
+    )
+    print(f"Codex status: {status}")
+    print(f"Gapfill report: {output_md}")
+    return status
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

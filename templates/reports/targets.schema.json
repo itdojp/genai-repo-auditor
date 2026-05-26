@@ -31,6 +31,18 @@
           "max_files": {"type": "integer", "minimum": 1, "maximum": 20},
           "expected_output": {"enum": ["finding-or-no-finding-with-coverage"]},
           "chain_relevance": {"enum": ["none", "possible-link", "candidate-chain-step"]},
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "review_depth": {"enum": ["none", "shallow", "medium", "deep"]},
+              "files_reviewed": {"type": "array", "items": {"type": "string"}},
+              "files_skipped": {"type": "array", "items": {"type": "string"}},
+              "commands_run": {"type": "array", "items": {"type": "string"}},
+              "unresolved_questions": {"type": "array", "items": {"type": "string"}},
+              "gapfill_recommended": {"type": "boolean"},
+              "gapfill_reason": {"type": "string"}
+            }
+          },
           "review_questions": {"type": "array", "items": {"type": "string"}},
           "candidate_files": {"type": "array", "items": {"type": "string"}},
           "recommended_mode": {"enum": ["exec", "goal"]},

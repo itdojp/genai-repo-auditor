@@ -122,6 +122,7 @@ runs/OWNER__REPO/RUN_ID/
       deep-dive-finding.goal.md
       deep-dive-category.goal.md
       research-target.goal.md
+      gapfill-target.goal.md
       variant-analysis.goal.md
       synthesize-chains.goal.md
       safe-proof.goal.md
@@ -172,6 +173,7 @@ cat runs/OWNER__REPO/RUN_ID/prompt.goal.md
 - Critical / High の安全な検証
 - reports/FINDINGS.md
 - reports/findings.json
+- reports/COVERAGE.md
 - reports/ATTACK_CHAINS.md
 - reports/PROOFS.md
 - reports/VALIDATION.md
@@ -277,6 +279,7 @@ Codex TUI に貼ります。
 - repo/ 配下が変更されていないか
 - reports/AUDIT_LOG.md に進捗とコマンドが残っているか
 - Critical / High が十分な証拠なしに断定されていないか
+- reports/COVERAGE.md
 - reports/ATTACK_CHAINS.md が non-public by default として扱われているか
 - reports/PROOFS.md が local/private by default として扱われているか
 - reports/VALIDATION.md の downgrade / invalidate / needs-human-review が反映されているか
@@ -295,6 +298,7 @@ sed -n '1,200p' runs/OWNER__REPO/RUN_ID/reports/AUDIT_LOG.md
 
 ```bash
 gra-chains --run runs/OWNER__REPO/RUN_ID
+gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-validate-report --run runs/OWNER__REPO/RUN_ID

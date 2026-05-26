@@ -101,6 +101,7 @@ Validate, synthesize defensive chain context, and render reports:
 
 ```bash
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
+gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
 gra-chains --run runs/OWNER__REPO/RUN_ID
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
@@ -229,6 +230,7 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-recon` | Generate inventory, threat model, and attack surface |
 | `gra-targets` | Generate, list, show, and update target queue |
 | `gra-research` | Research one target with exec or supervised goal mode |
+| `gra-gapfill` | Requeue high-risk targets with incomplete coverage |
 | `gra-variant` | Find variants based on a finding or root cause |
 | `gra-adversarial-validate` | Independently challenge existing findings or chains before publication |
 | `gra-chains` | Synthesize defensive attack-chain reports from existing audit evidence |
