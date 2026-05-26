@@ -512,15 +512,17 @@ class CliWorkflowTests(unittest.TestCase):
                 ctx = load_json(run_dir / "context.json", {})
                 reports = run_dir / "reports"
                 reports.mkdir(parents=True, exist_ok=True)
-                findings = load_json(fixture_dir / "reports" / "findings.json", {})
-                findings.update(
-                    {
-                        "run_id": ctx.get("run_id", run_dir.name),
-                        "repo": ctx.get("repo", findings.get("repo", "")),
-                        "commit": ctx.get("commit", findings.get("commit", "")),
-                    }
-                )
-                write_json(reports / "findings.json", findings)
+                findings_src = fixture_dir / "reports" / "findings.json"
+                if findings_src.exists():
+                    findings = load_json(findings_src, {})
+                    findings.update(
+                        {
+                            "run_id": ctx.get("run_id", run_dir.name),
+                            "repo": ctx.get("repo", findings.get("repo", "")),
+                            "commit": ctx.get("commit", findings.get("commit", "")),
+                        }
+                    )
+                    write_json(reports / "findings.json", findings)
                 targets_src = fixture_dir / "reports" / "targets.json"
                 if targets_src.exists():
                     targets = load_json(targets_src, {})
@@ -533,6 +535,21 @@ class CliWorkflowTests(unittest.TestCase):
                         }
                     )
                     write_json(reports / "targets.json", targets)
+                validation_src = fixture_dir / "reports" / "validation.json"
+                if validation_src.exists():
+                    validation = load_json(validation_src, {})
+                    validation.update(
+                        {
+                            "run_id": ctx.get("run_id", run_dir.name),
+                            "repo": ctx.get("repo", validation.get("repo", "")),
+                            "branch": ctx.get("branch", validation.get("branch", "")),
+                            "commit": ctx.get("commit", validation.get("commit", "")),
+                        }
+                    )
+                    write_json(reports / "validation.json", validation)
+                validation_md_src = fixture_dir / "reports" / "VALIDATION.md"
+                if validation_md_src.exists():
+                    shutil.copy2(validation_md_src, reports / "VALIDATION.md")
                 drafts_src = fixture_dir / "reports" / "issue-drafts"
                 if drafts_src.exists():
                     drafts_dest = reports / "issue-drafts"
@@ -1398,6 +1415,152 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(self.read_codex_calls(codex_log), [])
         self.assertFalse((run_dir / "codex-variant-SEC-001-final.md").exists())
 
+    def test_gra_adversarial_validate_finding_exec_writes_validation_artifacts(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        env, codex_log = self.env_with_codex_log(
+            GRA_MOCK_FIXTURE_DIR=str(FIXTURES / "adversarial-validation-output")
+        )
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-adversarial-validate",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--model",
+                "gpt-fixture",
+                "--effort",
+                "medium",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Running Codex adversarial validation for SEC-001", cp.stdout)
+        self.assertIn("Codex status: 0", cp.stdout)
+
+        subjects = json.loads(
+            (run_dir / "reports" / "adversarial-validation" / "sec-001.subjects.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual("SEC-001", subjects["selection"])
+        self.assertEqual(["SEC-001"], [item["subject_id"] for item in subjects["subjects"]])
+        self.assertEqual(["finding"], [item["subject_type"] for item in subjects["subjects"]])
+
+        prompt = run_dir / "prompts" / "exec" / "adversarial-validate-sec-001.prompt.md"
+        prompt_text = prompt.read_text(encoding="utf-8")
+        self.assertIn("You must not create new findings.", prompt_text)
+        self.assertIn("disprove, downgrade, confirm, or mark needs-human-review", prompt_text)
+        self.assertIn("Check:\n- attacker control", prompt_text)
+        self.assertIn("- config assumptions", prompt_text)
+        self.assertIn("- test fixture vs production behavior", prompt_text)
+        self.assertIn("- whether impact is overstated", prompt_text)
+        self.assertIn("reports/adversarial-validation/sec-001.subjects.json", prompt_text)
+        self.assertNotIn("{{", prompt_text)
+
+        validation = json.loads((run_dir / "reports" / "validation.json").read_text(encoding="utf-8"))
+        self.assertEqual("SEC-001", validation["validations"][0]["subject_id"])
+        self.assertEqual("downgrade", validation["validations"][0]["decision"])
+        self.assertEqual("Medium", validation["validations"][0]["recommended_severity"])
+        self.assertEqual(1, len(json.loads((run_dir / "reports" / "findings.json").read_text(encoding="utf-8"))["findings"]))
+        validation_md = (run_dir / "reports" / "VALIDATION.md").read_text(encoding="utf-8")
+        self.assertIn("Adversarial Validation", validation_md)
+        self.assertIn("VAL-001", validation_md)
+
+        final_path = run_dir / "codex-adversarial-validate-sec-001-final.md"
+        events_path = run_dir / "codex-adversarial-validate-sec-001-events.jsonl"
+        stderr_path = run_dir / "codex-adversarial-validate-sec-001-stderr.txt"
+        self.assertEqual(final_path.read_text(encoding="utf-8"), "mock codex mode=success\n")
+        self.assertIn('"status": "ok"', events_path.read_text(encoding="utf-8"))
+        self.assertTrue(stderr_path.exists())
+
+        calls = self.read_codex_calls(codex_log)
+        self.assertEqual(len(calls), 1, calls)
+        self.assertIn(str(final_path), calls[0])
+        self.assertIn('model_reasoning_effort="medium"', calls[0])
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Adversarial validations: validated", cp_validate.stdout)
+
+    def test_gra_adversarial_validate_all_critical_high_selects_relevant_findings(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        findings_path = run_dir / "reports" / "findings.json"
+        findings = json.loads(findings_path.read_text(encoding="utf-8"))
+        base = findings["findings"][0]
+        findings["findings"].extend(
+            [
+                {**base, "id": "SEC-002", "fingerprint": "fixture-fingerprint-0002", "severity": "Low", "status": "Confirmed"},
+                {**base, "id": "SEC-003", "fingerprint": "fixture-fingerprint-0003", "severity": "High", "status": "Invalid"},
+                {**base, "id": "SEC-004", "fingerprint": "fixture-fingerprint-0004", "severity": "Critical", "status": "Potential"},
+            ]
+        )
+        findings_path.write_text(json.dumps(findings, indent=2) + "\n", encoding="utf-8")
+
+        env, codex_log = self.env_with_codex_log()
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-adversarial-validate",
+                "--run",
+                run_dir,
+                "--all-critical-high",
+                "--mode",
+                "goal",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Prepared supervised /goal adversarial validation run.", cp.stdout)
+        subjects = json.loads(
+            (run_dir / "reports" / "adversarial-validation" / "critical-high.subjects.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(["SEC-001", "SEC-004"], [item["subject_id"] for item in subjects["subjects"]])
+        prompt = run_dir / "prompts" / "goal" / "adversarial-validate-critical-high.goal.md"
+        self.assertTrue(prompt.read_text(encoding="utf-8").startswith("/goal "))
+        self.assertIn("You must not create new findings.", prompt.read_text(encoding="utf-8"))
+        self.assertEqual(self.read_codex_calls(codex_log), [])
+
+    def test_gra_adversarial_validate_chain_goal_uses_chains_json(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        chains = {
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "generated_at": "2026-05-26T00:00:00Z",
+            "chains": [
+                {
+                    "id": "CHAIN-001",
+                    "title": "Fixture chain",
+                    "finding_ids": ["SEC-001"],
+                }
+            ],
+        }
+        (run_dir / "reports" / "chains.json").write_text(json.dumps(chains, indent=2) + "\n", encoding="utf-8")
+
+        env, codex_log = self.env_with_codex_log()
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-adversarial-validate",
+                "--run",
+                run_dir,
+                "--chain",
+                "CHAIN-001",
+                "--mode",
+                "goal",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Prepared supervised /goal adversarial validation run.", cp.stdout)
+        subjects = json.loads(
+            (run_dir / "reports" / "adversarial-validation" / "chain-001.subjects.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(["chain"], [item["subject_type"] for item in subjects["subjects"]])
+        self.assertEqual(["CHAIN-001"], [item["subject_id"] for item in subjects["subjects"]])
+        self.assertEqual(self.read_codex_calls(codex_log), [])
+
     def test_validate_report_accepts_valid_fixture_and_rejects_invalid_fixtures(self) -> None:
         valid_run = self.copy_fixture_run("minimal-run")
         cp_valid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", valid_run])
@@ -1534,6 +1697,90 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("chain_membership[0]", cp_invalid.stderr)
         self.assertIn("chain_membership[1]", cp_invalid.stderr)
         self.assertIn("assessment_notes.bug_existence", cp_invalid.stderr)
+
+    def test_validate_report_adversarial_validation_decisions(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        findings_path = run_dir / "reports" / "findings.json"
+        findings = json.loads(findings_path.read_text(encoding="utf-8"))
+        base = findings["findings"][0]
+        findings["findings"].extend(
+            [
+                {**base, "id": "SEC-002", "fingerprint": "fixture-fingerprint-1002", "severity": "High", "status": "Probable"},
+                {**base, "id": "SEC-003", "fingerprint": "fixture-fingerprint-1003", "severity": "High", "status": "Potential"},
+            ]
+        )
+        findings_path.write_text(json.dumps(findings, indent=2) + "\n", encoding="utf-8")
+        validation = {
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "branch": "main",
+            "commit": "0000000000000000000000000000000000000000",
+            "generated_at": "2026-05-26T00:00:00Z",
+            "validations": [
+                {
+                    "id": "VAL-001",
+                    "subject_type": "finding",
+                    "subject_id": "SEC-001",
+                    "decision": "downgrade",
+                    "original_severity": "High",
+                    "recommended_severity": "Medium",
+                    "original_confidence": "High",
+                    "recommended_confidence": "Medium",
+                    "reasoning_summary": "Reachability evidence is incomplete.",
+                    "evidence_checked": ["reports/findings.json"],
+                    "missing_evidence": ["production route wiring"],
+                    "safe_validation_steps": ["static call-path review"],
+                },
+                {
+                    "id": "VAL-002",
+                    "subject_type": "finding",
+                    "subject_id": "SEC-002",
+                    "decision": "invalidate",
+                    "original_severity": "High",
+                    "recommended_severity": "Informational",
+                    "original_confidence": "Medium",
+                    "recommended_confidence": "Low",
+                    "reasoning_summary": "Framework guard blocks the fixture path.",
+                    "evidence_checked": ["repo/app.py"],
+                    "missing_evidence": [],
+                    "safe_validation_steps": ["review framework guard documentation in repository"],
+                },
+                {
+                    "id": "VAL-003",
+                    "subject_type": "finding",
+                    "subject_id": "SEC-003",
+                    "decision": "needs-human-review",
+                    "original_severity": "High",
+                    "recommended_severity": "High",
+                    "original_confidence": "Low",
+                    "recommended_confidence": "Low",
+                    "reasoning_summary": "Middleware ordering cannot be proven from local evidence.",
+                    "evidence_checked": ["reports/findings.json", "repo/app.py"],
+                    "missing_evidence": ["deployed middleware order"],
+                    "safe_validation_steps": ["ask maintainer to confirm deployment configuration"],
+                },
+            ],
+        }
+        (run_dir / "reports" / "validation.json").write_text(json.dumps(validation, indent=2) + "\n", encoding="utf-8")
+
+        cp_valid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir])
+        self.assertEqual(cp_valid.returncode, 0, cp_valid.stderr)
+        self.assertIn("Adversarial validations: validated", cp_valid.stdout)
+
+        invalid_run = self.copy_fixture_run("minimal-run")
+        invalid_validation = validation.copy()
+        invalid_validation["validations"] = [
+            {**validation["validations"][0], "decision": "promote", "subject_id": "SEC-404", "evidence_checked": [123]},
+        ]
+        (invalid_run / "reports" / "validation.json").write_text(
+            json.dumps(invalid_validation, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        cp_invalid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", invalid_run])
+        self.assertNotEqual(cp_invalid.returncode, 0)
+        self.assertIn("invalid decision", cp_invalid.stderr)
+        self.assertIn("not present in reports/findings.json", cp_invalid.stderr)
+        self.assertIn("evidence_checked[0]", cp_invalid.stderr)
 
     def test_validate_report_rejects_safety_invalid_fields(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

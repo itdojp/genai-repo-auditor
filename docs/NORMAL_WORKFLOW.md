@@ -27,13 +27,15 @@
    ↓
 6. gra-validate-report でレポート契約を検証
    ↓
-7. 人間が FINDINGS.md / issue-drafts を確認
+7. Critical / High は gra-adversarial-validate で反証・降格余地を確認
    ↓
-8. gra-issues --dry-run
+8. 人間が FINDINGS.md / VALIDATION.md / issue-drafts を確認
    ↓
-9. gra-issues --apply
+9. gra-issues --dry-run
    ↓
-10. GitHub Issue 上で修正PR・期限・担当者を管理
+10. gra-issues --apply
+   ↓
+11. GitHub Issue 上で修正PR・期限・担当者を管理
 ```
 
 ## セットアップ
@@ -101,6 +103,8 @@ runs/OWNER__REPO/RUN_ID/
     ATTACK_SURFACE.md
     FINDINGS.md
     findings.json
+    VALIDATION.md
+    validation.json
     AUDIT_LOG.md
     issue-drafts/
       SEC-001.md
@@ -135,6 +139,7 @@ gra-validate-report --run runs/OWNER__REPO/RUN_ID
 - severity / confidence / status が許可値であること
 - fingerprint が空でないこと
 - Issue 推奨 finding に issue draft が存在すること
+- adversarial validation output がある場合は subject、decision、evidence list が妥当であること
 
 ## レポート確認
 
@@ -144,6 +149,7 @@ gra-validate-report --run runs/OWNER__REPO/RUN_ID
 reports/AUDIT_SUMMARY.md
 reports/FINDINGS.md
 reports/findings.json
+reports/VALIDATION.md
 reports/issue-drafts/*.md
 report-validation.txt
 codex-final.md
@@ -154,10 +160,24 @@ codex-final.md
 ```text
 - Critical / High は file:line, entry point, trust boundary, call path が必須
 - Confirmed / Probable 以外は原則 Issue 化しない
+- `VALIDATION.md` の downgrade / invalidate / needs-human-review は公開前に修正または明示承認する
 - Generic hardening advice は Issue 化しない
 - public repo では public_disclosure_risk を確認する
 - secret 値が全文出力されていないことを確認する
 ```
+
+## Adversarial validation
+
+Critical / High の Issue 候補は、公開前に独立した反証・降格チェックを行います。
+
+```bash
+gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
+gra-validate-report --run runs/OWNER__REPO/RUN_ID
+```
+
+このステージは新しい finding を作りません。`reports/VALIDATION.md` の
+`downgrade`、`invalidate`、`needs-human-review` は、Issue draft と
+`findings.json` を見直す根拠として扱います。
 
 ## Issue 作成
 

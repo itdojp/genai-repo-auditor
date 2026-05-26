@@ -1,0 +1,30 @@
+{
+  "run_id": "fixture-run",
+  "repo": "example/demo",
+  "branch": "main",
+  "commit": "0000000000000000000000000000000000000000",
+  "generated_at": "2026-05-26T00:00:00Z",
+  "validations": [
+    {
+      "id": "VAL-001",
+      "subject_type": "finding",
+      "subject_id": "SEC-001",
+      "decision": "downgrade",
+      "original_severity": "High",
+      "recommended_severity": "Medium",
+      "original_confidence": "High",
+      "recommended_confidence": "Medium",
+      "reasoning_summary": "Fixture validation notes that production reachability is not fully proven.",
+      "evidence_checked": [
+        "reports/findings.json",
+        "repo/app.py"
+      ],
+      "missing_evidence": [
+        "production route wiring"
+      ],
+      "safe_validation_steps": [
+        "static call-path review"
+      ]
+    }
+  ]
+}

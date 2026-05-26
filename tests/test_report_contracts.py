@@ -121,6 +121,7 @@ class ReportContractTests(unittest.TestCase):
         scanner_schema = self.load_json(SCHEMAS / "scanner-index.schema.json")
         manifest_schema = self.load_json(SCHEMAS / "run-manifest.schema.json")
         dependencies_schema = self.load_json(SCHEMAS / "dependencies.schema.json")
+        validation_schema = self.load_json(SCHEMAS / "validation.schema.json")
 
         self.assertTrue(set(VALIDATOR.REQUIRED_TOP).issubset(findings_schema["required"]))
         finding_required = findings_schema["properties"]["findings"]["items"]["required"]
@@ -194,6 +195,31 @@ class ReportContractTests(unittest.TestCase):
             set(manifest_schema["required"]),
         )
         self.assertTrue({"name", "mode", "model", "effort"}.issubset(manifest_schema["properties"]["command"]["required"]))
+
+        self.assertEqual({"run_id", "repo", "generated_at", "validations"}, set(validation_schema["required"]))
+        validation_item = validation_schema["properties"]["validations"]["items"]
+        self.assertEqual(
+            {
+                "id",
+                "subject_type",
+                "subject_id",
+                "decision",
+                "original_severity",
+                "recommended_severity",
+                "original_confidence",
+                "recommended_confidence",
+                "reasoning_summary",
+                "evidence_checked",
+                "missing_evidence",
+                "safe_validation_steps",
+            },
+            set(validation_item["required"]),
+        )
+        validation_properties = validation_item["properties"]
+        self.assertEqual("^VAL-[0-9]{3,}$", validation_properties["id"]["pattern"])
+        self.assertEqual(["finding", "chain"], validation_properties["subject_type"]["enum"])
+        self.assertEqual(["confirm", "downgrade", "invalidate", "needs-human-review"], validation_properties["decision"]["enum"])
+        self.assertEqual(["High", "Medium", "Low", "Unknown"], validation_properties["recommended_confidence"]["enum"])
 
     def test_valid_minimal_fixture_passes_validator(self) -> None:
         run_dir = self.copy_run()

@@ -11,6 +11,7 @@ prepare
   -> targets
   -> research target(s)
   -> validate findings
+  -> adversarial validation
   -> variant analysis
   -> scanner triage
   -> dashboard / SARIF / SQLite store
@@ -82,6 +83,37 @@ reports/FINDINGS.md
 reports/findings.json
 reports/issue-drafts/SEC-XXX.md
 ```
+
+## Adversarial validation
+
+Before Issue publication, run an independent pass that challenges existing
+findings or chains. This stage does not create new findings; it records whether
+selected subjects should be confirmed, downgraded, invalidated, or marked
+`needs-human-review`.
+
+```bash
+gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high --model gpt-5.5 --effort xhigh
+gra-validate-report --run runs/OWNER__REPO/RUN_ID
+```
+
+For a single finding or a supervised chain review:
+
+```bash
+gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --finding SEC-001
+gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --chain CHAIN-001 --mode goal
+```
+
+Outputs:
+
+```text
+reports/adversarial-validation/<selection>.subjects.json
+reports/validation.json
+reports/VALIDATION.md
+```
+
+Review `VALIDATION.md` before `gra-issues --plan`. Downgraded, invalidated, or
+`needs-human-review` subjects should not be published as confirmed
+exploitability without explicit human review and revised issue wording.
 
 ## Variant analysis
 

@@ -22,6 +22,21 @@ only Potential or Not assessed. In those cases, the Issue draft should avoid
 claiming confirmed exploitability and should explain the remaining validation
 gap.
 
+For Critical / High candidates, run or review the independent adversarial
+validation stage before publication:
+
+```bash
+gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
+gra-validate-report --run runs/OWNER__REPO/RUN_ID
+```
+
+Then inspect `reports/validation.json` and `reports/VALIDATION.md`.
+`downgrade`, `invalidate`, and `needs-human-review` decisions should block direct
+publication until the finding metadata and issue draft have been revised or a
+human reviewer explicitly accepts the residual uncertainty. The validation stage
+must not create new findings; it only records decisions about existing findings
+or chains.
+
 ## dry-run
 
 ```bash
@@ -55,7 +70,8 @@ runs/OWNER__REPO/RUN_ID/reports/issue-publication-plan.json
 
 The plan records the selected finding IDs, fingerprints, titles, labels, issue
 body files, issue body SHA-256 hashes, public disclosure risk, run ID, repo, and
-commit. Review the plan and referenced issue drafts before publishing.
+commit. Review the plan, referenced issue drafts, and any
+`reports/VALIDATION.md` decisions before publishing.
 
 After review, apply the exact plan:
 

@@ -212,9 +212,10 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-targets` | Generate, list, show, and update target queue |
 | `gra-research` | Research one target with exec or supervised goal mode |
 | `gra-variant` | Find variants based on a finding or root cause |
+| `gra-adversarial-validate` | Independently challenge existing findings or chains before publication |
 | `gra-ingest` | Ingest scanner outputs |
 | `gra-scanner-triage` | Triage scanner leads in repository context |
-| `gra-validate-report` | Validate `findings.json`, `targets.json`, and report contract |
+| `gra-validate-report` | Validate `findings.json`, `targets.json`, validation output, and report contract |
 | `gra-dashboard` | Generate local HTML dashboard |
 | `gra-sarif` | Generate SARIF output |
 | `gra-store` | Import run data into SQLite |
@@ -252,6 +253,7 @@ Do not use this project for:
 - [`docs/STAGED_AGENTIC_WORKFLOW.md`](docs/STAGED_AGENTIC_WORKFLOW.md)
 - [`docs/TARGET_QUEUE.md`](docs/TARGET_QUEUE.md)
 - [`docs/VARIANT_ANALYSIS.md`](docs/VARIANT_ANALYSIS.md)
+- [`docs/ADVERSARIAL_VALIDATION.md`](docs/ADVERSARIAL_VALIDATION.md)
 - [`docs/SCANNER_INTEGRATION.md`](docs/SCANNER_INTEGRATION.md)
 - [`docs/SCORECARD_INGESTION.md`](docs/SCORECARD_INGESTION.md)
 - [`docs/DEPENDENCY_INGESTION.md`](docs/DEPENDENCY_INGESTION.md)

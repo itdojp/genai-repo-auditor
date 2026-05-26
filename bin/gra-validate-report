@@ -34,6 +34,11 @@ TARGET_RISKS = {"critical", "high", "medium", "low", "informational"}
 SCANNER_RESULTS_DIR = Path("reports/scanner-results")
 NORMALIZED_SCANNER_RESULTS_DIR = SCANNER_RESULTS_DIR / "normalized"
 DEPENDENCIES_PATH = Path("reports/dependencies.json")
+VALIDATION_PATH = Path("reports/validation.json")
+VALIDATION_DECISIONS = {"confirm", "downgrade", "invalidate", "needs-human-review"}
+VALIDATION_SUBJECT_TYPES = {"finding", "chain"}
+VALIDATION_SEVERITIES = SEVERITIES | {"Unknown"}
+VALIDATION_CONFIDENCES = CONFIDENCES | {"Unknown"}
 REQUIRED_TOP = ["run_id", "repo", "commit", "generated_at", "findings"]
 REQUIRED_FINDING = [
     "id", "fingerprint", "title", "severity", "confidence", "status", "category",
@@ -431,6 +436,98 @@ def validate_dependencies(run_dir: Path, errors: List[str]) -> bool:
     return True
 
 
+def chain_ids_from_reports(run_dir: Path, errors: List[str]) -> set[str]:
+    chains_path = run_dir / "reports" / "chains.json"
+    if not chains_path.exists():
+        return set()
+    try:
+        chains_data = json.loads(chains_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"chains.json invalid JSON: {exc}")
+        return set()
+    chains = chains_data.get("chains") if isinstance(chains_data, dict) else None
+    if not isinstance(chains, list):
+        errors.append("chains.chains: chains must be a list")
+        return set()
+    ids = set()
+    for index, chain in enumerate(chains):
+        if not isinstance(chain, dict):
+            errors.append(f"chains.chains[{index}]: chain must be an object")
+            continue
+        chain_id = str(chain.get("id") or "").strip()
+        if chain_id:
+            ids.add(chain_id)
+    return ids
+
+
+def validate_adversarial_validation(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
+    validation_path = run_dir / VALIDATION_PATH
+    if not validation_path.exists():
+        return False
+    try:
+        validation_data = json.loads(validation_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"validation.json invalid JSON: {exc}")
+        return True
+
+    validate_schema(validation_data, load_schema("validation.schema.json"), "validation", errors)
+    validate_generated_at(validation_data.get("generated_at"), "validation.generated_at", errors)
+
+    validations = validation_data.get("validations")
+    if not isinstance(validations, list):
+        errors.append("validation.validations: validations must be a list")
+        return True
+
+    finding_ids = {str(finding.get("id")) for finding in findings if isinstance(finding, dict) and finding.get("id")}
+    chains_path = run_dir / "reports" / "chains.json"
+    chain_ids: set[str] = set()
+    chain_ids_loaded = False
+    seen_ids: set[str] = set()
+    for index, item in enumerate(validations):
+        path = f"validation.validations[{index}]"
+        if not isinstance(item, dict):
+            errors.append(f"{path}: validation must be an object")
+            continue
+
+        validation_id = str(item.get("id") or "").strip()
+        if not re.fullmatch(r"VAL-[0-9]{3,}", validation_id):
+            errors.append(f"{path}.id: validation id must match ^VAL-[0-9]{{3,}}$")
+        elif validation_id in seen_ids:
+            errors.append(f"{path}.id: duplicate validation id {validation_id}")
+        seen_ids.add(validation_id)
+
+        subject_type = item.get("subject_type")
+        subject_id = str(item.get("subject_id") or "").strip()
+        if subject_type not in VALIDATION_SUBJECT_TYPES:
+            errors.append(f"{path}.subject_type: invalid subject type {subject_type}")
+        elif subject_type == "finding" and subject_id not in finding_ids:
+            errors.append(f"{path}.subject_id: finding {subject_id!r} is not present in reports/findings.json")
+        elif subject_type == "chain":
+            if not chains_path.exists():
+                errors.append(f"{path}.subject_id: chain validation requires reports/chains.json")
+            else:
+                if not chain_ids_loaded:
+                    chain_ids = chain_ids_from_reports(run_dir, errors)
+                    chain_ids_loaded = True
+            if chains_path.exists() and subject_id not in chain_ids:
+                errors.append(f"{path}.subject_id: chain {subject_id!r} is not present in reports/chains.json")
+
+        if item.get("decision") not in VALIDATION_DECISIONS:
+            errors.append(f"{path}.decision: invalid decision {item.get('decision')}")
+        if item.get("original_severity") not in VALIDATION_SEVERITIES:
+            errors.append(f"{path}.original_severity: invalid severity {item.get('original_severity')}")
+        if item.get("recommended_severity") not in VALIDATION_SEVERITIES:
+            errors.append(f"{path}.recommended_severity: invalid severity {item.get('recommended_severity')}")
+        if item.get("original_confidence") not in VALIDATION_CONFIDENCES:
+            errors.append(f"{path}.original_confidence: invalid confidence {item.get('original_confidence')}")
+        if item.get("recommended_confidence") not in VALIDATION_CONFIDENCES:
+            errors.append(f"{path}.recommended_confidence: invalid confidence {item.get('recommended_confidence')}")
+        for key in ["evidence_checked", "missing_evidence", "safe_validation_steps"]:
+            validate_string_list(item.get(key), f"{path}.{key}", errors)
+
+    return True
+
+
 def validate_affected_locations(finding: Dict[str, Any], path: str, errors: List[str]) -> None:
     locs = finding.get("affected_locations")
     if not isinstance(locs, list):
@@ -574,6 +671,7 @@ def main() -> int:
     validate_targets(run_dir, errors, taxonomy_profiles, taxonomy_labels, taxonomy_profiles_loaded)
     scanner_index_validated = validate_scanner_index(run_dir, errors)
     dependencies_validated = validate_dependencies(run_dir, errors)
+    adversarial_validation_validated = validate_adversarial_validation(run_dir, findings, errors)
 
     if errors:
         for e in errors:
@@ -589,6 +687,8 @@ def main() -> int:
         print("Scanner index: validated")
     if dependencies_validated:
         print("Dependencies: validated")
+    if adversarial_validation_validated:
+        print("Adversarial validations: validated")
     return 0
 
 

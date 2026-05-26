@@ -12,7 +12,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 - Most commands operate on a run directory such as `runs/OWNER__REPO/RUN_ID`.
 - `--network` enables network access inside the Codex sandbox for commands that call Codex. It is disabled by default and should remain disabled unless an approved workflow requires it.
 - `--model` defaults to `gpt-5.5` and `--effort` defaults to `xhigh` for Codex-driven commands. Command-line `--model` / `--effort` options are the portable override mechanism across Codex-driven commands.
-- Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-variant`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
+- Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-variant`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
 - Python commands use `argparse`; missing required arguments or invalid choices normally exit with status `2`.
 - Generated audit artifacts, cloned target repositories, scanner raw outputs, issue drafts, and local stores should remain local and should not be committed.
 
@@ -24,6 +24,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Batch operation | `gra-batch` | Batch metadata, per-repository logs, `batch-results.json` |
 | Target queue | `gra-targets` | `reports/targets.json`, target queue updates |
 | Research / recon / variant analysis | `gra-recon`, `gra-research`, `gra-variant` | Recon notes, target research, findings updates, variant reports |
+| Adversarial validation | `gra-adversarial-validate` | Bounded validation prompt, subject seed JSON, `reports/validation.json`, `reports/VALIDATION.md` |
 | Scanner triage | `gra-ingest`, `gra-scanner-triage` | Raw scanner copies, redacted normalized leads, scanner index, Scorecard posture artifacts, dependency posture artifacts, triage output |
 | Validation | `gra-validate-report` | Report contract validation result |
 | Reporting / persistence | `gra-dashboard`, `gra-sarif`, `gra-store`, `gra-index` | HTML dashboard, SARIF, SQLite store, run index |
@@ -153,6 +154,27 @@ gra-variant --run runs/OWNER__REPO/RUN_ID --finding SEC-001 --mode exec
 gra-variant --run runs/OWNER__REPO/RUN_ID --source-file notes/root-cause.md --mode goal
 ```
 
+## `gra-adversarial-validate`
+
+| Field | Details |
+|---|---|
+| Purpose | Run an independent validation pass that attempts to disprove, downgrade, confirm, or mark existing findings or chains as `needs-human-review` without creating new findings. |
+| Workflow category | Adversarial validation workflow. |
+| Required inputs | `--run RUN_DIR` and exactly one selector: `--finding SEC-ID`, `--all-critical-high`, or `--chain CHAIN-ID`. Finding selectors require `reports/findings.json`; chain selectors require `reports/chains.json`. |
+| Key options | `--mode exec\|goal`, `--model MODEL`, `--effort EFFORT`, `--network`. `--all-critical-high` selects Critical / High findings whose status is `Confirmed`, `Probable`, or `Potential`. |
+| Generated outputs | Subject seed JSON under `reports/adversarial-validation/`, rendered adversarial validation prompt, Codex event/output files in exec mode, and expected validation outputs `reports/validation.json` and `reports/VALIDATION.md`. |
+| Exit status behavior | `0` for successful goal preparation, successful Codex exec, or no matching `--all-critical-high` subjects; `2` when a requested finding or chain is missing; exec mode returns Codex execution status. |
+| Security / disclosure cautions | This stage must not create new findings, broaden into a full audit, modify the target repository, or run live exploitation. Use it to challenge attacker control, reachability, trust-boundary crossing, mitigations, framework guarantees, middleware ordering, configuration assumptions, test-fixture versus production behavior, and overstated impact before issue publication. |
+| Related docs | [`docs/ADVERSARIAL_VALIDATION.md`](ADVERSARIAL_VALIDATION.md), [`docs/ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md). |
+
+Examples:
+
+```bash
+gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --finding SEC-001
+gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
+gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --chain CHAIN-001 --mode goal
+```
+
 ## `gra-ingest`
 
 | Field | Details |
@@ -200,7 +222,7 @@ gra-scanner-triage --run runs/OWNER__REPO/RUN_ID --model gpt-5.5 --effort xhigh
 
 | Field | Details |
 |---|---|
-| Purpose | Validate `findings.json`, optional `targets.json`, optional scanner index artifacts, optional dependency artifacts, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
+| Purpose | Validate `findings.json`, optional `targets.json`, optional adversarial validation output, optional scanner index artifacts, optional dependency artifacts, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
 | Workflow category | Validation workflow. |
 | Required inputs | One of `--run RUN_DIR` or `--findings PATH`. |
 | Key options | `--run RUN_DIR`, `--findings PATH`. |
