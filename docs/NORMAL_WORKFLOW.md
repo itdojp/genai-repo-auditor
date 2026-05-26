@@ -39,11 +39,11 @@
    ↓
 12. 人間が FINDINGS.md / COVERAGE.md / ATTACK_CHAINS.md / PROOFS.md / TRACE.md / VALIDATION.md / issue-drafts を確認
    ↓
-12. gra-issues --dry-run
+13. gra-issues --dry-run
    ↓
-13. gra-issues --apply
+14. gra-issues --apply
    ↓
-14. GitHub Issue 上で修正PR・期限・担当者を管理
+15. GitHub Issue 上で修正PR・期限・担当者を管理
 ```
 
 ## セットアップ
