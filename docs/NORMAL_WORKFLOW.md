@@ -98,6 +98,9 @@ runs/OWNER__REPO/RUN_ID/
   AGENTS.md                 # 監査ランナー側の制御指示
   context.json              # repo / commit / branch / visibility
   findings.schema.json      # findings.json の契約
+  targets.schema.json       # targets.json の契約
+  validation.schema.json    # validation.json の契約
+  chains.schema.json        # chains.json の契約
   repo/                     # clone された対象repo。原則 read-only 扱い
   reports/
     AUDIT_SUMMARY.md

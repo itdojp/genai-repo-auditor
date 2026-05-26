@@ -46,7 +46,7 @@
    ↓
 8. 必要に応じて /goal pause / resume / clear
    ↓
-9. reports/ を検証
+9. reports/ を検証し、chain / validation artifact を確認
    ↓
 10. Issue化または修正計画へ進む
 ```
@@ -108,14 +108,22 @@ runs/OWNER__REPO/RUN_ID/
   AGENTS.md
   context.json
   findings.schema.json
+  targets.schema.json
+  validation.schema.json
+  chains.schema.json
   repo/
   reports/
   prompt.goal.md
   prompts/
-    full-audit.goal.md
-    validate-findings.goal.md
-    deep-dive-finding.goal.md
-    deep-dive-category.goal.md
+    goal/
+      full-audit.goal.md
+      validate-findings.goal.md
+      deep-dive-finding.goal.md
+      deep-dive-category.goal.md
+      research-target.goal.md
+      variant-analysis.goal.md
+      synthesize-chains.goal.md
+      adversarial-validate.goal.md
 ```
 
 `gra-audit --mode goal` は Codex を実行せず、run directory と `/goal` プロンプトを準備するだけです。
@@ -162,6 +170,8 @@ cat runs/OWNER__REPO/RUN_ID/prompt.goal.md
 - Critical / High の安全な検証
 - reports/FINDINGS.md
 - reports/findings.json
+- reports/ATTACK_CHAINS.md
+- reports/VALIDATION.md
 - reports/issue-drafts/*.md
 - reports/AUDIT_LOG.md
 ```
@@ -171,10 +181,11 @@ cat runs/OWNER__REPO/RUN_ID/prompt.goal.md
 通常監査後、たとえば `SEC-003` を検証する場合です。
 
 ```bash
-cp runs/OWNER__REPO/RUN_ID/prompts/deep-dive-finding.goal.md /tmp/deep-dive-sec-003.goal.md
+mkdir -p .codex-local/tmp/goal-prompts
+cp runs/OWNER__REPO/RUN_ID/prompts/goal/deep-dive-finding.goal.md .codex-local/tmp/goal-prompts/deep-dive-sec-003.goal.md
 ```
 
-`/tmp/deep-dive-sec-003.goal.md` のプレースホルダを編集します。
+`.codex-local/tmp/goal-prompts/deep-dive-sec-003.goal.md` のプレースホルダを編集します。
 
 ```text
 TARGET_FINDING_ID: SEC-003
@@ -208,7 +219,8 @@ reports/AUDIT_LOG.md
 例: テナント分離を深掘りする場合。
 
 ```bash
-cp runs/OWNER__REPO/RUN_ID/prompts/deep-dive-category.goal.md /tmp/deep-dive-tenant.goal.md
+mkdir -p .codex-local/tmp/goal-prompts
+cp runs/OWNER__REPO/RUN_ID/prompts/goal/deep-dive-category.goal.md .codex-local/tmp/goal-prompts/deep-dive-tenant.goal.md
 ```
 
 編集:
@@ -262,6 +274,8 @@ Codex TUI に貼ります。
 - repo/ 配下が変更されていないか
 - reports/AUDIT_LOG.md に進捗とコマンドが残っているか
 - Critical / High が十分な証拠なしに断定されていないか
+- reports/ATTACK_CHAINS.md が non-public by default として扱われているか
+- reports/VALIDATION.md の downgrade / invalidate / needs-human-review が反映されているか
 - secret 値が全文出力されていないか
 - public repo で disclosure risk が考慮されているか
 ```
@@ -276,20 +290,24 @@ sed -n '1,200p' runs/OWNER__REPO/RUN_ID/reports/AUDIT_LOG.md
 ## 9. 深掘り後の検証
 
 ```bash
+gra-chains --run runs/OWNER__REPO/RUN_ID
+gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
 
 必要なら、検証専用goalを実行します。
 
 ```bash
-cat runs/OWNER__REPO/RUN_ID/prompts/validate-findings.goal.md
+cat runs/OWNER__REPO/RUN_ID/prompts/goal/validate-findings.goal.md
 ```
 
 この goal は Critical / High の false positive を減らすために使います。
 
 ## 10. Issue化
 
-深掘りで status / confidence / issue_recommended が更新された後に dry-run します。
+深掘りで status / confidence / issue_recommended が更新され、
+`ATTACK_CHAINS.md` と `VALIDATION.md` のレビュー結果が Issue draft に反映された
+後に dry-run します。
 
 ```bash
 gra-issues \

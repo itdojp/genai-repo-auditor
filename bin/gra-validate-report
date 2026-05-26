@@ -467,6 +467,11 @@ def scanner_refs_from_index(run_dir: Path, errors: List[str]) -> set[str]:
     if not index_path.exists():
         return set()
     try:
+        validate_no_symlink_components(run_dir, SCANNER_RESULTS_DIR / "scanner-index.json", field_path="scanner_index")
+    except ReportSafetyError as exc:
+        errors.append(str(exc))
+        return set()
+    try:
         scanner_index = json.loads(index_path.read_text(encoding="utf-8"))
     except Exception as exc:
         errors.append(f"scanner-index.json invalid JSON: {exc}")

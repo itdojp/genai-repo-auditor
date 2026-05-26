@@ -1690,6 +1690,38 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("TGT-404", cp_invalid.stderr)
         self.assertIn("missing-scanner-ref", cp_invalid.stderr)
 
+    def test_validate_report_chain_scanner_refs_do_not_follow_symlinked_index(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        chains = json.loads((FIXTURES / "chain-output" / "reports" / "chains.json").read_text(encoding="utf-8"))
+        chains["chains"][0]["findings"] = []
+        chains["chains"][0]["targets"] = []
+        chains["chains"][0]["scanner_refs"] = ["external-ref"]
+        (run_dir / "reports" / "chains.json").write_text(json.dumps(chains, indent=2) + "\n", encoding="utf-8")
+
+        scanner_dir = run_dir / "reports" / "scanner-results"
+        scanner_dir.mkdir(parents=True, exist_ok=True)
+        outside_index = self.work_dir / "outside-scanner-index.json"
+        outside_index.write_text(
+            json.dumps(
+                {
+                    "run_id": "fixture-run",
+                    "repo": "example/demo",
+                    "generated_at": "2026-05-26T00:00:00Z",
+                    "results": [{"tool": "external-ref", "path": "reports/scanner-results/raw.json", "format": "json", "imported_at": "2026-05-26T00:00:01Z"}],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (scanner_dir / "scanner-index.json").symlink_to(outside_index)
+
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir])
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("scanner artifact path must not contain symlink components", cp.stderr)
+        self.assertIn("external-ref", cp.stderr)
+        self.assertIn("is not present in reports/scanner-results/scanner-index.json", cp.stderr)
+
     def test_validate_report_accepts_valid_fixture_and_rejects_invalid_fixtures(self) -> None:
         valid_run = self.copy_fixture_run("minimal-run")
         cp_valid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", valid_run])

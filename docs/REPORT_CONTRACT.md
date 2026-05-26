@@ -67,10 +67,12 @@ findings[].labels
 
 ## validation and safety constraints
 
-`gra-validate-report` validates `findings.json`, optional `targets.json`, and
-optional scanner index artifacts against the bundled JSON schemas using the
-Python standard library. It also applies local safety rules before downstream
-tools can use report-controlled paths.
+`gra-validate-report` validates `findings.json`, optional `targets.json`,
+optional chain synthesis output, optional adversarial validation output,
+optional scanner index artifacts, and optional dependency/posture artifacts
+against the bundled JSON schemas using the Python standard library. It also
+applies local safety rules before downstream tools can use report-controlled
+paths.
 
 `provenance-posture.json` is a local posture artifact produced by `gra-recon`;
 it is advisory input for target generation and is not treated as a finding

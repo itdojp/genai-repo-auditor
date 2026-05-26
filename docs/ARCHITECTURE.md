@@ -8,7 +8,7 @@
 runs/OWNER__REPO/RUN_ID/
   AGENTS.md              # 監査ランナー側の指示。Codexが最初に読む。
   context.json           # repo, commit, branch, run metadata
-  findings.schema.json   # report contract
+  *.schema.json          # report contracts copied from templates/reports/
   repo/                  # cloneされた対象repository。原則read-only扱い。
   reports/               # Codexが生成する監査結果
   prompt.exec.md         # codex exec用prompt
@@ -92,6 +92,8 @@ prepare
   -> validate
   -> variant-analysis
   -> scanner-triage
+  -> chain-synthesis
+  -> adversarial-validation
   -> reporting
   -> issue creation
 ```

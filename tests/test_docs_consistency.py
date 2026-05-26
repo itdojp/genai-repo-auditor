@@ -10,6 +10,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DOC_FILES = [REPO_ROOT / "README.md", *sorted((REPO_ROOT / "docs").rglob("*.md"))]
 MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]\n]+\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 GRA_COMMAND_RE = re.compile(r"(?<![A-Za-z0-9_/-])(gra-[A-Za-z0-9_-]+)\b")
+PROMPT_PATH_RE = re.compile(r"(?<![A-Za-z0-9_/-])(prompts/(?:exec|goal)/[A-Za-z0-9_.-]+(?:\.prompt|\.goal)\.md)")
+STALE_PROMPT_PATH_RE = re.compile(r"(?<![A-Za-z0-9_/-])(prompts/(?!exec/|goal/)[A-Za-z0-9_.-]+(?:\.prompt|\.goal)\.md)")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 
 
@@ -71,6 +73,29 @@ class DocsConsistencyTests(unittest.TestCase):
             unknown = [ref for ref in refs if ref not in known]
             if unknown:
                 failures.append(f"{path.relative_to(REPO_ROOT)}: unknown gra-* commands: {', '.join(unknown)}")
+        self.assertEqual([], failures)
+
+    def test_documented_prompt_paths_match_rendered_prompt_layout(self) -> None:
+        failures = []
+        for path in DOC_FILES:
+            text = path.read_text(encoding="utf-8")
+            stale_refs = sorted(set(STALE_PROMPT_PATH_RE.findall(text)))
+            if stale_refs:
+                failures.append(
+                    f"{path.relative_to(REPO_ROOT)}: prompt refs must include prompts/exec or prompts/goal: {', '.join(stale_refs)}"
+                )
+            for ref in sorted(set(PROMPT_PATH_RE.findall(text))):
+                if not (REPO_ROOT / ref).exists():
+                    failures.append(f"{path.relative_to(REPO_ROOT)}: missing documented prompt template: {ref}")
+
+        library_text = (REPO_ROOT / "docs" / "GOAL_PROMPT_LIBRARY.md").read_text(encoding="utf-8")
+        missing_goal_prompts = [
+            f"prompts/goal/{path.name}"
+            for path in sorted((REPO_ROOT / "prompts" / "goal").glob("*.goal.md"))
+            if f"prompts/goal/{path.name}" not in library_text
+        ]
+        if missing_goal_prompts:
+            failures.append(f"docs/GOAL_PROMPT_LIBRARY.md: missing goal prompt docs: {', '.join(missing_goal_prompts)}")
         self.assertEqual([], failures)
 
     def test_readme_links_to_key_documentation(self) -> None:
