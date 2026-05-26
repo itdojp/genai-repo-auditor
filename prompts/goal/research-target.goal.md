@@ -60,6 +60,10 @@ Required outputs:
 - Updated {{REPORTS_DIR}}/AUDIT_LOG.md
 - Coverage notes that state the inspected files, any files skipped, and whether
   the target reached its expected output of finding-or-no-finding-with-coverage
+- Structured assessment fields for any new finding: `bug_existence`,
+  `attacker_reachability`, `boundary_crossing`, `impact_assessment`, and
+  `assessment_notes`. Separate code-defect evidence from reachability,
+  boundary-crossing, and impact evidence.
 
 Stop condition:
 - target research report exists

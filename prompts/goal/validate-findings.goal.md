@@ -36,15 +36,23 @@ For each Critical or High finding:
 - Verify the entry point.
 - Verify the trust boundary.
 - Verify the source-to-sink or call path.
+- Separately assess bug existence, attacker reachability, boundary crossing,
+  and impact. A code bug can exist even when reachability or impact remains
+  unproven.
 - Check whether validators, middleware, access policies, framework protections, or configuration mitigate the issue.
 - Use safe local static evidence or benign tests only when useful and local.
 - Mark the finding as Confirmed, Probable, Potential, Invalid, or Needs human review.
+- Set `bug_existence`, `attacker_reachability`, `boundary_crossing`, and
+  `impact_assessment` to Confirmed, Probable, Potential, Invalid, or Not
+  assessed, with concise `assessment_notes`.
 - Downgrade severity/confidence if evidence is weak.
 - If invalid, move it to an Invalid or Rejected section with rationale.
 - Update issue drafts so they do not publish unvalidated claims.
 
 Stop condition:
 - All Critical and High findings have updated validation status.
+- All Critical and High findings have structured assessment fields or explicit
+  Not assessed values with notes.
 - findings.json remains strict JSON.
 - FINDINGS.md and findings.json are consistent.
 - Invalid findings are separated with rationale.

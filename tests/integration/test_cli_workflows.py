@@ -1262,6 +1262,7 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("Target ID: TGT-001", prompt_text)
         self.assertIn("Target file: reports/target-research/TGT-001.target.json", prompt_text)
         self.assertIn("Respect `max_files` when present", prompt_text)
+        self.assertIn("bug existence, attacker reachability, boundary crossing, and impact assessment", prompt_text)
         self.assertNotIn("{{", prompt_text)
 
         self.assertEqual(self.target_by_id(run_dir, "TGT-001")["status"], "reviewed")
@@ -1331,6 +1332,7 @@ class CliWorkflowTests(unittest.TestCase):
         prompt_text = prompt.read_text(encoding="utf-8")
         self.assertTrue(prompt_text.startswith("/goal "))
         self.assertIn("Respect `max_files` when present", prompt_text)
+        self.assertIn("Structured assessment fields", prompt_text)
         self.assertEqual(self.target_by_id(run_dir, "TGT-001")["status"], "queued")
         self.assertEqual(self.read_codex_calls(codex_log), [])
         self.assertFalse((run_dir / "codex-research-TGT-001-final.md").exists())
@@ -1360,6 +1362,7 @@ class CliWorkflowTests(unittest.TestCase):
         prompt_text = prompt.read_text(encoding="utf-8")
         self.assertIn("Variant source: reports/variant-analysis/SEC-001.source.json", prompt_text)
         self.assertIn("Seed finding or source ID: SEC-001", prompt_text)
+        self.assertIn("bug existence, attacker", prompt_text)
         self.assertNotIn("{{", prompt_text)
 
         final_path = run_dir / "codex-variant-SEC-001-final.md"
@@ -1465,6 +1468,72 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("max_files must be between 1 and 20", cp_invalid.stderr)
         self.assertIn("expected_output", cp_invalid.stderr)
         self.assertIn("chain_relevance", cp_invalid.stderr)
+
+    def test_validate_report_finding_assessment_fields(self) -> None:
+        valid_run = self.copy_fixture_run("minimal-run")
+        findings_path = valid_run / "reports" / "findings.json"
+        findings_data = json.loads(findings_path.read_text(encoding="utf-8"))
+        finding = findings_data["findings"][0]
+        finding.update(
+            {
+                "bug_existence": "Confirmed",
+                "attacker_reachability": "Probable",
+                "boundary_crossing": "Potential",
+                "impact_assessment": "Not assessed",
+                "chain_membership": ["CHAIN-001"],
+                "assessment_notes": {
+                    "bug_existence": "The unsafe subprocess call exists in the fixture.",
+                    "attacker_reachability": "Fixture route suggests user-controlled command input.",
+                    "boundary_crossing": "Potential process execution boundary crossing.",
+                    "impact_assessment": "Impact was not executed in the fixture.",
+                },
+            }
+        )
+        findings_path.write_text(json.dumps(findings_data, indent=2) + "\n", encoding="utf-8")
+
+        cp_valid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", valid_run])
+        self.assertEqual(cp_valid.returncode, 0, cp_valid.stderr)
+
+        cp_dashboard = self.run_cmd([REPO_ROOT / "bin" / "gra-dashboard", "--run", valid_run], check=True)
+        self.assertIn("dashboard.html", cp_dashboard.stdout)
+        dashboard = (valid_run / "reports" / "dashboard.html").read_text(encoding="utf-8")
+        self.assertIn("Finding assessment dimensions", dashboard)
+        self.assertIn("Attacker reachability", dashboard)
+        self.assertIn("Probable", dashboard)
+
+        cp_sarif = self.run_cmd([REPO_ROOT / "bin" / "gra-sarif", "--run", valid_run], check=True)
+        self.assertIn("findings.sarif", cp_sarif.stdout)
+        sarif = json.loads((valid_run / "reports" / "findings.sarif").read_text(encoding="utf-8"))
+        result_props = sarif["runs"][0]["results"][0]["properties"]
+        self.assertEqual("Confirmed", result_props["bug_existence"])
+        self.assertEqual(["CHAIN-001"], result_props["chain_membership"])
+        self.assertEqual("Impact was not executed in the fixture.", result_props["assessment_notes"]["impact_assessment"])
+
+        invalid_run = self.copy_fixture_run("minimal-run")
+        invalid_findings_path = invalid_run / "reports" / "findings.json"
+        invalid_data = json.loads(invalid_findings_path.read_text(encoding="utf-8"))
+        invalid_finding = invalid_data["findings"][0]
+        invalid_finding.update(
+            {
+                "bug_existence": "Yes",
+                "attacker_reachability": "Reachable",
+                "boundary_crossing": "Maybe",
+                "impact_assessment": "Severe",
+                "chain_membership": ["CHAIN-1", 123],
+                "assessment_notes": {
+                    "bug_existence": 123,
+                },
+            }
+        )
+        invalid_findings_path.write_text(json.dumps(invalid_data, indent=2) + "\n", encoding="utf-8")
+
+        cp_invalid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", invalid_run])
+        self.assertNotEqual(cp_invalid.returncode, 0)
+        self.assertIn("findings.findings[0].bug_existence", cp_invalid.stderr)
+        self.assertIn("invalid assessment value", cp_invalid.stderr)
+        self.assertIn("chain_membership[0]", cp_invalid.stderr)
+        self.assertIn("chain_membership[1]", cp_invalid.stderr)
+        self.assertIn("assessment_notes.bug_existence", cp_invalid.stderr)
 
     def test_validate_report_rejects_safety_invalid_fields(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

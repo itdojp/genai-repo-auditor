@@ -14,6 +14,14 @@ status: Confirmed / Probable
 issue_recommended: true
 ```
 
+Before publication, also review the optional structured assessment fields in
+`findings.json`: `bug_existence`, `attacker_reachability`,
+`boundary_crossing`, `impact_assessment`, and `assessment_notes`. A finding may
+have a real code defect while reachability, boundary crossing, or impact is
+only Potential or Not assessed. In those cases, the Issue draft should avoid
+claiming confirmed exploitability and should explain the remaining validation
+gap.
+
 ## dry-run
 
 ```bash

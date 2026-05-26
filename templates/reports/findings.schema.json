@@ -192,6 +192,66 @@
               "Needs human review"
             ]
           },
+          "bug_existence": {
+            "enum": [
+              "Confirmed",
+              "Probable",
+              "Potential",
+              "Invalid",
+              "Not assessed"
+            ]
+          },
+          "attacker_reachability": {
+            "enum": [
+              "Confirmed",
+              "Probable",
+              "Potential",
+              "Invalid",
+              "Not assessed"
+            ]
+          },
+          "boundary_crossing": {
+            "enum": [
+              "Confirmed",
+              "Probable",
+              "Potential",
+              "Invalid",
+              "Not assessed"
+            ]
+          },
+          "impact_assessment": {
+            "enum": [
+              "Confirmed",
+              "Probable",
+              "Potential",
+              "Invalid",
+              "Not assessed"
+            ]
+          },
+          "chain_membership": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^CHAIN-[0-9]{3,}$"
+            }
+          },
+          "assessment_notes": {
+            "type": "object",
+            "properties": {
+              "bug_existence": {
+                "type": "string"
+              },
+              "attacker_reachability": {
+                "type": "string"
+              },
+              "boundary_crossing": {
+                "type": "string"
+              },
+              "impact_assessment": {
+                "type": "string"
+              }
+            }
+          },
           "scanner_refs": {
             "type": "array",
             "items": {

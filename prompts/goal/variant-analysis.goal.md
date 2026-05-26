@@ -39,6 +39,9 @@ Work method:
 - Extract the root-cause pattern from the seed.
 - Search for equivalent trust-boundary, authorization, validation, sink, parser, workflow, or business-logic failures.
 - Reject candidates that are not reachable or are mitigated.
+- For any variant finding, separately assess bug existence, attacker
+  reachability, boundary crossing, and impact; variants with uncertain
+  reachability should remain Potential or Needs human review.
 - Use safe static call-path validation or benign local tests only.
 - Keep {{REPORTS_DIR}}/AUDIT_LOG.md updated.
 
@@ -50,4 +53,6 @@ Required outputs:
 Stop condition:
 - variant-analysis report exists
 - variants are deduplicated and schema-compatible
+- variants include structured assessment fields or explicit Not assessed values
+  with notes
 - no files under {{TARGET_REPO_DIR}}/ were modified

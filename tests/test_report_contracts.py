@@ -128,6 +128,13 @@ class ReportContractTests(unittest.TestCase):
         finding_properties = findings_schema["properties"]["findings"]["items"]["properties"]
         self.assertIn("taxonomies", finding_properties)
         self.assertEqual({"name", "id", "label"}, set(finding_properties["taxonomies"]["items"]["required"]))
+        for field in ["bug_existence", "attacker_reachability", "boundary_crossing", "impact_assessment"]:
+            self.assertEqual(
+                ["Confirmed", "Probable", "Potential", "Invalid", "Not assessed"],
+                finding_properties[field]["enum"],
+            )
+        self.assertEqual("^CHAIN-[0-9]{3,}$", finding_properties["chain_membership"]["items"]["pattern"])
+        self.assertEqual("object", finding_properties["assessment_notes"]["type"])
         target_required = target_schema["properties"]["targets"]["items"]["required"]
         self.assertTrue(set(VALIDATOR.REQUIRED_TARGET).issubset(target_required))
         target_properties = target_schema["properties"]["targets"]["items"]["properties"]

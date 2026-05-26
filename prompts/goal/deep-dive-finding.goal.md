@@ -39,11 +39,15 @@ Deep-dive method:
 4. Identify all validators, authn/authz checks, tenant filters, framework protections, and sanitizers on the path.
 5. Check relevant tests and configuration.
 6. Decide whether the issue is exploitable, mitigated, configuration-dependent, unreachable, or insufficiently evidenced.
-7. Update severity, confidence, status, validation_status, and issue recommendation.
+7. Update severity, confidence, status, validation_status, issue recommendation,
+   and the structured assessment fields: bug existence, attacker reachability,
+   boundary crossing, impact assessment, and assessment notes.
 8. Record commands and reasoning in reports/AUDIT_LOG.md and reports/deep-dives/SEC-XXX.md.
 
 Stop condition:
 - TARGET_FINDING_ID has a final validation decision or clearly states the missing evidence.
+- TARGET_FINDING_ID distinguishes code-defect evidence from reachability,
+  boundary-crossing, and impact evidence.
 - reports/findings.json remains strict JSON.
 - issue draft is aligned with the final decision.
 - No files under repo/ have been modified.

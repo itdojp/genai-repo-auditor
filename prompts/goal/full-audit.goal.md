@@ -85,6 +85,17 @@ Required output files:
 Finding requirements:
 Each finding must include ID, fingerprint, title, severity, confidence, status, lifecycle, category, target_id where applicable, affected files/lines, entry point, trust boundary, source-to-sink/call path, root cause, evidence, impact, validation status, minimal remediation, regression test idea, issue recommendation, public disclosure risk, and scanner or variant references when applicable. Add controlled `taxonomies` entries from templates/taxonomies/ when relevant; do not invent ad hoc taxonomy IDs.
 
+For each new finding, separately populate:
+- `bug_existence`: whether the code defect exists.
+- `attacker_reachability`: whether attacker-controlled input can reach it.
+- `boundary_crossing`: whether a security boundary is crossed.
+- `impact_assessment`: whether impact is confirmed or only plausible.
+- `assessment_notes`: concise evidence for each dimension.
+
+Use only `Confirmed`, `Probable`, `Potential`, `Invalid`, or `Not assessed` for
+the four assessment dimensions. A finding can have a real bug but uncertain
+reachability or impact; do not conflate those dimensions.
+
 Stop condition:
 - All required output files exist.
 - findings.json is strict JSON and follows findings.schema.json.
