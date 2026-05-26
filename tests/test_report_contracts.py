@@ -124,6 +124,7 @@ class ReportContractTests(unittest.TestCase):
         validation_schema = self.load_json(SCHEMAS / "validation.schema.json")
         chains_schema = self.load_json(SCHEMAS / "chains.schema.json")
         proofs_schema = self.load_json(SCHEMAS / "proofs.schema.json")
+        traces_schema = self.load_json(SCHEMAS / "traces.schema.json")
 
         self.assertTrue(set(VALIDATOR.REQUIRED_TOP).issubset(findings_schema["required"]))
         finding_required = findings_schema["properties"]["findings"]["items"]["required"]
@@ -290,6 +291,30 @@ class ReportContractTests(unittest.TestCase):
         )
         self.assertEqual(["confirmed", "failed", "not-run", "needs-human-review"], proof_properties["status"]["enum"])
         self.assertEqual("boolean", proof_properties["safe_by_design"]["type"])
+
+        self.assertEqual({"run_id", "repo", "generated_at", "traces"}, set(traces_schema["required"]))
+        trace_item = traces_schema["properties"]["traces"]["items"]
+        self.assertEqual(
+            {
+                "id",
+                "finding_id",
+                "producer_repo",
+                "consumer_repo",
+                "entry_points",
+                "sink",
+                "attacker_control",
+                "reachable",
+                "evidence",
+                "limitations",
+                "status",
+            },
+            set(trace_item["required"]),
+        )
+        trace_properties = trace_item["properties"]
+        self.assertEqual("^TRACE-[0-9]{3,}$", trace_properties["id"]["pattern"])
+        self.assertEqual(["Confirmed", "Probable", "Potential", "Invalid", "Not assessed"], trace_properties["attacker_control"]["enum"])
+        self.assertEqual(["Confirmed", "Probable", "Potential", "Invalid", "Not assessed"], trace_properties["reachable"]["enum"])
+        self.assertEqual(["Confirmed", "Probable", "Potential", "Invalid", "Needs human review"], trace_properties["status"]["enum"])
 
     def test_valid_minimal_fixture_passes_validator(self) -> None:
         run_dir = self.copy_run()

@@ -20,6 +20,7 @@
 
 Defensive chain synthesis の詳細は英語版 [`docs/ATTACK_CHAINS.md`](../ATTACK_CHAINS.md) を canonical source として参照してください。
 Safe local proof artifact の詳細は英語版 [`docs/SAFE_LOCAL_PROOFS.md`](../SAFE_LOCAL_PROOFS.md) を canonical source として参照してください。
+Cross-repo trace reachability の詳細は英語版 [`docs/TRACE_REACHABILITY.md`](../TRACE_REACHABILITY.md) を canonical source として参照してください。
 
 ## 英語版ドキュメント
 

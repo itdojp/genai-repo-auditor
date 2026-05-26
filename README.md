@@ -104,6 +104,8 @@ gra-validate-report --run runs/OWNER__REPO/RUN_ID
 gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
 gra-chains --run runs/OWNER__REPO/RUN_ID
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
+# Optional for shared-library / producer findings:
+# gra-trace --producer-run runs/OWNER__REPO/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode exec
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 gra-dashboard --run runs/OWNER__REPO/RUN_ID
@@ -116,6 +118,8 @@ Create GitHub Issues only after human review:
 ```bash
 gra-chains --run runs/OWNER__REPO/RUN_ID
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
+# Optional for shared-library / producer findings:
+# gra-trace --producer-run runs/OWNER__REPO/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode exec
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 gra-issues --run runs/OWNER__REPO/RUN_ID --dry-run
@@ -165,14 +169,20 @@ Variant analysis:
 gra-variant --run runs/OWNER__REPO/RUN_ID --finding SEC-001 --model gpt-5.5 --effort xhigh
 ```
 
-Defensive chain synthesis and adversarial validation before Issue publication:
+Defensive chain synthesis, optional cross-repo trace reachability, and adversarial validation before Issue publication:
 
 ```bash
 gra-chains --run runs/OWNER__REPO/RUN_ID --model gpt-5.5 --effort xhigh
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high --model gpt-5.5 --effort xhigh
+# Optional for shared-library / producer findings:
+# gra-trace --producer-run runs/OWNER__REPO/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode exec --model gpt-5.5 --effort xhigh
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high --model gpt-5.5 --effort xhigh
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
+
+`gra-trace` is experimental/P3. It records cross-repo reachability evidence for
+shared-library or producer findings; it is not exploit proof and must remain
+local/private until reviewed.
 
 ## Scanner integration
 
@@ -235,9 +245,10 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-adversarial-validate` | Independently challenge existing findings or chains before publication |
 | `gra-chains` | Synthesize defensive attack-chain reports from existing audit evidence |
 | `gra-proofs` | Generate safe local proof artifacts for existing findings |
+| `gra-trace` | Trace experimental/P3 cross-repo reachability for shared-library findings |
 | `gra-ingest` | Ingest scanner outputs |
 | `gra-scanner-triage` | Triage scanner leads in repository context |
-| `gra-validate-report` | Validate `findings.json`, `targets.json`, chain output, proof output, validation output, and report contract |
+| `gra-validate-report` | Validate `findings.json`, `targets.json`, chain, proof, trace, validation output, and report contract |
 | `gra-dashboard` | Generate local HTML dashboard |
 | `gra-sarif` | Generate SARIF output |
 | `gra-store` | Import run data into SQLite |
@@ -278,6 +289,7 @@ Do not use this project for:
 - [`docs/ADVERSARIAL_VALIDATION.md`](docs/ADVERSARIAL_VALIDATION.md)
 - [`docs/ATTACK_CHAINS.md`](docs/ATTACK_CHAINS.md)
 - [`docs/SAFE_LOCAL_PROOFS.md`](docs/SAFE_LOCAL_PROOFS.md)
+- [`docs/TRACE_REACHABILITY.md`](docs/TRACE_REACHABILITY.md)
 - [`docs/SCANNER_INTEGRATION.md`](docs/SCANNER_INTEGRATION.md)
 - [`docs/SCORECARD_INGESTION.md`](docs/SCORECARD_INGESTION.md)
 - [`docs/DEPENDENCY_INGESTION.md`](docs/DEPENDENCY_INGESTION.md)

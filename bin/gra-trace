@@ -1,0 +1,364 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / 'lib'))
+from version import auditor_version
+from gralib import (
+    env_from_context,
+    load_context,
+    normalize_repo_slug,
+    render_template,
+    run_codex_exec,
+    slug,
+    utc_now,
+    write_json,
+)
+
+
+def reports_dir(run_dir: Path) -> Path:
+    ctx = load_context(run_dir)
+    return run_dir / ctx.get('reports_dir', 'reports')
+
+
+def repo_dir(run_dir: Path) -> Path:
+    ctx = load_context(run_dir)
+    value = ctx.get('repo_dir')
+    if value:
+        path = Path(str(value))
+        return path if path.is_absolute() else run_dir / path
+    return run_dir / ctx.get('target_repo_dir', 'repo')
+
+
+def load_json(path: Path, default: Any = None) -> Any:
+    if not path.exists():
+        return default
+    return json.loads(path.read_text(encoding='utf-8'))
+
+
+def load_findings_from_run(run_dir: Path) -> list[dict[str, Any]]:
+    data = load_json(reports_dir(run_dir) / 'findings.json', {}) or {}
+    findings = data.get('findings') if isinstance(data, dict) else None
+    return [finding for finding in findings or [] if isinstance(finding, dict)]
+
+
+def find_producer_finding(run_dir: Path, finding_id: str) -> dict[str, Any]:
+    findings_path = reports_dir(run_dir) / 'findings.json'
+    if not findings_path.exists():
+        raise FileNotFoundError(f'findings.json not found: {findings_path}')
+    for finding in load_findings_from_run(run_dir):
+        if str(finding.get('id')) == finding_id:
+            return finding
+    raise KeyError(f'finding not found: {finding_id}')
+
+
+def rel_to(path: Path, base: Path) -> str:
+    try:
+        return path.relative_to(base).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def git_output(args: list[str], cwd: Path, default: str = '') -> str:
+    try:
+        return subprocess.check_output(['git', *args], cwd=cwd, text=True, stderr=subprocess.DEVNULL).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return default
+
+
+def clone_consumer_repo(*, producer_run: Path, consumer_repo: str, branch: str, depth: str) -> Path:
+    consumer_slug = normalize_repo_slug(consumer_repo)
+    consumer_run = producer_run / 'trace-consumers' / consumer_slug
+    consumer_repo_dir = consumer_run / 'repo'
+    consumer_reports = consumer_run / 'reports'
+    consumer_reports.mkdir(parents=True, exist_ok=True)
+
+    if not consumer_repo_dir.exists():
+        clone_args = ['gh', 'repo', 'clone', consumer_repo, str(consumer_repo_dir), '--']
+        if branch:
+            clone_args.extend(['--branch', branch])
+        clone_args.extend(['--depth', depth])
+        subprocess.run(clone_args, check=True)
+    elif not (consumer_repo_dir / '.git').exists():
+        raise RuntimeError(f'consumer repo directory exists but is not a git checkout: {consumer_repo_dir}')
+
+    commit = git_output(['rev-parse', 'HEAD'], consumer_repo_dir)
+    actual_branch = branch or git_output(['branch', '--show-current'], consumer_repo_dir)
+    ctx = {
+        'run_id': f'trace-consumer-{consumer_slug}',
+        'repo': consumer_repo,
+        'repo_slug': consumer_slug,
+        'branch': actual_branch,
+        'commit': commit,
+        'visibility': 'UNKNOWN',
+        'run_dir': str(consumer_run),
+        'repo_dir': str(consumer_repo_dir),
+        'target_repo_dir': 'repo',
+        'reports_dir': 'reports',
+        'network_allowed': False,
+        'prepared_for_trace': True,
+    }
+    write_json(consumer_run / 'context.json', ctx)
+    return consumer_run
+
+
+def subject_path_for(producer_run: Path, finding_id: str, consumer_repo: str) -> Path:
+    selection_slug = slug(f'{finding_id}-{consumer_repo}')
+    return reports_dir(producer_run) / 'traces' / f'{selection_slug}.subjects.json'
+
+
+def build_subject_payload(
+    *,
+    producer_run: Path,
+    producer_ctx: dict[str, Any],
+    finding_id: str,
+    finding: dict[str, Any],
+    consumer_run: Path,
+    consumer_ctx: dict[str, Any],
+) -> dict[str, Any]:
+    consumer_reports = reports_dir(consumer_run)
+    consumer_findings_path = consumer_reports / 'findings.json'
+    consumer_targets_path = consumer_reports / 'targets.json'
+    return {
+        'schema_version': '1',
+        'generated_at': utc_now(),
+        'finding_id': finding_id,
+        'producer': {
+            'run_dir': str(producer_run),
+            'repo': producer_ctx.get('repo', ''),
+            'branch': producer_ctx.get('branch', ''),
+            'commit': producer_ctx.get('commit', ''),
+            'repo_dir': rel_to(repo_dir(producer_run), producer_run),
+            'reports_dir': rel_to(reports_dir(producer_run), producer_run),
+            'finding': finding,
+        },
+        'consumer': {
+            'run_dir': str(consumer_run),
+            'repo': consumer_ctx.get('repo', ''),
+            'branch': consumer_ctx.get('branch', ''),
+            'commit': consumer_ctx.get('commit', ''),
+            'repo_dir': str(repo_dir(consumer_run)),
+            'reports_dir': str(consumer_reports),
+            'findings_report': str(consumer_findings_path) if consumer_findings_path.exists() else '',
+            'targets_report': str(consumer_targets_path) if consumer_targets_path.exists() else '',
+        },
+        'trace_contract': {
+            'output_json': rel_to(reports_dir(producer_run) / 'traces.json', producer_run),
+            'output_markdown': rel_to(reports_dir(producer_run) / 'TRACE.md', producer_run),
+            'required_trace_fields': [
+                'id',
+                'finding_id',
+                'producer_repo',
+                'consumer_repo',
+                'entry_points',
+                'sink',
+                'attacker_control',
+                'reachable',
+                'evidence',
+                'limitations',
+                'status',
+            ],
+        },
+    }
+
+
+def write_subject_file(producer_run: Path, finding_id: str, consumer_run: Path) -> tuple[Path, dict[str, Any], dict[str, Any]]:
+    producer_ctx = load_context(producer_run)
+    consumer_ctx = load_context(consumer_run)
+    finding = find_producer_finding(producer_run, finding_id)
+    consumer_repo = str(consumer_ctx.get('repo') or consumer_run.name)
+    subject_path = subject_path_for(producer_run, finding_id, consumer_repo)
+    payload = build_subject_payload(
+        producer_run=producer_run,
+        producer_ctx=producer_ctx,
+        finding_id=finding_id,
+        finding=finding,
+        consumer_run=consumer_run,
+        consumer_ctx=consumer_ctx,
+    )
+    write_json(subject_path, payload)
+    return subject_path, producer_ctx, consumer_ctx
+
+
+def trace_env(producer_run: Path, finding_id: str, subject_path: Path, consumer_run: Path, consumer_ctx: dict[str, Any]) -> dict[str, str]:
+    output_json = reports_dir(producer_run) / 'traces.json'
+    output_md = reports_dir(producer_run) / 'TRACE.md'
+    return env_from_context(
+        producer_run,
+        {
+            'TRACE_FINDING_ID': finding_id,
+            'TRACE_SUBJECTS_FILE': rel_to(subject_path, producer_run),
+            'TRACE_OUTPUT_JSON': rel_to(output_json, producer_run),
+            'TRACE_OUTPUT_MD': rel_to(output_md, producer_run),
+            'TRACE_PRODUCER_RUN_DIR': str(producer_run),
+            'TRACE_CONSUMER_RUN_DIR': str(consumer_run),
+            'TRACE_CONSUMER_REPO': str(consumer_ctx.get('repo') or ''),
+            'TRACE_CONSUMER_REPO_DIR': str(repo_dir(consumer_run)),
+        },
+    )
+
+
+def render_trace_markdown(run_dir: Path, traces_data: dict[str, Any]) -> None:
+    reports = reports_dir(run_dir)
+    lines = [
+        '# Cross-Repo Trace Reachability',
+        '',
+        'Experimental/P3 local evidence. Trace results are reachability evidence, not exploit proof.',
+        'Do not treat this artifact as authorization for live probing, payload execution, or public disclosure.',
+        '',
+        f"Producer run ID: `{traces_data.get('run_id', '')}`",
+        f"Producer repository: `{traces_data.get('repo', '')}`",
+        f"Generated at: `{traces_data.get('generated_at', '')}`",
+        '',
+        '| ID | Finding | Producer | Consumer | Attacker control | Reachable | Status |',
+        '|---|---|---|---|---|---|---|',
+    ]
+    traces = traces_data.get('traces') if isinstance(traces_data.get('traces'), list) else []
+    if not traces:
+        lines.append('| | | | | | | |')
+    for trace in traces:
+        if not isinstance(trace, dict):
+            continue
+        lines.append(
+            '| '
+            f"{trace.get('id', '')} | {trace.get('finding_id', '')} | {trace.get('producer_repo', '')} | "
+            f"{trace.get('consumer_repo', '')} | {trace.get('attacker_control', '')} | "
+            f"{trace.get('reachable', '')} | {trace.get('status', '')} |"
+        )
+        evidence = str(trace.get('evidence') or '').strip()
+        if evidence:
+            lines.extend(['', f"Evidence for {trace.get('id', '')}: {evidence}"])
+        limitations = trace.get('limitations') if isinstance(trace.get('limitations'), list) else []
+        if limitations:
+            lines.extend(['', f"Limitations for {trace.get('id', '')}:"])
+            lines.extend(f'- {item}' for item in limitations)
+    lines.append('')
+    (reports / 'TRACE.md').write_text('\n'.join(lines), encoding='utf-8')
+
+
+def ensure_trace_artifacts(run_dir: Path, ctx: dict[str, Any]) -> None:
+    traces_path = reports_dir(run_dir) / 'traces.json'
+    if not traces_path.exists():
+        return
+    data = load_json(traces_path, {}) or {}
+    if not isinstance(data, dict):
+        return
+    data.setdefault('run_id', ctx.get('run_id', run_dir.name))
+    data.setdefault('repo', ctx.get('repo', ''))
+    data.setdefault('branch', ctx.get('branch', ''))
+    data.setdefault('commit', ctx.get('commit', ''))
+    data.setdefault('generated_at', utc_now())
+    data.setdefault('traces', [])
+    write_json(traces_path, data)
+    render_trace_markdown(run_dir, data)
+
+
+def mode_error(message: str) -> int:
+    print(message, file=sys.stderr)
+    return 2
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description='Trace cross-repo reachability from a producer finding to a consumer repository')
+    parser.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
+    parser.add_argument('--producer-run', required=True, help='Producer run directory containing reports/findings.json')
+    parser.add_argument('--finding', required=True, help='Producer finding ID to trace, e.g. SEC-001')
+    consumer = parser.add_mutually_exclusive_group(required=True)
+    consumer.add_argument('--consumer-repo', help='Consumer repository to clone during --mode prepare, e.g. ORG/consumer-api')
+    consumer.add_argument('--consumer-run', help='Existing consumer run directory for --mode exec or --mode goal')
+    parser.add_argument('--mode', choices=['prepare', 'exec', 'goal'], default='exec')
+    parser.add_argument('--branch', default='', help='Consumer branch/ref for prepare mode')
+    parser.add_argument('--depth', default='1', help='Consumer clone depth for prepare mode')
+    parser.add_argument('--model', default='gpt-5.5')
+    parser.add_argument('--effort', default='xhigh')
+    args = parser.parse_args()
+
+    producer_run = Path(args.producer_run).resolve()
+    if not (producer_run / 'context.json').exists():
+        return mode_error(f'producer context.json not found under {producer_run}')
+
+    try:
+        if args.mode == 'prepare':
+            if not args.consumer_repo:
+                return mode_error('--mode prepare requires --consumer-repo')
+            # Validate producer finding before cloning so typos do not trigger network access.
+            find_producer_finding(producer_run, args.finding)
+            consumer_run = clone_consumer_repo(
+                producer_run=producer_run,
+                consumer_repo=args.consumer_repo,
+                branch=args.branch,
+                depth=args.depth,
+            )
+            subject_path, _producer_ctx, consumer_ctx = write_subject_file(producer_run, args.finding, consumer_run)
+            env = trace_env(producer_run, args.finding, subject_path, consumer_run, consumer_ctx)
+            prompt = producer_run / 'prompts' / 'goal' / f"trace-reachability-{slug(f'{args.finding}-{args.consumer_repo}')}.goal.md"
+            render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'goal' / 'trace-reachability.goal.md', prompt, env)
+            print('Prepared cross-repo trace reachability workspace.')
+            print(f'Producer run: {producer_run}')
+            print(f'Consumer run: {consumer_run}')
+            print(f'Consumer repository: {args.consumer_repo}')
+            print(f'Trace subjects file: {subject_path}')
+            print(f'Goal prompt: {prompt}')
+            print('\nNext exec command:')
+            print(f'  gra-trace --producer-run "{producer_run}" --finding "{args.finding}" --consumer-run "{consumer_run}" --mode exec')
+            return 0
+
+        if not args.consumer_run:
+            return mode_error(f'--mode {args.mode} requires --consumer-run')
+        consumer_run = Path(args.consumer_run).resolve()
+        if not (consumer_run / 'context.json').exists():
+            return mode_error(f'consumer context.json not found under {consumer_run}')
+
+        subject_path, producer_ctx, consumer_ctx = write_subject_file(producer_run, args.finding, consumer_run)
+        env = trace_env(producer_run, args.finding, subject_path, consumer_run, consumer_ctx)
+        selection_slug = slug(f"{args.finding}-{consumer_ctx.get('repo') or consumer_run.name}")
+
+        if args.mode == 'goal':
+            prompt = producer_run / 'prompts' / 'goal' / f'trace-reachability-{selection_slug}.goal.md'
+            render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'goal' / 'trace-reachability.goal.md', prompt, env)
+            print('Prepared supervised /goal trace reachability run.')
+            print(f'Producer run: {producer_run}')
+            print(f'Consumer run: {consumer_run}')
+            print(f'Trace subjects file: {subject_path}')
+            print(f'Goal prompt: {prompt}')
+            print('\nStart Codex:')
+            print(f'  codex --cd "{producer_run}" --skip-git-repo-check --model "{args.model}" --enable goals --sandbox workspace-write --ask-for-approval on-request -c \'model_reasoning_effort="{args.effort}"\' -c \'web_search="disabled"\' -c \'sandbox_workspace_write.network_access=false\'')
+            print('\nThen paste the contents of the goal prompt.')
+            return 0
+
+        prompt = producer_run / 'prompts' / 'exec' / f'trace-reachability-{selection_slug}.prompt.md'
+        render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'trace-reachability.prompt.md', prompt, env)
+        print(
+            f"Running Codex trace reachability for {args.finding}: "
+            f"{producer_ctx.get('repo', '')} -> {consumer_ctx.get('repo', '')}".strip()
+        )
+        status = run_codex_exec(
+            run_dir=producer_run,
+            prompt_file=prompt,
+            model=args.model,
+            effort=args.effort,
+            network=False,
+            output_last=producer_run / f'codex-trace-{selection_slug}-final.md',
+            events_file=producer_run / f'codex-trace-{selection_slug}-events.jsonl',
+            stderr_file=producer_run / f'codex-trace-{selection_slug}-stderr.txt',
+        )
+        ensure_trace_artifacts(producer_run, producer_ctx)
+        print(f'Codex status: {status}')
+        print(f'Trace subjects: {subject_path}')
+        print(f'Trace report: {reports_dir(producer_run) / "TRACE.md"}')
+        print(f'Trace JSON: {reports_dir(producer_run) / "traces.json"}')
+        return status
+    except (FileNotFoundError, KeyError, RuntimeError, subprocess.CalledProcessError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

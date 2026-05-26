@@ -14,7 +14,9 @@ human-review 判定する独立 validation artifact です。`ATTACK_CHAINS.md` 
 `chains.json` は `gra-chains` が既存 finding / target / scanner ref を
 防御的に接続する chain synthesis artifact です。`PROOFS.md` /
 `proofs.json` / `proofs/` は `gra-proofs` が既存 finding に対して生成する
-safe local proof artifact です。
+safe local proof artifact です。`TRACE.md` / `traces.json` は `gra-trace`
+が producer finding と consumer repository の reachability を整理する
+experimental/P3 cross-repo trace artifact です。
 
 ```text
 reports/
@@ -35,6 +37,10 @@ reports/
   proofs.json
   proofs/
     SEC-001-test-plan.md
+  TRACE.md
+  traces.json
+  traces/
+    sec-001-org-consumer.subjects.json
   VALIDATION.md
   validation.json
   AUDIT_LOG.md
@@ -75,7 +81,7 @@ findings[].labels
 
 `gra-validate-report` validates `findings.json`, optional `targets.json`,
 optional chain synthesis output, optional proof artifacts, optional adversarial
-validation output, optional scanner index artifacts, and optional
+validation output, optional cross-repo trace output, optional scanner index artifacts, and optional
 dependency/posture artifacts against the bundled JSON schemas using the Python
 standard library. It also applies local safety rules before downstream tools can
 use report-controlled paths.
@@ -110,6 +116,13 @@ It records benign validation artifacts for existing findings only. It must not
 include exploit scripts, credential extraction, auth-bypass execution against
 live services, network scanning, production/staging probing, dependency
 installation, target repository modification, or weaponized payloads.
+
+`traces.json` is a local/private experimental/P3 cross-repo reachability
+artifact produced by `gra-trace`. It records whether a producer finding appears
+reachable from attacker-controlled consumer entry points. It is reachability
+evidence, not exploit proof, and must not include exploit payloads, production
+or staging probing, external scanning, credential access, dependency
+installation, or producer/consumer repository modification.
 
 Important constraints:
 
@@ -186,6 +199,14 @@ Important constraints:
   `safe_by_design` must be `true`, proof file references must stay under
   `reports/proofs/`, and command records must not contain obvious network,
   dependency-installation, public-disclosure, or live-service operations.
+- If `reports/traces.json` exists, it must match
+  `templates/reports/traces.schema.json`. Each trace ID must match `TRACE-NNN`,
+  `finding_id` must reference an existing producer finding, producer/consumer
+  repo values, sink, and evidence must be non-empty strings, `entry_points` and
+  `limitations` must be string lists, `attacker_control` and `reachable` must
+  use `Confirmed`, `Probable`, `Potential`, `Invalid`, or `Not assessed`, and
+  `status` must be `Confirmed`, `Probable`, `Potential`, `Invalid`, or
+  `Needs human review`.
 
 `issue_body_file`, when present, must point to a regular `.md` file under
 `reports/issue-drafts/`, for example:
@@ -248,3 +269,16 @@ Safe proof は exploit generation ではありません。working exploit script
 exploit code、weaponized payload、credential extraction、live service への
 auth bypass 実行、network scanning、production/staging probing、dependency
 installation、target repository modification を含めてはいけません。
+
+## cross-repo trace reachability output
+
+`reports/traces.json` と `reports/TRACE.md` は、shared library など producer
+repository の既存 finding が consumer repository の attacker-controlled
+entry point から到達可能かを静的 evidence で整理するための artifact です。
+experimental/P3 として扱い、reachability evidence であって exploit proof
+ではありません。
+
+`Confirmed` や `Probable` の trace であっても、public Issue 公開前には
+producer finding、consumer call path、limitations、proof / validation
+artifact を人間が確認してください。`Potential` や `Needs human review` は
+追加調査や maintainer confirmation が必要であることを意味します。

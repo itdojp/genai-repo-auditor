@@ -182,7 +182,10 @@ fi
 if [[ -f "$LAB_ROOT/templates/reports/proofs.schema.json" ]]; then
   cp "$LAB_ROOT/templates/reports/proofs.schema.json" "$RUN_DIR/proofs.schema.json"
 fi
-mkdir -p "$REPORT_DIR/issue-drafts" "$REPORT_DIR/scanner-results" "$REPORT_DIR/target-research" "$REPORT_DIR/variant-analysis" "$REPORT_DIR/proofs"
+if [[ -f "$LAB_ROOT/templates/reports/traces.schema.json" ]]; then
+  cp "$LAB_ROOT/templates/reports/traces.schema.json" "$RUN_DIR/traces.schema.json"
+fi
+mkdir -p "$REPORT_DIR/issue-drafts" "$REPORT_DIR/scanner-results" "$REPORT_DIR/target-research" "$REPORT_DIR/variant-analysis" "$REPORT_DIR/proofs" "$REPORT_DIR/traces"
 
 python3 - <<PYCODE
 import json

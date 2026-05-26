@@ -41,6 +41,7 @@ runs/OWNER__REPO/RUN_ID/
   validation.schema.json
   chains.schema.json
   proofs.schema.json
+  traces.schema.json
   repo/
   reports/
   prompt.exec.md
@@ -73,6 +74,7 @@ prompts/goal/gapfill-target.goal.md         # target coverage gapfill
 prompts/goal/variant-analysis.goal.md       # variant analysis
 prompts/goal/synthesize-chains.goal.md      # defensive chain synthesis
 prompts/goal/safe-proof.goal.md             # safe local proof artifact
+prompts/goal/trace-reachability.goal.md     # cross-repo trace reachability
 prompts/goal/adversarial-validate.goal.md   # finding / chain の反証・降格確認
 ```
 
@@ -107,6 +109,8 @@ ORG/repo-c
 gra-chains --run runs/ORG__repo-a/RUN_ID
 gra-gapfill --run runs/ORG__repo-a/RUN_ID --generate
 gra-proofs --run runs/ORG__repo-a/RUN_ID --all-critical-high
+# Optional for shared-library / producer findings:
+# gra-trace --producer-run runs/ORG__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/ORG__repo-a/RUN_ID --mode exec
 gra-adversarial-validate --run runs/ORG__repo-a/RUN_ID --all-critical-high
 gra-validate-report --run runs/ORG__repo-a/RUN_ID
 gra-issues --run runs/ORG__repo-a/RUN_ID --dry-run
@@ -115,9 +119,40 @@ gra-issues --run runs/ORG__repo-a/RUN_ID --apply --create-labels
 
 既定では `Critical` / `High` かつ `Confirmed` / `Probable` のみ作成します。
 Issue 作成前に non-public by default の `reports/ATTACK_CHAINS.md` と
-local/private by default の `reports/PROOFS.md`、`reports/VALIDATION.md` を
-確認し、chain implications、safe proof limitations、`downgrade`、
+local/private by default の `reports/PROOFS.md`、`reports/TRACE.md`、
+`reports/VALIDATION.md` を確認し、chain implications、safe proof
+limitations、trace reachability limitations、`downgrade`、
 `invalidate`、`needs-human-review` の subject を finding または Issue draft に反映します。
+
+## cross-repo trace reachability
+
+producer repository の finding が consumer repository から到達可能かを確認する
+場合は、`gra-trace` を使います。この機能は experimental/P3 であり、
+`reports/traces.json` と `reports/TRACE.md` は reachability evidence であって
+exploit proof ではありません。
+
+```bash
+gra-trace \
+  --producer-run runs/ORG__shared-lib/RUN_ID \
+  --finding SEC-001 \
+  --consumer-run runs/ORG__consumer-api/RUN_ID \
+  --mode exec
+```
+
+consumer run が未作成の場合だけ、明示的な prepare mode で consumer repo を
+clone して goal prompt を準備できます。
+
+```bash
+gra-trace \
+  --producer-run runs/ORG__shared-lib/RUN_ID \
+  --finding SEC-001 \
+  --consumer-repo ORG/consumer-api \
+  --mode prepare
+```
+
+No external scanning、no production/staging probing、no exploit payloads、
+no credential access、no dependency installation、no producer/consumer repo
+modification を維持してください。
 
 ## target coverage gapfill
 

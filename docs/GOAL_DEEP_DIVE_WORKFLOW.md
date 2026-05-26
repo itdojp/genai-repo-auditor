@@ -126,6 +126,7 @@ runs/OWNER__REPO/RUN_ID/
       variant-analysis.goal.md
       synthesize-chains.goal.md
       safe-proof.goal.md
+      trace-reachability.goal.md
       adversarial-validate.goal.md
 ```
 
@@ -176,6 +177,7 @@ cat runs/OWNER__REPO/RUN_ID/prompt.goal.md
 - reports/COVERAGE.md
 - reports/ATTACK_CHAINS.md
 - reports/PROOFS.md
+- reports/TRACE.md (cross-repo trace を実行した場合)
 - reports/VALIDATION.md
 - reports/issue-drafts/*.md
 - reports/AUDIT_LOG.md
@@ -300,6 +302,8 @@ sed -n '1,200p' runs/OWNER__REPO/RUN_ID/reports/AUDIT_LOG.md
 gra-chains --run runs/OWNER__REPO/RUN_ID
 gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
+# Optional for shared-library / producer findings:
+# gra-trace --producer-run runs/OWNER__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode goal
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```

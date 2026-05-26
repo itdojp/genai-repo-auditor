@@ -118,6 +118,23 @@ target with `codex exec` or prepare a supervised `/goal` deep dive. Optional
 unresolved questions, and whether `gra-gapfill` should requeue a bounded
 follow-up target.
 
+## Cross-repo trace stage
+
+`gra-trace` connects a producer run and a consumer run for experimental/P3
+reachability review. The producer run owns the output artifacts:
+
+```text
+reports/traces/<selection>.subjects.json
+reports/traces.json
+reports/TRACE.md
+```
+
+The trace stage is local-first and prompt-driven. It records entry point, sink,
+attacker control, reachability, evidence, and limitations; it does not create
+new findings and does not prove exploitation. `--mode prepare` may clone a
+named consumer repository under `trace-consumers/` only when explicitly
+requested.
+
 ## Scanner result boundary
 
 Scanner outputs imported with `gra-ingest` are stored under:

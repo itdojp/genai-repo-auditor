@@ -43,6 +43,14 @@ DEFAULT_TEMPLATE_VALUES: Dict[str, str] = {
     'GAPFILL_TARGET_FILE': '',
     'GAPFILL_OUTPUT_MD': '',
     'GAPFILL_COVERAGE_FILE': 'reports/COVERAGE.md',
+    'TRACE_FINDING_ID': '',
+    'TRACE_SUBJECTS_FILE': '',
+    'TRACE_OUTPUT_JSON': 'reports/traces.json',
+    'TRACE_OUTPUT_MD': 'reports/TRACE.md',
+    'TRACE_PRODUCER_RUN_DIR': '',
+    'TRACE_CONSUMER_RUN_DIR': '',
+    'TRACE_CONSUMER_REPO': '',
+    'TRACE_CONSUMER_REPO_DIR': '',
 }
 
 
