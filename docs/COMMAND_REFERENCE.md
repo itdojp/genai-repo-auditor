@@ -12,7 +12,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 - Most commands operate on a run directory such as `runs/OWNER__REPO/RUN_ID`.
 - `--network` enables network access inside the Codex sandbox for commands that call Codex. It is disabled by default and should remain disabled unless an approved workflow requires it.
 - `--model` defaults to `gpt-5.5` and `--effort` defaults to `xhigh` for Codex-driven commands. Command-line `--model` / `--effort` options are the portable override mechanism across Codex-driven commands.
-- Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-variant`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
+- Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-variant`, `gra-chains`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
 - Python commands use `argparse`; missing required arguments or invalid choices normally exit with status `2`.
 - Generated audit artifacts, cloned target repositories, scanner raw outputs, issue drafts, and local stores should remain local and should not be committed.
 
@@ -25,6 +25,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Target queue | `gra-targets` | `reports/targets.json`, target queue updates |
 | Research / recon / variant analysis | `gra-recon`, `gra-research`, `gra-variant` | Recon notes, target research, findings updates, variant reports |
 | Adversarial validation | `gra-adversarial-validate` | Bounded validation prompt, subject seed JSON, `reports/validation.json`, `reports/VALIDATION.md` |
+| Chain synthesis | `gra-chains` | Defensive chain prompt, `reports/chains.json`, `reports/ATTACK_CHAINS.md` |
 | Scanner triage | `gra-ingest`, `gra-scanner-triage` | Raw scanner copies, redacted normalized leads, scanner index, Scorecard posture artifacts, dependency posture artifacts, triage output |
 | Validation | `gra-validate-report` | Report contract validation result |
 | Reporting / persistence | `gra-dashboard`, `gra-sarif`, `gra-store`, `gra-index` | HTML dashboard, SARIF, SQLite store, run index |
@@ -175,6 +176,26 @@ gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --chain CHAIN-001 --mode goal
 ```
 
+## `gra-chains`
+
+| Field | Details |
+|---|---|
+| Purpose | Synthesize defensive attack or reachability chains from existing findings, targets, scanner refs, and validation notes without generating exploit payloads or weaponized steps. |
+| Workflow category | Chain synthesis workflow. |
+| Required inputs | `--run RUN_DIR`. The command uses existing local artifacts such as `reports/findings.json`, optional `reports/targets.json`, optional scanner index, and optional validation output. |
+| Key options | `--mode exec\|goal`, `--model MODEL`, `--effort EFFORT`, `--network`. |
+| Generated outputs | Rendered chain synthesis prompt, Codex event/output files in exec mode, and expected chain artifacts `reports/chains.json` and `reports/ATTACK_CHAINS.md`. |
+| Exit status behavior | `0` for successful goal preparation or successful Codex exec; exec mode returns Codex execution status. |
+| Security / disclosure cautions | Defensive reasoning only. The prompt forbids working exploits, exploit payloads, weaponized steps, live exploitation instructions, production/staging probing, credential access, target repository modifications, and new finding creation. `ATTACK_CHAINS.md` is non-public by default. |
+| Related docs | [`docs/ATTACK_CHAINS.md`](ATTACK_CHAINS.md), [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md). |
+
+Examples:
+
+```bash
+gra-chains --run runs/OWNER__REPO/RUN_ID
+gra-chains --run runs/OWNER__REPO/RUN_ID --mode goal
+```
+
 ## `gra-ingest`
 
 | Field | Details |
@@ -222,7 +243,7 @@ gra-scanner-triage --run runs/OWNER__REPO/RUN_ID --model gpt-5.5 --effort xhigh
 
 | Field | Details |
 |---|---|
-| Purpose | Validate `findings.json`, optional `targets.json`, optional adversarial validation output, optional scanner index artifacts, optional dependency artifacts, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
+| Purpose | Validate `findings.json`, optional `targets.json`, optional chain reports, optional adversarial validation output, optional scanner index artifacts, optional dependency artifacts, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
 | Workflow category | Validation workflow. |
 | Required inputs | One of `--run RUN_DIR` or `--findings PATH`. |
 | Key options | `--run RUN_DIR`, `--findings PATH`. |

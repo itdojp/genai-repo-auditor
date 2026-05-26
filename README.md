@@ -96,9 +96,12 @@ runs/OWNER__REPO/RUN_ID/
   codex-final.md
 ```
 
-Validate and render reports:
+Validate, synthesize defensive chain context, and render reports:
 
 ```bash
+gra-validate-report --run runs/OWNER__REPO/RUN_ID
+gra-chains --run runs/OWNER__REPO/RUN_ID
+gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 gra-dashboard --run runs/OWNER__REPO/RUN_ID
 gra-sarif --run runs/OWNER__REPO/RUN_ID
@@ -108,6 +111,9 @@ gra-store --run runs/OWNER__REPO/RUN_ID
 Create GitHub Issues only after human review:
 
 ```bash
+gra-chains --run runs/OWNER__REPO/RUN_ID
+gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
+gra-validate-report --run runs/OWNER__REPO/RUN_ID
 gra-issues --run runs/OWNER__REPO/RUN_ID --dry-run
 gra-issues --run runs/OWNER__REPO/RUN_ID --apply --create-labels
 ```
@@ -153,6 +159,14 @@ Variant analysis:
 
 ```bash
 gra-variant --run runs/OWNER__REPO/RUN_ID --finding SEC-001 --model gpt-5.5 --effort xhigh
+```
+
+Defensive chain synthesis and adversarial validation before Issue publication:
+
+```bash
+gra-chains --run runs/OWNER__REPO/RUN_ID --model gpt-5.5 --effort xhigh
+gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high --model gpt-5.5 --effort xhigh
+gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
 
 ## Scanner integration
@@ -213,9 +227,10 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-research` | Research one target with exec or supervised goal mode |
 | `gra-variant` | Find variants based on a finding or root cause |
 | `gra-adversarial-validate` | Independently challenge existing findings or chains before publication |
+| `gra-chains` | Synthesize defensive attack-chain reports from existing audit evidence |
 | `gra-ingest` | Ingest scanner outputs |
 | `gra-scanner-triage` | Triage scanner leads in repository context |
-| `gra-validate-report` | Validate `findings.json`, `targets.json`, validation output, and report contract |
+| `gra-validate-report` | Validate `findings.json`, `targets.json`, chain output, validation output, and report contract |
 | `gra-dashboard` | Generate local HTML dashboard |
 | `gra-sarif` | Generate SARIF output |
 | `gra-store` | Import run data into SQLite |
@@ -254,6 +269,7 @@ Do not use this project for:
 - [`docs/TARGET_QUEUE.md`](docs/TARGET_QUEUE.md)
 - [`docs/VARIANT_ANALYSIS.md`](docs/VARIANT_ANALYSIS.md)
 - [`docs/ADVERSARIAL_VALIDATION.md`](docs/ADVERSARIAL_VALIDATION.md)
+- [`docs/ATTACK_CHAINS.md`](docs/ATTACK_CHAINS.md)
 - [`docs/SCANNER_INTEGRATION.md`](docs/SCANNER_INTEGRATION.md)
 - [`docs/SCORECARD_INGESTION.md`](docs/SCORECARD_INGESTION.md)
 - [`docs/DEPENDENCY_INGESTION.md`](docs/DEPENDENCY_INGESTION.md)

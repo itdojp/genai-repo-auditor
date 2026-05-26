@@ -18,6 +18,8 @@
 - [`ADVANCED_POSTURE_WORKFLOWS.ja.md`](ADVANCED_POSTURE_WORKFLOWS.ja.md): AI agent / MCP surface、taxonomy、provenance、Scorecard、SBOM / dependency、release readiness の高度な posture workflow。
 - [`CODEX_WORK_INSTRUCTIONS.ja.md`](CODEX_WORK_INSTRUCTIONS.ja.md): Codex CLI でこの repository を保守するための作業指示。
 
+Defensive chain synthesis の詳細は英語版 [`docs/ATTACK_CHAINS.md`](../ATTACK_CHAINS.md) を canonical source として参照してください。
+
 ## 英語版ドキュメント
 
 英語版は repository root の [`README.md`](../../README.md) と [`docs/`](../) 配下を参照してください。日本語版が未整備の詳細トピックは、英語版を canonical source として扱ってください。

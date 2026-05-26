@@ -6,7 +6,7 @@
 operator-controlled lab files
   AGENTS.md
   context.json
-  findings.schema.json
+  *.schema.json
   prompts/
   ↓
 target repository under repo/
@@ -69,6 +69,19 @@ such as `OPENAI_API_KEY` into prompts or generated audit artifacts.
 
 public repository への GitHub Issue 作成はデフォルト拒否です。脆弱性情報を公開Issueとして出す場合は `--allow-public` を明示し、人間が内容を確認します。
 
+## Chain and validation artifacts
+
+`reports/chains.json`, `reports/ATTACK_CHAINS.md`, `reports/validation.json`,
+and `reports/VALIDATION.md` are local review artifacts. `ATTACK_CHAINS.md` is
+non-public by default because it may connect multiple weaknesses into a
+higher-impact remediation path. Use these artifacts to prioritize fixes,
+revise issue wording, or require additional review; do not publish them
+wholesale to public Issues or advisories.
+
+Defensive chain synthesis is limited to existing findings, targets, scanner
+refs, and validation notes. It must not produce exploit payloads, weaponized
+steps, live probing instructions, or new findings.
+
 ## Deliberately excluded capabilities
 
 The lab intentionally excludes or blocks the following by default:
@@ -81,7 +94,9 @@ The lab intentionally excludes or blocks the following by default:
 - credential rotation
 - automatic public disclosure
 
-Defensive validation should use static call-path review, existing tests, local unit tests, and benign local inputs only.
+Defensive validation should use static call-path review, existing tests, local
+unit tests, and benign local inputs only. Defensive chain synthesis is allowed
+only as non-public remediation planning; exploit chaining remains out of scope.
 
 ## Scanner outputs are untrusted
 

@@ -8,7 +8,7 @@
 operator-controlled lab files
   AGENTS.md
   context.json
-  findings.schema.json
+  *.schema.json
   prompts/
   ↓
 target repository under repo/
@@ -46,6 +46,19 @@ Prompt template rendering は、process environment 全体ではなく明示 all
 
 public repository への GitHub Issue 作成はデフォルトで拒否されます。脆弱性情報を公開 Issue として出す場合は、内容を人間が確認し、組織ポリシー上承認済みの場合だけ `--allow-public` を指定してください。
 
+## chain / validation artifact
+
+`reports/chains.json`、`reports/ATTACK_CHAINS.md`、`reports/validation.json`、
+`reports/VALIDATION.md` はローカルレビュー用 artifact です。
+`ATTACK_CHAINS.md` は複数の弱点を高影響の remediation path として接続し得る
+ため、non-public by default として扱います。修正優先度、Issue 文言の調整、
+追加レビュー要否の判断に使い、public Issue や advisory に全文を貼り付けないで
+ください。
+
+Defensive chain synthesis は既存 finding、target、scanner ref、validation note
+だけを接続します。exploit payload、weaponized step、live probing instruction、
+新規 finding を生成してはいけません。
+
 ## scanner outputs
 
 取り込んだ scanner output は confirmed finding ではなく lead です。repository context、到達可能性、trust boundary、mitigation、safe validation を確認してから finding に昇格します。raw scanner output は local artifact として扱い、secret の全文引用や再構成を避けてください。
@@ -62,7 +75,9 @@ public repository への GitHub Issue 作成はデフォルトで拒否されま
 - credential rotation
 - automatic public disclosure
 
-防御的検証は、static call-path review、既存 test、local unit test、benign local input を使って行います。
+防御的検証は、static call-path review、既存 test、local unit test、benign local
+input を使って行います。Defensive chain synthesis は non-public な remediation
+planning に限定し、exploit chaining は対象外のままです。
 
 ## repository CI hardening
 

@@ -8,10 +8,15 @@
 runs/OWNER__REPO/RUN_ID/
   prompt.goal.md
   prompts/
-    full-audit.goal.md
-    deep-dive-finding.goal.md
-    deep-dive-category.goal.md
-    validate-findings.goal.md
+    goal/
+      full-audit.goal.md
+      deep-dive-finding.goal.md
+      deep-dive-category.goal.md
+      research-target.goal.md
+      variant-analysis.goal.md
+      synthesize-chains.goal.md
+      adversarial-validate.goal.md
+      validate-findings.goal.md
 ```
 
 ## ファイルの使い分け
@@ -19,20 +24,26 @@ runs/OWNER__REPO/RUN_ID/
 | ファイル | 用途 |
 |---|---|
 | `prompt.goal.md` | `full-audit.goal.md` と同等の主プロンプト。最初に使う標準 deep audit。 |
-| `prompts/full-audit.goal.md` | 単一repo全体の深掘り監査。 |
-| `prompts/deep-dive-finding.goal.md` | 既存 finding 1件を深く検証する。`TARGET_FINDING_ID` を置換して使う。 |
-| `prompts/deep-dive-category.goal.md` | 認可、CI/CD、Secretsなど特定カテゴリを深く調べる。`TARGET_CATEGORY` と `TARGET_SCOPE` を置換して使う。 |
-| `prompts/validate-findings.goal.md` | Critical / High findings の false positive を減らすための検証。 |
+| `prompts/goal/full-audit.goal.md` | 単一repo全体の深掘り監査。 |
+| `prompts/goal/deep-dive-finding.goal.md` | 既存 finding 1件を深く検証する。`TARGET_FINDING_ID` を置換して使う。 |
+| `prompts/goal/deep-dive-category.goal.md` | 認可、CI/CD、Secretsなど特定カテゴリを深く調べる。`TARGET_CATEGORY` と `TARGET_SCOPE` を置換して使う。 |
+| `prompts/goal/research-target.goal.md` | target queue の単一 target を調査する。 |
+| `prompts/goal/variant-analysis.goal.md` | 既存 finding または root cause から variant を探索する。 |
+| `prompts/goal/synthesize-chains.goal.md` | 既存 finding / target / scanner ref を防御的に接続する。 |
+| `prompts/goal/adversarial-validate.goal.md` | finding または chain の反証・降格・human-review 要否を確認する。 |
+| `prompts/goal/validate-findings.goal.md` | Critical / High findings の false positive を減らすための検証。 |
 
 ## 推奨順序
 
 ```text
-1. prompt.goal.md または prompts/full-audit.goal.md
-2. 必要に応じて prompts/deep-dive-finding.goal.md
-3. 必要に応じて prompts/deep-dive-category.goal.md
-4. prompts/validate-findings.goal.md
-5. gra-validate-report
-6. Issue dry-run
+1. prompt.goal.md または prompts/goal/full-audit.goal.md
+2. 必要に応じて prompts/goal/deep-dive-finding.goal.md
+3. 必要に応じて prompts/goal/deep-dive-category.goal.md
+4. 必要に応じて prompts/goal/research-target.goal.md または prompts/goal/variant-analysis.goal.md
+5. prompts/goal/synthesize-chains.goal.md
+6. prompts/goal/adversarial-validate.goal.md または prompts/goal/validate-findings.goal.md
+7. gra-validate-report
+8. Issue dry-run
 ```
 
 ## 起動例
@@ -51,15 +62,17 @@ cat runs/OWNER__REPO/RUN_ID/prompt.goal.md
 既存 finding を検証する場合:
 
 ```bash
-cp runs/OWNER__REPO/RUN_ID/prompts/deep-dive-finding.goal.md /tmp/sec-001.goal.md
-# /tmp/sec-001.goal.md 内の TARGET_FINDING_ID と TARGET_QUESTION を置換して貼る
+mkdir -p .codex-local/tmp/goal-prompts
+cp runs/OWNER__REPO/RUN_ID/prompts/goal/deep-dive-finding.goal.md .codex-local/tmp/goal-prompts/sec-001.goal.md
+# .codex-local/tmp/goal-prompts/sec-001.goal.md 内の TARGET_FINDING_ID と TARGET_QUESTION を置換して貼る
 ```
 
 カテゴリ深掘りの場合:
 
 ```bash
-cp runs/OWNER__REPO/RUN_ID/prompts/deep-dive-category.goal.md /tmp/authz.goal.md
-# TARGET_CATEGORY と TARGET_SCOPE を置換して貼る
+mkdir -p .codex-local/tmp/goal-prompts
+cp runs/OWNER__REPO/RUN_ID/prompts/goal/deep-dive-category.goal.md .codex-local/tmp/goal-prompts/authz.goal.md
+# .codex-local/tmp/goal-prompts/authz.goal.md 内の TARGET_CATEGORY と TARGET_SCOPE を置換して貼る
 ```
 
 ## ルール
@@ -76,5 +89,7 @@ cp runs/OWNER__REPO/RUN_ID/prompts/deep-dive-category.goal.md /tmp/authz.goal.md
 
 ```bash
 RUN="runs/OWNER__REPO/RUN_ID"
+gra-chains --run "$RUN"
+gra-adversarial-validate --run "$RUN" --all-critical-high
 gra-validate-report --run "$RUN"
 ```

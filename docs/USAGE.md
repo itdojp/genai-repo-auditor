@@ -37,6 +37,9 @@ runs/OWNER__REPO/RUN_ID/
   AGENTS.md
   context.json
   findings.schema.json
+  targets.schema.json
+  validation.schema.json
+  chains.schema.json
   repo/
   reports/
   prompt.exec.md
@@ -61,9 +64,13 @@ gra-audit --repo OWNER/REPO --mode goal --model gpt-5.5 --effort xhigh
 
 ```text
 prompt.goal.md                              # repo全体の深掘り
-prompts/validate-findings.goal.md           # Critical/High finding の検証
-prompts/deep-dive-finding.goal.md           # 単一findingの深掘り
-prompts/deep-dive-category.goal.md          # 単一カテゴリの深掘り
+prompts/goal/validate-findings.goal.md      # Critical/High finding の検証
+prompts/goal/deep-dive-finding.goal.md      # 単一findingの深掘り
+prompts/goal/deep-dive-category.goal.md     # 単一カテゴリの深掘り
+prompts/goal/research-target.goal.md        # 単一targetの調査
+prompts/goal/variant-analysis.goal.md       # variant analysis
+prompts/goal/synthesize-chains.goal.md      # defensive chain synthesis
+prompts/goal/adversarial-validate.goal.md   # finding / chain の反証・降格確認
 ```
 
 詳細: `docs/GOAL_DEEP_DIVE_WORKFLOW.md`
@@ -94,6 +101,7 @@ ORG/repo-c
 ## Issue作成
 
 ```bash
+gra-chains --run runs/ORG__repo-a/RUN_ID
 gra-adversarial-validate --run runs/ORG__repo-a/RUN_ID --all-critical-high
 gra-validate-report --run runs/ORG__repo-a/RUN_ID
 gra-issues --run runs/ORG__repo-a/RUN_ID --dry-run
@@ -101,9 +109,10 @@ gra-issues --run runs/ORG__repo-a/RUN_ID --apply --create-labels
 ```
 
 既定では `Critical` / `High` かつ `Confirmed` / `Probable` のみ作成します。
-Issue 作成前に `reports/VALIDATION.md` を確認し、`downgrade`、
-`invalidate`、`needs-human-review` の subject は finding または Issue draft を
-見直します。
+Issue 作成前に non-public by default の `reports/ATTACK_CHAINS.md` と
+`reports/VALIDATION.md` を確認し、chain implications と `downgrade`、
+`invalidate`、`needs-human-review` の subject を finding または Issue draft に
+反映します。
 
 ## run index
 

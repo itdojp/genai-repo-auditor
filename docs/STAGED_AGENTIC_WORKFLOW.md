@@ -11,6 +11,7 @@ prepare
   -> targets
   -> research target(s)
   -> validate findings
+  -> synthesize defensive chains
   -> adversarial validation
   -> variant analysis
   -> scanner triage
@@ -114,6 +115,35 @@ reports/VALIDATION.md
 Review `VALIDATION.md` before `gra-issues --plan`. Downgraded, invalidated, or
 `needs-human-review` subjects should not be published as confirmed
 exploitability without explicit human review and revised issue wording.
+
+## Defensive chain synthesis
+
+Use `gra-chains` to connect existing findings, targets, scanner refs, and
+validation notes into possible defensive reachability or impact chains. This
+stage is for prioritization and safe validation planning; it does not create
+new findings and must not generate exploit payloads or weaponized steps.
+
+```bash
+gra-chains --run runs/OWNER__REPO/RUN_ID --model gpt-5.5 --effort xhigh
+gra-validate-report --run runs/OWNER__REPO/RUN_ID
+```
+
+For supervised review:
+
+```bash
+gra-chains --run runs/OWNER__REPO/RUN_ID --mode goal
+```
+
+Outputs:
+
+```text
+reports/chains.json
+reports/ATTACK_CHAINS.md
+```
+
+`ATTACK_CHAINS.md` is non-public by default. Use it to prioritize remediation
+and decide where additional adversarial validation is needed before Issue
+publication.
 
 ## Variant analysis
 

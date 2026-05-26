@@ -23,6 +23,8 @@ gra-audit --mode exec
   ↓
 findings.json を検証
   ↓
+gra-chains で defensive chain を整理
+  ↓
 Critical / High は adversarial validation で反証・降格余地を確認
   ↓
 Critical / High が十分に裏付けられている?
@@ -57,6 +59,7 @@ gra-batch --repo-list repos.txt --concurrency 1 --mode exec
 Issue化:
 
 ```bash
+gra-chains --run runs/OWNER__REPO/RUN_ID
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 gra-issues --run runs/OWNER__REPO/RUN_ID --dry-run
@@ -69,6 +72,7 @@ gra-issues --run runs/OWNER__REPO/RUN_ID --apply --create-labels
 - `/goal` 深掘り: `docs/GOAL_DEEP_DIVE_WORKFLOW.md`
 - 複数repo: `docs/MULTI_REPO.md`
 - Issue化: `docs/ISSUE_WORKFLOW.md`
+- Defensive chain synthesis: `docs/ATTACK_CHAINS.md`
 - Adversarial validation: `docs/ADVERSARIAL_VALIDATION.md`
 - レポート契約: `docs/REPORT_CONTRACT.md`
 - セキュリティモデル: `docs/SECURITY_MODEL.md`

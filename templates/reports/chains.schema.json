@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor Defensive Attack Chains",
+  "type": "object",
+  "required": ["run_id", "repo", "commit", "generated_at", "chains"],
+  "properties": {
+    "run_id": {"type": "string"},
+    "repo": {"type": "string"},
+    "branch": {"type": ["string", "null"]},
+    "commit": {"type": "string"},
+    "generated_at": {"type": "string"},
+    "chains": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "severity",
+          "confidence",
+          "status",
+          "findings",
+          "targets",
+          "scanner_refs",
+          "entry_point",
+          "trust_boundaries",
+          "attacker_controlled_steps",
+          "required_conditions",
+          "broken_security_invariants",
+          "impact",
+          "safe_validation_plan",
+          "recommended_remediation"
+        ],
+        "properties": {
+          "id": {"type": "string", "pattern": "^CHAIN-[0-9]{3,}$"},
+          "title": {"type": "string"},
+          "severity": {"enum": ["Critical", "High", "Medium", "Low", "Informational"]},
+          "confidence": {"enum": ["High", "Medium", "Low"]},
+          "status": {"enum": ["Confirmed", "Probable", "Potential", "Invalid", "Needs human review"]},
+          "findings": {"type": "array", "items": {"type": "string"}},
+          "targets": {"type": "array", "items": {"type": "string"}},
+          "scanner_refs": {"type": "array", "items": {"type": "string"}},
+          "entry_point": {"type": "string"},
+          "trust_boundaries": {"type": "array", "items": {"type": "string"}},
+          "attacker_controlled_steps": {"type": "array", "items": {"type": "string"}},
+          "required_conditions": {"type": "array", "items": {"type": "string"}},
+          "broken_security_invariants": {"type": "array", "items": {"type": "string"}},
+          "impact": {"type": "string"},
+          "safe_validation_plan": {"type": "array", "items": {"type": "string"}},
+          "recommended_remediation": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  }
+}

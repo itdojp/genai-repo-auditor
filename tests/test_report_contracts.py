@@ -122,6 +122,7 @@ class ReportContractTests(unittest.TestCase):
         manifest_schema = self.load_json(SCHEMAS / "run-manifest.schema.json")
         dependencies_schema = self.load_json(SCHEMAS / "dependencies.schema.json")
         validation_schema = self.load_json(SCHEMAS / "validation.schema.json")
+        chains_schema = self.load_json(SCHEMAS / "chains.schema.json")
 
         self.assertTrue(set(VALIDATOR.REQUIRED_TOP).issubset(findings_schema["required"]))
         finding_required = findings_schema["properties"]["findings"]["items"]["required"]
@@ -220,6 +221,34 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual(["finding", "chain"], validation_properties["subject_type"]["enum"])
         self.assertEqual(["confirm", "downgrade", "invalidate", "needs-human-review"], validation_properties["decision"]["enum"])
         self.assertEqual(["High", "Medium", "Low", "Unknown"], validation_properties["recommended_confidence"]["enum"])
+
+        self.assertEqual({"run_id", "repo", "commit", "generated_at", "chains"}, set(chains_schema["required"]))
+        chain_item = chains_schema["properties"]["chains"]["items"]
+        self.assertEqual(
+            {
+                "id",
+                "title",
+                "severity",
+                "confidence",
+                "status",
+                "findings",
+                "targets",
+                "scanner_refs",
+                "entry_point",
+                "trust_boundaries",
+                "attacker_controlled_steps",
+                "required_conditions",
+                "broken_security_invariants",
+                "impact",
+                "safe_validation_plan",
+                "recommended_remediation",
+            },
+            set(chain_item["required"]),
+        )
+        chain_properties = chain_item["properties"]
+        self.assertEqual("^CHAIN-[0-9]{3,}$", chain_properties["id"]["pattern"])
+        self.assertEqual(["Confirmed", "Probable", "Potential", "Invalid", "Needs human review"], chain_properties["status"]["enum"])
+        self.assertEqual("string", chain_properties["safe_validation_plan"]["items"]["type"])
 
     def test_valid_minimal_fixture_passes_validator(self) -> None:
         run_dir = self.copy_run()

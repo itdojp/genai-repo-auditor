@@ -10,7 +10,9 @@ Scorecard JSON から決定的に生成する補助 posture artifact です。
 SBOM / dependency graph JSON から決定的に生成する補助 dependency posture
 artifact です。`VALIDATION.md` / `validation.json` は
 `gra-adversarial-validate` が既存 finding / chain を反証・降格・確認・
-human-review 判定する独立 validation artifact です。
+human-review 判定する独立 validation artifact です。`ATTACK_CHAINS.md` /
+`chains.json` は `gra-chains` が既存 finding / target / scanner ref を
+防御的に接続する chain synthesis artifact です。
 
 ```text
 reports/
@@ -25,6 +27,8 @@ reports/
   dependencies.json
   FINDINGS.md
   findings.json
+  ATTACK_CHAINS.md
+  chains.json
   VALIDATION.md
   validation.json
   AUDIT_LOG.md
@@ -63,10 +67,12 @@ findings[].labels
 
 ## validation and safety constraints
 
-`gra-validate-report` validates `findings.json`, optional `targets.json`, and
-optional scanner index artifacts against the bundled JSON schemas using the
-Python standard library. It also applies local safety rules before downstream
-tools can use report-controlled paths.
+`gra-validate-report` validates `findings.json`, optional `targets.json`,
+optional chain synthesis output, optional adversarial validation output,
+optional scanner index artifacts, and optional dependency/posture artifacts
+against the bundled JSON schemas using the Python standard library. It also
+applies local safety rules before downstream tools can use report-controlled
+paths.
 
 `provenance-posture.json` is a local posture artifact produced by `gra-recon`;
 it is advisory input for target generation and is not treated as a finding
@@ -86,6 +92,12 @@ for dependency risk review and is not treated as a finding contract.
 `gra-adversarial-validate`. It records decisions about existing findings or
 chains only; it must not introduce new findings and is not an Issue publication
 source by itself.
+
+`chains.json` is a local defensive chain synthesis artifact produced by
+`gra-chains`. It records how existing findings, targets, or scanner refs may
+compose into a plausible reachability or impact chain. It must not include
+working exploits, exploit payloads, weaponized steps, or live probing
+instructions. `ATTACK_CHAINS.md` is non-public by default.
 
 Important constraints:
 
@@ -140,6 +152,13 @@ Important constraints:
   subjects must reference existing `reports/findings.json` IDs, and chain
   subjects must reference existing `reports/chains.json` IDs. Evidence,
   missing-evidence, and safe-step fields must be string lists.
+- If `reports/chains.json` exists, it must match
+  `templates/reports/chains.schema.json`. Each chain ID must match `CHAIN-NNN`,
+  severity/confidence/status values must be approved, chain IDs must be unique,
+  list fields must contain strings, and every chain must reference at least one
+  existing finding, target, or scanner ref. Finding references must exist in
+  `reports/findings.json`; target references must exist in `reports/targets.json`;
+  scanner refs must exist in `reports/scanner-results/scanner-index.json`.
 
 `issue_body_file`, when present, must point to a regular `.md` file under
 `reports/issue-drafts/`, for example:
@@ -179,3 +198,14 @@ configuration assumption、test fixture と production behavior の差分、impa
 `downgrade`、`invalidate`、`needs-human-review` が記録された subject は、
 Issue 公開前に `findings.json` と issue draft を人間が見直してください。
 この artifact は finding の新規作成や自動修正指示のためのものではありません。
+
+## defensive chain output
+
+`reports/chains.json` と `reports/ATTACK_CHAINS.md` は、複数の既存 evidence
+を防御的に接続して remediation priority と safe validation plan を整理する
+ための artifact です。`ATTACK_CHAINS.md` は non-public by default として扱い、
+public Issue や advisory にそのまま貼り付けないでください。
+
+Chain synthesis は exploit generation ではありません。working exploit、
+payload、weaponized step、production/staging probing、credential access を
+含めてはいけません。
