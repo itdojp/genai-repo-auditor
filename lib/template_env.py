@@ -29,6 +29,10 @@ DEFAULT_TEMPLATE_VALUES: Dict[str, str] = {
     'FINDING_ID': '',
     'VARIANT_SOURCE': '',
     'SCANNER_INDEX': 'reports/scanner-results/scanner-index.json',
+    'VALIDATION_SELECTION': '',
+    'VALIDATION_SUBJECTS_FILE': '',
+    'VALIDATION_OUTPUT_JSON': 'reports/validation.json',
+    'VALIDATION_OUTPUT_MD': 'reports/VALIDATION.md',
 }
 
 

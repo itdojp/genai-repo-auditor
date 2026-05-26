@@ -1,0 +1,196 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+from typing import Any
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / 'lib'))
+from version import auditor_version
+from gralib import env_from_context, find_finding, load_context, load_findings, load_json, render_template, run_codex_exec, slug, write_json, utc_now
+
+HIGH_SEVERITIES = {'Critical', 'High'}
+VALIDATION_STATUSES = {'Confirmed', 'Probable', 'Potential'}
+
+
+def require_findings_file(run_dir: Path) -> None:
+    findings_path = run_dir / 'reports' / 'findings.json'
+    if not findings_path.exists():
+        raise FileNotFoundError(f'findings.json not found: {findings_path}')
+
+
+def load_chains(run_dir: Path) -> list[dict[str, Any]]:
+    data = load_json(run_dir / 'reports' / 'chains.json', {}) or {}
+    chains = data.get('chains') or []
+    return [chain for chain in chains if isinstance(chain, dict)]
+
+
+def find_chain(run_dir: Path, chain_id: str) -> dict[str, Any]:
+    chains_path = run_dir / 'reports' / 'chains.json'
+    if not chains_path.exists():
+        raise KeyError(f'chains.json not found: {chains_path}')
+    for chain in load_chains(run_dir):
+        if str(chain.get('id')) == chain_id:
+            return chain
+    raise KeyError(f'chain not found: {chain_id}')
+
+
+def subject_record(subject_type: str, subject_id: str, data: dict[str, Any]) -> dict[str, Any]:
+    return {
+        'subject_type': subject_type,
+        'subject_id': subject_id,
+        'source': data,
+    }
+
+
+def select_subjects(run_dir: Path, args: argparse.Namespace) -> tuple[str, list[dict[str, Any]]]:
+    if args.finding:
+        require_findings_file(run_dir)
+        finding = find_finding(run_dir, args.finding)
+        return args.finding, [subject_record('finding', args.finding, finding)]
+    if args.chain:
+        chain = find_chain(run_dir, args.chain)
+        return args.chain, [subject_record('chain', args.chain, chain)]
+
+    require_findings_file(run_dir)
+    subjects: list[dict[str, Any]] = []
+    for finding in load_findings(run_dir):
+        severity = str(finding.get('severity') or '')
+        status = str(finding.get('status') or '')
+        finding_id = str(finding.get('id') or '')
+        if finding_id and severity in HIGH_SEVERITIES and status in VALIDATION_STATUSES:
+            subjects.append(subject_record('finding', finding_id, finding))
+    return 'critical-high', subjects
+
+
+def render_validation_markdown(run_dir: Path, validation_data: dict[str, Any]) -> None:
+    reports = run_dir / 'reports'
+    lines = [
+        '# Adversarial Validation',
+        '',
+        'This report challenges existing findings or chains. It must not introduce new findings.',
+        '',
+        f"Run ID: `{validation_data.get('run_id', '')}`",
+        f"Repository: `{validation_data.get('repo', '')}`",
+        f"Generated at: `{validation_data.get('generated_at', '')}`",
+        '',
+        '| ID | Subject | Decision | Severity | Confidence | Summary |',
+        '|---|---|---|---|---|---|',
+    ]
+    for item in validation_data.get('validations') or []:
+        if not isinstance(item, dict):
+            continue
+        subject = f"{item.get('subject_type', '')}:{item.get('subject_id', '')}"
+        severity = f"{item.get('original_severity', '')} -> {item.get('recommended_severity', '')}"
+        confidence = f"{item.get('original_confidence', '')} -> {item.get('recommended_confidence', '')}"
+        summary = str(item.get('reasoning_summary') or '').replace('|', '\\|').replace('\n', ' ')
+        lines.append(
+            '| '
+            f"{item.get('id', '')} | {subject} | {item.get('decision', '')} | "
+            f"{severity} | {confidence} | {summary} |"
+        )
+    lines.append('')
+    (reports / 'VALIDATION.md').write_text('\n'.join(lines), encoding='utf-8')
+
+
+def ensure_validation_artifacts(run_dir: Path, ctx: dict[str, Any]) -> None:
+    validation_path = run_dir / 'reports' / 'validation.json'
+    if not validation_path.exists():
+        return
+    data = load_json(validation_path, {}) or {}
+    if not isinstance(data, dict):
+        return
+    data.setdefault('run_id', ctx.get('run_id', run_dir.name))
+    data.setdefault('repo', ctx.get('repo', ''))
+    data.setdefault('branch', ctx.get('branch', ''))
+    data.setdefault('commit', ctx.get('commit', ''))
+    data.setdefault('generated_at', utc_now())
+    data.setdefault('validations', [])
+    write_json(validation_path, data)
+    render_validation_markdown(run_dir, data)
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description='Run independent adversarial validation against existing findings or chains')
+    p.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
+    p.add_argument('--run', required=True, help='Run directory')
+    subjects = p.add_mutually_exclusive_group(required=True)
+    subjects.add_argument('--finding', help='Finding ID to validate, e.g. SEC-001')
+    subjects.add_argument('--all-critical-high', action='store_true', help='Validate all Critical/High findings with Confirmed/Probable/Potential status')
+    subjects.add_argument('--chain', help='Chain ID to validate from reports/chains.json, e.g. CHAIN-001')
+    p.add_argument('--mode', choices=['exec', 'goal'], default='exec')
+    p.add_argument('--model', default='gpt-5.5')
+    p.add_argument('--effort', default='xhigh')
+    p.add_argument('--network', action='store_true', help='Allow Codex sandbox network access. Not recommended.')
+    args = p.parse_args()
+
+    run_dir = Path(args.run).resolve()
+    ctx = load_context(run_dir)
+    try:
+        selection_id, selected_subjects = select_subjects(run_dir, args)
+    except (FileNotFoundError, KeyError) as e:
+        print(str(e), file=sys.stderr)
+        return 2
+
+    if not selected_subjects:
+        print('No matching findings selected for adversarial validation.')
+        return 0
+
+    selection_slug = slug(selection_id)
+    subject_path = run_dir / 'reports' / 'adversarial-validation' / f'{selection_slug}.subjects.json'
+    subject_payload = {
+        'run_id': ctx.get('run_id', run_dir.name),
+        'repo': ctx.get('repo', ''),
+        'branch': ctx.get('branch', ''),
+        'commit': ctx.get('commit', ''),
+        'generated_at': utc_now(),
+        'selection': selection_id,
+        'subjects': selected_subjects,
+    }
+    write_json(subject_path, subject_payload)
+
+    env = env_from_context(run_dir, {
+        'VALIDATION_SELECTION': selection_id,
+        'VALIDATION_SUBJECTS_FILE': str(subject_path.relative_to(run_dir)),
+        'VALIDATION_OUTPUT_JSON': 'reports/validation.json',
+        'VALIDATION_OUTPUT_MD': 'reports/VALIDATION.md',
+    })
+
+    if args.mode == 'goal':
+        prompt = run_dir / 'prompts' / 'goal' / f'adversarial-validate-{selection_slug}.goal.md'
+        render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'goal' / 'adversarial-validate.goal.md', prompt, env)
+        print('Prepared supervised /goal adversarial validation run.')
+        print(f'Run directory: {run_dir}')
+        print(f'Subjects file: {subject_path}')
+        print(f'Goal prompt: {prompt}')
+        network_value = 'true' if args.network else 'false'
+        print('\nStart Codex:')
+        print(f'  codex --cd "{run_dir}" --skip-git-repo-check --model "{args.model}" --enable goals --sandbox workspace-write --ask-for-approval on-request -c \'model_reasoning_effort="{args.effort}"\' -c \'web_search="disabled"\' -c \'sandbox_workspace_write.network_access={network_value}\'')
+        print('\nThen paste the contents of the goal prompt.')
+        return 0
+
+    prompt = run_dir / 'prompts' / 'exec' / f'adversarial-validate-{selection_slug}.prompt.md'
+    render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'adversarial-validate.prompt.md', prompt, env)
+    print(f'Running Codex adversarial validation for {selection_id}')
+    status = run_codex_exec(
+        run_dir=run_dir,
+        prompt_file=prompt,
+        model=args.model,
+        effort=args.effort,
+        network=args.network,
+        output_last=run_dir / f'codex-adversarial-validate-{selection_slug}-final.md',
+        events_file=run_dir / f'codex-adversarial-validate-{selection_slug}-events.jsonl',
+        stderr_file=run_dir / f'codex-adversarial-validate-{selection_slug}-stderr.txt',
+    )
+    ensure_validation_artifacts(run_dir, ctx)
+    print(f'Codex status: {status}')
+    print(f'Validation subjects: {subject_path}')
+    print(f'Validation report: {run_dir / "reports" / "VALIDATION.md"}')
+    print(f'Validation JSON: {run_dir / "reports" / "validation.json"}')
+    return status
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

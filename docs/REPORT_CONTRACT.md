@@ -8,7 +8,9 @@
 Scorecard JSON から決定的に生成する補助 posture artifact です。
 `DEPENDENCY_RISK.md` / `dependencies.json` は `gra-ingest --tool sbom` が
 SBOM / dependency graph JSON から決定的に生成する補助 dependency posture
-artifact です。
+artifact です。`VALIDATION.md` / `validation.json` は
+`gra-adversarial-validate` が既存 finding / chain を反証・降格・確認・
+human-review 判定する独立 validation artifact です。
 
 ```text
 reports/
@@ -23,6 +25,8 @@ reports/
   dependencies.json
   FINDINGS.md
   findings.json
+  VALIDATION.md
+  validation.json
   AUDIT_LOG.md
   issue-drafts/
     SEC-001.md
@@ -78,6 +82,11 @@ follow-up checks.
 `gra-ingest --tool sbom` or compatible dependency formats. It is advisory input
 for dependency risk review and is not treated as a finding contract.
 
+`validation.json` is a local adversarial validation artifact produced by
+`gra-adversarial-validate`. It records decisions about existing findings or
+chains only; it must not introduce new findings and is not an Issue publication
+source by itself.
+
 Important constraints:
 
 - `generated_at` must be parseable ISO-8601.
@@ -124,6 +133,13 @@ Important constraints:
   counts must match array lengths; component IDs must be unique; vulnerability
   component references must resolve to normalized components; dependency paths
   must be lists of non-empty strings.
+- If `reports/validation.json` exists, it must match
+  `templates/reports/validation.schema.json`. Each validation ID must match
+  `VAL-NNN`, `subject_type` must be `finding` or `chain`, `decision` must be
+  `confirm`, `downgrade`, `invalidate`, or `needs-human-review`, finding
+  subjects must reference existing `reports/findings.json` IDs, and chain
+  subjects must reference existing `reports/chains.json` IDs. Evidence,
+  missing-evidence, and safe-step fields must be string lists.
 
 `issue_body_file`, when present, must point to a regular `.md` file under
 `reports/issue-drafts/`, for example:
@@ -151,3 +167,15 @@ Critical / High finding は以下を満たす必要があります。
 - regression test idea
 
 満たせないものは `Potential` または `Needs human review` に落とします。
+
+## adversarial validation output
+
+`reports/validation.json` は、既存 finding または chain に対する独立した
+検証結果です。代表的な用途は、Issue 化前に attacker control、reachability、
+trust boundary、mitigation、framework guarantee、middleware ordering、
+configuration assumption、test fixture と production behavior の差分、impact
+過大評価の有無を確認することです。
+
+`downgrade`、`invalidate`、`needs-human-review` が記録された subject は、
+Issue 公開前に `findings.json` と issue draft を人間が見直してください。
+この artifact は finding の新規作成や自動修正指示のためのものではありません。

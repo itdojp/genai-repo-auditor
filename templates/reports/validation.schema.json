@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor Adversarial Validations",
+  "type": "object",
+  "required": ["run_id", "repo", "generated_at", "validations"],
+  "properties": {
+    "run_id": {"type": "string"},
+    "repo": {"type": "string"},
+    "branch": {"type": ["string", "null"]},
+    "commit": {"type": ["string", "null"]},
+    "generated_at": {"type": "string"},
+    "validations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "subject_type",
+          "subject_id",
+          "decision",
+          "original_severity",
+          "recommended_severity",
+          "original_confidence",
+          "recommended_confidence",
+          "reasoning_summary",
+          "evidence_checked",
+          "missing_evidence",
+          "safe_validation_steps"
+        ],
+        "properties": {
+          "id": {"type": "string", "pattern": "^VAL-[0-9]{3,}$"},
+          "subject_type": {"enum": ["finding", "chain"]},
+          "subject_id": {"type": "string"},
+          "decision": {"enum": ["confirm", "downgrade", "invalidate", "needs-human-review"]},
+          "original_severity": {"enum": ["Critical", "High", "Medium", "Low", "Informational", "Unknown"]},
+          "recommended_severity": {"enum": ["Critical", "High", "Medium", "Low", "Informational", "Unknown"]},
+          "original_confidence": {"enum": ["High", "Medium", "Low", "Unknown"]},
+          "recommended_confidence": {"enum": ["High", "Medium", "Low", "Unknown"]},
+          "reasoning_summary": {"type": "string"},
+          "evidence_checked": {"type": "array", "items": {"type": "string"}},
+          "missing_evidence": {"type": "array", "items": {"type": "string"}},
+          "safe_validation_steps": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  }
+}

@@ -94,11 +94,16 @@ ORG/repo-c
 ## Issue作成
 
 ```bash
+gra-adversarial-validate --run runs/ORG__repo-a/RUN_ID --all-critical-high
+gra-validate-report --run runs/ORG__repo-a/RUN_ID
 gra-issues --run runs/ORG__repo-a/RUN_ID --dry-run
 gra-issues --run runs/ORG__repo-a/RUN_ID --apply --create-labels
 ```
 
 既定では `Critical` / `High` かつ `Confirmed` / `Probable` のみ作成します。
+Issue 作成前に `reports/VALIDATION.md` を確認し、`downgrade`、
+`invalidate`、`needs-human-review` の subject は finding または Issue draft を
+見直します。
 
 ## run index
 
