@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor Cross-Repo Traces",
+  "type": "object",
+  "required": ["run_id", "repo", "generated_at", "traces"],
+  "properties": {
+    "run_id": {"type": "string"},
+    "repo": {"type": "string"},
+    "branch": {"type": ["string", "null"]},
+    "commit": {"type": ["string", "null"]},
+    "generated_at": {"type": "string"},
+    "traces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "finding_id",
+          "producer_repo",
+          "consumer_repo",
+          "entry_points",
+          "sink",
+          "attacker_control",
+          "reachable",
+          "evidence",
+          "limitations",
+          "status"
+        ],
+        "properties": {
+          "id": {"type": "string", "pattern": "^TRACE-[0-9]{3,}$"},
+          "finding_id": {"type": "string"},
+          "producer_repo": {"type": "string"},
+          "consumer_repo": {"type": "string"},
+          "entry_points": {"type": "array", "items": {"type": "string"}},
+          "sink": {"type": "string"},
+          "attacker_control": {"enum": ["Confirmed", "Probable", "Potential", "Invalid", "Not assessed"]},
+          "reachable": {"enum": ["Confirmed", "Probable", "Potential", "Invalid", "Not assessed"]},
+          "evidence": {"type": "string"},
+          "limitations": {"type": "array", "items": {"type": "string"}},
+          "status": {"enum": ["Confirmed", "Probable", "Potential", "Invalid", "Needs human review"]}
+        }
+      }
+    }
+  }
+}

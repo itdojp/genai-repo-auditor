@@ -53,6 +53,8 @@ gra-validate-report --run "$RUN_DIR"
 gra-gapfill --run "$RUN_DIR" --generate
 gra-chains --run "$RUN_DIR"
 gra-proofs --run "$RUN_DIR" --all-critical-high
+# shared-library / producer finding の consumer 到達可能性を確認する場合:
+# gra-trace --producer-run "$RUN_DIR" --finding SEC-001 --consumer-run "$GRA_HOME/runs/OWNER__consumer/RUN_ID" --mode exec
 gra-adversarial-validate --run "$RUN_DIR" --all-critical-high
 gra-validate-report --run "$RUN_DIR"
 gra-issues --run "$RUN_DIR" --dry-run
@@ -61,7 +63,8 @@ gra-issues --run "$RUN_DIR" --dry-run
 Issue 作成は、finding、evidence、non-public by default の
 `reports/COVERAGE.md`、`reports/gapfill-targets.json`、
 `reports/ATTACK_CHAINS.md`、local/private by default の
-`reports/PROOFS.md`、`reports/VALIDATION.md`、
+`reports/PROOFS.md`、experimental/P3 の reachability evidence である
+`reports/TRACE.md`、`reports/VALIDATION.md`、
 `reports/issue-drafts/*.md`、公開可否を人間が確認した後だけ実行します。
 
 ```bash
@@ -87,6 +90,8 @@ runs/OWNER__REPO/RUN_ID/
     proofs.json               # safe local proof artifact の機械可読出力
     PROOFS.md                 # local/private by default の proof summary
     proofs/                   # benign proof support files
+    traces.json               # cross-repo trace reachability の機械可読出力
+    TRACE.md                  # reachability evidence。exploit proof ではない
     validation.json           # adversarial validation の機械可読出力
     VALIDATION.md             # Issue 作成前に確認する検証サマリ
     issue-drafts/             # Issue 本文候補。人間が確認する

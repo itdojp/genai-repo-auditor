@@ -12,7 +12,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 - Most commands operate on a run directory such as `runs/OWNER__REPO/RUN_ID`.
 - `--network` enables network access inside the Codex sandbox for commands that call Codex. It is disabled by default and should remain disabled unless an approved workflow requires it.
 - `--model` defaults to `gpt-5.5` and `--effort` defaults to `xhigh` for Codex-driven commands. Command-line `--model` / `--effort` options are the portable override mechanism across Codex-driven commands.
-- Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
+- Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-trace`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
 - Python commands use `argparse`; missing required arguments or invalid choices normally exit with status `2`.
 - Generated audit artifacts, cloned target repositories, scanner raw outputs, issue drafts, and local stores should remain local and should not be committed.
 
@@ -28,6 +28,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Adversarial validation | `gra-adversarial-validate` | Bounded validation prompt, subject seed JSON, `reports/validation.json`, `reports/VALIDATION.md` |
 | Chain synthesis | `gra-chains` | Defensive chain prompt, `reports/chains.json`, `reports/ATTACK_CHAINS.md` |
 | Safe local proofs | `gra-proofs` | Benign proof prompt, subject seed JSON, `reports/proofs.json`, `reports/PROOFS.md`, `reports/proofs/` |
+| Cross-repo trace reachability | `gra-trace` | Experimental/P3 trace prompt, subject seed JSON, `reports/traces.json`, `reports/TRACE.md` |
 | Scanner triage | `gra-ingest`, `gra-scanner-triage` | Raw scanner copies, redacted normalized leads, scanner index, Scorecard posture artifacts, dependency posture artifacts, triage output |
 | Validation | `gra-validate-report` | Report contract validation result |
 | Reporting / persistence | `gra-dashboard`, `gra-sarif`, `gra-store`, `gra-index` | HTML dashboard, SARIF, SQLite store, run index |
@@ -241,6 +242,27 @@ gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-proofs --run runs/OWNER__REPO/RUN_ID --finding SEC-001 --mode goal
 ```
 
+## `gra-trace`
+
+| Field | Details |
+|---|---|
+| Purpose | Trace whether an existing producer finding, such as a shared-library flaw, is reachable from attacker-controlled entry points in a consumer repository. This feature is experimental/P3. |
+| Workflow category | Cross-repo trace reachability workflow. |
+| Required inputs | `--producer-run PRODUCER_RUN_DIR --finding SEC-ID` and either `--consumer-run CONSUMER_RUN_DIR` for `exec` / `goal` mode or `--consumer-repo OWNER/REPO` for `prepare` mode. |
+| Key options | `--mode prepare\|exec\|goal`, `--branch REF`, `--depth N` for prepare-mode clone, `--model MODEL`, `--effort EFFORT`. Codex network access is always disabled for trace execution. |
+| Generated outputs | Subject seed JSON under the producer run's `reports/traces/`, rendered trace prompt, Codex event/output files in exec mode, and expected trace artifacts `reports/traces.json` and `reports/TRACE.md` under the producer run. `prepare` mode also creates `trace-consumers/OWNER__repo/` under the producer run and renders a supervised goal prompt. |
+| Exit status behavior | `0` for successful prepare/goal setup or successful Codex exec; `2` for missing producer context, missing finding, invalid mode/source combination, missing consumer context, or clone/setup failures; exec mode returns Codex execution status. |
+| Security / disclosure cautions | Trace results are reachability evidence, not exploit proof. The prompt forbids external scanning, production/staging probing, exploit payloads, credential access, dependency installation, and producer/consumer repository modification. Only prepare mode performs an explicit GitHub clone. Keep `TRACE.md` and `traces.json` local/private until human review. |
+| Related docs | [`docs/TRACE_REACHABILITY.md`](TRACE_REACHABILITY.md), [`docs/MULTI_REPO.md`](MULTI_REPO.md), [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
+
+Examples:
+
+```bash
+gra-trace --producer-run runs/ORG__shared-lib/RUN_ID --finding SEC-001 --consumer-repo ORG/consumer-api --mode prepare
+gra-trace --producer-run runs/ORG__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/ORG__consumer-api/RUN_ID --mode exec
+gra-trace --producer-run runs/ORG__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/ORG__consumer-api/RUN_ID --mode goal
+```
+
 ## `gra-ingest`
 
 | Field | Details |
@@ -288,7 +310,7 @@ gra-scanner-triage --run runs/OWNER__REPO/RUN_ID --model gpt-5.5 --effort xhigh
 
 | Field | Details |
 |---|---|
-| Purpose | Validate `findings.json`, optional `targets.json`, optional chain reports, optional proof artifacts, optional adversarial validation output, optional scanner index artifacts, optional dependency artifacts, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
+| Purpose | Validate `findings.json`, optional `targets.json`, optional chain reports, optional proof artifacts, optional cross-repo trace artifacts, optional adversarial validation output, optional scanner index artifacts, optional dependency artifacts, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
 | Workflow category | Validation workflow. |
 | Required inputs | One of `--run RUN_DIR` or `--findings PATH`. |
 | Key options | `--run RUN_DIR`, `--findings PATH`. |
@@ -410,6 +432,7 @@ The repository currently has no alternate executable aliases for `gra-*` command
 - [`docs/NORMAL_WORKFLOW.md`](NORMAL_WORKFLOW.md) for single-repository `exec` mode.
 - [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md) for staged recon, target, and research workflows.
 - [`docs/SCANNER_INTEGRATION.md`](SCANNER_INTEGRATION.md) for scanner ingestion and triage.
+- [`docs/TRACE_REACHABILITY.md`](TRACE_REACHABILITY.md) for experimental/P3 cross-repo trace reachability.
 - [`docs/AGENT_SURFACE_DISCOVERY.md`](AGENT_SURFACE_DISCOVERY.md) for AI agent and MCP surface discovery.
 - [`docs/PROVENANCE_POSTURE.md`](PROVENANCE_POSTURE.md) for artifact attestation and release provenance posture.
 - [`docs/ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md) for reviewed GitHub Issue creation.

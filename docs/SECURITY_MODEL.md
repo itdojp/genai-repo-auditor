@@ -73,9 +73,10 @@ public repository への GitHub Issue 作成はデフォルト拒否です。脆
 
 `reports/COVERAGE.md`, `reports/gapfill-targets.json`, `reports/chains.json`,
 `reports/ATTACK_CHAINS.md`, `reports/validation.json`,
-`reports/VALIDATION.md`, `reports/proofs.json`, `reports/PROOFS.md`, and
-`reports/proofs/` are local review artifacts. Coverage/gapfill artifacts,
-`ATTACK_CHAINS.md`, and proof
+`reports/VALIDATION.md`, `reports/proofs.json`, `reports/PROOFS.md`,
+`reports/proofs/`, `reports/traces.json`, and `reports/TRACE.md` are local
+review artifacts. Coverage/gapfill artifacts, `ATTACK_CHAINS.md`, trace
+artifacts, and proof
 artifacts are non-public by default because they may connect weaknesses or
 describe validation steps that should remain internal. Use these artifacts to
 prioritize fixes, revise issue wording, or require additional review; do not
@@ -95,6 +96,14 @@ checks, or mocked local behavior. It must not run live-service auth bypasses,
 extract credentials, install dependencies, scan networks, probe production or
 staging systems, modify the target repository, or produce exploit code.
 
+Cross-repo trace reachability is experimental/P3 and limited to local static
+evidence for an existing producer finding and a specific consumer repository.
+Trace results are reachability evidence, not exploit proof. `gra-trace` must not
+run external scanning, probe production or staging systems, generate exploit
+payloads, access credentials, install dependencies, or modify producer or
+consumer repositories. Only explicit `gra-trace --mode prepare` may perform a
+GitHub clone of the named consumer repository.
+
 ## Deliberately excluded capabilities
 
 The lab intentionally excludes or blocks the following by default:
@@ -109,9 +118,9 @@ The lab intentionally excludes or blocks the following by default:
 
 Defensive validation should use static call-path review, existing tests, local
 unit tests, and benign local inputs only. Defensive chain synthesis is allowed
-only as non-public remediation planning; safe proof artifacts are allowed only
-as local/private validation aids. Exploit chaining and exploit proof generation
-remain out of scope.
+only as non-public remediation planning; safe proof artifacts and cross-repo
+trace artifacts are allowed only as local/private validation aids. Exploit
+chaining and exploit proof generation remain out of scope.
 
 ## Scanner outputs are untrusted
 

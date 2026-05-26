@@ -192,6 +192,8 @@ gra-validate-report --run "$RUN_DIR"
 gra-gapfill --run "$RUN_DIR" --generate
 gra-chains --run "$RUN_DIR"
 gra-proofs --run "$RUN_DIR" --all-critical-high
+# shared-library / producer finding の consumer 到達可能性を確認する場合:
+# gra-trace --producer-run "$RUN_DIR" --finding SEC-001 --consumer-run "$GRA_HOME/runs/OWNER__consumer/RUN_ID" --mode exec
 gra-adversarial-validate --run "$RUN_DIR" --all-critical-high
 gra-validate-report --run "$RUN_DIR"
 gra-dashboard --run "$RUN_DIR"
@@ -201,7 +203,7 @@ gra-store --run "$RUN_DIR"
 
 対応前に `reports/FINDINGS.md`、`reports/findings.json`、`reports/COVERAGE.md`、
 `reports/gapfill-targets.json`、`reports/ATTACK_CHAINS.md`、
-`reports/PROOFS.md`、`reports/VALIDATION.md`、`reports/issue-drafts/` を確認して
+`reports/PROOFS.md`、`reports/TRACE.md`、`reports/VALIDATION.md`、`reports/issue-drafts/` を確認して
 ください。AI 出力は人間による検証が必要な分析結果として扱います。
 
 ## 任意の GitHub Issue workflow

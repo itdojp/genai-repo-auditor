@@ -33,15 +33,17 @@
    ↓
 9. Critical / High は gra-proofs で safe local proof artifact を生成
    ↓
-10. Critical / High は gra-adversarial-validate で反証・降格余地を確認
+10. 必要に応じて gra-trace で cross-repo reachability を確認
    ↓
-11. 人間が FINDINGS.md / COVERAGE.md / ATTACK_CHAINS.md / PROOFS.md / VALIDATION.md / issue-drafts を確認
+11. Critical / High は gra-adversarial-validate で反証・降格余地を確認
    ↓
-12. gra-issues --dry-run
+12. 人間が FINDINGS.md / COVERAGE.md / ATTACK_CHAINS.md / PROOFS.md / TRACE.md / VALIDATION.md / issue-drafts を確認
    ↓
-13. gra-issues --apply
+13. gra-issues --dry-run
    ↓
-14. GitHub Issue 上で修正PR・期限・担当者を管理
+14. gra-issues --apply
+   ↓
+15. GitHub Issue 上で修正PR・期限・担当者を管理
 ```
 
 ## セットアップ
@@ -158,6 +160,7 @@ gra-validate-report --run runs/OWNER__REPO/RUN_ID
 - target coverage metadata がある場合は review_depth、files_reviewed/skipped、
   unresolved_questions、gapfill_recommended が妥当であること
 - proof output がある場合は既存 finding を参照し、safe_by_design が true であること
+- trace output がある場合は producer finding、consumer entry point、sink、limitations が妥当であり、exploit proof と誤認しないこと
 - adversarial validation output がある場合は subject、decision、evidence list が妥当であること
 
 ## レポート確認
@@ -200,6 +203,8 @@ Critical / High の Issue 候補は、公開前に独立した反証・降格チ
 gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
 gra-chains --run runs/OWNER__REPO/RUN_ID
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
+# Optional for shared-library / producer findings:
+# gra-trace --producer-run runs/OWNER__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode exec
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
@@ -212,6 +217,12 @@ gra-validate-report --run runs/OWNER__REPO/RUN_ID
 これは local/private by default の検証補助資料であり、working exploit、
 credential extraction、live service probing、dependency installation、
 target repo modification を含めてはいけません。
+
+`gra-trace` は experimental/P3 の cross-repo reachability stage です。
+`reports/traces.json` と `reports/TRACE.md` は reachability evidence であり
+exploit proof ではありません。external scanning、production/staging probing、
+exploit payload、credential access、dependency installation、producer/consumer
+repo modification は禁止です。
 
 Adversarial validation は新しい finding を作りません。`reports/VALIDATION.md` の
 `downgrade`、`invalidate`、`needs-human-review` は、Issue draft と

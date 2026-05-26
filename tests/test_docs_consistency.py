@@ -156,6 +156,23 @@ class DocsConsistencyTests(unittest.TestCase):
                     failures.append(f"{path.relative_to(REPO_ROOT)}:{index + 1}: --allow-public lacks nearby disclosure caution")
         self.assertEqual([], failures)
 
+    def test_normal_workflow_flowcharts_use_consecutive_step_numbers(self) -> None:
+        failures = []
+        for relative in ("docs/NORMAL_WORKFLOW.md", "docs/NORMAL_OPERATION.md"):
+            text = (REPO_ROOT / relative).read_text(encoding="utf-8")
+            match = re.search(r"## 全体フロー\s+```text\n(?P<body>.*?)\n```", text, re.DOTALL)
+            if not match:
+                failures.append(f"{relative}: missing 全体フロー text block")
+                continue
+            step_numbers = [
+                int(step.group(1))
+                for step in re.finditer(r"^\s*(\d+)\.\s+", match.group("body"), re.MULTILINE)
+            ]
+            expected = list(range(1, len(step_numbers) + 1))
+            if step_numbers != expected:
+                failures.append(f"{relative}: expected consecutive step numbers {expected}, got {step_numbers}")
+        self.assertEqual([], failures)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

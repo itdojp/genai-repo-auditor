@@ -29,13 +29,16 @@ validation stage before publication:
 gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
 gra-chains --run runs/OWNER__REPO/RUN_ID
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
+# Optional for shared-library / producer findings:
+# gra-trace --producer-run runs/OWNER__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode exec
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
 
 Then inspect `reports/COVERAGE.md`, `reports/gapfill-targets.json`,
 `reports/ATTACK_CHAINS.md`, `reports/proofs.json`,
-`reports/PROOFS.md`, `reports/validation.json`, and `reports/VALIDATION.md`.
+`reports/PROOFS.md`, optional `reports/traces.json`, optional
+`reports/TRACE.md`, `reports/validation.json`, and `reports/VALIDATION.md`.
 High-risk targets with shallow coverage or unresolved gapfill recommendations
 should be reviewed before claiming complete coverage in public Issue wording.
 `downgrade`, `invalidate`, and `needs-human-review` decisions should block direct
@@ -45,7 +48,10 @@ must not create new findings; it only records decisions about existing findings
 or chains. `ATTACK_CHAINS.md` is non-public by default and should be used for
 remediation prioritization and disclosure planning, not copied wholesale into
 public Issues. Proof artifacts are also local/private by default; use them to
-refine Issue wording, not as public exploit evidence.
+refine Issue wording, not as public exploit evidence. Cross-repo trace artifacts
+are experimental/P3 reachability evidence, not exploit proof; do not publish
+them wholesale or use them to claim confirmed exploitability without human
+review.
 
 ## dry-run
 

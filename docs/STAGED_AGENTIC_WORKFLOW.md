@@ -14,6 +14,7 @@ prepare
   -> validate findings
   -> synthesize defensive chains
   -> generate safe local proofs
+  -> optional cross-repo trace reachability
   -> adversarial validation
   -> variant analysis
   -> scanner triage
@@ -223,6 +224,47 @@ reports/proofs/
 `PROOFS.md` and files under `reports/proofs/` are local/private by default.
 Use them to refine validation status and Issue wording; do not copy them
 wholesale into public Issues.
+
+## Cross-repo trace reachability
+
+Use `gra-trace` when a producer finding, such as a shared-library flaw, may be
+consumed by another repository. This stage is experimental/P3 and records
+reachability evidence only; it is not exploit proof.
+
+Prepare a consumer workspace when a consumer run does not already exist:
+
+```bash
+gra-trace \
+  --producer-run runs/ORG__shared-lib/RUN_ID \
+  --finding SEC-001 \
+  --consumer-repo ORG/consumer-api \
+  --mode prepare
+```
+
+Trace against an existing consumer run:
+
+```bash
+gra-trace \
+  --producer-run runs/ORG__shared-lib/RUN_ID \
+  --finding SEC-001 \
+  --consumer-run runs/ORG__consumer-api/RUN_ID \
+  --mode exec \
+  --model gpt-5.5 \
+  --effort xhigh
+gra-validate-report --run runs/ORG__shared-lib/RUN_ID
+```
+
+Outputs:
+
+```text
+reports/traces/<selection>.subjects.json
+reports/traces.json
+reports/TRACE.md
+```
+
+Trace review must stay local-first: no external scanning, no production or
+staging probing, no exploit payloads, no credential access, no dependency
+installation, and no producer/consumer repository modification.
 
 ## Variant analysis
 

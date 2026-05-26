@@ -39,6 +39,7 @@ VALIDATION_PATH = Path("reports/validation.json")
 CHAINS_PATH = Path("reports/chains.json")
 PROOFS_PATH = Path("reports/proofs.json")
 PROOFS_DIR = Path("reports/proofs")
+TRACES_PATH = Path("reports/traces.json")
 VALIDATION_DECISIONS = {"confirm", "downgrade", "invalidate", "needs-human-review"}
 VALIDATION_SUBJECT_TYPES = {"finding", "chain"}
 VALIDATION_SEVERITIES = SEVERITIES | {"Unknown"}
@@ -53,6 +54,7 @@ PROOF_TYPES = {
     "mocked-local-service",
 }
 PROOF_STATUSES = {"confirmed", "failed", "not-run", "needs-human-review"}
+TRACE_STATUSES = {"Confirmed", "Probable", "Potential", "Invalid", "Needs human review"}
 UNSAFE_PROOF_COMMAND_RE = re.compile(
     r"\b(?:curl|wget|nmap|nc|netcat|ssh|scp|ftp|telnet|kubectl|docker|pip|npm|yarn|pnpm|bundle|gem|cargo|go\s+get|gh)\b|"
     r"https?://|--network|--allow-public",
@@ -797,6 +799,59 @@ def validate_proofs(run_dir: Path, findings: list[dict[str, Any]], errors: List[
     return True
 
 
+def validate_traces(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
+    traces_path = run_dir / TRACES_PATH
+    if not traces_path.exists():
+        return False
+    try:
+        traces_data = json.loads(traces_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"traces.json invalid JSON: {exc}")
+        return True
+
+    validate_schema(traces_data, load_schema("traces.schema.json"), "traces", errors)
+    if not isinstance(traces_data, dict):
+        return True
+    validate_generated_at(traces_data.get("generated_at"), "traces.generated_at", errors)
+
+    traces = traces_data.get("traces")
+    if not isinstance(traces, list):
+        errors.append("traces.traces: traces must be a list")
+        return True
+
+    finding_ids = {str(finding.get("id")) for finding in findings if isinstance(finding, dict) and finding.get("id")}
+    seen_ids: set[str] = set()
+    for index, trace in enumerate(traces):
+        path = f"traces.traces[{index}]"
+        if not isinstance(trace, dict):
+            errors.append(f"{path}: trace must be an object")
+            continue
+
+        trace_id = str(trace.get("id") or "").strip()
+        if not re.fullmatch(r"TRACE-[0-9]{3,}", trace_id):
+            errors.append(f"{path}.id: trace id must match ^TRACE-[0-9]{{3,}}$")
+        elif trace_id in seen_ids:
+            errors.append(f"{path}.id: duplicate trace id {trace_id}")
+        seen_ids.add(trace_id)
+
+        finding_id = str(trace.get("finding_id") or "").strip()
+        if finding_id not in finding_ids:
+            errors.append(f"{path}.finding_id: finding {finding_id!r} is not present in reports/findings.json")
+        for key in ["producer_repo", "consumer_repo", "sink", "evidence"]:
+            if not isinstance(trace.get(key), str) or not str(trace.get(key)).strip():
+                errors.append(f"{path}.{key}: expected non-empty string, got {json_type_name(trace.get(key))}")
+        for key in ["entry_points", "limitations"]:
+            validate_string_list(trace.get(key), f"{path}.{key}", errors)
+        if trace.get("attacker_control") not in ASSESSMENT_STATUSES:
+            errors.append(f"{path}.attacker_control: invalid assessment value {trace.get('attacker_control')}")
+        if trace.get("reachable") not in ASSESSMENT_STATUSES:
+            errors.append(f"{path}.reachable: invalid assessment value {trace.get('reachable')}")
+        if trace.get("status") not in TRACE_STATUSES:
+            errors.append(f"{path}.status: invalid status {trace.get('status')}")
+
+    return True
+
+
 def validate_affected_locations(finding: Dict[str, Any], path: str, errors: List[str]) -> None:
     locs = finding.get("affected_locations")
     if not isinstance(locs, list):
@@ -943,6 +998,7 @@ def main() -> int:
     chains_validated = validate_chains(run_dir, findings, errors)
     adversarial_validation_validated = validate_adversarial_validation(run_dir, findings, errors)
     proofs_validated = validate_proofs(run_dir, findings, errors)
+    traces_validated = validate_traces(run_dir, findings, errors)
 
     if errors:
         for e in errors:
@@ -964,6 +1020,8 @@ def main() -> int:
         print("Adversarial validations: validated")
     if proofs_validated:
         print("Proofs: validated")
+    if traces_validated:
+        print("Traces: validated")
     return 0
 
 

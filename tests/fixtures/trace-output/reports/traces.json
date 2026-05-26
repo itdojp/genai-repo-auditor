@@ -1,0 +1,22 @@
+{
+  "run_id": "fixture-run",
+  "repo": "example/shared-lib",
+  "branch": "main",
+  "commit": "0000000000000000000000000000000000000000",
+  "generated_at": "2026-05-26T00:00:00Z",
+  "traces": [
+    {
+      "id": "TRACE-001",
+      "finding_id": "SEC-001",
+      "producer_repo": "example/shared-lib",
+      "consumer_repo": "example/consumer-api",
+      "entry_points": ["repo/routes/upload.py"],
+      "sink": "shared_lib.parser.parse_user_input",
+      "attacker_control": "Probable",
+      "reachable": "Potential",
+      "evidence": "Static import and route review indicate user input may reach the parser wrapper.",
+      "limitations": ["Only static import/call-path evidence used"],
+      "status": "Needs human review"
+    }
+  ]
+}

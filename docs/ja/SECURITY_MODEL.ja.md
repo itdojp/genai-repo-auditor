@@ -51,8 +51,8 @@ public repository への GitHub Issue 作成はデフォルトで拒否されま
 `reports/COVERAGE.md`、`reports/gapfill-targets.json`、
 `reports/chains.json`、`reports/ATTACK_CHAINS.md`、`reports/validation.json`、
 `reports/VALIDATION.md`、`reports/proofs.json`、`reports/PROOFS.md`、
-`reports/proofs/` はローカルレビュー用 artifact です。coverage / gapfill
-artifact、`ATTACK_CHAINS.md`、proof artifact は、複数の弱点や検証手順を内部向けに整理し得るため、
+`reports/proofs/`、`reports/traces.json`、`reports/TRACE.md` はローカルレビュー用 artifact です。coverage / gapfill
+artifact、`ATTACK_CHAINS.md`、trace artifact、proof artifact は、複数の弱点や検証手順を内部向けに整理し得るため、
 non-public by default として扱います。修正優先度、Issue 文言の調整、
 追加レビュー要否の判断に使い、public Issue や advisory に全文を貼り付けないでください。
 
@@ -69,6 +69,14 @@ plan、parser-only input、config check、mocked local behavior などの benign
 local artifact に限定します。live service への auth bypass 実行、credential
 extraction、dependency installation、network scanning、production/staging probing、
 target repository modification、exploit code の生成は禁止です。
+
+Cross-repo trace reachability は experimental/P3 で、既存 producer finding と
+特定 consumer repository の static evidence に限定します。trace result は
+reachability evidence であって exploit proof ではありません。external
+scanning、production/staging probing、exploit payload、credential access、
+dependency installation、producer/consumer repository modification は禁止です。
+明示的な `gra-trace --mode prepare` の場合だけ、指定 consumer repository の
+GitHub clone を行えます。
 
 ## scanner outputs
 
@@ -88,8 +96,9 @@ target repository modification、exploit code の生成は禁止です。
 
 防御的検証は、static call-path review、既存 test、local unit test、benign local
 input を使って行います。Defensive chain synthesis は non-public な remediation
-planning に限定し、safe proof artifact は local/private な validation aid に
-限定します。Exploit chaining と exploit proof generation は対象外のままです。
+planning に限定し、safe proof artifact と cross-repo trace artifact は
+local/private な validation aid に限定します。Exploit chaining と exploit proof
+generation は対象外のままです。
 
 ## repository CI hardening
 

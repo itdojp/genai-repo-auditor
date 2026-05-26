@@ -588,6 +588,21 @@ class CliWorkflowTests(unittest.TestCase):
                     for src in proofs_dir_src.iterdir():
                         if src.is_file():
                             shutil.copy2(src, proofs_dest / src.name)
+                traces_src = fixture_dir / "reports" / "traces.json"
+                if traces_src.exists():
+                    traces = load_json(traces_src, {})
+                    traces.update(
+                        {
+                            "run_id": ctx.get("run_id", run_dir.name),
+                            "repo": ctx.get("repo", traces.get("repo", "")),
+                            "branch": ctx.get("branch", traces.get("branch", "")),
+                            "commit": ctx.get("commit", traces.get("commit", "")),
+                        }
+                    )
+                    write_json(reports / "traces.json", traces)
+                traces_md_src = fixture_dir / "reports" / "TRACE.md"
+                if traces_md_src.exists():
+                    shutil.copy2(traces_md_src, reports / "TRACE.md")
                 drafts_src = fixture_dir / "reports" / "issue-drafts"
                 if drafts_src.exists():
                     drafts_dest = reports / "issue-drafts"
@@ -1940,6 +1955,214 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("safe validation plan", prompt_text)
         self.assertEqual(self.read_codex_calls(codex_log), [])
         self.assertFalse((run_dir / "codex-chains-final.md").exists())
+
+    def test_gra_trace_exec_with_consumer_run_writes_trace_artifacts(self) -> None:
+        producer_run = self.copy_fixture_run("minimal-run")
+        consumer_run = self.copy_fixture_run("minimal-run")
+        consumer_ctx_path = consumer_run / "context.json"
+        consumer_ctx = json.loads(consumer_ctx_path.read_text(encoding="utf-8"))
+        consumer_ctx.update(
+            {
+                "repo": "example/consumer-api",
+                "repo_slug": "example__consumer-api",
+                "run_id": "consumer-fixture-run",
+            }
+        )
+        consumer_ctx_path.write_text(json.dumps(consumer_ctx, indent=2) + "\n", encoding="utf-8")
+        (consumer_run / "repo" / "routes").mkdir(parents=True, exist_ok=True)
+        (consumer_run / "repo" / "routes" / "upload.py").write_text(
+            "from shared_lib.parser import parse_user_input\n"
+            "def upload(request):\n"
+            "    return parse_user_input(request.body)\n",
+            encoding="utf-8",
+        )
+
+        env, codex_log = self.env_with_codex_log(GRA_MOCK_FIXTURE_DIR=str(FIXTURES / "trace-output"))
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-trace",
+                "--producer-run",
+                producer_run,
+                "--finding",
+                "SEC-001",
+                "--consumer-run",
+                consumer_run,
+                "--model",
+                "gpt-fixture",
+                "--effort",
+                "medium",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Running Codex trace reachability for SEC-001", cp.stdout)
+        self.assertIn("example/demo -> example/consumer-api", cp.stdout)
+        self.assertIn("Codex status: 0", cp.stdout)
+
+        subject = json.loads(
+            (producer_run / "reports" / "traces" / "sec-001-example-consumer-api.subjects.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual("SEC-001", subject["finding_id"])
+        self.assertEqual("example/demo", subject["producer"]["repo"])
+        self.assertEqual("example/consumer-api", subject["consumer"]["repo"])
+        self.assertIn("required_trace_fields", subject["trace_contract"])
+
+        prompt = producer_run / "prompts" / "exec" / "trace-reachability-sec-001-example-consumer-api.prompt.md"
+        prompt_text = prompt.read_text(encoding="utf-8")
+        self.assertIn("Trace results are reachability evidence, not exploit proof.", prompt_text)
+        self.assertIn("No external scanning.", prompt_text)
+        self.assertIn("No exploit payloads", prompt_text)
+        self.assertIn("Trace subjects file: reports/traces/sec-001-example-consumer-api.subjects.json", prompt_text)
+        self.assertIn("Consumer repository: example/consumer-api", prompt_text)
+        self.assertIn("entry_points", prompt_text)
+        self.assertIn("attacker_control", prompt_text)
+        self.assertIn("reachable", prompt_text)
+        self.assertIn("limitations", prompt_text)
+        self.assertNotIn("{{", prompt_text)
+
+        traces = json.loads((producer_run / "reports" / "traces.json").read_text(encoding="utf-8"))
+        self.assertEqual("TRACE-001", traces["traces"][0]["id"])
+        self.assertEqual("SEC-001", traces["traces"][0]["finding_id"])
+        self.assertEqual("example/consumer-api", traces["traces"][0]["consumer_repo"])
+        trace_md = (producer_run / "reports" / "TRACE.md").read_text(encoding="utf-8")
+        self.assertIn("reachability evidence, not exploit proof", trace_md)
+        self.assertIn("TRACE-001", trace_md)
+
+        final_path = producer_run / "codex-trace-sec-001-example-consumer-api-final.md"
+        events_path = producer_run / "codex-trace-sec-001-example-consumer-api-events.jsonl"
+        stderr_path = producer_run / "codex-trace-sec-001-example-consumer-api-stderr.txt"
+        self.assertEqual(final_path.read_text(encoding="utf-8"), "mock codex mode=success\n")
+        self.assertIn('"status": "ok"', events_path.read_text(encoding="utf-8"))
+        self.assertTrue(stderr_path.exists())
+        calls = self.read_codex_calls(codex_log)
+        self.assertEqual(len(calls), 1, calls)
+        self.assertIn(str(final_path), calls[0])
+        self.assertIn('model_reasoning_effort="medium"', calls[0])
+        self.assertIn("sandbox_workspace_write.network_access=false", calls[0])
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", producer_run], check=True)
+        self.assertIn("Traces: validated", cp_validate.stdout)
+
+    def test_gra_trace_prepare_clones_consumer_repo_and_prepares_goal_prompt(self) -> None:
+        producer_run = self.copy_fixture_run("minimal-run")
+        env, gh_log = self.env_with_gh_log()
+        env["GRA_MOCK_TARGET_REPO_DIR"] = str(FIXTURES / "adversarial-repos" / "direct-readme")
+        codex_log = self.work_dir / "trace-prepare-codex.jsonl"
+        env["GRA_MOCK_CODEX_LOG"] = str(codex_log)
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-trace",
+                "--producer-run",
+                producer_run,
+                "--finding",
+                "SEC-001",
+                "--consumer-repo",
+                "example/consumer-api",
+                "--mode",
+                "prepare",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Prepared cross-repo trace reachability workspace.", cp.stdout)
+        self.assertIn("Next exec command:", cp.stdout)
+
+        consumer_run = producer_run / "trace-consumers" / "example__consumer-api"
+        self.assertTrue((consumer_run / "repo" / ".git").exists())
+        self.assertEqual("example/consumer-api", json.loads((consumer_run / "context.json").read_text(encoding="utf-8"))["repo"])
+        prompt = producer_run / "prompts" / "goal" / "trace-reachability-sec-001-example-consumer-api.goal.md"
+        prompt_text = prompt.read_text(encoding="utf-8")
+        self.assertTrue(prompt_text.startswith("/goal "))
+        self.assertIn("Trace subjects file: reports/traces/sec-001-example-consumer-api.subjects.json", prompt_text)
+        self.assertIn("reachability", prompt_text)
+        self.assertNotIn("{{", prompt_text)
+        self.assertEqual(self.read_codex_calls(codex_log), [])
+        calls = self.read_gh_calls(gh_log)
+        self.assert_gh_called(calls, ["repo", "clone"])
+
+        repo_dir = consumer_run / "repo"
+        subprocess.run(
+            ["git", "-C", str(repo_dir), "checkout", "-b", "feature-trace"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        (repo_dir / "feature.txt").write_text("feature branch fixture\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(repo_dir), "add", "feature.txt"], check=True, stdout=subprocess.DEVNULL)
+        subprocess.run(
+            ["git", "-C", str(repo_dir), "-c", "commit.gpgsign=false", "commit", "-m", "feature trace"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
+        feature_commit = subprocess.check_output(["git", "-C", str(repo_dir), "rev-parse", "HEAD"], text=True).strip()
+        subprocess.run(
+            ["git", "-C", str(repo_dir), "checkout", "main"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        cp_branch = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-trace",
+                "--producer-run",
+                producer_run,
+                "--finding",
+                "SEC-001",
+                "--consumer-repo",
+                "example/consumer-api",
+                "--mode",
+                "prepare",
+                "--branch",
+                "feature-trace",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Prepared cross-repo trace reachability workspace.", cp_branch.stdout)
+        current_branch = subprocess.check_output(["git", "-C", str(repo_dir), "branch", "--show-current"], text=True).strip()
+        self.assertEqual("feature-trace", current_branch)
+        branch_ctx = json.loads((consumer_run / "context.json").read_text(encoding="utf-8"))
+        self.assertEqual("feature-trace", branch_ctx["branch"])
+        self.assertEqual(feature_commit, branch_ctx["commit"])
+        clone_calls = [call for call in self.read_gh_calls(gh_log) if call[:2] == ["repo", "clone"]]
+        self.assertEqual(1, len(clone_calls), clone_calls)
+
+    def test_validate_report_trace_reachability_contract(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        traces = json.loads((FIXTURES / "trace-output" / "reports" / "traces.json").read_text(encoding="utf-8"))
+        (run_dir / "reports" / "traces.json").write_text(json.dumps(traces, indent=2) + "\n", encoding="utf-8")
+
+        cp_valid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir])
+        self.assertEqual(cp_valid.returncode, 0, cp_valid.stderr)
+        self.assertIn("Traces: validated", cp_valid.stdout)
+
+        invalid_run = self.copy_fixture_run("minimal-run")
+        invalid = json.loads((FIXTURES / "trace-output" / "reports" / "traces.json").read_text(encoding="utf-8"))
+        invalid["traces"] = [
+            {
+                **invalid["traces"][0],
+                "id": "TRACE-1",
+                "finding_id": "SEC-404",
+                "entry_points": ["repo/routes/upload.py", 123],
+                "attacker_control": "Yes",
+                "reachable": "Maybe",
+                "status": "Exploitable",
+            }
+        ]
+        (invalid_run / "reports" / "traces.json").write_text(json.dumps(invalid, indent=2) + "\n", encoding="utf-8")
+
+        cp_invalid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", invalid_run])
+        self.assertNotEqual(cp_invalid.returncode, 0)
+        self.assertIn("trace id must match", cp_invalid.stderr)
+        self.assertIn("SEC-404", cp_invalid.stderr)
+        self.assertIn("entry_points[1]", cp_invalid.stderr)
+        self.assertIn("attacker_control", cp_invalid.stderr)
+        self.assertIn("reachable", cp_invalid.stderr)
+        self.assertIn("invalid status", cp_invalid.stderr)
 
     def test_validate_report_chain_references(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

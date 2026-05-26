@@ -61,6 +61,7 @@ def collect_artifacts(run_dir: Path) -> list[dict[str, Any]]:
         ("validation.schema.json", "file"),
         ("chains.schema.json", "file"),
         ("proofs.schema.json", "file"),
+        ("traces.schema.json", "file"),
         (SCHEMA_FILENAME, "file"),
         ("prompt.exec.md", "file"),
         ("prompt.goal.md", "file"),
@@ -77,6 +78,9 @@ def collect_artifacts(run_dir: Path) -> list[dict[str, Any]]:
         (reports_artifact(run_dir, "proofs.json"), "file"),
         (reports_artifact(run_dir, "PROOFS.md"), "file"),
         (reports_artifact(run_dir, "proofs"), "dir"),
+        (reports_artifact(run_dir, "traces.json"), "file"),
+        (reports_artifact(run_dir, "TRACE.md"), "file"),
+        (reports_artifact(run_dir, "traces"), "dir"),
         (reports_artifact(run_dir, "scanner-results/scanner-index.json"), "file"),
         (reports_artifact(run_dir, "dashboard.html"), "file"),
         (reports_artifact(run_dir, "findings.sarif"), "file"),
@@ -118,6 +122,7 @@ def collect_schemas(run_dir: Path) -> list[dict[str, str]]:
         "validation.schema.json",
         "chains.schema.json",
         "proofs.schema.json",
+        "traces.schema.json",
         SCHEMA_FILENAME,
     ]:
         path = run_dir / name
