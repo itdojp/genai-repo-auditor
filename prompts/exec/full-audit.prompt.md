@@ -122,6 +122,17 @@ findings.json required shape:
       "category": "Authorization|Injection|Secrets|CI/CD|Supply Chain|...",
       "target_id": "TGT-001 or null",
       "lifecycle": "Candidate|Probable|Confirmed|Invalid|Accepted Risk|Informational|Needs human review",
+      "bug_existence": "Confirmed|Probable|Potential|Invalid|Not assessed",
+      "attacker_reachability": "Confirmed|Probable|Potential|Invalid|Not assessed",
+      "boundary_crossing": "Confirmed|Probable|Potential|Invalid|Not assessed",
+      "impact_assessment": "Confirmed|Probable|Potential|Invalid|Not assessed",
+      "chain_membership": ["CHAIN-001"],
+      "assessment_notes": {
+        "bug_existence": "Why the code defect exists or does not exist.",
+        "attacker_reachability": "Whether attacker-controlled input can reach the code path.",
+        "boundary_crossing": "Whether a security boundary is crossed.",
+        "impact_assessment": "Whether impact is confirmed or only plausible."
+      },
       "scanner_refs": [],
       "variant_of": null,
       "taxonomies": [
@@ -149,6 +160,16 @@ findings.json required shape:
 Use controlled taxonomy IDs from templates/taxonomies/ when they apply. Do not
 invent ad hoc taxonomy names or IDs. Taxonomy classification is advisory and
 does not replace severity, confidence, or status.
+
+Assessment guidance:
+- Distinguish bug existence from exploitability. A code defect can be present
+  while attacker reachability, boundary crossing, or impact remains unproven.
+- Populate `bug_existence`, `attacker_reachability`, `boundary_crossing`, and
+  `impact_assessment` for new findings. Use `Not assessed` only when the
+  available local evidence cannot answer the dimension.
+- Recommend public Issues only when bug existence is at least `Probable`, the
+  status is not `Invalid`, and assessment notes explain any uncertain
+  reachability, boundary, or impact dimensions.
 
 Issue draft format:
 

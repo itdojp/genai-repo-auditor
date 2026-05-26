@@ -16,6 +16,13 @@
 
 ## Impact
 
+## Exploitability assessment
+
+- Bug existence:
+- Attacker reachability:
+- Boundary crossing:
+- Impact assessment:
+
 ## Minimal remediation
 
 ## Regression test

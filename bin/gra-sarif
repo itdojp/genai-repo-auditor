@@ -17,6 +17,12 @@ LEVEL_MAP = {
     'Low': 'note',
     'Informational': 'note',
 }
+ASSESSMENT_FIELDS = [
+    'bug_existence',
+    'attacker_reachability',
+    'boundary_crossing',
+    'impact_assessment',
+]
 
 
 def main() -> int:
@@ -43,6 +49,7 @@ def main() -> int:
         taxonomy_tags = sorted({*(cwe_ids), *(f"{ref.get('name')}:{ref.get('id')}" for ref in taxonomy_refs if ref.get('name') and ref.get('id'))})
         if rule_id not in seen_rules:
             seen_rules.add(rule_id)
+            assessment_properties = {field: f.get(field) for field in ASSESSMENT_FIELDS if field in f}
             rules.append({
                 'id': rule_id,
                 'name': f.get('title') or rule_id,
@@ -55,6 +62,8 @@ def main() -> int:
                     'status': f.get('status'),
                     'category': f.get('category'),
                     'fingerprint': f.get('fingerprint'),
+                    **assessment_properties,
+                    'chain_membership': f.get('chain_membership') or [],
                     'cwe': sorted(set(cwe_ids)),
                     'taxonomies': taxonomy_refs,
                     'tags': taxonomy_tags,
@@ -80,6 +89,9 @@ def main() -> int:
             'partialFingerprints': {'genaiRepoAuditor': str(f.get('fingerprint') or rule_id)},
             'properties': {
                 'impact': f.get('impact'),
+                **{field: f.get(field) for field in ASSESSMENT_FIELDS if field in f},
+                'chain_membership': f.get('chain_membership') or [],
+                'assessment_notes': f.get('assessment_notes') or {},
                 'entry_point': f.get('entry_point'),
                 'trust_boundary': f.get('trust_boundary'),
                 'source_to_sink': f.get('source_to_sink'),

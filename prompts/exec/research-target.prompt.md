@@ -71,6 +71,8 @@ Required outputs:
    - Use the standard findings schema.
    - Set target_id to {{TARGET_ID}} for findings produced from this target.
    - Include lifecycle where possible: Candidate, Probable, Confirmed, Invalid, Accepted Risk, Informational, or Needs human review.
+   - Populate structured assessment fields for bug existence, attacker reachability, boundary crossing, and impact assessment.
+   - Use `Not assessed` only for dimensions that cannot be answered from safe local evidence, and explain uncertainty in `assessment_notes`.
    - Issue drafts must be created under {{REPORTS_DIR}}/issue-drafts/ for issue_recommended findings.
 
 3. Update {{REPORTS_DIR}}/AUDIT_LOG.md with:
@@ -81,6 +83,9 @@ Required outputs:
 
 Finding quality bar:
 - Critical/High findings require concrete file:line evidence and a plausible call path.
+- Critical/High findings should clearly separate "the bug exists" from
+  "attacker input reaches it", "a security boundary is crossed", and "impact is
+  confirmed".
 - Do not report generic best-practice advice as a vulnerability.
 - Do not report solely because a risky function name appears.
 - Redact all secrets.

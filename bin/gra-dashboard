@@ -15,6 +15,12 @@ from gralib import load_context, load_json, utc_now
 
 SEVERITIES = ['Critical', 'High', 'Medium', 'Low', 'Informational']
 STATUSES = ['Confirmed', 'Probable', 'Potential', 'Needs human review', 'Informational', 'Invalid']
+ASSESSMENT_FIELDS = [
+    ('bug_existence', 'Bug existence'),
+    ('attacker_reachability', 'Attacker reachability'),
+    ('boundary_crossing', 'Boundary crossing'),
+    ('impact_assessment', 'Impact assessment'),
+]
 
 
 def h(x) -> str:
@@ -45,6 +51,10 @@ def main() -> int:
 
     sev_counts = Counter(f.get('severity', 'Unknown') for f in findings)
     status_counts = Counter(f.get('status', 'Unknown') for f in findings)
+    assessment_counts = {
+        field: Counter(f.get(field, 'Not assessed') for f in findings)
+        for field, _label in ASSESSMENT_FIELDS
+    }
     target_status_counts = Counter(t.get('status', 'unknown') for t in targets)
     supply_chain_risk_counts = Counter(c.get('risk', 'informational') for c in supply_chain_checks)
     dependency_scope_counts = Counter(c.get('scope', 'unknown') for c in dependency_components)
@@ -59,7 +69,12 @@ def main() -> int:
     for f in findings:
         locs = f.get('affected_locations') or []
         loc_text = ', '.join(f"{loc.get('file','')}:{loc.get('line','')}" for loc in locs if isinstance(loc, dict))
-        rows.append(f"<tr><td>{h(f.get('id'))}</td><td>{h(f.get('severity'))}</td><td>{h(f.get('confidence'))}</td><td>{h(f.get('status'))}</td><td>{h(f.get('category'))}</td><td>{h(f.get('title'))}</td><td>{h(loc_text)}</td></tr>")
+        assessment_cells = ''.join(f"<td>{h(f.get(field, 'Not assessed'))}</td>" for field, _label in ASSESSMENT_FIELDS)
+        rows.append(
+            f"<tr><td>{h(f.get('id'))}</td><td>{h(f.get('severity'))}</td><td>{h(f.get('confidence'))}</td>"
+            f"<td>{h(f.get('status'))}</td>{assessment_cells}<td>{h(f.get('category'))}</td>"
+            f"<td>{h(f.get('title'))}</td><td>{h(loc_text)}</td></tr>"
+        )
 
     target_rows = []
     for t in sorted(targets, key=lambda x: (-int(x.get('priority') or 0), str(x.get('id')))):
@@ -132,11 +147,13 @@ def main() -> int:
 </ul>
 <h2>Findings by severity</h2><div class='cards'>{counts_table(sev_counts, SEVERITIES)}</div>
 <h2>Findings by status</h2><div class='cards'>{counts_table(status_counts, STATUSES)}</div>
+<h2>Finding assessment dimensions</h2>
+{''.join(f"<h3>{h(label)}</h3><div class='cards'>{counts_table(assessment_counts[field], ['Confirmed', 'Probable', 'Potential', 'Invalid', 'Not assessed'])}</div>" for field, label in ASSESSMENT_FIELDS)}
 <h2>Target status</h2><div class='cards'>{''.join(f"<div class='card'><strong>{h(k)}</strong><br>{v}</div>" for k, v in sorted(target_status_counts.items()))}</div>
 <h2>Taxonomies</h2>
 <table><thead><tr><th>Taxonomy</th><th>ID</th><th>Count</th></tr></thead><tbody>{''.join(taxonomy_rows) or '<tr><td colspan="3">No taxonomy mappings.</td></tr>'}</tbody></table>
 <h2>Findings</h2>
-<table><thead><tr><th>ID</th><th>Severity</th><th>Confidence</th><th>Status</th><th>Category</th><th>Title</th><th>Locations</th></tr></thead><tbody>{''.join(rows) or '<tr><td colspan="7">No findings.</td></tr>'}</tbody></table>
+<table><thead><tr><th>ID</th><th>Severity</th><th>Confidence</th><th>Status</th><th>Bug existence</th><th>Attacker reachability</th><th>Boundary crossing</th><th>Impact assessment</th><th>Category</th><th>Title</th><th>Locations</th></tr></thead><tbody>{''.join(rows) or '<tr><td colspan="11">No findings.</td></tr>'}</tbody></table>
 <h2>Targets</h2>
 <table><thead><tr><th>ID</th><th>Risk</th><th>Priority</th><th>Status</th><th>Category</th><th>Title</th></tr></thead><tbody>{''.join(target_rows) or '<tr><td colspan="6">No targets.</td></tr>'}</tbody></table>
 <h2>Supply-chain posture</h2>

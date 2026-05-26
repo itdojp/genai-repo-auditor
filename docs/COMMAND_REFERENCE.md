@@ -200,7 +200,7 @@ gra-scanner-triage --run runs/OWNER__REPO/RUN_ID --model gpt-5.5 --effort xhigh
 
 | Field | Details |
 |---|---|
-| Purpose | Validate `findings.json`, optional `targets.json`, optional scanner index artifacts, optional dependency artifacts, issue body references, schema-required fields, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
+| Purpose | Validate `findings.json`, optional `targets.json`, optional scanner index artifacts, optional dependency artifacts, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
 | Workflow category | Validation workflow. |
 | Required inputs | One of `--run RUN_DIR` or `--findings PATH`. |
 | Key options | `--run RUN_DIR`, `--findings PATH`. |
@@ -220,7 +220,7 @@ gra-validate-report --findings runs/OWNER__REPO/RUN_ID/reports/findings.json
 
 | Field | Details |
 |---|---|
-| Purpose | Generate a local HTML dashboard summarizing a run's findings, target queue, Scorecard supply-chain posture, dependency risk posture, and scanner result index. |
+| Purpose | Generate a local HTML dashboard summarizing a run's findings, structured finding assessment dimensions, target queue, Scorecard supply-chain posture, dependency risk posture, and scanner result index. |
 | Workflow category | Reporting workflow. |
 | Required inputs | `--run RUN_DIR`. |
 | Key options | `--out OUT` to override the default `reports/dashboard.html`. |
@@ -239,7 +239,7 @@ gra-dashboard --run runs/OWNER__REPO/RUN_ID
 
 | Field | Details |
 |---|---|
-| Purpose | Convert `reports/findings.json` to SARIF 2.1.0 for local review or compatible tooling. |
+| Purpose | Convert `reports/findings.json` to SARIF 2.1.0 for local review or compatible tooling, including structured assessment properties when present. |
 | Workflow category | Reporting workflow. |
 | Required inputs | `--run RUN_DIR`. |
 | Key options | `--out OUT` to override the default `reports/findings.sarif`. |

@@ -91,6 +91,22 @@ Important constraints:
 - `findings[].affected_locations[].file` must be a relative target-repo path.
 - `line` and `end_line` must be positive integers when present.
 - `public_disclosure_risk` is required when `issue_recommended` is true.
+- Optional finding assessment dimensions must use the approved values
+  `Confirmed`, `Probable`, `Potential`, `Invalid`, or `Not assessed`.
+  `bug_existence` records whether the code defect exists,
+  `attacker_reachability` records whether attacker-controlled input can reach
+  it, `boundary_crossing` records whether a security boundary is crossed, and
+  `impact_assessment` records whether impact is confirmed or only plausible.
+  `assessment_notes` should explain each dimension. These fields inform Issue
+  recommendation: public Issues should avoid overstating reachability,
+  boundary-crossing, or impact when those dimensions are only Potential or Not
+  assessed.
+- `findings[].chain_membership` is an optional list of defensive chain IDs that
+  connect the finding to a separately documented attack-chain hypothesis. Each
+  value must match `CHAIN-NNN` or longer numeric forms such as `CHAIN-0001`.
+  Chain membership is advisory context for validation and prioritization; it
+  does not prove exploitability and must not replace the assessment dimensions
+  above.
 - fingerprints must be non-empty and non-placeholder.
 - obvious unredacted full secret values are rejected. Redacted or clearly marked
   example values should use markers such as `REDACTED`, `EXAMPLE`, or

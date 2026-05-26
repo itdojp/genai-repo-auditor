@@ -39,6 +39,9 @@ Method:
 - Search structurally, not just by identical string or API name.
 - For each candidate, determine whether the same security invariant is violated.
 - Reject candidates that are mitigated by middleware, policy, framework behavior, safe configuration, or non-reachable code paths.
+- For any variant finding, separately assess bug existence, attacker
+  reachability, boundary crossing, and impact; variants with uncertain
+  reachability should remain Potential or Needs human review.
 - Do not produce exploit payloads. Use static call-path reasoning and safe local validation only.
 
 Required outputs:
@@ -53,6 +56,8 @@ Required outputs:
 2. If variants are found, update {{REPORTS_DIR}}/FINDINGS.md and {{REPORTS_DIR}}/findings.json.
    - Preserve existing findings.
    - Set variant_of to {{FINDING_ID}}.
+   - Populate structured assessment fields and `assessment_notes` for each
+     variant.
    - Deduplicate by root cause, affected path, and trust boundary.
    - Create issue drafts for issue_recommended findings.
 

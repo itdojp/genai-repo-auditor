@@ -43,11 +43,15 @@ Deep-dive method:
 5. Look for bypasses, missing checks, confused deputy cases, unsafe defaults, and framework-specific pitfalls.
 6. Validate candidate findings using local static evidence and benign local tests only where appropriate.
 7. Deduplicate with existing findings.
-8. Update findings with severity, confidence, status, validation evidence, and issue recommendation.
+8. Update findings with severity, confidence, status, validation evidence, issue
+   recommendation, and structured assessment dimensions for bug existence,
+   attacker reachability, boundary crossing, and impact.
 9. Record limitations and unresolved questions.
 
 Stop condition:
 - TARGET_CATEGORY review has a documented coverage summary.
 - New or updated findings are evidence-backed and deduplicated.
+- Findings separate code-defect evidence from reachability, boundary-crossing,
+  and impact evidence.
 - findings.json remains strict JSON.
 - No files under repo/ have been modified.

@@ -28,6 +28,7 @@ from taxonomies import (  # noqa: E402
 SEVERITIES = {"Critical", "High", "Medium", "Low", "Informational"}
 CONFIDENCES = {"High", "Medium", "Low"}
 STATUSES = {"Confirmed", "Probable", "Potential", "Informational", "Invalid", "Needs human review"}
+ASSESSMENT_STATUSES = {"Confirmed", "Probable", "Potential", "Invalid", "Not assessed"}
 TARGET_STATUSES = {"queued", "in_progress", "reviewed", "skipped", "needs_human_review"}
 TARGET_RISKS = {"critical", "high", "medium", "low", "informational"}
 SCANNER_RESULTS_DIR = Path("reports/scanner-results")
@@ -467,6 +468,28 @@ def validate_fingerprint(finding: Dict[str, Any], path: str, fingerprints: set[s
     fingerprints.add(fp)
 
 
+def validate_finding_assessments(finding: Dict[str, Any], path: str, errors: List[str]) -> None:
+    for key in ["bug_existence", "attacker_reachability", "boundary_crossing", "impact_assessment"]:
+        if key in finding and finding.get(key) not in ASSESSMENT_STATUSES:
+            errors.append(f"{path}.{key}: invalid assessment value {finding.get(key)}")
+
+    if "chain_membership" in finding:
+        validate_string_list(finding.get("chain_membership"), f"{path}.chain_membership", errors)
+        if isinstance(finding.get("chain_membership"), list):
+            for index, chain_id in enumerate(finding["chain_membership"]):
+                if isinstance(chain_id, str) and not re.fullmatch(r"CHAIN-[0-9]{3,}", chain_id):
+                    errors.append(f"{path}.chain_membership[{index}]: chain id must match ^CHAIN-[0-9]{{3,}}$")
+
+    if "assessment_notes" in finding:
+        notes = finding.get("assessment_notes")
+        if not isinstance(notes, dict):
+            errors.append(f"{path}.assessment_notes: assessment_notes must be object")
+            return
+        for key in ["bug_existence", "attacker_reachability", "boundary_crossing", "impact_assessment"]:
+            if key in notes and not isinstance(notes.get(key), str):
+                errors.append(f"{path}.assessment_notes.{key}: expected type string, got {json_type_name(notes.get(key))}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate GenAI Repo Auditor report contract")
     parser.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
@@ -526,6 +549,7 @@ def main() -> int:
             errors.append(f"{path_prefix}.status: invalid status {f.get('status')}")
         validate_fingerprint(f, path_prefix, fingerprints, errors)
         validate_affected_locations(f, path_prefix, errors)
+        validate_finding_assessments(f, path_prefix, errors)
         if not isinstance(f.get("labels"), list):
             errors.append(f"{path_prefix}.labels: labels must be list")
         if not isinstance(f.get("issue_recommended"), bool):
