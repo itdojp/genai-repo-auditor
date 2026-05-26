@@ -213,6 +213,7 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-research` | Research one target with exec or supervised goal mode |
 | `gra-variant` | Find variants based on a finding or root cause |
 | `gra-adversarial-validate` | Independently challenge existing findings or chains before publication |
+| `gra-chains` | Synthesize defensive attack-chain reports from existing audit evidence |
 | `gra-ingest` | Ingest scanner outputs |
 | `gra-scanner-triage` | Triage scanner leads in repository context |
 | `gra-validate-report` | Validate `findings.json`, `targets.json`, validation output, and report contract |
@@ -254,6 +255,7 @@ Do not use this project for:
 - [`docs/TARGET_QUEUE.md`](docs/TARGET_QUEUE.md)
 - [`docs/VARIANT_ANALYSIS.md`](docs/VARIANT_ANALYSIS.md)
 - [`docs/ADVERSARIAL_VALIDATION.md`](docs/ADVERSARIAL_VALIDATION.md)
+- [`docs/ATTACK_CHAINS.md`](docs/ATTACK_CHAINS.md)
 - [`docs/SCANNER_INTEGRATION.md`](docs/SCANNER_INTEGRATION.md)
 - [`docs/SCORECARD_INGESTION.md`](docs/SCORECARD_INGESTION.md)
 - [`docs/DEPENDENCY_INGESTION.md`](docs/DEPENDENCY_INGESTION.md)

@@ -50,12 +50,14 @@ gra-audit \
 ```bash
 RUN_DIR="$GRA_HOME/runs/OWNER__REPO/RUN_ID"
 gra-validate-report --run "$RUN_DIR"
+gra-chains --run "$RUN_DIR"
 gra-adversarial-validate --run "$RUN_DIR" --all-critical-high
 gra-validate-report --run "$RUN_DIR"
 gra-issues --run "$RUN_DIR" --dry-run
 ```
 
-Issue 作成は、finding、evidence、`reports/VALIDATION.md`、
+Issue 作成は、finding、evidence、non-public by default の
+`reports/ATTACK_CHAINS.md`、`reports/VALIDATION.md`、
 `reports/issue-drafts/*.md`、公開可否を人間が確認した後だけ実行します。
 
 ```bash
@@ -74,6 +76,8 @@ runs/OWNER__REPO/RUN_ID/
   reports/
     findings.json             # validation / issue workflow の入力
     FINDINGS.md
+    chains.json               # defensive chain synthesis の機械可読出力
+    ATTACK_CHAINS.md          # non-public by default の chain summary
     validation.json           # adversarial validation の機械可読出力
     VALIDATION.md             # Issue 作成前に確認する検証サマリ
     issue-drafts/             # Issue 本文候補。人間が確認する

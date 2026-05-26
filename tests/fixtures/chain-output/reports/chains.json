@@ -1,0 +1,27 @@
+{
+  "run_id": "fixture-run",
+  "repo": "example/demo",
+  "branch": "main",
+  "commit": "0000000000000000000000000000000000000000",
+  "generated_at": "2026-05-26T00:00:00Z",
+  "chains": [
+    {
+      "id": "CHAIN-001",
+      "title": "Fixture command input reaches process boundary",
+      "severity": "High",
+      "confidence": "Medium",
+      "status": "Probable",
+      "findings": ["SEC-001"],
+      "targets": ["TGT-001"],
+      "scanner_refs": [],
+      "entry_point": "tests.fixture.entry",
+      "trust_boundaries": ["user input -> command construction"],
+      "attacker_controlled_steps": ["request parameter influences command argument"],
+      "required_conditions": ["fixture route is reachable in production-equivalent configuration"],
+      "broken_security_invariants": ["untrusted input must not cross into process execution without validation"],
+      "impact": "Potential command execution impact composition from existing fixture evidence.",
+      "safe_validation_plan": ["static call-path trace", "benign local unit test idea"],
+      "recommended_remediation": ["centralize subprocess argument validation"]
+    }
+  ]
+}

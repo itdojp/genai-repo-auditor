@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+from typing import Any
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / 'lib'))
+from version import auditor_version
+from gralib import env_from_context, load_context, load_json, render_template, run_codex_exec, write_json, utc_now
+
+
+def render_chains_markdown(run_dir: Path, chains_data: dict[str, Any]) -> None:
+    reports = run_dir / 'reports'
+
+    def comma_list(value: Any) -> str:
+        if not isinstance(value, list):
+            return 'none'
+        return ', '.join(str(item) for item in value) or 'none'
+
+    def bullet_list(value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [f"- {item}" for item in value]
+
+    lines = [
+        '# Defensive Attack Chains',
+        '',
+        'Non-public by default. This report is for internal defensive validation and remediation planning.',
+        'It must not include exploit payloads, weaponized steps, or live exploitation instructions.',
+        '',
+        f"Run ID: `{chains_data.get('run_id', '')}`",
+        f"Repository: `{chains_data.get('repo', '')}`",
+        f"Generated at: `{chains_data.get('generated_at', '')}`",
+        '',
+    ]
+    chains = chains_data.get('chains') or []
+    if not chains:
+        lines.extend(['No defensive chains were synthesized from the available evidence.', ''])
+    for chain in chains:
+        if not isinstance(chain, dict):
+            continue
+        lines.extend([
+            f"## {chain.get('id', '')}: {chain.get('title', '')}",
+            '',
+            f"- Severity: {chain.get('severity', '')}",
+            f"- Confidence: {chain.get('confidence', '')}",
+            f"- Status: {chain.get('status', '')}",
+            f"- Entry point: {chain.get('entry_point', '')}",
+            f"- Findings: {comma_list(chain.get('findings'))}",
+            f"- Targets: {comma_list(chain.get('targets'))}",
+            f"- Scanner refs: {comma_list(chain.get('scanner_refs'))}",
+            '',
+            '### Trust boundaries',
+            *bullet_list(chain.get('trust_boundaries')),
+            '',
+            '### Attacker-controlled steps',
+            *bullet_list(chain.get('attacker_controlled_steps')),
+            '',
+            '### Required conditions',
+            *bullet_list(chain.get('required_conditions')),
+            '',
+            '### Broken security invariants',
+            *bullet_list(chain.get('broken_security_invariants')),
+            '',
+            f"Impact composition: {chain.get('impact', '')}",
+            '',
+            '### Safe validation plan',
+            *bullet_list(chain.get('safe_validation_plan')),
+            '',
+            '### Recommended remediation',
+            *bullet_list(chain.get('recommended_remediation')),
+            '',
+        ])
+    (reports / 'ATTACK_CHAINS.md').write_text('\n'.join(lines), encoding='utf-8')
+
+
+def ensure_chain_artifacts(run_dir: Path, ctx: dict[str, Any]) -> None:
+    chains_path = run_dir / 'reports' / 'chains.json'
+    if not chains_path.exists():
+        return
+    data = load_json(chains_path, {}) or {}
+    if not isinstance(data, dict):
+        return
+    data.setdefault('run_id', ctx.get('run_id', run_dir.name))
+    data.setdefault('repo', ctx.get('repo', ''))
+    data.setdefault('branch', ctx.get('branch', ''))
+    data.setdefault('commit', ctx.get('commit', ''))
+    data.setdefault('generated_at', utc_now())
+    data.setdefault('chains', [])
+    write_json(chains_path, data)
+    render_chains_markdown(run_dir, data)
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description='Synthesize defensive attack chains from existing audit evidence')
+    p.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
+    p.add_argument('--run', required=True, help='Run directory')
+    p.add_argument('--mode', choices=['exec', 'goal'], default='exec')
+    p.add_argument('--model', default='gpt-5.5')
+    p.add_argument('--effort', default='xhigh')
+    p.add_argument('--network', action='store_true', help='Allow Codex sandbox network access. Not recommended.')
+    args = p.parse_args()
+
+    run_dir = Path(args.run).resolve()
+    ctx = load_context(run_dir)
+    env = env_from_context(run_dir, {
+        'CHAINS_OUTPUT_JSON': 'reports/chains.json',
+        'CHAINS_OUTPUT_MD': 'reports/ATTACK_CHAINS.md',
+    })
+
+    if args.mode == 'goal':
+        prompt = run_dir / 'prompts' / 'goal' / 'synthesize-chains.goal.md'
+        render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'goal' / 'synthesize-chains.goal.md', prompt, env)
+        print('Prepared supervised /goal chain synthesis run.')
+        print(f'Run directory: {run_dir}')
+        print(f'Goal prompt: {prompt}')
+        network_value = 'true' if args.network else 'false'
+        print('\nStart Codex:')
+        print(f'  codex --cd "{run_dir}" --skip-git-repo-check --model "{args.model}" --enable goals --sandbox workspace-write --ask-for-approval on-request -c \'model_reasoning_effort="{args.effort}"\' -c \'web_search="disabled"\' -c \'sandbox_workspace_write.network_access={network_value}\'')
+        print('\nThen paste the contents of the goal prompt.')
+        return 0
+
+    prompt = run_dir / 'prompts' / 'exec' / 'synthesize-chains.prompt.md'
+    render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'synthesize-chains.prompt.md', prompt, env)
+    print(f'Running Codex defensive chain synthesis for {ctx.get("repo", "")}'.strip())
+    status = run_codex_exec(
+        run_dir=run_dir,
+        prompt_file=prompt,
+        model=args.model,
+        effort=args.effort,
+        network=args.network,
+        output_last=run_dir / 'codex-chains-final.md',
+        events_file=run_dir / 'codex-chains-events.jsonl',
+        stderr_file=run_dir / 'codex-chains-stderr.txt',
+    )
+    ensure_chain_artifacts(run_dir, ctx)
+    print(f'Codex status: {status}')
+    print(f'Chains report: {run_dir / "reports" / "ATTACK_CHAINS.md"}')
+    print(f'Chains JSON: {run_dir / "reports" / "chains.json"}')
+    return status
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

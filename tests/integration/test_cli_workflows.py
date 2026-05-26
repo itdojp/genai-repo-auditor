@@ -550,6 +550,21 @@ class CliWorkflowTests(unittest.TestCase):
                 validation_md_src = fixture_dir / "reports" / "VALIDATION.md"
                 if validation_md_src.exists():
                     shutil.copy2(validation_md_src, reports / "VALIDATION.md")
+                chains_src = fixture_dir / "reports" / "chains.json"
+                if chains_src.exists():
+                    chains = load_json(chains_src, {})
+                    chains.update(
+                        {
+                            "run_id": ctx.get("run_id", run_dir.name),
+                            "repo": ctx.get("repo", chains.get("repo", "")),
+                            "branch": ctx.get("branch", chains.get("branch", "")),
+                            "commit": ctx.get("commit", chains.get("commit", "")),
+                        }
+                    )
+                    write_json(reports / "chains.json", chains)
+                chains_md_src = fixture_dir / "reports" / "ATTACK_CHAINS.md"
+                if chains_md_src.exists():
+                    shutil.copy2(chains_md_src, reports / "ATTACK_CHAINS.md")
                 drafts_src = fixture_dir / "reports" / "issue-drafts"
                 if drafts_src.exists():
                     drafts_dest = reports / "issue-drafts"
@@ -1577,6 +1592,103 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(["chain"], [item["subject_type"] for item in subjects["subjects"]])
         self.assertEqual(["CHAIN-001"], [item["subject_id"] for item in subjects["subjects"]])
         self.assertEqual(self.read_codex_calls(codex_log), [])
+
+    def test_gra_chains_exec_renders_prompt_and_writes_chain_artifacts(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        env, codex_log = self.env_with_codex_log(GRA_MOCK_FIXTURE_DIR=str(FIXTURES / "chain-output"))
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-chains",
+                "--run",
+                run_dir,
+                "--model",
+                "gpt-fixture",
+                "--effort",
+                "medium",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Running Codex defensive chain synthesis for example/demo", cp.stdout)
+        self.assertIn("Codex status: 0", cp.stdout)
+
+        prompt = run_dir / "prompts" / "exec" / "synthesize-chains.prompt.md"
+        prompt_text = prompt.read_text(encoding="utf-8")
+        self.assertIn("Do not implement exploit generation.", prompt_text)
+        self.assertIn("No exploit code.", prompt_text)
+        self.assertIn("No exploit payloads.", prompt_text)
+        self.assertIn("safe validation plan", prompt_text)
+        self.assertIn("reports/chains.json", prompt_text)
+        self.assertIn("reports/ATTACK_CHAINS.md", prompt_text)
+        self.assertNotIn("{{", prompt_text)
+
+        chains = json.loads((run_dir / "reports" / "chains.json").read_text(encoding="utf-8"))
+        self.assertEqual("CHAIN-001", chains["chains"][0]["id"])
+        self.assertEqual(["SEC-001"], chains["chains"][0]["findings"])
+        self.assertEqual(["TGT-001"], chains["chains"][0]["targets"])
+        attack_chains = (run_dir / "reports" / "ATTACK_CHAINS.md").read_text(encoding="utf-8")
+        self.assertIn("Non-public by default", attack_chains)
+        self.assertIn("CHAIN-001", attack_chains)
+
+        final_path = run_dir / "codex-chains-final.md"
+        events_path = run_dir / "codex-chains-events.jsonl"
+        stderr_path = run_dir / "codex-chains-stderr.txt"
+        self.assertEqual(final_path.read_text(encoding="utf-8"), "mock codex mode=success\n")
+        self.assertIn('"status": "ok"', events_path.read_text(encoding="utf-8"))
+        self.assertTrue(stderr_path.exists())
+        calls = self.read_codex_calls(codex_log)
+        self.assertEqual(len(calls), 1, calls)
+        self.assertIn(str(final_path), calls[0])
+        self.assertIn('model_reasoning_effort="medium"', calls[0])
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Chains: validated", cp_validate.stdout)
+
+    def test_gra_chains_goal_prepares_prompt_without_codex_exec(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        env, codex_log = self.env_with_codex_log()
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-chains",
+                "--run",
+                run_dir,
+                "--mode",
+                "goal",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Prepared supervised /goal chain synthesis run.", cp.stdout)
+        prompt = run_dir / "prompts" / "goal" / "synthesize-chains.goal.md"
+        prompt_text = prompt.read_text(encoding="utf-8")
+        self.assertTrue(prompt_text.startswith("/goal "))
+        self.assertIn("No exploit code.", prompt_text)
+        self.assertIn("No exploit payloads.", prompt_text)
+        self.assertIn("safe validation plan", prompt_text)
+        self.assertEqual(self.read_codex_calls(codex_log), [])
+        self.assertFalse((run_dir / "codex-chains-final.md").exists())
+
+    def test_validate_report_chain_references(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        chains = json.loads((FIXTURES / "chain-output" / "reports" / "chains.json").read_text(encoding="utf-8"))
+        (run_dir / "reports" / "chains.json").write_text(json.dumps(chains, indent=2) + "\n", encoding="utf-8")
+
+        cp_valid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir])
+        self.assertEqual(cp_valid.returncode, 0, cp_valid.stderr)
+        self.assertIn("Chains: validated", cp_valid.stdout)
+
+        invalid_run = self.copy_fixture_run("minimal-run")
+        invalid = json.loads((FIXTURES / "chain-output" / "reports" / "chains.json").read_text(encoding="utf-8"))
+        invalid["chains"][0]["findings"] = ["SEC-404"]
+        invalid["chains"][0]["targets"] = ["TGT-404"]
+        invalid["chains"][0]["scanner_refs"] = ["missing-scanner-ref"]
+        (invalid_run / "reports" / "chains.json").write_text(json.dumps(invalid, indent=2) + "\n", encoding="utf-8")
+
+        cp_invalid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", invalid_run])
+        self.assertNotEqual(cp_invalid.returncode, 0)
+        self.assertIn("SEC-404", cp_invalid.stderr)
+        self.assertIn("TGT-404", cp_invalid.stderr)
+        self.assertIn("missing-scanner-ref", cp_invalid.stderr)
 
     def test_validate_report_accepts_valid_fixture_and_rejects_invalid_fixtures(self) -> None:
         valid_run = self.copy_fixture_run("minimal-run")

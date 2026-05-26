@@ -176,6 +176,9 @@ fi
 if [[ -f "$LAB_ROOT/templates/reports/validation.schema.json" ]]; then
   cp "$LAB_ROOT/templates/reports/validation.schema.json" "$RUN_DIR/validation.schema.json"
 fi
+if [[ -f "$LAB_ROOT/templates/reports/chains.schema.json" ]]; then
+  cp "$LAB_ROOT/templates/reports/chains.schema.json" "$RUN_DIR/chains.schema.json"
+fi
 mkdir -p "$REPORT_DIR/issue-drafts" "$REPORT_DIR/scanner-results" "$REPORT_DIR/target-research" "$REPORT_DIR/variant-analysis"
 
 python3 - <<PYCODE

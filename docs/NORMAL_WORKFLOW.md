@@ -27,15 +27,17 @@
    ↓
 6. gra-validate-report でレポート契約を検証
    ↓
-7. Critical / High は gra-adversarial-validate で反証・降格余地を確認
+7. gra-chains で既存 evidence の defensive chain を整理
    ↓
-8. 人間が FINDINGS.md / VALIDATION.md / issue-drafts を確認
+8. Critical / High は gra-adversarial-validate で反証・降格余地を確認
    ↓
-9. gra-issues --dry-run
+9. 人間が FINDINGS.md / ATTACK_CHAINS.md / VALIDATION.md / issue-drafts を確認
    ↓
-10. gra-issues --apply
+10. gra-issues --dry-run
    ↓
-11. GitHub Issue 上で修正PR・期限・担当者を管理
+11. gra-issues --apply
+   ↓
+12. GitHub Issue 上で修正PR・期限・担当者を管理
 ```
 
 ## セットアップ
@@ -103,6 +105,8 @@ runs/OWNER__REPO/RUN_ID/
     ATTACK_SURFACE.md
     FINDINGS.md
     findings.json
+    ATTACK_CHAINS.md
+    chains.json
     VALIDATION.md
     validation.json
     AUDIT_LOG.md
@@ -139,6 +143,7 @@ gra-validate-report --run runs/OWNER__REPO/RUN_ID
 - severity / confidence / status が許可値であること
 - fingerprint が空でないこと
 - Issue 推奨 finding に issue draft が存在すること
+- chain output がある場合は既存 finding / target / scanner ref を参照していること
 - adversarial validation output がある場合は subject、decision、evidence list が妥当であること
 
 ## レポート確認
@@ -149,6 +154,7 @@ gra-validate-report --run runs/OWNER__REPO/RUN_ID
 reports/AUDIT_SUMMARY.md
 reports/FINDINGS.md
 reports/findings.json
+reports/ATTACK_CHAINS.md
 reports/VALIDATION.md
 reports/issue-drafts/*.md
 report-validation.txt
@@ -160,6 +166,7 @@ codex-final.md
 ```text
 - Critical / High は file:line, entry point, trust boundary, call path が必須
 - Confirmed / Probable 以外は原則 Issue 化しない
+- `ATTACK_CHAINS.md` は non-public by default として扱い、public Issue にそのまま貼らない
 - `VALIDATION.md` の downgrade / invalidate / needs-human-review は公開前に修正または明示承認する
 - Generic hardening advice は Issue 化しない
 - public repo では public_disclosure_risk を確認する
@@ -171,11 +178,16 @@ codex-final.md
 Critical / High の Issue 候補は、公開前に独立した反証・降格チェックを行います。
 
 ```bash
+gra-chains --run runs/OWNER__REPO/RUN_ID
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
 
-このステージは新しい finding を作りません。`reports/VALIDATION.md` の
+`gra-chains` は既存 finding / target / scanner ref を防御的に接続し、
+`ATTACK_CHAINS.md` を non-public by default の内部資料として出力します。
+このステージは exploit payload や weaponized step を生成してはいけません。
+
+Adversarial validation は新しい finding を作りません。`reports/VALIDATION.md` の
 `downgrade`、`invalidate`、`needs-human-review` は、Issue draft と
 `findings.json` を見直す根拠として扱います。
 

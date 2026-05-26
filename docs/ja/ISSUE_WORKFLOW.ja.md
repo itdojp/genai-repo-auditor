@@ -24,12 +24,16 @@ issue_recommended: true
 Critical / High 候補は、公開前に独立した adversarial validation も実行または確認します。
 
 ```bash
+gra-chains --run runs/OWNER__REPO/RUN_ID
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
 
-`reports/VALIDATION.md` と `reports/validation.json` の `downgrade`、
-`invalidate`、`needs-human-review` は、直接公開を止めるシグナルとして扱います。
+`reports/ATTACK_CHAINS.md` は non-public by default の内部資料です。
+chain implications を remediation priority と disclosure planning に使い、
+public Issue にそのまま貼り付けないでください。`reports/VALIDATION.md` と
+`reports/validation.json` の `downgrade`、`invalidate`、`needs-human-review` は、
+直接公開を止めるシグナルとして扱います。
 finding metadata と Issue draft を修正するか、残る不確実性を人間が明示的に
 受け入れるまで、confirmed exploitability として扱わないでください。
 
@@ -66,7 +70,7 @@ runs/OWNER__REPO/RUN_ID/reports/issue-publication-plan.json
 plan には selected finding ID、fingerprint、title、label、issue body
 file、issue body SHA-256 hash、public disclosure risk、run ID、repo、
 commit が記録されます。公開前に plan、参照される issue draft、
-`reports/VALIDATION.md` を確認します。
+`reports/ATTACK_CHAINS.md`、`reports/VALIDATION.md` を確認します。
 
 承認後、同じ plan を apply します。
 
@@ -115,6 +119,7 @@ Issue 本文には hidden marker を入れます。
 
 - `gra-validate-report --run RUN_DIR` が成功している。
 - `reports/findings.json` の severity、status、confidence、public disclosure risk が妥当である。
+- `reports/ATTACK_CHAINS.md` は non-public by default として扱い、Issue 本文にそのまま含めない。
 - `reports/VALIDATION.md` の downgrade / invalidate / needs-human-review を確認し、必要な修正または明示承認が済んでいる。
 - `reports/issue-drafts/*.md` に secret の全文、token、credential、実 exploit 手順が含まれていない。
 - scanner 由来の情報は repository context で到達可能性と影響を確認済みである。

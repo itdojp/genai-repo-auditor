@@ -17,6 +17,7 @@ Typical triggers:
   may be overstated.
 - Findings promoted from scanner, dependency, or posture leads.
 - Findings linked to chain hypotheses through `chain_membership`.
+- Chain hypotheses produced by `gra-chains` in `reports/chains.json`.
 - Any finding that will be shared outside the immediate audit team.
 
 This stage must not create new findings. If the validator notices unrelated risk,
@@ -34,6 +35,7 @@ Validate all Critical / High findings whose status is `Confirmed`, `Probable`, o
 `Potential`:
 
 ```bash
+gra-chains --run runs/OWNER__REPO/RUN_ID
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 ```
 
