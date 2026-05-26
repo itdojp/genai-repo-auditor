@@ -101,6 +101,12 @@ Important constraints:
   recommendation: public Issues should avoid overstating reachability,
   boundary-crossing, or impact when those dimensions are only Potential or Not
   assessed.
+- `findings[].chain_membership` is an optional list of defensive chain IDs that
+  connect the finding to a separately documented attack-chain hypothesis. Each
+  value must match `CHAIN-NNN` or longer numeric forms such as `CHAIN-0001`.
+  Chain membership is advisory context for validation and prioritization; it
+  does not prove exploitability and must not replace the assessment dimensions
+  above.
 - fingerprints must be non-empty and non-placeholder.
 - obvious unredacted full secret values are rejected. Redacted or clearly marked
   example values should use markers such as `REDACTED`, `EXAMPLE`, or
