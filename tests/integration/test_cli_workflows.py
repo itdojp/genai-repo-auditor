@@ -2083,6 +2083,54 @@ class CliWorkflowTests(unittest.TestCase):
         calls = self.read_gh_calls(gh_log)
         self.assert_gh_called(calls, ["repo", "clone"])
 
+        repo_dir = consumer_run / "repo"
+        subprocess.run(
+            ["git", "-C", str(repo_dir), "checkout", "-b", "feature-trace"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        (repo_dir / "feature.txt").write_text("feature branch fixture\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(repo_dir), "add", "feature.txt"], check=True, stdout=subprocess.DEVNULL)
+        subprocess.run(
+            ["git", "-C", str(repo_dir), "-c", "commit.gpgsign=false", "commit", "-m", "feature trace"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
+        feature_commit = subprocess.check_output(["git", "-C", str(repo_dir), "rev-parse", "HEAD"], text=True).strip()
+        subprocess.run(
+            ["git", "-C", str(repo_dir), "checkout", "main"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        cp_branch = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-trace",
+                "--producer-run",
+                producer_run,
+                "--finding",
+                "SEC-001",
+                "--consumer-repo",
+                "example/consumer-api",
+                "--mode",
+                "prepare",
+                "--branch",
+                "feature-trace",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Prepared cross-repo trace reachability workspace.", cp_branch.stdout)
+        current_branch = subprocess.check_output(["git", "-C", str(repo_dir), "branch", "--show-current"], text=True).strip()
+        self.assertEqual("feature-trace", current_branch)
+        branch_ctx = json.loads((consumer_run / "context.json").read_text(encoding="utf-8"))
+        self.assertEqual("feature-trace", branch_ctx["branch"])
+        self.assertEqual(feature_commit, branch_ctx["commit"])
+        clone_calls = [call for call in self.read_gh_calls(gh_log) if call[:2] == ["repo", "clone"]]
+        self.assertEqual(1, len(clone_calls), clone_calls)
+
     def test_validate_report_trace_reachability_contract(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         traces = json.loads((FIXTURES / "trace-output" / "reports" / "traces.json").read_text(encoding="utf-8"))

@@ -73,6 +73,36 @@ def git_output(args: list[str], cwd: Path, default: str = '') -> str:
         return default
 
 
+def checkout_requested_branch(repo_dir: Path, branch: str) -> None:
+    if not branch:
+        return
+    current_branch = git_output(['branch', '--show-current'], repo_dir)
+    if current_branch == branch:
+        return
+    if git_output(['rev-parse', '--verify', f'refs/heads/{branch}'], repo_dir):
+        subprocess.run(
+            ['git', 'checkout', branch],
+            cwd=repo_dir,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return
+    if git_output(['rev-parse', '--verify', f'refs/remotes/origin/{branch}'], repo_dir):
+        subprocess.run(
+            ['git', 'checkout', '-B', branch, f'origin/{branch}'],
+            cwd=repo_dir,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return
+    raise RuntimeError(
+        f'existing consumer checkout does not have requested branch {branch!r}; '
+        'remove the trace-consumers workspace or make the branch available locally before rerunning prepare mode'
+    )
+
+
 def clone_consumer_repo(*, producer_run: Path, consumer_repo: str, branch: str, depth: str) -> Path:
     consumer_slug = normalize_repo_slug(consumer_repo)
     consumer_run = producer_run / 'trace-consumers' / consumer_slug
@@ -89,8 +119,9 @@ def clone_consumer_repo(*, producer_run: Path, consumer_repo: str, branch: str, 
     elif not (consumer_repo_dir / '.git').exists():
         raise RuntimeError(f'consumer repo directory exists but is not a git checkout: {consumer_repo_dir}')
 
+    checkout_requested_branch(consumer_repo_dir, branch)
     commit = git_output(['rev-parse', 'HEAD'], consumer_repo_dir)
-    actual_branch = branch or git_output(['branch', '--show-current'], consumer_repo_dir)
+    actual_branch = git_output(['branch', '--show-current'], consumer_repo_dir)
     ctx = {
         'run_id': f'trace-consumer-{consumer_slug}',
         'repo': consumer_repo,
