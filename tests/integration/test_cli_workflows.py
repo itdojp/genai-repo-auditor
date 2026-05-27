@@ -11,7 +11,7 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
@@ -85,6 +85,16 @@ class CliWorkflowTests(unittest.TestCase):
         shutil.copytree(FIXTURES / fixture_name, dst)
         return dst
 
+    def copy_advanced_workflow_outputs(self, run_dir: Path) -> None:
+        src = FIXTURES / "advanced-workflow-output" / "reports"
+        dst = run_dir / "reports"
+        for path in src.iterdir():
+            target = dst / path.name
+            if path.is_dir():
+                shutil.copytree(path, target, dirs_exist_ok=True)
+            else:
+                shutil.copy2(path, target)
+
     def env_with_gh_log(self, **overrides: str) -> tuple[dict, Path]:
         log_path = self.work_dir / f"gh-calls-{self.fixture_counter + 1}.jsonl"
         env = self.env.copy()
@@ -99,15 +109,15 @@ class CliWorkflowTests(unittest.TestCase):
         env.update(overrides)
         return env, log_path
 
-    def read_jsonl_calls(self, log_path: Path) -> list[list[str]]:
+    def read_jsonl_calls(self, log_path: Path) -> list[Any]:
         if not log_path.exists():
             return []
         return [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
-    def read_gh_calls(self, log_path: Path) -> list[list[str]]:
+    def read_gh_calls(self, log_path: Path) -> list[Any]:
         return self.read_jsonl_calls(log_path)
 
-    def read_codex_calls(self, log_path: Path) -> list[list[str]]:
+    def read_codex_calls(self, log_path: Path) -> list[Any]:
         return self.read_jsonl_calls(log_path)
 
     def target_by_id(self, run_dir: Path, target_id: str) -> dict:
@@ -458,6 +468,15 @@ class CliWorkflowTests(unittest.TestCase):
                             print("[]")
                     return 0
                 if len(args) >= 2 and args[:2] == ["issue", "create"]:
+                    capture = os.environ.get("GRA_MOCK_GH_BODY_CAPTURE", "")
+                    if capture and "--body-file" in args:
+                        idx = args.index("--body-file")
+                        if idx + 1 < len(args):
+                            body_file = Path(args[idx + 1])
+                            capture_path = Path(capture)
+                            capture_path.parent.mkdir(parents=True, exist_ok=True)
+                            with capture_path.open("a", encoding="utf-8") as fh:
+                                fh.write(json.dumps({"args": args, "body": body_file.read_text(encoding="utf-8")}) + "\n")
                     print(os.environ.get("GRA_MOCK_ISSUE_URL", "https://github.example.invalid/example/demo/issues/1"))
                     return 0
                 if len(args) >= 2 and args[:2] == ["label", "create"]:
@@ -2695,6 +2714,268 @@ class CliWorkflowTests(unittest.TestCase):
         self.assert_gh_called(calls, ["repo", "view"])
         self.assert_gh_called(calls, ["issue", "list"])
         self.assert_gh_called(calls, ["issue", "create"])
+
+    def test_gra_issues_plan_includes_advanced_validation_summary(self) -> None:
+        run_dir = self.copy_fixture_run("advanced-workflow-run")
+        self.copy_advanced_workflow_outputs(run_dir)
+        plan_path = run_dir / "reports" / "issue-publication-plan.json"
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--plan",
+                "--min-severity",
+                "High",
+                "--statuses",
+                "Confirmed,Probable",
+            ],
+            check=True,
+        )
+
+        self.assertIn("advanced_validation:", cp.stdout)
+        self.assertIn("WARNING: related adversarial validation has blocking decision(s): VAL-102=downgrade", cp.stdout)
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        selected = {entry["id"]: entry for entry in plan["selected_findings"]}
+        self.assertEqual(sorted(selected), ["SEC-101", "SEC-102"])
+
+        sec101 = selected["SEC-101"]
+        self.assertEqual(sec101["chain_membership"], ["CHAIN-001"])
+        self.assertEqual(sec101["advanced_validation"]["chains"]["matched"], ["CHAIN-001"])
+        self.assertEqual(sec101["advanced_validation"]["chains"]["missing"], [])
+        self.assertEqual(sec101["advanced_validation"]["adversarial_validation"]["finding_validations"], ["VAL-101"])
+        self.assertTrue(sec101["advanced_validation"]["adversarial_validation"]["exists"])
+        self.assertEqual(sec101["advanced_validation"]["safe_local_proof"]["proofs"], ["PROOF-101"])
+        self.assertTrue(sec101["advanced_validation"]["safe_local_proof"]["exists"])
+        self.assertFalse(sec101["advanced_validation"]["safe_local_proof"]["not_applicable"])
+        self.assertEqual(sec101["advanced_validation"]["warnings"], [])
+
+        sec102 = selected["SEC-102"]
+        self.assertEqual(sec102["advanced_validation"]["adversarial_validation"]["finding_validations"], ["VAL-102"])
+        self.assertEqual(
+            sec102["advanced_validation"]["adversarial_validation"]["finding_validation_details"],
+            [
+                {
+                    "id": "VAL-102",
+                    "decision": "downgrade",
+                    "recommended_severity": "Medium",
+                    "recommended_confidence": "Low",
+                }
+            ],
+        )
+        self.assertEqual(sec102["advanced_validation"]["adversarial_validation"]["blocking_decisions"], ["VAL-102=downgrade"])
+        self.assertEqual(sec102["advanced_validation"]["safe_local_proof"]["proofs"], ["PROOF-102"])
+        self.assertEqual(
+            sec102["advanced_validation"]["warnings"],
+            ["related adversarial validation has blocking decision(s): VAL-102=downgrade"],
+        )
+
+    def test_gra_issues_require_advanced_validation_fails_when_artifacts_are_missing(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        plan_path = run_dir / "reports" / "issue-publication-plan.json"
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--plan",
+                "--require-advanced-validation",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ]
+        )
+
+        self.assertEqual(cp.returncode, 4, cp.stderr)
+        self.assertIn("Advanced validation requirements failed", cp.stderr)
+        self.assertIn("SEC-001: High/Critical issue-recommended finding lacks related adversarial validation", cp.stderr)
+        self.assertIn("SEC-001: High/Critical issue-recommended finding lacks safe local proof", cp.stderr)
+        self.assertFalse(plan_path.exists())
+
+    def test_gra_issues_require_advanced_validation_rejects_blocking_validation_decisions(self) -> None:
+        run_dir = self.copy_fixture_run("advanced-workflow-run")
+        self.copy_advanced_workflow_outputs(run_dir)
+        plan_path = run_dir / "reports" / "issue-publication-plan.json"
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--plan",
+                "--require-advanced-validation",
+                "--min-severity",
+                "High",
+                "--statuses",
+                "Confirmed,Probable",
+            ]
+        )
+
+        self.assertEqual(cp.returncode, 4, cp.stderr)
+        self.assertIn("SEC-102: related adversarial validation has blocking decision(s): VAL-102=downgrade", cp.stderr)
+        self.assertFalse(plan_path.exists())
+
+    def test_gra_issues_accepts_explicit_safe_proof_not_applicable_reason(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        findings_path = run_dir / "reports" / "findings.json"
+        findings = json.loads(findings_path.read_text(encoding="utf-8"))
+        findings["findings"][0]["safe_proof_not_applicable"] = True
+        findings["findings"][0]["safe_proof_not_applicable_reason"] = "configuration-only finding reviewed by policy owner"
+        findings_path.write_text(json.dumps(findings, indent=2) + "\n", encoding="utf-8")
+        (run_dir / "reports" / "validation.json").write_text(
+            json.dumps(
+                {
+                    "run_id": "fixture-run",
+                    "repo": "example/demo",
+                    "generated_at": "2026-05-27T00:00:00Z",
+                    "validations": [
+                        {
+                            "id": "VAL-001",
+                            "subject_type": "finding",
+                            "subject_id": "SEC-001",
+                            "decision": "confirm",
+                            "original_severity": "High",
+                            "recommended_severity": "High",
+                            "original_confidence": "High",
+                            "recommended_confidence": "High",
+                            "reasoning_summary": "Fixture validation for not-applicable proof handling.",
+                            "evidence_checked": ["reports/findings.json"],
+                            "missing_evidence": [],
+                            "safe_validation_steps": ["policy-owner review"],
+                        }
+                    ],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        plan_path = run_dir / "reports" / "issue-publication-plan.json"
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--plan",
+                "--require-advanced-validation",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            check=True,
+        )
+
+        self.assertNotIn("WARNING:", cp.stdout)
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        proof = plan["selected_findings"][0]["advanced_validation"]["safe_local_proof"]
+        self.assertFalse(proof["exists"])
+        self.assertTrue(proof["not_applicable"])
+        self.assertEqual(proof["not_applicable_reason"], "configuration-only finding reviewed by policy owner")
+
+    def test_gra_issues_public_body_does_not_include_attack_chain_report_contents(self) -> None:
+        run_dir = self.copy_fixture_run("advanced-workflow-run")
+        self.copy_advanced_workflow_outputs(run_dir)
+        validation_path = run_dir / "reports" / "validation.json"
+        validations = json.loads(validation_path.read_text(encoding="utf-8"))
+        for item in validations["validations"]:
+            if item["subject_id"] == "SEC-102":
+                item["decision"] = "confirm"
+                item["recommended_severity"] = "High"
+                item["recommended_confidence"] = "Medium"
+        validation_path.write_text(json.dumps(validations, indent=2) + "\n", encoding="utf-8")
+        marker = "DO_NOT_COPY_ATTACK_CHAIN_INTERNAL_DETAIL"
+        (run_dir / "reports" / "ATTACK_CHAINS.md").write_text(
+            f"# Internal chain report\n\n{marker}\n",
+            encoding="utf-8",
+        )
+        capture_path = self.work_dir / "issue-body-capture.jsonl"
+        env, log_path = self.env_with_gh_log(
+            GRA_MOCK_GH_VISIBILITY="PUBLIC",
+            GRA_MOCK_GH_BODY_CAPTURE=str(capture_path),
+        )
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply",
+                "--allow-public",
+                "--require-advanced-validation",
+                "--min-severity",
+                "High",
+                "--statuses",
+                "Confirmed,Probable",
+            ],
+            env=env,
+            check=True,
+        )
+
+        self.assertIn("CREATED SEC-101", cp.stdout)
+        self.assertIn("CREATED SEC-102", cp.stdout)
+        captures = self.read_jsonl_calls(capture_path)
+        self.assertEqual(len(captures), 2)
+        self.assertTrue(all(marker not in item["body"] for item in captures))
+        self.assertTrue(all("ATTACK_CHAINS.md" not in item["body"] for item in captures))
+        calls = self.read_gh_calls(log_path)
+        self.assert_gh_called(calls, ["repo", "view"])
+        self.assert_gh_called(calls, ["issue", "create"])
+
+    def test_gra_issues_apply_plan_rejects_changed_advanced_validation_state(self) -> None:
+        run_dir = self.copy_fixture_run("advanced-workflow-run")
+        self.copy_advanced_workflow_outputs(run_dir)
+        validation_path = run_dir / "reports" / "validation.json"
+        validations = json.loads(validation_path.read_text(encoding="utf-8"))
+        for item in validations["validations"]:
+            if item["subject_id"] == "SEC-102":
+                item["decision"] = "confirm"
+                item["recommended_severity"] = "High"
+                item["recommended_confidence"] = "Medium"
+        validation_path.write_text(json.dumps(validations, indent=2) + "\n", encoding="utf-8")
+        plan_path = run_dir / "reports" / "issue-publication-plan.json"
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--plan",
+                "--require-advanced-validation",
+                "--min-severity",
+                "High",
+                "--statuses",
+                "Confirmed,Probable",
+            ],
+            check=True,
+        )
+        validations = json.loads(validation_path.read_text(encoding="utf-8"))
+        for item in validations["validations"]:
+            if item["subject_id"] == "SEC-102":
+                item["decision"] = "downgrade"
+                item["recommended_severity"] = "Medium"
+                item["recommended_confidence"] = "Low"
+        validation_path.write_text(json.dumps(validations, indent=2) + "\n", encoding="utf-8")
+        env, log_path = self.env_with_gh_log()
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply-plan",
+                plan_path,
+            ],
+            env=env,
+        )
+
+        self.assertEqual(cp.returncode, 4, cp.stderr)
+        self.assertIn("Issue publication plan verification failed", cp.stderr)
+        self.assertIn("SEC-102: advanced_validation changed after plan creation", cp.stderr)
+        self.assert_gh_not_called(self.read_gh_calls(log_path), ["issue", "create"])
 
     def test_gra_issues_apply_plan_rejects_changed_issue_body(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
