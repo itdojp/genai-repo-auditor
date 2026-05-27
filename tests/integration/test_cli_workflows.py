@@ -120,6 +120,12 @@ class CliWorkflowTests(unittest.TestCase):
     def read_codex_calls(self, log_path: Path) -> list[Any]:
         return self.read_jsonl_calls(log_path)
 
+    def assert_path_under(self, path: Path, base: Path) -> None:
+        try:
+            path.resolve(strict=False).relative_to(base.resolve())
+        except ValueError as exc:
+            raise AssertionError(f"{path} is not under {base}") from exc
+
     def target_by_id(self, run_dir: Path, target_id: str) -> dict:
         targets = json.loads((run_dir / "reports" / "targets.json").read_text(encoding="utf-8"))["targets"]
         for target in targets:
@@ -2125,6 +2131,16 @@ class CliWorkflowTests(unittest.TestCase):
         final_path = producer_run / "codex-trace-sec-001-example-consumer-api-final.md"
         events_path = producer_run / "codex-trace-sec-001-example-consumer-api-events.jsonl"
         stderr_path = producer_run / "codex-trace-sec-001-example-consumer-api-stderr.txt"
+        for output_path in [
+            producer_run / "reports" / "traces" / "sec-001-example-consumer-api.subjects.json",
+            producer_run / "reports" / "traces.json",
+            producer_run / "reports" / "TRACE.md",
+            producer_run / "prompts" / "exec" / "trace-reachability-sec-001-example-consumer-api.prompt.md",
+            final_path,
+            events_path,
+            stderr_path,
+        ]:
+            self.assert_path_under(output_path, producer_run)
         self.assertEqual(final_path.read_text(encoding="utf-8"), "mock codex mode=success\n")
         self.assertIn('"status": "ok"', events_path.read_text(encoding="utf-8"))
         self.assertTrue(stderr_path.exists())
@@ -2136,6 +2152,188 @@ class CliWorkflowTests(unittest.TestCase):
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", producer_run], check=True)
         self.assertIn("Traces: validated", cp_validate.stdout)
+
+    def test_gra_trace_prepare_invalid_finding_fails_before_clone(self) -> None:
+        producer_run = self.copy_fixture_run("minimal-run")
+        env, gh_log = self.env_with_gh_log()
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-trace",
+                "--producer-run",
+                producer_run,
+                "--finding",
+                "SEC-404",
+                "--consumer-repo",
+                "example/consumer-api",
+                "--mode",
+                "prepare",
+            ],
+            env=env,
+        )
+
+        self.assertEqual(2, cp.returncode)
+        self.assertIn("finding not found: SEC-404", cp.stderr)
+        self.assertEqual([], [call for call in self.read_gh_calls(gh_log) if call[:2] == ["repo", "clone"]])
+
+    def test_gra_trace_exec_and_goal_require_consumer_run_without_cloning(self) -> None:
+        producer_run = self.copy_fixture_run("minimal-run")
+        env, gh_log = self.env_with_gh_log()
+
+        for mode in ["exec", "goal"]:
+            cp = self.run_cmd(
+                [
+                    REPO_ROOT / "bin" / "gra-trace",
+                    "--producer-run",
+                    producer_run,
+                    "--finding",
+                    "SEC-001",
+                    "--consumer-repo",
+                    "example/consumer-api",
+                    "--mode",
+                    mode,
+                ],
+                env=env,
+            )
+            self.assertEqual(2, cp.returncode)
+            self.assertIn(f"--mode {mode} requires --consumer-run", cp.stderr)
+
+        self.assertEqual([], [call for call in self.read_gh_calls(gh_log) if call[:2] == ["repo", "clone"]])
+
+    def test_gra_trace_rejects_reports_dir_path_traversal(self) -> None:
+        producer_run = self.copy_fixture_run("minimal-run")
+        consumer_run = self.copy_fixture_run("minimal-run")
+        ctx_path = producer_run / "context.json"
+        ctx = json.loads(ctx_path.read_text(encoding="utf-8"))
+        ctx["reports_dir"] = "../outside-reports"
+        ctx_path.write_text(json.dumps(ctx, indent=2) + "\n", encoding="utf-8")
+        env, codex_log = self.env_with_codex_log(GRA_MOCK_FIXTURE_DIR=str(FIXTURES / "trace-output"))
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-trace",
+                "--producer-run",
+                producer_run,
+                "--finding",
+                "SEC-001",
+                "--consumer-run",
+                consumer_run,
+            ],
+            env=env,
+        )
+
+        self.assertEqual(2, cp.returncode)
+        self.assertIn("reports_dir must not contain path traversal", cp.stderr)
+        self.assertFalse((self.work_dir / "outside-reports").exists())
+        self.assertEqual([], self.read_codex_calls(codex_log))
+
+    def test_gra_trace_rejects_repo_dir_path_traversal(self) -> None:
+        producer_run = self.copy_fixture_run("minimal-run")
+        consumer_run = self.copy_fixture_run("minimal-run")
+        ctx_path = producer_run / "context.json"
+        ctx = json.loads(ctx_path.read_text(encoding="utf-8"))
+        ctx["repo_dir"] = "../outside-repo"
+        ctx_path.write_text(json.dumps(ctx, indent=2) + "\n", encoding="utf-8")
+        env, codex_log = self.env_with_codex_log(GRA_MOCK_FIXTURE_DIR=str(FIXTURES / "trace-output"))
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-trace",
+                "--producer-run",
+                producer_run,
+                "--finding",
+                "SEC-001",
+                "--consumer-run",
+                consumer_run,
+            ],
+            env=env,
+        )
+
+        self.assertEqual(2, cp.returncode)
+        self.assertIn("repo_dir must not contain path traversal", cp.stderr)
+        self.assertEqual([], self.read_codex_calls(codex_log))
+
+    def test_gra_trace_rejects_symlinked_producer_reports_dir(self) -> None:
+        producer_run = self.copy_fixture_run("minimal-run")
+        consumer_run = self.copy_fixture_run("minimal-run")
+        outside_reports = self.work_dir / "outside-reports"
+        shutil.move(str(producer_run / "reports"), outside_reports)
+        os.symlink(outside_reports, producer_run / "reports", target_is_directory=True)
+        env, codex_log = self.env_with_codex_log(GRA_MOCK_FIXTURE_DIR=str(FIXTURES / "trace-output"))
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-trace",
+                "--producer-run",
+                producer_run,
+                "--finding",
+                "SEC-001",
+                "--consumer-run",
+                consumer_run,
+            ],
+            env=env,
+        )
+
+        self.assertEqual(2, cp.returncode)
+        self.assertIn("reports_dir", cp.stderr)
+        self.assertEqual([], self.read_codex_calls(codex_log))
+
+    def test_gra_trace_rejects_symlinked_consumer_run(self) -> None:
+        producer_run = self.copy_fixture_run("minimal-run")
+        consumer_run = self.copy_fixture_run("minimal-run")
+        consumer_link = self.work_dir / "consumer-run-link"
+        os.symlink(consumer_run, consumer_link, target_is_directory=True)
+        env, codex_log = self.env_with_codex_log(GRA_MOCK_FIXTURE_DIR=str(FIXTURES / "trace-output"))
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-trace",
+                "--producer-run",
+                producer_run,
+                "--finding",
+                "SEC-001",
+                "--consumer-run",
+                consumer_link,
+            ],
+            env=env,
+        )
+
+        self.assertEqual(2, cp.returncode)
+        self.assertIn("consumer run must not be a symlink", cp.stderr)
+        self.assertEqual([], self.read_codex_calls(codex_log))
+
+    def test_gra_trace_keeps_network_disabled_and_docs_experimental_p3(self) -> None:
+        cp_help = self.run_cmd([REPO_ROOT / "bin" / "gra-trace", "--help"], check=True)
+        self.assertNotIn("--network", cp_help.stdout)
+
+        producer_run = self.copy_fixture_run("minimal-run")
+        consumer_run = self.copy_fixture_run("minimal-run")
+        cp_network = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-trace",
+                "--producer-run",
+                producer_run,
+                "--finding",
+                "SEC-001",
+                "--consumer-run",
+                consumer_run,
+                "--network",
+            ]
+        )
+        self.assertEqual(2, cp_network.returncode)
+        self.assertIn("unrecognized arguments: --network", cp_network.stderr)
+
+        docs_to_check = [
+            REPO_ROOT / "README.md",
+            REPO_ROOT / "docs" / "TRACE_REACHABILITY.md",
+            REPO_ROOT / "docs" / "COMMAND_REFERENCE.md",
+            REPO_ROOT / "docs" / "MULTI_REPO.md",
+            REPO_ROOT / "docs" / "STAGED_AGENTIC_WORKFLOW.md",
+        ]
+        for doc in docs_to_check:
+            text = doc.read_text(encoding="utf-8")
+            self.assertIn("gra-trace", text, doc)
+            self.assertIn("experimental/P3", text, doc)
 
     def test_gra_trace_prepare_clones_consumer_repo_and_prepares_goal_prompt(self) -> None:
         producer_run = self.copy_fixture_run("minimal-run")

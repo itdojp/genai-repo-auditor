@@ -36,6 +36,10 @@ gra-validate-report --run runs/ORG__shared-lib/PRODUCER_RUN_ID
 It prepares a local consumer workspace under the producer run and renders a
 supervised `/goal` prompt. It does not run Codex.
 
+`gra-trace` validates the producer finding ID before cloning. If the requested
+finding is missing or the producer run layout is unsafe, prepare mode exits
+without cloning the consumer repository.
+
 ```bash
 gra-trace \
   --producer-run runs/ORG__shared-lib/PRODUCER_RUN_ID \
@@ -59,6 +63,9 @@ runs/ORG__shared-lib/PRODUCER_RUN_ID/
 ## Exec and goal modes
 
 Use an existing consumer run for non-interactive exec or supervised goal mode.
+`exec` and `goal` mode require `--consumer-run`; `--consumer-repo` is accepted
+only for `prepare` mode so a trace execution cannot clone a repository by
+accident.
 
 ```bash
 gra-trace \
@@ -109,6 +116,16 @@ gra-validate-report --run runs/ORG__shared-lib/PRODUCER_RUN_ID
 ## Safety boundaries
 
 `gra-trace` is defensive-only.
+
+Local path safety:
+
+- Trace subjects, prompts, Codex event files, `reports/traces.json`, and
+  `reports/TRACE.md` are written under the producer run directory.
+- `reports_dir` and target repository paths from `context.json` are treated as
+  untrusted run metadata. Path traversal and symlink components are rejected.
+- A symlinked consumer run is rejected; use the real prepared run directory.
+- There is no `--network` flag. Exec mode invokes Codex with
+  `sandbox_workspace_write.network_access=false`.
 
 Forbidden:
 

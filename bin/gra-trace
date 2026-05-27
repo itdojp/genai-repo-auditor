@@ -23,9 +23,63 @@ from gralib import (
 )
 
 
-def reports_dir(run_dir: Path) -> Path:
+class TraceSafetyError(RuntimeError):
+    """Raised when trace inputs would escape the intended local run boundary."""
+
+
+def path_under(path: Path, base: Path) -> bool:
+    try:
+        path.resolve(strict=False).relative_to(base.resolve(strict=True))
+        return True
+    except (FileNotFoundError, ValueError):
+        return False
+
+
+def reject_symlink_components_under(path: Path, base: Path, label: str) -> None:
+    """Reject existing symlink components from base to path, including path itself."""
+
+    try:
+        rel = path.relative_to(base)
+    except ValueError as exc:
+        raise TraceSafetyError(f'{label} must stay under run directory: {path}') from exc
+    current = base
+    for part in rel.parts:
+        current = current / part
+        if current.exists() and current.is_symlink():
+            raise TraceSafetyError(f'{label} must not contain symlink components: {current}')
+
+
+def ensure_under_run(path: Path, run_dir: Path, label: str) -> Path:
+    if not path_under(path, run_dir):
+        raise TraceSafetyError(f'{label} must stay under run directory: {path}')
+    reject_symlink_components_under(path, run_dir, label)
+    return path
+
+
+def safe_relative_context_dir(run_dir: Path, key: str, default: str, label: str) -> Path:
     ctx = load_context(run_dir)
-    return run_dir / ctx.get('reports_dir', 'reports')
+    value = ctx.get(key, default)
+    raw = Path(str(value or default))
+    if raw.is_absolute():
+        raise TraceSafetyError(f'{label} must be relative under run directory: {raw}')
+    if '..' in raw.parts:
+        raise TraceSafetyError(f'{label} must not contain path traversal: {raw}')
+    return ensure_under_run(run_dir / raw, run_dir, label)
+
+
+def safe_context_path(run_dir: Path, label: str) -> Path:
+    return ensure_under_run(run_dir / 'context.json', run_dir, f'{label} context.json')
+
+
+def resolve_run_dir(value: str, label: str) -> Path:
+    raw = Path(value)
+    if raw.is_symlink():
+        raise TraceSafetyError(f'{label} must not be a symlink: {raw}')
+    return raw.resolve()
+
+
+def reports_dir(run_dir: Path) -> Path:
+    return safe_relative_context_dir(run_dir, 'reports_dir', 'reports', 'reports_dir')
 
 
 def repo_dir(run_dir: Path) -> Path:
@@ -33,8 +87,18 @@ def repo_dir(run_dir: Path) -> Path:
     value = ctx.get('repo_dir')
     if value:
         path = Path(str(value))
-        return path if path.is_absolute() else run_dir / path
-    return run_dir / ctx.get('target_repo_dir', 'repo')
+        if '..' in path.parts:
+            raise TraceSafetyError(f'repo_dir must not contain path traversal: {path}')
+        candidate = path if path.is_absolute() else run_dir / path
+    else:
+        raw = Path(str(ctx.get('target_repo_dir', 'repo') or 'repo'))
+        if raw.is_absolute():
+            candidate = raw
+        else:
+            if '..' in raw.parts:
+                raise TraceSafetyError(f'target_repo_dir must not contain path traversal: {raw}')
+            candidate = run_dir / raw
+    return ensure_under_run(candidate, run_dir, 'repo_dir')
 
 
 def load_json(path: Path, default: Any = None) -> Any:
@@ -50,7 +114,7 @@ def load_findings_from_run(run_dir: Path) -> list[dict[str, Any]]:
 
 
 def find_producer_finding(run_dir: Path, finding_id: str) -> dict[str, Any]:
-    findings_path = reports_dir(run_dir) / 'findings.json'
+    findings_path = ensure_under_run(reports_dir(run_dir) / 'findings.json', run_dir, 'findings.json')
     if not findings_path.exists():
         raise FileNotFoundError(f'findings.json not found: {findings_path}')
     for finding in load_findings_from_run(run_dir):
@@ -105,9 +169,14 @@ def checkout_requested_branch(repo_dir: Path, branch: str) -> None:
 
 def clone_consumer_repo(*, producer_run: Path, consumer_repo: str, branch: str, depth: str) -> Path:
     consumer_slug = normalize_repo_slug(consumer_repo)
-    consumer_run = producer_run / 'trace-consumers' / consumer_slug
-    consumer_repo_dir = consumer_run / 'repo'
-    consumer_reports = consumer_run / 'reports'
+    trace_consumers_dir = ensure_under_run(
+        producer_run / 'trace-consumers',
+        producer_run,
+        'trace consumers directory',
+    )
+    consumer_run = ensure_under_run(trace_consumers_dir / consumer_slug, producer_run, 'consumer run')
+    consumer_repo_dir = ensure_under_run(consumer_run / 'repo', producer_run, 'consumer repo directory')
+    consumer_reports = ensure_under_run(consumer_run / 'reports', producer_run, 'consumer reports directory')
     consumer_reports.mkdir(parents=True, exist_ok=True)
 
     if not consumer_repo_dir.exists():
@@ -136,13 +205,30 @@ def clone_consumer_repo(*, producer_run: Path, consumer_repo: str, branch: str, 
         'network_allowed': False,
         'prepared_for_trace': True,
     }
-    write_json(consumer_run / 'context.json', ctx)
+    write_json(ensure_under_run(consumer_run / 'context.json', producer_run, 'consumer context.json'), ctx)
     return consumer_run
 
 
 def subject_path_for(producer_run: Path, finding_id: str, consumer_repo: str) -> Path:
     selection_slug = slug(f'{finding_id}-{consumer_repo}')
-    return reports_dir(producer_run) / 'traces' / f'{selection_slug}.subjects.json'
+    return ensure_under_run(
+        reports_dir(producer_run) / 'traces' / f'{selection_slug}.subjects.json',
+        producer_run,
+        'trace subjects file',
+    )
+
+
+def trace_prompt_path(producer_run: Path, mode: str, selection_slug: str) -> Path:
+    suffix = 'goal' if mode == 'goal' else 'prompt'
+    return ensure_under_run(
+        producer_run / 'prompts' / mode / f'trace-reachability-{selection_slug}.{suffix}.md',
+        producer_run,
+        'trace prompt',
+    )
+
+
+def trace_output_path(producer_run: Path, name: str) -> Path:
+    return ensure_under_run(producer_run / name, producer_run, name)
 
 
 def build_subject_payload(
@@ -155,8 +241,18 @@ def build_subject_payload(
     consumer_ctx: dict[str, Any],
 ) -> dict[str, Any]:
     consumer_reports = reports_dir(consumer_run)
-    consumer_findings_path = consumer_reports / 'findings.json'
-    consumer_targets_path = consumer_reports / 'targets.json'
+    consumer_findings_path = ensure_under_run(
+        consumer_reports / 'findings.json',
+        consumer_run,
+        'consumer findings.json',
+    )
+    consumer_targets_path = ensure_under_run(
+        consumer_reports / 'targets.json',
+        consumer_run,
+        'consumer targets.json',
+    )
+    output_json = ensure_under_run(reports_dir(producer_run) / 'traces.json', producer_run, 'trace JSON')
+    output_markdown = ensure_under_run(reports_dir(producer_run) / 'TRACE.md', producer_run, 'trace Markdown')
     return {
         'schema_version': '1',
         'generated_at': utc_now(),
@@ -181,8 +277,8 @@ def build_subject_payload(
             'targets_report': str(consumer_targets_path) if consumer_targets_path.exists() else '',
         },
         'trace_contract': {
-            'output_json': rel_to(reports_dir(producer_run) / 'traces.json', producer_run),
-            'output_markdown': rel_to(reports_dir(producer_run) / 'TRACE.md', producer_run),
+            'output_json': rel_to(output_json, producer_run),
+            'output_markdown': rel_to(output_markdown, producer_run),
             'required_trace_fields': [
                 'id',
                 'finding_id',
@@ -271,11 +367,11 @@ def render_trace_markdown(run_dir: Path, traces_data: dict[str, Any]) -> None:
             lines.extend(['', f"Limitations for {trace.get('id', '')}:"])
             lines.extend(f'- {item}' for item in limitations)
     lines.append('')
-    (reports / 'TRACE.md').write_text('\n'.join(lines), encoding='utf-8')
+    ensure_under_run(reports / 'TRACE.md', run_dir, 'trace Markdown').write_text('\n'.join(lines), encoding='utf-8')
 
 
 def ensure_trace_artifacts(run_dir: Path, ctx: dict[str, Any]) -> None:
-    traces_path = reports_dir(run_dir) / 'traces.json'
+    traces_path = ensure_under_run(reports_dir(run_dir) / 'traces.json', run_dir, 'trace JSON')
     if not traces_path.exists():
         return
     data = load_json(traces_path, {}) or {}
@@ -311,9 +407,18 @@ def main() -> int:
     parser.add_argument('--effort', default='xhigh')
     args = parser.parse_args()
 
-    producer_run = Path(args.producer_run).resolve()
+    try:
+        producer_run = resolve_run_dir(args.producer_run, 'producer run')
+    except TraceSafetyError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     if not (producer_run / 'context.json').exists():
         return mode_error(f'producer context.json not found under {producer_run}')
+    try:
+        safe_context_path(producer_run, 'producer')
+    except (FileNotFoundError, TraceSafetyError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
 
     try:
         if args.mode == 'prepare':
@@ -329,7 +434,7 @@ def main() -> int:
             )
             subject_path, _producer_ctx, consumer_ctx = write_subject_file(producer_run, args.finding, consumer_run)
             env = trace_env(producer_run, args.finding, subject_path, consumer_run, consumer_ctx)
-            prompt = producer_run / 'prompts' / 'goal' / f"trace-reachability-{slug(f'{args.finding}-{args.consumer_repo}')}.goal.md"
+            prompt = trace_prompt_path(producer_run, 'goal', slug(f'{args.finding}-{args.consumer_repo}'))
             render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'goal' / 'trace-reachability.goal.md', prompt, env)
             print('Prepared cross-repo trace reachability workspace.')
             print(f'Producer run: {producer_run}')
@@ -343,16 +448,17 @@ def main() -> int:
 
         if not args.consumer_run:
             return mode_error(f'--mode {args.mode} requires --consumer-run')
-        consumer_run = Path(args.consumer_run).resolve()
+        consumer_run = resolve_run_dir(args.consumer_run, 'consumer run')
         if not (consumer_run / 'context.json').exists():
             return mode_error(f'consumer context.json not found under {consumer_run}')
+        safe_context_path(consumer_run, 'consumer')
 
         subject_path, producer_ctx, consumer_ctx = write_subject_file(producer_run, args.finding, consumer_run)
         env = trace_env(producer_run, args.finding, subject_path, consumer_run, consumer_ctx)
         selection_slug = slug(f"{args.finding}-{consumer_ctx.get('repo') or consumer_run.name}")
 
         if args.mode == 'goal':
-            prompt = producer_run / 'prompts' / 'goal' / f'trace-reachability-{selection_slug}.goal.md'
+            prompt = trace_prompt_path(producer_run, 'goal', selection_slug)
             render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'goal' / 'trace-reachability.goal.md', prompt, env)
             print('Prepared supervised /goal trace reachability run.')
             print(f'Producer run: {producer_run}')
@@ -364,7 +470,7 @@ def main() -> int:
             print('\nThen paste the contents of the goal prompt.')
             return 0
 
-        prompt = producer_run / 'prompts' / 'exec' / f'trace-reachability-{selection_slug}.prompt.md'
+        prompt = trace_prompt_path(producer_run, 'exec', selection_slug)
         render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'trace-reachability.prompt.md', prompt, env)
         print(
             f"Running Codex trace reachability for {args.finding}: "
@@ -376,9 +482,9 @@ def main() -> int:
             model=args.model,
             effort=args.effort,
             network=False,
-            output_last=producer_run / f'codex-trace-{selection_slug}-final.md',
-            events_file=producer_run / f'codex-trace-{selection_slug}-events.jsonl',
-            stderr_file=producer_run / f'codex-trace-{selection_slug}-stderr.txt',
+            output_last=trace_output_path(producer_run, f'codex-trace-{selection_slug}-final.md'),
+            events_file=trace_output_path(producer_run, f'codex-trace-{selection_slug}-events.jsonl'),
+            stderr_file=trace_output_path(producer_run, f'codex-trace-{selection_slug}-stderr.txt'),
         )
         ensure_trace_artifacts(producer_run, producer_ctx)
         print(f'Codex status: {status}')
@@ -386,7 +492,7 @@ def main() -> int:
         print(f'Trace report: {reports_dir(producer_run) / "TRACE.md"}')
         print(f'Trace JSON: {reports_dir(producer_run) / "traces.json"}')
         return status
-    except (FileNotFoundError, KeyError, RuntimeError, subprocess.CalledProcessError) as exc:
+    except (FileNotFoundError, KeyError, RuntimeError, TraceSafetyError, subprocess.CalledProcessError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
 
