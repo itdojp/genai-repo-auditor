@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.3.0 - 2026-05-27
+
+Advanced chain, validation, proof, coverage, and reachability workflow update.
+
+- Added structured target quality gates and finding assessment dimensions for bug existence, attacker reachability, boundary crossing, impact, chain membership, and assessment notes.
+- Added independent adversarial validation with `gra-adversarial-validate`, `reports/validation.json`, `reports/VALIDATION.md`, and `templates/reports/validation.schema.json`.
+- Added defensive chain synthesis with `gra-chains`, `reports/chains.json`, `reports/ATTACK_CHAINS.md`, and `templates/reports/chains.schema.json`.
+- Added safe local proof artifacts with `gra-proofs`, `reports/proofs.json`, `reports/PROOFS.md`, and `templates/reports/proofs.schema.json` while preserving defensive-only, local-first boundaries.
+- Added target coverage metadata and gapfill requeue support with `gra-gapfill`, `reports/COVERAGE.md`, and `reports/gapfill-targets.json`.
+- Added experimental/P3 cross-repo trace reachability with `gra-trace`, `reports/traces.json`, `reports/TRACE.md`, and `templates/reports/traces.schema.json`; reachability evidence remains distinct from exploit proof.
+- Expanded report validation, dashboard, SARIF, run-manifest, command reference, report contract, normal/staged/issue workflow, security model, and Japanese operator documentation for the advanced workflow.
+- Updated `MANIFEST.md` to cover the current command, prompt, schema/template, taxonomy, and public documentation surface, with regression tests to prevent manifest drift.
+- Preserved safety constraints: no generated audit artifacts, scanner outputs, cloned repositories, credentials, secrets, private findings, exploit payloads, or production probing are included in the release metadata.
+
 ## v0.2.0 - 2026-05-24
 
 Release readiness and advanced posture workflow update.
