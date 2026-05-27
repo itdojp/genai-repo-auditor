@@ -1,0 +1,144 @@
+{
+  "run_id": "advanced-workflow-run",
+  "repo": "example/advanced-workflow",
+  "branch": "main",
+  "commit": "1111111111111111111111111111111111111111",
+  "generated_at": "2026-05-27T00:00:00Z",
+  "findings": [
+    {
+      "id": "SEC-101",
+      "fingerprint": "advancedfixture000000000101",
+      "title": "Fixture upload input reaches report renderer",
+      "severity": "Critical",
+      "confidence": "High",
+      "status": "Confirmed",
+      "category": "injection-data-flow",
+      "affected_locations": [
+        {
+          "file": "src/handler.py",
+          "line": 1,
+          "end_line": 3
+        }
+      ],
+      "entry_point": "src.handler.handle_upload",
+      "trust_boundary": "HTTP request body crosses into report rendering",
+      "source_to_sink": "request.body -> render_report(body, token)",
+      "root_cause": "Fixture handler passes request-controlled body into a privileged rendering boundary without a validation decision point.",
+      "evidence": "Synthetic fixture code shows direct local data flow from handle_upload to render_report.",
+      "impact": "The chain can affect trusted report rendering decisions in the fixture scenario.",
+      "validation_status": "validated",
+      "minimal_remediation": "Add a local validation boundary before report rendering and test rejected fixture inputs.",
+      "regression_test_idea": "Use benign marker strings and mocked request objects to assert untrusted input is treated as data.",
+      "issue_title": "[Security][Critical] Fixture upload input reaches report renderer",
+      "issue_body_file": "reports/issue-drafts/SEC-101.md",
+      "issue_recommended": true,
+      "labels": [
+        "security",
+        "advanced-fixture"
+      ],
+      "public_disclosure_risk": "Low",
+      "bug_existence": "Confirmed",
+      "attacker_reachability": "Probable",
+      "boundary_crossing": "Confirmed",
+      "impact_assessment": "Potential",
+      "chain_membership": [
+        "CHAIN-001"
+      ],
+      "assessment_notes": {
+        "bug_existence": "Direct fixture data flow is present.",
+        "attacker_reachability": "Route wiring is synthetic and requires human review before production claims.",
+        "boundary_crossing": "Untrusted request body reaches trusted renderer boundary.",
+        "impact_assessment": "Impact remains fixture-scoped and non-exploitative."
+      }
+    },
+    {
+      "id": "SEC-102",
+      "fingerprint": "advancedfixture000000000102",
+      "title": "Fixture token trust boundary is implicit",
+      "severity": "High",
+      "confidence": "Medium",
+      "status": "Probable",
+      "category": "authorization-boundary",
+      "affected_locations": [
+        {
+          "file": "src/handler.py",
+          "line": 2,
+          "end_line": 3
+        }
+      ],
+      "entry_point": "src.handler.handle_upload",
+      "trust_boundary": "request header token to rendering authorization decision",
+      "source_to_sink": "X-Fixture-Token header -> render_report token argument",
+      "root_cause": "Fixture token is forwarded without an explicit local authorization check.",
+      "evidence": "Synthetic fixture shows header value forwarded into trusted report rendering context.",
+      "impact": "May combine with SEC-101 as a defensive chain requiring local validation.",
+      "validation_status": "needs-human-review",
+      "minimal_remediation": "Validate fixture token before using it in trusted rendering context.",
+      "regression_test_idea": "Mock request headers and assert missing token takes a safe local path.",
+      "issue_title": "[Security][High] Fixture token trust boundary is implicit",
+      "issue_body_file": "reports/issue-drafts/SEC-102.md",
+      "issue_recommended": true,
+      "labels": [
+        "security",
+        "advanced-fixture"
+      ],
+      "public_disclosure_risk": "Low",
+      "bug_existence": "Probable",
+      "attacker_reachability": "Potential",
+      "boundary_crossing": "Probable",
+      "impact_assessment": "Potential",
+      "chain_membership": [
+        "CHAIN-001"
+      ],
+      "assessment_notes": {
+        "bug_existence": "Implicit token trust is visible in fixture code.",
+        "attacker_reachability": "Reachability is intentionally synthetic.",
+        "boundary_crossing": "Request header crosses into trusted renderer context.",
+        "impact_assessment": "Impact depends on renderer policy not modeled by the fixture."
+      }
+    },
+    {
+      "id": "SEC-103",
+      "fingerprint": "advancedfixture000000000103",
+      "title": "Fixture logging path needs coverage follow-up",
+      "severity": "Medium",
+      "confidence": "Low",
+      "status": "Needs human review",
+      "category": "logging-boundary",
+      "affected_locations": [
+        {
+          "file": "src/report.py",
+          "line": 1,
+          "end_line": 3
+        }
+      ],
+      "entry_point": "src.report.render_report",
+      "trust_boundary": "rendered report to local audit log",
+      "source_to_sink": "render_report return value -> downstream logging not included in fixture",
+      "root_cause": "Fixture intentionally leaves downstream logging out of scope.",
+      "evidence": "No weaponized payload or external service is present; this is a coverage follow-up item.",
+      "impact": "Potential logging confusion only if downstream logging exists.",
+      "validation_status": "not-validated",
+      "minimal_remediation": "Add coverage for downstream logging before elevating severity.",
+      "regression_test_idea": "Extend fixture with benign log sink and assert encoded marker handling.",
+      "issue_title": "[Security][Medium] Fixture logging path needs coverage follow-up",
+      "issue_body_file": "reports/issue-drafts/SEC-103.md",
+      "issue_recommended": false,
+      "labels": [
+        "security",
+        "advanced-fixture"
+      ],
+      "public_disclosure_risk": "Low",
+      "bug_existence": "Not assessed",
+      "attacker_reachability": "Not assessed",
+      "boundary_crossing": "Potential",
+      "impact_assessment": "Not assessed",
+      "assessment_notes": {
+        "bug_existence": "Fixture intentionally does not prove this path.",
+        "attacker_reachability": "Not assessed in this workflow fixture.",
+        "boundary_crossing": "Candidate boundary only.",
+        "impact_assessment": "No impact claim is made."
+      }
+    }
+  ]
+}

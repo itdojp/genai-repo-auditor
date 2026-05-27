@@ -1,0 +1,55 @@
+{
+  "run_id": "advanced-workflow-run",
+  "repo": "example/advanced-workflow",
+  "branch": "main",
+  "commit": "1111111111111111111111111111111111111111",
+  "generated_at": "2026-05-27T00:00:03Z",
+  "validations": [
+    {
+      "id": "VAL-101",
+      "subject_type": "finding",
+      "subject_id": "SEC-101",
+      "decision": "confirm",
+      "original_severity": "Critical",
+      "recommended_severity": "Critical",
+      "original_confidence": "High",
+      "recommended_confidence": "High",
+      "reasoning_summary": "Fixture data flow is directly present, but exploitation is not claimed.",
+      "evidence_checked": [
+        "reports/findings.json",
+        "reports/proofs.json",
+        "reports/chains.json",
+        "repo/src/handler.py"
+      ],
+      "missing_evidence": [
+        "production route wiring"
+      ],
+      "safe_validation_steps": [
+        "static call-path review",
+        "benign mocked-request unit-test plan"
+      ]
+    },
+    {
+      "id": "VAL-102",
+      "subject_type": "finding",
+      "subject_id": "SEC-102",
+      "decision": "downgrade",
+      "original_severity": "High",
+      "recommended_severity": "Medium",
+      "original_confidence": "Medium",
+      "recommended_confidence": "Low",
+      "reasoning_summary": "Token boundary is visible, but renderer authorization semantics are missing from the fixture.",
+      "evidence_checked": [
+        "reports/findings.json",
+        "reports/proofs.json",
+        "reports/scanner-results/scanner-index.json"
+      ],
+      "missing_evidence": [
+        "renderer authorization semantics"
+      ],
+      "safe_validation_steps": [
+        "static trace only"
+      ]
+    }
+  ]
+}

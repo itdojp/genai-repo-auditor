@@ -1,0 +1,162 @@
+{
+  "run_id": "advanced-workflow-run",
+  "repo": "example/advanced-workflow",
+  "branch": "main",
+  "commit": "1111111111111111111111111111111111111111",
+  "generated_at": "2026-05-27T00:00:00Z",
+  "targets": [
+    {
+      "id": "TGT-101",
+      "category": "injection-data-flow",
+      "title": "Review upload-to-renderer data flow",
+      "risk": "critical",
+      "priority": 95,
+      "status": "reviewed",
+      "scope": "src/handler.py",
+      "entry_points": [
+        "src.handler.handle_upload"
+      ],
+      "trust_boundaries": [
+        "HTTP request body",
+        "trusted renderer"
+      ],
+      "sinks": [
+        "render_report"
+      ],
+      "attack_class": "data-flow-boundary",
+      "security_invariants": [
+        "untrusted input must be validated before trusted rendering"
+      ],
+      "attacker_model": "remote user can submit a benign fixture marker in request body",
+      "max_files": 3,
+      "expected_output": "finding-or-no-finding-with-coverage",
+      "chain_relevance": "candidate-chain-step",
+      "coverage": {
+        "review_depth": "deep",
+        "files_reviewed": [
+          "src/handler.py",
+          "src/report.py"
+        ],
+        "files_skipped": [],
+        "commands_run": [
+          "python3 -m unittest tests.fixtures.advanced_workflow"
+        ],
+        "unresolved_questions": [
+          "production route wiring is outside fixture scope"
+        ],
+        "gapfill_recommended": false,
+        "gapfill_reason": "critical fixture path has deep local review coverage"
+      },
+      "review_questions": [
+        "Does request body reach renderer without a validation point?"
+      ],
+      "candidate_files": [
+        "src/handler.py",
+        "src/report.py"
+      ],
+      "recommended_mode": "exec",
+      "notes": "Synthetic fixture target; no exploit payloads."
+    },
+    {
+      "id": "TGT-102",
+      "category": "authorization-boundary",
+      "title": "Review token trust boundary",
+      "risk": "high",
+      "priority": 85,
+      "status": "reviewed",
+      "scope": "src/handler.py",
+      "entry_points": [
+        "src.handler.handle_upload"
+      ],
+      "trust_boundaries": [
+        "request header",
+        "trusted renderer token"
+      ],
+      "sinks": [
+        "render_report"
+      ],
+      "attack_class": "authorization-boundary",
+      "security_invariants": [
+        "request-controlled headers must not become trusted decisions without validation"
+      ],
+      "attacker_model": "remote user can omit or alter a benign fixture token header",
+      "max_files": 3,
+      "expected_output": "finding-or-no-finding-with-coverage",
+      "chain_relevance": "candidate-chain-step",
+      "coverage": {
+        "review_depth": "medium",
+        "files_reviewed": [
+          "src/handler.py"
+        ],
+        "files_skipped": [
+          "src/report.py"
+        ],
+        "commands_run": [],
+        "unresolved_questions": [
+          "renderer authorization semantics are mocked"
+        ],
+        "gapfill_recommended": true,
+        "gapfill_reason": "renderer behavior is intentionally outside the minimal fixture"
+      },
+      "review_questions": [
+        "Is token trust established before renderer use?"
+      ],
+      "candidate_files": [
+        "src/handler.py",
+        "src/report.py"
+      ],
+      "recommended_mode": "exec",
+      "notes": "Synthetic fixture target for chain coverage."
+    },
+    {
+      "id": "TGT-103",
+      "category": "logging-boundary",
+      "title": "Review downstream logging assumptions",
+      "risk": "medium",
+      "priority": 55,
+      "status": "queued",
+      "scope": "src/report.py",
+      "entry_points": [
+        "src.report.render_report"
+      ],
+      "trust_boundaries": [
+        "render result",
+        "local audit log"
+      ],
+      "sinks": [
+        "downstream log sink not included"
+      ],
+      "attack_class": "coverage-gap",
+      "security_invariants": [
+        "coverage gaps must not be promoted to findings without evidence"
+      ],
+      "attacker_model": "not assessed",
+      "max_files": 2,
+      "expected_output": "finding-or-no-finding-with-coverage",
+      "chain_relevance": "none",
+      "coverage": {
+        "review_depth": "shallow",
+        "files_reviewed": [
+          "src/report.py"
+        ],
+        "files_skipped": [
+          "downstream logger not present"
+        ],
+        "commands_run": [],
+        "unresolved_questions": [
+          "whether a logger exists in real deployments"
+        ],
+        "gapfill_recommended": true,
+        "gapfill_reason": "downstream logging is intentionally absent from the fixture"
+      },
+      "review_questions": [
+        "Does any downstream logger consume rendered report data?"
+      ],
+      "candidate_files": [
+        "src/report.py"
+      ],
+      "recommended_mode": "goal",
+      "notes": "Coverage-only target; not a confirmed finding."
+    }
+  ]
+}

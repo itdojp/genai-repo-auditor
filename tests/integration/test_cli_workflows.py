@@ -1956,6 +1956,79 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(self.read_codex_calls(codex_log), [])
         self.assertFalse((run_dir / "codex-chains-final.md").exists())
 
+    def test_advanced_chain_proof_validation_workflow_fixture(self) -> None:
+        run_dir = self.copy_fixture_run("advanced-workflow-run")
+        env, codex_log = self.env_with_codex_log(GRA_MOCK_FIXTURE_DIR=str(FIXTURES / "advanced-workflow-output"))
+
+        cp_chains = self.run_cmd([REPO_ROOT / "bin" / "gra-chains", "--run", run_dir], env=env, check=True)
+        self.assertIn("Running Codex defensive chain synthesis for example/advanced-workflow", cp_chains.stdout)
+
+        cp_proofs = self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-proofs", "--run", run_dir, "--all-critical-high"],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Running Codex safe local proof generation for critical-high", cp_proofs.stdout)
+
+        cp_validation = self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-adversarial-validate", "--run", run_dir, "--all-critical-high"],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Running Codex adversarial validation for critical-high", cp_validation.stdout)
+
+        chains = json.loads((run_dir / "reports" / "chains.json").read_text(encoding="utf-8"))
+        self.assertEqual(["SEC-101", "SEC-102"], chains["chains"][0]["findings"])
+        self.assertEqual(["TGT-101", "TGT-102"], chains["chains"][0]["targets"])
+        self.assertIn("reports/scanner-results/normalized/semgrep.normalized.json", chains["chains"][0]["scanner_refs"])
+
+        proofs = json.loads((run_dir / "reports" / "proofs.json").read_text(encoding="utf-8"))
+        self.assertEqual(["SEC-101", "SEC-102"], [proof["finding_id"] for proof in proofs["proofs"]])
+        self.assertTrue((run_dir / "reports" / "proofs" / "SEC-101-test-plan.md").exists())
+        self.assertTrue((run_dir / "reports" / "proofs" / "SEC-102-static-trace.md").exists())
+
+        validations = json.loads((run_dir / "reports" / "validation.json").read_text(encoding="utf-8"))
+        self.assertEqual(["SEC-101", "SEC-102"], [item["subject_id"] for item in validations["validations"]])
+        self.assertEqual(["confirm", "downgrade"], [item["decision"] for item in validations["validations"]])
+
+        proof_subjects = json.loads(
+            (run_dir / "reports" / "proofs" / "critical-high.subjects.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(["SEC-101", "SEC-102"], [item["finding_id"] for item in proof_subjects["subjects"]])
+        validation_subjects = json.loads(
+            (run_dir / "reports" / "adversarial-validation" / "critical-high.subjects.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(["SEC-101", "SEC-102"], [item["subject_id"] for item in validation_subjects["subjects"]])
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        for expected in [
+            "Findings: 3",
+            "Targets: validated",
+            "Scanner index: validated",
+            "Chains: validated",
+            "Adversarial validations: validated",
+            "Proofs: validated",
+        ]:
+            self.assertIn(expected, cp_validate.stdout)
+
+        cp_dashboard = self.run_cmd([REPO_ROOT / "bin" / "gra-dashboard", "--run", run_dir], check=True)
+        self.assertIn("dashboard.html", cp_dashboard.stdout)
+        dashboard = (run_dir / "reports" / "dashboard.html").read_text(encoding="utf-8")
+        self.assertIn("Fixture upload input reaches report renderer", dashboard)
+        self.assertIn("Finding assessment dimensions", dashboard)
+
+        cp_sarif = self.run_cmd([REPO_ROOT / "bin" / "gra-sarif", "--run", run_dir], check=True)
+        self.assertIn("findings.sarif", cp_sarif.stdout)
+        sarif = json.loads((run_dir / "reports" / "findings.sarif").read_text(encoding="utf-8"))
+        self.assertEqual({"SEC-101", "SEC-102", "SEC-103"}, {result["ruleId"] for result in sarif["runs"][0]["results"]})
+
+        calls = self.read_codex_calls(codex_log)
+        self.assertEqual(3, len(calls), calls)
+        for call in calls:
+            self.assertIn("sandbox_workspace_write.network_access=false", call)
+
     def test_gra_trace_exec_with_consumer_run_writes_trace_artifacts(self) -> None:
         producer_run = self.copy_fixture_run("minimal-run")
         consumer_run = self.copy_fixture_run("minimal-run")

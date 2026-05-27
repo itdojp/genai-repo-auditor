@@ -1,0 +1,22 @@
+{
+  "run_id": "advanced-workflow-run",
+  "repo": "example/advanced-workflow",
+  "generated_at": "2026-05-27T00:00:00Z",
+  "results": [
+    {
+      "tool": "semgrep",
+      "path": "reports/scanner-results/advanced-semgrep.json",
+      "format": "json",
+      "imported_at": "2026-05-27T00:00:00Z",
+      "raw_bytes": 164,
+      "normalized_path": "reports/scanner-results/normalized/semgrep.normalized.json",
+      "normalized_leads_count": 1,
+      "normalization": {
+        "schema_version": "1",
+        "tool": "semgrep",
+        "format": "json",
+        "redacted": true
+      }
+    }
+  ]
+}
