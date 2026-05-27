@@ -1,0 +1,11 @@
+{
+  "results": [
+    {
+      "rule_id": "fixture/advanced-boundary",
+      "message": "Synthetic scanner lead for SEC-102",
+      "path": "src/handler.py",
+      "line": 2,
+      "severity": "warning"
+    }
+  ]
+}
