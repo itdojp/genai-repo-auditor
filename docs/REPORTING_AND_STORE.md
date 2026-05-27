@@ -1,4 +1,4 @@
-# Reporting, SARIF, Dashboard, and SQLite Store
+# Reporting, Metrics, SARIF, Dashboard, and SQLite Store
 
 Validate reports:
 
@@ -15,17 +15,25 @@ intentionally omits `run-manifest.json` itself to avoid unstable self-referentia
 size metadata. Treat it as support metadata; it is not a substitute for human
 review of `reports/findings.json`, issue drafts, or scanner leads.
 
-Generate local dashboard:
+Generate local metrics and dashboard:
 
 ```bash
+gra-metrics --run runs/OWNER__REPO/RUN_ID
 gra-dashboard --run runs/OWNER__REPO/RUN_ID
 open runs/OWNER__REPO/RUN_ID/reports/dashboard.html
 ```
 
-The dashboard summarizes findings, target status, taxonomy mappings, OpenSSF
-Scorecard supply-chain posture when `reports/supply-chain-posture.json` exists,
-dependency risk posture when `reports/dependencies.json` exists, and the scanner
-result index.
+The metrics report summarizes findings, validation decisions,
+downgrade/invalidate rate, chains, proofs, gapfill, traces, Issue plan warnings,
+artifact counts, and run duration when local metadata is available. It
+intentionally omits raw finding evidence, issue body text, proof evidence, trace
+evidence, scanner lead bodies, and secret values.
+
+The dashboard summarizes findings, target status, taxonomy mappings, advanced
+workflow metrics when `reports/metrics.json` exists, OpenSSF Scorecard
+supply-chain posture when `reports/supply-chain-posture.json` exists, dependency
+risk posture when `reports/dependencies.json` exists, and the scanner result
+index.
 
 Generate SARIF:
 

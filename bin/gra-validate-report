@@ -40,6 +40,7 @@ CHAINS_PATH = Path("reports/chains.json")
 PROOFS_PATH = Path("reports/proofs.json")
 PROOFS_DIR = Path("reports/proofs")
 TRACES_PATH = Path("reports/traces.json")
+METRICS_PATH = Path("reports/metrics.json")
 VALIDATION_DECISIONS = {"confirm", "downgrade", "invalidate", "needs-human-review"}
 VALIDATION_SUBJECT_TYPES = {"finding", "chain"}
 VALIDATION_SEVERITIES = SEVERITIES | {"Unknown"}
@@ -55,6 +56,15 @@ PROOF_TYPES = {
 }
 PROOF_STATUSES = {"confirmed", "failed", "not-run", "needs-human-review"}
 TRACE_STATUSES = {"Confirmed", "Probable", "Potential", "Invalid", "Needs human review"}
+METRICS_FORBIDDEN_KEYS = {
+    "evidence",
+    "root_cause",
+    "impact",
+    "reasoning_summary",
+    "safe_validation_steps",
+    "issue_body",
+    "issue_body_text",
+}
 UNSAFE_PROOF_COMMAND_RE = re.compile(
     r"\b(?:curl|wget|nmap|nc|netcat|ssh|scp|ftp|telnet|kubectl|docker|pip|npm|yarn|pnpm|bundle|gem|cargo|go\s+get|gh)\b|"
     r"https?://|--network|--allow-public",
@@ -852,6 +862,44 @@ def validate_traces(run_dir: Path, findings: list[dict[str, Any]], errors: List[
     return True
 
 
+def validate_metrics_payload(value: Any, path: str, errors: List[str]) -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in METRICS_FORBIDDEN_KEYS:
+                errors.append(f"{path}.{key}: metrics must not copy raw evidence or issue body content")
+            validate_metrics_payload(item, f"{path}.{key}", errors)
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            validate_metrics_payload(item, f"{path}[{index}]", errors)
+
+
+def validate_metrics(run_dir: Path, errors: List[str]) -> bool:
+    metrics_path = run_dir / METRICS_PATH
+    if not metrics_path.exists():
+        return False
+    try:
+        metrics_data = json.loads(metrics_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"metrics.json invalid JSON: {exc}")
+        return True
+    if not isinstance(metrics_data, dict):
+        errors.append(f"metrics: expected type object, got {json_type_name(metrics_data)}")
+        return True
+    validate_schema(metrics_data, load_schema("metrics.schema.json"), "metrics", errors)
+    validate_generated_at(metrics_data.get("generated_at"), "metrics.generated_at", errors)
+    if metrics_data.get("source") != "local-report-artifacts":
+        errors.append("metrics.source: metrics must be generated from local-report-artifacts")
+    safety = metrics_data.get("safety") if isinstance(metrics_data.get("safety"), dict) else {}
+    if safety.get("local_artifacts_only") is not True:
+        errors.append("metrics.safety.local_artifacts_only: must be true")
+    if safety.get("raw_evidence_copied") is not False:
+        errors.append("metrics.safety.raw_evidence_copied: must be false")
+    if safety.get("secrets_copied") is not False:
+        errors.append("metrics.safety.secrets_copied: must be false")
+    validate_metrics_payload(metrics_data, "metrics", errors)
+    return True
+
+
 def validate_affected_locations(finding: Dict[str, Any], path: str, errors: List[str]) -> None:
     locs = finding.get("affected_locations")
     if not isinstance(locs, list):
@@ -999,6 +1047,7 @@ def main() -> int:
     adversarial_validation_validated = validate_adversarial_validation(run_dir, findings, errors)
     proofs_validated = validate_proofs(run_dir, findings, errors)
     traces_validated = validate_traces(run_dir, findings, errors)
+    metrics_validated = validate_metrics(run_dir, errors)
 
     if errors:
         for e in errors:
@@ -1022,6 +1071,8 @@ def main() -> int:
         print("Proofs: validated")
     if traces_validated:
         print("Traces: validated")
+    if metrics_validated:
+        print("Metrics: validated")
     return 0
 
 

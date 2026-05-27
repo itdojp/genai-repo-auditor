@@ -108,6 +108,7 @@ gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 # gra-trace --producer-run runs/OWNER__REPO/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode exec
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
+gra-metrics --run runs/OWNER__REPO/RUN_ID
 gra-dashboard --run runs/OWNER__REPO/RUN_ID
 gra-sarif --run runs/OWNER__REPO/RUN_ID
 gra-store --run runs/OWNER__REPO/RUN_ID
@@ -246,10 +247,11 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-chains` | Synthesize defensive attack-chain reports from existing audit evidence |
 | `gra-proofs` | Generate safe local proof artifacts for existing findings |
 | `gra-trace` | Trace experimental/P3 cross-repo reachability for shared-library findings |
+| `gra-metrics` | Generate local advanced workflow metrics without raw evidence |
 | `gra-ingest` | Ingest scanner outputs |
 | `gra-scanner-triage` | Triage scanner leads in repository context |
 | `gra-validate-report` | Validate `findings.json`, `targets.json`, chain, proof, trace, validation output, and report contract |
-| `gra-dashboard` | Generate local HTML dashboard |
+| `gra-dashboard` | Generate local HTML dashboard with metrics links when present |
 | `gra-sarif` | Generate SARIF output |
 | `gra-store` | Import run data into SQLite |
 | `gra-issues` | Create GitHub Issues from reviewed findings |
@@ -290,6 +292,7 @@ Do not use this project for:
 - [`docs/ATTACK_CHAINS.md`](docs/ATTACK_CHAINS.md)
 - [`docs/SAFE_LOCAL_PROOFS.md`](docs/SAFE_LOCAL_PROOFS.md)
 - [`docs/TRACE_REACHABILITY.md`](docs/TRACE_REACHABILITY.md)
+- [`docs/METRICS.md`](docs/METRICS.md)
 - [`docs/SCANNER_INTEGRATION.md`](docs/SCANNER_INTEGRATION.md)
 - [`docs/SCORECARD_INGESTION.md`](docs/SCORECARD_INGESTION.md)
 - [`docs/DEPENDENCY_INGESTION.md`](docs/DEPENDENCY_INGESTION.md)

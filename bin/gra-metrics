@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / "lib"))
+from metrics import MetricsError, write_metrics  # noqa: E402
+from version import auditor_version  # noqa: E402
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Generate local advanced workflow metrics for a GenAI Repo Auditor run")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {auditor_version(LAB_ROOT)}")
+    parser.add_argument("--run", required=True, help="Run directory containing local report artifacts")
+    parser.add_argument("--out-json", help="Output JSON file. Default: reports/metrics.json")
+    parser.add_argument("--out-md", help="Output Markdown file. Default: reports/METRICS.md")
+    args = parser.parse_args()
+
+    run_dir = Path(args.run).resolve()
+    try:
+        json_path, md_path, metrics = write_metrics(
+            run_dir,
+            out_json=Path(args.out_json) if args.out_json else None,
+            out_md=Path(args.out_md) if args.out_md else None,
+        )
+    except (OSError, ValueError, MetricsError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    print(f"Wrote {json_path}")
+    print(f"Wrote {md_path}")
+    print(f"Findings: {metrics['findings']['total']}")
+    print(f"Adversarial validations: {metrics['adversarial_validation']['total']}")
+    print(f"Chains: {metrics['chains']['total']}")
+    print(f"Proofs: {metrics['proofs']['total']}")
+    print(f"Traces: {metrics['traces']['total']}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

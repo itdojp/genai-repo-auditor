@@ -2054,6 +2054,212 @@ class CliWorkflowTests(unittest.TestCase):
         for call in calls:
             self.assertIn("sandbox_workspace_write.network_access=false", call)
 
+    def test_gra_metrics_generates_advanced_workflow_counts_without_evidence(self) -> None:
+        run_dir = self.copy_fixture_run("advanced-workflow-run")
+        self.copy_advanced_workflow_outputs(run_dir)
+        findings_path = run_dir / "reports" / "findings.json"
+        findings = json.loads(findings_path.read_text(encoding="utf-8"))
+        findings["findings"][0]["evidence"] = "SHOULD_NOT_COPY_EVIDENCE_109"
+        findings_path.write_text(json.dumps(findings, indent=2) + "\n", encoding="utf-8")
+        traces = {
+            "run_id": "advanced-workflow-run",
+            "repo": "example/advanced-workflow",
+            "branch": "main",
+            "commit": "1111111111111111111111111111111111111111",
+            "generated_at": "2026-05-28T00:00:00Z",
+            "traces": [
+                {
+                    "id": "TRACE-101",
+                    "finding_id": "SEC-101",
+                    "producer_repo": "example/advanced-workflow",
+                    "consumer_repo": "example/consumer-api",
+                    "entry_points": ["repo/routes/upload.py"],
+                    "sink": "src.report.render_report",
+                    "attacker_control": "Probable",
+                    "reachable": "Potential",
+                    "evidence": "SHOULD_NOT_COPY_TRACE_EVIDENCE_109",
+                    "limitations": ["static fixture only"],
+                    "status": "Needs human review",
+                }
+            ],
+        }
+        (run_dir / "reports" / "traces.json").write_text(json.dumps(traces, indent=2) + "\n", encoding="utf-8")
+        issue_plan = {
+            "selected_findings": [
+                {
+                    "id": "SEC-101",
+                    "advanced_validation": {
+                        "warnings": ["needs human review before publication"],
+                        "adversarial_validation": {"warnings": ["chain validation not final"]},
+                    },
+                }
+            ]
+        }
+        (run_dir / "reports" / "issue-publication-plan.json").write_text(
+            json.dumps(issue_plan, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        cp_gapfill = self.run_cmd([REPO_ROOT / "bin" / "gra-gapfill", "--run", run_dir, "--generate"], check=True)
+        self.assertIn("Generated or reused 3 gapfill target(s)", cp_gapfill.stdout)
+
+        cp_metrics = self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        self.assertIn("Wrote", cp_metrics.stdout)
+        self.assertIn("Findings: 3", cp_metrics.stdout)
+        self.assertIn("Adversarial validations: 2", cp_metrics.stdout)
+        self.assertIn("Chains: 1", cp_metrics.stdout)
+        self.assertIn("Proofs: 2", cp_metrics.stdout)
+        self.assertIn("Traces: 1", cp_metrics.stdout)
+
+        metrics_text = (run_dir / "reports" / "metrics.json").read_text(encoding="utf-8")
+        metrics_md = (run_dir / "reports" / "METRICS.md").read_text(encoding="utf-8")
+        for forbidden in [
+            "SHOULD_NOT_COPY_EVIDENCE_109",
+            "SHOULD_NOT_COPY_TRACE_EVIDENCE_109",
+            "Synthetic fixture code shows direct local data flow",
+            "Static local trace shows token forwarding path",
+        ]:
+            self.assertNotIn(forbidden, metrics_text)
+            self.assertNotIn(forbidden, metrics_md)
+        self.assertIn("## Traces", metrics_md)
+        self.assertIn("Trace attacker control", metrics_md)
+
+        metrics = json.loads(metrics_text)
+        self.assertEqual("local-report-artifacts", metrics["source"])
+        self.assertTrue(metrics["safety"]["local_artifacts_only"])
+        self.assertFalse(metrics["safety"]["raw_evidence_copied"])
+        self.assertFalse(metrics["safety"]["secrets_copied"])
+        self.assertEqual(3, metrics["findings"]["total"])
+        self.assertEqual(1, metrics["findings"]["by_severity"]["Critical"])
+        self.assertEqual(2, metrics["findings"]["issue_recommended"])
+        self.assertEqual(1, metrics["adversarial_validation"]["by_decision"]["downgrade"])
+        self.assertEqual(0.5, metrics["adversarial_validation"]["downgrade_or_invalidate_rate"])
+        self.assertEqual(1, metrics["chains"]["total"])
+        self.assertEqual(2, metrics["proofs"]["total"])
+        self.assertEqual(2, metrics["gapfill"]["source_targets_recommended"])
+        self.assertEqual(3, metrics["gapfill"]["targets_generated"])
+        self.assertEqual(1, metrics["traces"]["total"])
+        self.assertEqual(2, metrics["issue_publication_plan"]["warning_count"])
+        self.assertGreater(metrics["artifacts"]["reports_file_count"], 0)
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Metrics: validated", cp_validate.stdout)
+
+        cp_dashboard = self.run_cmd([REPO_ROOT / "bin" / "gra-dashboard", "--run", run_dir], check=True)
+        self.assertIn("dashboard.html", cp_dashboard.stdout)
+        dashboard = (run_dir / "reports" / "dashboard.html").read_text(encoding="utf-8")
+        self.assertIn("Advanced workflow metrics", dashboard)
+        self.assertIn("metrics.json", dashboard)
+        self.assertIn("METRICS.md", dashboard)
+        self.assertIn("Downgrade/invalidate rate", dashboard)
+
+    def test_gra_metrics_handles_missing_optional_artifacts(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        self.assertIn("Findings: 1", cp.stdout)
+        metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
+        self.assertEqual(1, metrics["findings"]["total"])
+        self.assertFalse(metrics["adversarial_validation"]["artifact_present"])
+        self.assertFalse(metrics["chains"]["artifact_present"])
+        self.assertFalse(metrics["proofs"]["artifact_present"])
+        self.assertFalse(metrics["traces"]["artifact_present"])
+        self.assertFalse(metrics["issue_publication_plan"]["artifact_present"])
+        self.assertEqual(0, metrics["adversarial_validation"]["downgrade_or_invalidate_rate"])
+        self.assertIn("Run duration was not available", (run_dir / "reports" / "METRICS.md").read_text(encoding="utf-8"))
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Metrics: validated", cp_validate.stdout)
+
+    def test_gra_metrics_skips_symlinked_report_directories(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        outside = self.work_dir / "outside-reports"
+        outside.mkdir()
+        (outside / "outside-secret.txt").write_text("do not count me\n", encoding="utf-8")
+        (run_dir / "reports" / "linked-outside").symlink_to(outside, target_is_directory=True)
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
+        self.assertEqual(3, metrics["artifacts"]["reports_file_count"])
+        self.assertEqual(1, metrics["artifacts"]["reports_dir_count"])
+
+    def test_gra_metrics_buckets_unexpected_dimension_values(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        secret = "SHOULD_NOT_COPY_SECRET_DIMENSION_109"
+
+        findings_path = run_dir / "reports" / "findings.json"
+        findings = json.loads(findings_path.read_text(encoding="utf-8"))
+        findings["findings"][0]["severity"] = secret
+        findings["findings"][0]["status"] = secret
+        findings_path.write_text(json.dumps(findings, indent=2) + "\n", encoding="utf-8")
+
+        targets_path = run_dir / "reports" / "targets.json"
+        targets = json.loads(targets_path.read_text(encoding="utf-8"))
+        targets["targets"].append(
+            {
+                "id": "TGT-GAPFILL-109",
+                "category": "gapfill",
+                "title": "Synthetic gapfill target",
+                "risk": "medium",
+                "priority": 20,
+                "status": secret,
+                "scope": "app.py",
+                "entry_points": [],
+                "trust_boundaries": [],
+                "sinks": [],
+                "review_questions": [],
+                "recommended_mode": "exec",
+            }
+        )
+        targets_path.write_text(json.dumps(targets, indent=2) + "\n", encoding="utf-8")
+
+        (run_dir / "reports" / "validation.json").write_text(
+            json.dumps({"validations": [{"decision": secret}]}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "reports" / "proofs.json").write_text(
+            json.dumps({"proofs": [{"proof_type": secret, "status": secret}]}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "reports" / "chains.json").write_text(
+            json.dumps({"chains": [{"severity": secret, "status": secret}]}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "reports" / "traces.json").write_text(
+            json.dumps(
+                {
+                    "traces": [
+                        {
+                            "reachable": secret,
+                            "attacker_control": secret,
+                            "status": secret,
+                        }
+                    ]
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "run-manifest.json").write_text(
+            json.dumps({"artifacts": [{"path": "reports/findings.json", "kind": secret}]}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        metrics_text = (run_dir / "reports" / "metrics.json").read_text(encoding="utf-8")
+        metrics_md = (run_dir / "reports" / "METRICS.md").read_text(encoding="utf-8")
+        self.assertNotIn(secret, metrics_text)
+        self.assertNotIn(secret, metrics_md)
+
+        metrics = json.loads(metrics_text)
+        self.assertEqual(1, metrics["findings"]["by_severity"]["Unknown"])
+        self.assertEqual(1, metrics["findings"]["by_status"]["Unknown"])
+        self.assertEqual(1, metrics["adversarial_validation"]["by_decision"]["unknown"])
+        self.assertEqual(1, metrics["proofs"]["by_type"]["unknown"])
+        self.assertEqual(1, metrics["gapfill"]["targets_by_status"]["unknown"])
+        self.assertEqual(1, metrics["traces"]["by_reachable"]["Not assessed"])
+        self.assertEqual(1, metrics["artifacts"]["manifest_by_kind"]["unknown"])
+
     def test_gra_trace_exec_with_consumer_run_writes_trace_artifacts(self) -> None:
         producer_run = self.copy_fixture_run("minimal-run")
         consumer_run = self.copy_fixture_run("minimal-run")
