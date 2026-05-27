@@ -85,10 +85,27 @@ runs/OWNER__REPO/RUN_ID/reports/issue-publication-plan.json
 ```
 
 The plan records the selected finding IDs, fingerprints, titles, labels, issue
-body files, issue body SHA-256 hashes, public disclosure risk, run ID, repo, and
-commit. Review the plan, referenced issue drafts, any `reports/ATTACK_CHAINS.md`
-chain implications, any `reports/PROOFS.md` proof limitations, and any
-`reports/VALIDATION.md` decisions before publishing.
+body files, issue body SHA-256 hashes, public disclosure risk, run ID, repo,
+commit, `chain_membership`, and an `advanced_validation` summary. The advanced
+summary records whether related `reports/chains.json` records exist, whether
+related adversarial validation records exist, whether safe local proof artifacts
+exist or are explicitly not applicable, and any warnings that should be reviewed
+before publication. Review the plan, referenced issue drafts, any
+`reports/ATTACK_CHAINS.md` chain implications, any `reports/PROOFS.md` proof
+limitations, and any `reports/VALIDATION.md` decisions before publishing.
+
+Warnings do not block publication by default. Operators that require advanced
+evidence before publication can add:
+
+```bash
+gra-issues --run runs/OWNER__REPO/RUN_ID --plan --require-advanced-validation
+```
+
+This stricter mode exits non-zero when a selected High/Critical finding lacks
+the expected chain, proof, or adversarial-validation evidence, or when related
+validation decisions are `downgrade`, `invalidate`, or `needs-human-review`.
+Issue bodies do not include `ATTACK_CHAINS.md` contents; summarize only
+reviewed remediation or disclosure implications in public text.
 
 After review, apply the exact plan:
 
@@ -99,9 +116,10 @@ gra-issues \
   --create-labels
 ```
 
-`--apply-plan` recomputes issue body hashes, verifies finding fingerprints,
-checks that selected findings still exist, and rejects changed titles, labels,
-issue bodies, or public disclosure risk before it calls `gh issue create`.
+`--apply-plan` recomputes issue body hashes and advanced-validation summaries,
+verifies finding fingerprints, checks that selected findings still exist, and
+rejects changed titles, labels, issue bodies, public disclosure risk, chain
+membership, or advanced evidence state before it calls `gh issue create`.
 When the plan is stale, rerun `--plan` and review the refreshed file before
 applying. `--apply-plan ... --replan` refreshes the plan and exits without
 publishing.

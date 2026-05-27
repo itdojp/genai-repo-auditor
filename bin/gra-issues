@@ -30,6 +30,8 @@ DEFAULT_LABELS: Dict[str, Tuple[str, str]] = {
     "status-needs-human-review": ("5319e7", "Needs human review"),
 }
 PLAN_REL_PATH = Path("reports") / "issue-publication-plan.json"
+ADVANCED_REQUIRED_SEVERITIES = {"Critical", "High"}
+BLOCKING_VALIDATION_DECISIONS = {"downgrade", "invalidate", "needs-human-review"}
 
 
 def run(cmd: List[str], *, check: bool = True, capture: bool = True) -> subprocess.CompletedProcess[str]:
@@ -255,10 +257,198 @@ def plan_visibility(data: Dict[str, Any], context: Dict[str, Any]) -> str:
     return str(data.get("visibility") or context.get("visibility") or "UNKNOWN").upper()
 
 
-def plan_finding_entry(repo: str, run_id: str, commit: str, finding: Dict[str, Any], run_dir: Path) -> Tuple[Dict[str, Any], str]:
+def optional_report(run_dir: Path, rel_path: str, array_key: str) -> Tuple[bool, List[Dict[str, Any]], List[str]]:
+    path = run_dir / rel_path
+    if not path.exists():
+        return False, [], []
+    try:
+        data = load_json(path)
+    except (OSError, json.JSONDecodeError) as exc:
+        return True, [], [f"{rel_path} could not be read: {exc}"]
+    records = data.get(array_key) if isinstance(data, dict) else None
+    if not isinstance(records, list):
+        return True, [], [f"{rel_path} does not contain {array_key} array"]
+    return True, [record for record in records if isinstance(record, dict)], []
+
+
+def load_advanced_artifacts(run_dir: Path) -> Dict[str, Any]:
+    chains_present, chains, chain_errors = optional_report(run_dir, "reports/chains.json", "chains")
+    proofs_present, proofs, proof_errors = optional_report(run_dir, "reports/proofs.json", "proofs")
+    validations_present, validations, validation_errors = optional_report(run_dir, "reports/validation.json", "validations")
+    return {
+        "chains_present": chains_present,
+        "chains": chains,
+        "chain_errors": chain_errors,
+        "proofs_present": proofs_present,
+        "proofs": proofs,
+        "proof_errors": proof_errors,
+        "validations_present": validations_present,
+        "validations": validations,
+        "validation_errors": validation_errors,
+    }
+
+
+def string_list(value: Any) -> List[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if isinstance(item, str) and item.strip()]
+
+
+def proof_not_applicable(finding: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+    for field in ["safe_proof_not_applicable", "proof_not_applicable"]:
+        if finding.get(field) is True:
+            reason = str(
+                finding.get("safe_proof_not_applicable_reason")
+                or finding.get("proof_not_applicable_reason")
+                or "finding marks safe local proof as not applicable"
+            )
+            return True, reason
+    severity = str(finding.get("severity") or "")
+    if severity not in ADVANCED_REQUIRED_SEVERITIES:
+        return True, f"safe local proof is not required for severity {severity or 'Unknown'}"
+    return False, None
+
+
+def validation_detail(item: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": str(item.get("id") or ""),
+        "decision": str(item.get("decision") or ""),
+        "recommended_severity": str(item.get("recommended_severity") or ""),
+        "recommended_confidence": str(item.get("recommended_confidence") or ""),
+    }
+
+
+def advanced_validation_summary(finding: Dict[str, Any], artifacts: Dict[str, Any]) -> Dict[str, Any]:
+    finding_id = str(finding.get("id") or "SEC-UNKNOWN")
+    chain_membership = string_list(finding.get("chain_membership"))
+    chain_records = {
+        str(chain.get("id")): chain
+        for chain in artifacts.get("chains", [])
+        if isinstance(chain.get("id"), str)
+    }
+    referenced_by_chains = sorted(
+        str(chain_id)
+        for chain_id, chain in chain_records.items()
+        if finding_id in string_list(chain.get("findings"))
+    )
+    related_chain_ids = sorted(set(chain_membership) | set(referenced_by_chains))
+    matched_chains = [chain_id for chain_id in related_chain_ids if chain_id in chain_records]
+    missing_chains = [chain_id for chain_id in chain_membership if chain_id not in chain_records]
+
+    validations = artifacts.get("validations", [])
+    finding_validation_details = sorted(
+        (
+            validation_detail(item)
+            for item in validations
+            if item.get("subject_type") == "finding"
+            and str(item.get("subject_id")) == finding_id
+            and isinstance(item.get("id"), str)
+        ),
+        key=lambda item: item["id"],
+    )
+    chain_validation_details = sorted(
+        (
+            validation_detail(item)
+            for item in validations
+            if item.get("subject_type") == "chain"
+            and str(item.get("subject_id")) in related_chain_ids
+            and isinstance(item.get("id"), str)
+        ),
+        key=lambda item: item["id"],
+    )
+    finding_validations = [
+        item["id"]
+        for item in finding_validation_details
+    ]
+    chain_validations = [
+        item["id"]
+        for item in chain_validation_details
+    ]
+    blocking_validations = [
+        f"{item['id']}={item['decision']}"
+        for item in finding_validation_details + chain_validation_details
+        if item.get("decision") in BLOCKING_VALIDATION_DECISIONS
+    ]
+
+    proofs = artifacts.get("proofs", [])
+    finding_proofs = sorted(
+        str(item.get("id"))
+        for item in proofs
+        if str(item.get("finding_id")) == finding_id and isinstance(item.get("id"), str)
+    )
+    not_applicable, not_applicable_reason = proof_not_applicable(finding)
+    safe_proof_exists = bool(finding_proofs)
+    validation_exists = bool(finding_validations or chain_validations)
+
+    warnings: List[str] = []
+    warnings.extend(str(error) for error in artifacts.get("chain_errors", []))
+    warnings.extend(str(error) for error in artifacts.get("proof_errors", []))
+    warnings.extend(str(error) for error in artifacts.get("validation_errors", []))
+    if chain_membership and not artifacts.get("chains_present"):
+        warnings.append("finding declares chain_membership but reports/chains.json is absent")
+    if missing_chains:
+        warnings.append(f"finding references missing chain records: {', '.join(missing_chains)}")
+    if (
+        str(finding.get("severity") or "") in ADVANCED_REQUIRED_SEVERITIES
+        and finding.get("issue_recommended") is not False
+    ):
+        if not validation_exists:
+            warnings.append("High/Critical issue-recommended finding lacks related adversarial validation")
+        if blocking_validations:
+            warnings.append(f"related adversarial validation has blocking decision(s): {', '.join(blocking_validations)}")
+        if not safe_proof_exists and not not_applicable:
+            warnings.append("High/Critical issue-recommended finding lacks safe local proof or explicit not-applicable reason")
+
+    return {
+        "chain_membership": chain_membership,
+        "chains": {
+            "artifact_present": bool(artifacts.get("chains_present")),
+            "matched": matched_chains,
+            "missing": missing_chains,
+            "referenced_by": referenced_by_chains,
+        },
+        "adversarial_validation": {
+            "artifact_present": bool(artifacts.get("validations_present")),
+            "finding_validations": finding_validations,
+            "finding_validation_details": finding_validation_details,
+            "chain_validations": chain_validations,
+            "chain_validation_details": chain_validation_details,
+            "blocking_decisions": blocking_validations,
+            "exists": validation_exists,
+        },
+        "safe_local_proof": {
+            "artifact_present": bool(artifacts.get("proofs_present")),
+            "proofs": finding_proofs,
+            "exists": safe_proof_exists,
+            "not_applicable": not_applicable,
+            "not_applicable_reason": not_applicable_reason,
+        },
+        "warnings": warnings,
+    }
+
+
+def advanced_validation_errors(entries: Iterable[Dict[str, Any]]) -> List[str]:
+    errors: List[str] = []
+    for entry in entries:
+        finding_id = str(entry.get("id") or "SEC-UNKNOWN")
+        advanced = entry.get("advanced_validation") if isinstance(entry.get("advanced_validation"), dict) else {}
+        for warning in advanced.get("warnings") or []:
+            errors.append(f"{finding_id}: {warning}")
+    return errors
+
+
+def plan_finding_entry(
+    repo: str,
+    run_id: str,
+    commit: str,
+    finding: Dict[str, Any],
+    run_dir: Path,
+    advanced_artifacts: Optional[Dict[str, Any]] = None,
+) -> Tuple[Dict[str, Any], str]:
     fingerprint = stable_fingerprint(repo, finding)
     body = render_body(repo, run_id, commit, finding, fingerprint, run_dir)
     issue_body_file = str(finding.get("issue_body_file") or "")
+    advanced = advanced_validation_summary(finding, advanced_artifacts or load_advanced_artifacts(run_dir))
     entry: Dict[str, Any] = {
         "id": str(finding.get("id", "SEC-UNKNOWN")),
         "fingerprint": fingerprint,
@@ -267,6 +457,8 @@ def plan_finding_entry(repo: str, run_id: str, commit: str, finding: Dict[str, A
         "issue_body_file": issue_body_file or None,
         "labels": normalize_labels(finding),
         "public_disclosure_risk": str(finding.get("public_disclosure_risk") or "Unknown"),
+        "chain_membership": advanced["chain_membership"],
+        "advanced_validation": advanced,
     }
     return entry, body
 
@@ -284,11 +476,13 @@ def build_publication_plan(
     findings: Iterable[Dict[str, Any]],
     run_dir: Path,
     generated_at: str,
+    advanced_artifacts: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, str]]:
     selected_findings: List[Dict[str, Any]] = []
     bodies: Dict[str, str] = {}
+    artifacts = advanced_artifacts or load_advanced_artifacts(run_dir)
     for finding in findings:
-        entry, body = plan_finding_entry(repo, run_id, commit, finding, run_dir)
+        entry, body = plan_finding_entry(repo, run_id, commit, finding, run_dir, artifacts)
         selected_findings.append(entry)
         bodies[plan_entry_key(entry)] = body
     plan = {
@@ -326,6 +520,21 @@ def print_plan_summary(plan_path: Path, plan: Dict[str, Any], *, prefix: str = "
     print(f"{prefix}: {plan_path}")
     for entry in plan.get("selected_findings") or []:
         print(f"- {entry.get('id', 'SEC-UNKNOWN')}: issue_body_sha256={entry.get('issue_body_sha256', '')}")
+        advanced = entry.get("advanced_validation") if isinstance(entry.get("advanced_validation"), dict) else {}
+        chains = advanced.get("chains") if isinstance(advanced.get("chains"), dict) else {}
+        validation = advanced.get("adversarial_validation") if isinstance(advanced.get("adversarial_validation"), dict) else {}
+        proof = advanced.get("safe_local_proof") if isinstance(advanced.get("safe_local_proof"), dict) else {}
+        chain_membership = entry.get("chain_membership") or []
+        print(
+            "  advanced_validation: "
+            f"chain_membership={chain_membership or []}, "
+            f"chains_matched={chains.get('matched') or []}, "
+            f"adversarial_validation_exists={bool(validation.get('exists'))}, "
+            f"safe_local_proof_exists={bool(proof.get('exists'))}, "
+            f"proof_not_applicable={bool(proof.get('not_applicable'))}"
+        )
+        for warning in advanced.get("warnings") or []:
+            print(f"  WARNING: {warning}")
 
 
 def verify_plan_against_findings(
@@ -336,10 +545,12 @@ def verify_plan_against_findings(
     commit: str,
     current_findings: Iterable[Dict[str, Any]],
     run_dir: Path,
+    advanced_artifacts: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str], List[str]]:
     candidates_by_id: Dict[str, List[Tuple[Dict[str, Any], str]]] = {}
+    artifacts = advanced_artifacts or load_advanced_artifacts(run_dir)
     for finding in current_findings:
-        current_entry, body = plan_finding_entry(repo, run_id, commit, finding, run_dir)
+        current_entry, body = plan_finding_entry(repo, run_id, commit, finding, run_dir, artifacts)
         candidates_by_id.setdefault(str(current_entry["id"]), []).append((current_entry, body))
     selected: List[Dict[str, Any]] = []
     bodies: Dict[str, str] = {}
@@ -366,7 +577,17 @@ def verify_plan_against_findings(
             ((entry, candidate_body) for entry, candidate_body in candidates if entry.get("fingerprint") == planned_fingerprint),
             candidates[0],
         )
-        for field in ["fingerprint", "title", "issue_body_sha256", "issue_body_file", "public_disclosure_risk"]:
+        for field in [
+            "fingerprint",
+            "title",
+            "issue_body_sha256",
+            "issue_body_file",
+            "public_disclosure_risk",
+            "chain_membership",
+            "advanced_validation",
+        ]:
+            if field not in planned and field in {"chain_membership", "advanced_validation"}:
+                continue
             if planned.get(field) != current_entry.get(field):
                 errors.append(f"{finding_id}: {field} changed after plan creation")
         if list(planned.get("labels") or []) != current_entry["labels"]:
@@ -392,6 +613,11 @@ def main() -> int:
     parser.add_argument("--create-labels", action="store_true", help="Create/update common labels before creating issues")
     parser.add_argument("--assignee", help="Optional assignee, e.g. @me")
     parser.add_argument("--max-issues", type=int, default=50, help="Safety limit")
+    parser.add_argument(
+        "--require-advanced-validation",
+        action="store_true",
+        help="Fail when selected High/Critical findings lack related chain, proof, or adversarial validation artifacts",
+    )
     args = parser.parse_args()
 
     if args.plan and args.apply:
@@ -418,6 +644,7 @@ def main() -> int:
     if len(selected) > args.max_issues:
         print(f"Refusing to create {len(selected)} issues; exceeds --max-issues={args.max_issues}.", file=sys.stderr)
         return 4
+    advanced_artifacts = load_advanced_artifacts(run_dir)
 
     if args.plan:
         try:
@@ -429,10 +656,17 @@ def main() -> int:
                 findings=selected,
                 run_dir=run_dir,
                 generated_at=generated_at,
+                advanced_artifacts=advanced_artifacts,
             )
         except ReportSafetyError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
+        requirement_errors = advanced_validation_errors(plan.get("selected_findings") or [])
+        if args.require_advanced_validation and requirement_errors:
+            print("Advanced validation requirements failed:", file=sys.stderr)
+            for error in requirement_errors:
+                print(f"- {error}", file=sys.stderr)
+            return 4
         plan_path = default_plan_path(run_dir)
         write_plan(plan_path, plan)
         print_plan_summary(plan_path, plan, prefix="Wrote issue publication plan")
@@ -456,7 +690,14 @@ def main() -> int:
                     findings=selected,
                     run_dir=run_dir,
                     generated_at=generated_at,
+                    advanced_artifacts=advanced_artifacts,
                 )
+                requirement_errors = advanced_validation_errors(refreshed.get("selected_findings") or [])
+                if args.require_advanced_validation and requirement_errors:
+                    print("Advanced validation requirements failed:", file=sys.stderr)
+                    for error in requirement_errors:
+                        print(f"- {error}", file=sys.stderr)
+                    return 4
                 write_plan(plan_path, refreshed)
                 print_plan_summary(plan_path, refreshed, prefix="Rewrote issue publication plan")
             except ReportSafetyError as exc:
@@ -473,6 +714,7 @@ def main() -> int:
                 commit=commit,
                 current_findings=[f for f in findings if isinstance(f, dict)],
                 run_dir=run_dir,
+                advanced_artifacts=advanced_artifacts,
             )
         except (OSError, ValueError, json.JSONDecodeError, ReportSafetyError) as exc:
             print(f"ERROR: could not read or verify issue publication plan: {exc}", file=sys.stderr)
@@ -488,6 +730,12 @@ def main() -> int:
             return 4
         plan_sha256 = plan_hash(plan_path)
         print_plan_summary(plan_path, plan, prefix="Verified issue publication plan")
+        requirement_errors = advanced_validation_errors(selected_plan_entries or [])
+        if args.require_advanced_validation and requirement_errors:
+            print("Advanced validation requirements failed:", file=sys.stderr)
+            for error in requirement_errors:
+                print(f"- {error}", file=sys.stderr)
+            return 4
         if args.dry_run:
             dry_run = True
 
@@ -524,10 +772,17 @@ def main() -> int:
                 findings=selected,
                 run_dir=run_dir,
                 generated_at=generated_at,
+                advanced_artifacts=advanced_artifacts,
             )
         except ReportSafetyError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
+        requirement_errors = advanced_validation_errors(preview_plan.get("selected_findings") or [])
+        if args.require_advanced_validation and requirement_errors:
+            print("Advanced validation requirements failed:", file=sys.stderr)
+            for error in requirement_errors:
+                print(f"- {error}", file=sys.stderr)
+            return 4
         print_plan_summary(default_plan_path(run_dir), preview_plan)
         issue_entries = [(entry, preview_bodies.get(plan_entry_key(entry), "")) for entry in preview_plan["selected_findings"]]
 

@@ -83,8 +83,26 @@ runs/OWNER__REPO/RUN_ID/reports/issue-publication-plan.json
 
 plan には selected finding ID、fingerprint、title、label、issue body
 file、issue body SHA-256 hash、public disclosure risk、run ID、repo、
-commit が記録されます。公開前に plan、参照される issue draft、
-`reports/ATTACK_CHAINS.md`、`reports/PROOFS.md`、`reports/VALIDATION.md` を確認します。
+commit、`chain_membership`、`advanced_validation` summary が記録されます。
+advanced summary には、関連する `reports/chains.json` record の有無、
+関連 adversarial validation record の有無、safe local proof artifact の有無
+または明示的な not applicable 判定、公開前に確認すべき warning が含まれます。
+公開前に plan、参照される issue draft、`reports/ATTACK_CHAINS.md`、
+`reports/PROOFS.md`、`reports/VALIDATION.md` を確認します。
+
+warning は既定では公開を自動停止しません。advanced evidence を必須にする
+運用では、次の strict mode を使います。
+
+```bash
+gra-issues --run runs/OWNER__REPO/RUN_ID --plan --require-advanced-validation
+```
+
+この mode は、selected High/Critical finding に必要な chain、proof、
+adversarial-validation evidence が欠けている場合、または関連 validation
+decision が `downgrade`、`invalidate`、`needs-human-review` の場合に
+non-zero で終了します。Issue body には `ATTACK_CHAINS.md` の内容を
+含めません。public text には、レビュー済みの remediation / disclosure
+implications だけを要約してください。
 
 承認後、同じ plan を apply します。
 
@@ -95,11 +113,12 @@ gra-issues \
   --create-labels
 ```
 
-`--apply-plan` は Issue body hash、fingerprint、selected finding の存在、
-title、label、public disclosure risk を再計算・検証し、plan 作成後に
-変更された内容の公開を拒否します。plan が古くなった場合は `--plan` で
-作り直し、再レビューしてから apply してください。`--apply-plan ... --replan`
-は plan を更新して終了し、Issue は作成しません。
+`--apply-plan` は Issue body hash、advanced-validation summary、
+fingerprint、selected finding の存在、title、label、public disclosure risk、
+chain membership を再計算・検証し、plan 作成後に変更された内容の公開を
+拒否します。plan が古くなった場合は `--plan` で作り直し、再レビューしてから
+apply してください。`--apply-plan ... --replan` は plan を更新して終了し、
+Issue は作成しません。
 
 ## apply
 
