@@ -1,24 +1,41 @@
 from __future__ import annotations
 
-import re
 import unittest
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = REPO_ROOT / "MANIFEST.md"
-FENCED_SECTION_RE = re.compile(r"^## (?P<title>.+?)\n\n```text\n(?P<body>.*?)\n```", re.MULTILINE | re.DOTALL)
+
+
+def is_fence(line: str) -> bool:
+    stripped = line.strip()
+    return stripped.startswith("```") and stripped.count("`") >= 3
 
 
 def manifest_sections() -> dict[str, set[str]]:
-    text = MANIFEST.read_text(encoding="utf-8")
+    lines = MANIFEST.read_text(encoding="utf-8").replace("\r\n", "\n").splitlines()
     sections: dict[str, set[str]] = {}
-    for match in FENCED_SECTION_RE.finditer(text):
-        sections[match.group("title")] = {
-            line.strip()
-            for line in match.group("body").splitlines()
-            if line.strip()
-        }
+    index = 0
+    while index < len(lines):
+        line = lines[index].strip()
+        if not line.startswith("## "):
+            index += 1
+            continue
+        title = line[3:].strip()
+        index += 1
+        while index < len(lines) and not lines[index].strip():
+            index += 1
+        if index >= len(lines) or not is_fence(lines[index]):
+            continue
+        index += 1
+        body: list[str] = []
+        while index < len(lines) and not is_fence(lines[index]):
+            if lines[index].strip():
+                body.append(lines[index].strip())
+            index += 1
+        sections[title] = set(body)
+        index += 1
     return sections
 
 
