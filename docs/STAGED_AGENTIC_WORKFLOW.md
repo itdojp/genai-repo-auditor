@@ -339,17 +339,25 @@ repository access. It asserts that posture-derived targets are generated and
 that run artifact references remain run-relative.
 
 The suite also includes an advanced local-only chain / proof / adversarial
-validation fixture:
+validation regression fixture:
 
 ```bash
 python3 -m unittest tests.integration.test_cli_workflows.CliWorkflowTests.test_advanced_chain_proof_validation_workflow_fixture -v
 ```
 
-That fixture uses synthetic findings, bounded targets with coverage metadata, a
-normalized scanner lead, and mocked Codex output to exercise `gra-chains`,
-`gra-proofs --all-critical-high`, `gra-adversarial-validate
---all-critical-high`, `gra-validate-report`, `gra-dashboard`, and `gra-sarif`
-without exploit payloads, external services, or real audit data.
+Input run artifacts live under `tests/fixtures/advanced-workflow-run/`. They
+include synthetic findings, bounded targets with coverage metadata, issue draft
+placeholders, a tracked raw scanner artifact at
+`reports/scanner-results/advanced-semgrep.json`, and a normalized scanner lead.
+Mocked Codex outputs live under `tests/fixtures/advanced-workflow-output/` and
+cover `chains.json`, `ATTACK_CHAINS.md`, `proofs.json`, `PROOFS.md`, safe proof
+support files, `validation.json`, and `VALIDATION.md`.
+
+The regression exercises `gra-chains`, `gra-proofs --all-critical-high`,
+`gra-adversarial-validate --all-critical-high`, `gra-validate-report`,
+`gra-dashboard`, and `gra-sarif` without exploit payloads, external services,
+or real audit data. These fixture artifacts are synthetic and not publishable
+as audit evidence.
 
 ## Issue creation
 
