@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor Advanced Workflow Metrics",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "repo",
+    "generated_at",
+    "source",
+    "safety",
+    "findings",
+    "adversarial_validation",
+    "chains",
+    "proofs",
+    "gapfill",
+    "traces",
+    "issue_publication_plan",
+    "artifacts",
+    "run_duration"
+  ],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "run_id": {"type": "string"},
+    "repo": {"type": "string"},
+    "branch": {"type": ["string", "null"]},
+    "commit": {"type": ["string", "null"]},
+    "generated_at": {"type": "string"},
+    "source": {"enum": ["local-report-artifacts"]},
+    "safety": {
+      "type": "object",
+      "required": ["local_artifacts_only", "raw_evidence_copied", "secrets_copied", "notes"],
+      "properties": {
+        "local_artifacts_only": {"type": "boolean"},
+        "raw_evidence_copied": {"type": "boolean"},
+        "secrets_copied": {"type": "boolean"},
+        "notes": {"type": "string"}
+      }
+    },
+    "findings": {
+      "type": "object",
+      "required": ["total", "by_severity", "by_status", "issue_recommended", "chain_membership_count"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "by_severity": {"type": "object"},
+        "by_status": {"type": "object"},
+        "issue_recommended": {"type": "integer", "minimum": 0},
+        "chain_membership_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "adversarial_validation": {
+      "type": "object",
+      "required": ["artifact_present", "total", "by_decision", "downgrade_or_invalidate_count", "downgrade_or_invalidate_rate", "blocking_decision_count"],
+      "properties": {
+        "artifact_present": {"type": "boolean"},
+        "total": {"type": "integer", "minimum": 0},
+        "by_decision": {"type": "object"},
+        "downgrade_or_invalidate_count": {"type": "integer", "minimum": 0},
+        "downgrade_or_invalidate_rate": {"type": "number", "minimum": 0},
+        "blocking_decision_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "chains": {
+      "type": "object",
+      "required": ["artifact_present", "total", "by_status", "by_severity"],
+      "properties": {
+        "artifact_present": {"type": "boolean"},
+        "total": {"type": "integer", "minimum": 0},
+        "by_status": {"type": "object"},
+        "by_severity": {"type": "object"}
+      }
+    },
+    "proofs": {
+      "type": "object",
+      "required": ["artifact_present", "total", "by_type", "by_status"],
+      "properties": {
+        "artifact_present": {"type": "boolean"},
+        "total": {"type": "integer", "minimum": 0},
+        "by_type": {"type": "object"},
+        "by_status": {"type": "object"}
+      }
+    },
+    "gapfill": {
+      "type": "object",
+      "required": ["coverage_artifact_present", "gapfill_artifact_present", "source_targets_recommended", "targets_generated", "targets_reviewed", "targets_by_status"],
+      "properties": {
+        "coverage_artifact_present": {"type": "boolean"},
+        "gapfill_artifact_present": {"type": "boolean"},
+        "source_targets_recommended": {"type": "integer", "minimum": 0},
+        "targets_generated": {"type": "integer", "minimum": 0},
+        "targets_reviewed": {"type": "integer", "minimum": 0},
+        "targets_by_status": {"type": "object"}
+      }
+    },
+    "traces": {
+      "type": "object",
+      "required": ["artifact_present", "total", "by_reachable", "by_attacker_control", "by_status"],
+      "properties": {
+        "artifact_present": {"type": "boolean"},
+        "total": {"type": "integer", "minimum": 0},
+        "by_reachable": {"type": "object"},
+        "by_attacker_control": {"type": "object"},
+        "by_status": {"type": "object"}
+      }
+    },
+    "issue_publication_plan": {
+      "type": "object",
+      "required": ["artifact_present", "selected_findings", "warning_count"],
+      "properties": {
+        "artifact_present": {"type": "boolean"},
+        "selected_findings": {"type": "integer", "minimum": 0},
+        "warning_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["manifest_present", "manifest_artifact_total", "manifest_by_kind", "reports_file_count", "reports_dir_count"],
+      "properties": {
+        "manifest_present": {"type": "boolean"},
+        "manifest_artifact_total": {"type": "integer", "minimum": 0},
+        "manifest_by_kind": {"type": "object"},
+        "reports_file_count": {"type": "integer", "minimum": 0},
+        "reports_dir_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "run_duration": {
+      "type": "object",
+      "required": ["available", "seconds", "source"],
+      "properties": {
+        "available": {"type": "boolean"},
+        "seconds": {"type": ["number", "null"], "minimum": 0},
+        "source": {"type": "string"}
+      }
+    }
+  }
+}

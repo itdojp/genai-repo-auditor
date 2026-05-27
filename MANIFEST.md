@@ -16,6 +16,7 @@ bin/gra-gapfill
 bin/gra-index
 bin/gra-ingest
 bin/gra-issues
+bin/gra-metrics
 bin/gra-proofs
 bin/gra-recon
 bin/gra-research
@@ -69,6 +70,7 @@ templates/reports/ISSUE_BODY.md
 templates/reports/chains.schema.json
 templates/reports/dependencies.schema.json
 templates/reports/findings.schema.json
+templates/reports/metrics.schema.json
 templates/reports/proofs.schema.json
 templates/reports/run-manifest.schema.json
 templates/reports/scanner-index.schema.json
@@ -113,6 +115,7 @@ docs/GOAL_PROMPT_LIBRARY.md
 docs/ISSUE_WORKFLOW.md
 docs/LOCAL_ARTIFACT_CLEANUP.md
 docs/LOCAL_INSTALL_AND_AUDIT.md
+docs/METRICS.md
 docs/MULTI_REPO.md
 docs/NORMAL_OPERATION.md
 docs/NORMAL_WORKFLOW.md

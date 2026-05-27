@@ -125,6 +125,7 @@ class ReportContractTests(unittest.TestCase):
         chains_schema = self.load_json(SCHEMAS / "chains.schema.json")
         proofs_schema = self.load_json(SCHEMAS / "proofs.schema.json")
         traces_schema = self.load_json(SCHEMAS / "traces.schema.json")
+        metrics_schema = self.load_json(SCHEMAS / "metrics.schema.json")
 
         self.assertTrue(set(VALIDATOR.REQUIRED_TOP).issubset(findings_schema["required"]))
         finding_required = findings_schema["properties"]["findings"]["items"]["required"]
@@ -316,6 +317,36 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual(["Confirmed", "Probable", "Potential", "Invalid", "Not assessed"], trace_properties["reachable"]["enum"])
         self.assertEqual(["Confirmed", "Probable", "Potential", "Invalid", "Needs human review"], trace_properties["status"]["enum"])
 
+        self.assertEqual(
+            {
+                "schema_version",
+                "run_id",
+                "repo",
+                "generated_at",
+                "source",
+                "safety",
+                "findings",
+                "adversarial_validation",
+                "chains",
+                "proofs",
+                "gapfill",
+                "traces",
+                "issue_publication_plan",
+                "artifacts",
+                "run_duration",
+            },
+            set(metrics_schema["required"]),
+        )
+        self.assertEqual(["local-report-artifacts"], metrics_schema["properties"]["source"]["enum"])
+        metrics_safety = metrics_schema["properties"]["safety"]
+        self.assertEqual(
+            {"local_artifacts_only", "raw_evidence_copied", "secrets_copied", "notes"},
+            set(metrics_safety["required"]),
+        )
+        self.assertEqual("boolean", metrics_safety["properties"]["local_artifacts_only"]["type"])
+        self.assertEqual("boolean", metrics_safety["properties"]["raw_evidence_copied"]["type"])
+        self.assertEqual("boolean", metrics_safety["properties"]["secrets_copied"]["type"])
+
     def test_valid_minimal_fixture_passes_validator(self) -> None:
         run_dir = self.copy_run()
         cp = self.run_validator(run_dir)
@@ -331,6 +362,70 @@ class ReportContractTests(unittest.TestCase):
         cp = self.run_validator(run_dir)
         self.assertEqual(cp.returncode, 0, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
         self.assertIn("Scanner index: validated", cp.stdout)
+
+    def test_metrics_rejects_raw_evidence_fields_and_safety_flag_drift(self) -> None:
+        run_dir = self.copy_run()
+        metrics = {
+            "schema_version": "1",
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "generated_at": "2026-05-28T00:00:00Z",
+            "source": "local-report-artifacts",
+            "safety": {
+                "local_artifacts_only": True,
+                "raw_evidence_copied": False,
+                "secrets_copied": True,
+                "notes": "fixture",
+            },
+            "findings": {
+                "total": 1,
+                "by_severity": {"High": 1},
+                "by_status": {"Confirmed": 1},
+                "issue_recommended": 1,
+                "chain_membership_count": 0,
+            },
+            "adversarial_validation": {
+                "artifact_present": False,
+                "total": 0,
+                "by_decision": {},
+                "downgrade_or_invalidate_count": 0,
+                "downgrade_or_invalidate_rate": 0,
+                "blocking_decision_count": 0,
+            },
+            "chains": {"artifact_present": False, "total": 0, "by_status": {}, "by_severity": {}},
+            "proofs": {"artifact_present": False, "total": 0, "by_type": {}, "by_status": {}},
+            "gapfill": {
+                "coverage_artifact_present": False,
+                "gapfill_artifact_present": False,
+                "source_targets_recommended": 0,
+                "targets_generated": 0,
+                "targets_reviewed": 0,
+                "targets_by_status": {},
+            },
+            "traces": {
+                "artifact_present": False,
+                "total": 0,
+                "by_reachable": {},
+                "by_attacker_control": {},
+                "by_status": {},
+            },
+            "issue_publication_plan": {"artifact_present": False, "selected_findings": 0, "warning_count": 0},
+            "artifacts": {
+                "manifest_present": False,
+                "manifest_artifact_total": 0,
+                "manifest_by_kind": {},
+                "reports_file_count": 2,
+                "reports_dir_count": 0,
+            },
+            "run_duration": {"available": False, "seconds": None, "source": "not-available"},
+            "evidence": "raw evidence must never be present in metrics",
+        }
+        self.write_json(run_dir / "reports" / "metrics.json", metrics)
+
+        cp = self.run_validator(run_dir)
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("metrics.safety.secrets_copied: must be false", cp.stderr)
+        self.assertIn("metrics.evidence: metrics must not copy raw evidence or issue body content", cp.stderr)
 
     def test_scanner_index_rejects_unsafe_artifact_paths(self) -> None:
         run_dir = self.copy_run()

@@ -16,7 +16,9 @@ human-review 判定する独立 validation artifact です。`ATTACK_CHAINS.md` 
 `proofs.json` / `proofs/` は `gra-proofs` が既存 finding に対して生成する
 safe local proof artifact です。`TRACE.md` / `traces.json` は `gra-trace`
 が producer finding と consumer repository の reachability を整理する
-experimental/P3 cross-repo trace artifact です。
+experimental/P3 cross-repo trace artifact です。`METRICS.md` /
+`metrics.json` は `gra-metrics` が local report artifacts だけから生成する
+advanced workflow metrics artifact です。
 
 ```text
 reports/
@@ -41,6 +43,8 @@ reports/
   traces.json
   traces/
     sec-001-org-consumer.subjects.json
+  METRICS.md
+  metrics.json
   VALIDATION.md
   validation.json
   AUDIT_LOG.md
@@ -81,10 +85,11 @@ findings[].labels
 
 `gra-validate-report` validates `findings.json`, optional `targets.json`,
 optional chain synthesis output, optional proof artifacts, optional adversarial
-validation output, optional cross-repo trace output, optional scanner index artifacts, and optional
-dependency/posture artifacts against the bundled JSON schemas using the Python
-standard library. It also applies local safety rules before downstream tools can
-use report-controlled paths.
+validation output, optional cross-repo trace output, optional metrics output,
+optional scanner index artifacts, and optional dependency/posture artifacts
+against the bundled JSON schemas using the Python standard library. It also
+applies local safety rules before downstream tools can use report-controlled
+paths.
 
 `provenance-posture.json` is a local posture artifact produced by `gra-recon`;
 it is advisory input for target generation and is not treated as a finding
@@ -123,6 +128,13 @@ reachable from attacker-controlled consumer entry points. It is reachability
 evidence, not exploit proof, and must not include exploit payloads, production
 or staging probing, external scanning, credential access, dependency
 installation, or producer/consumer repository modification.
+
+`metrics.json` is a local-only aggregate metrics artifact produced by
+`gra-metrics`. It records counts and rates for findings, adversarial validation
+decisions, chains, proofs, gapfill, traces, Issue publication plan warnings,
+artifact counts, and run duration when local metadata is available. It must not
+copy raw finding evidence, issue body text, proof evidence, trace evidence,
+scanner lead bodies, or secret values.
 
 Important constraints:
 
@@ -207,6 +219,12 @@ Important constraints:
   use `Confirmed`, `Probable`, `Potential`, `Invalid`, or `Not assessed`, and
   `status` must be `Confirmed`, `Probable`, `Potential`, `Invalid`, or
   `Needs human review`.
+- If `reports/metrics.json` exists, it must match
+  `templates/reports/metrics.schema.json`, use
+  `source: local-report-artifacts`, set `safety.local_artifacts_only` to `true`,
+  and set
+  `safety.raw_evidence_copied` / `safety.secrets_copied` to `false`. Metrics
+  output must stay aggregate-only and avoid raw evidence fields.
 
 `issue_body_file`, when present, must point to a regular `.md` file under
 `reports/issue-drafts/`, for example:
