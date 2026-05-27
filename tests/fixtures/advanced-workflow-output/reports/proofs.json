@@ -1,0 +1,41 @@
+{
+  "run_id": "advanced-workflow-run",
+  "repo": "example/advanced-workflow",
+  "branch": "main",
+  "commit": "1111111111111111111111111111111111111111",
+  "generated_at": "2026-05-27T00:00:02Z",
+  "proofs": [
+    {
+      "id": "PROOF-101",
+      "finding_id": "SEC-101",
+      "proof_type": "unit-test-plan",
+      "status": "not-run",
+      "safe_by_design": true,
+      "files_created": [
+        "reports/proofs/SEC-101-test-plan.md"
+      ],
+      "commands_run": [],
+      "evidence": "Benign local mocked-request test plan for validating upload-to-renderer data flow without exploit payloads.",
+      "limitations": [
+        "No external service contacted",
+        "No dependency installation performed",
+        "Fixture route wiring is synthetic"
+      ]
+    },
+    {
+      "id": "PROOF-102",
+      "finding_id": "SEC-102",
+      "proof_type": "static-trace",
+      "status": "needs-human-review",
+      "safe_by_design": true,
+      "files_created": [
+        "reports/proofs/SEC-102-static-trace.md"
+      ],
+      "commands_run": [],
+      "evidence": "Static local trace shows token forwarding path and records missing renderer authorization semantics.",
+      "limitations": [
+        "Renderer policy is not implemented in the synthetic fixture"
+      ]
+    }
+  ]
+}

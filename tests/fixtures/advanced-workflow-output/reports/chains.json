@@ -1,0 +1,53 @@
+{
+  "run_id": "advanced-workflow-run",
+  "repo": "example/advanced-workflow",
+  "branch": "main",
+  "commit": "1111111111111111111111111111111111111111",
+  "generated_at": "2026-05-27T00:00:01Z",
+  "chains": [
+    {
+      "id": "CHAIN-001",
+      "title": "Fixture upload and token boundary chain",
+      "severity": "Critical",
+      "confidence": "Medium",
+      "status": "Probable",
+      "findings": [
+        "SEC-101",
+        "SEC-102"
+      ],
+      "targets": [
+        "TGT-101",
+        "TGT-102"
+      ],
+      "scanner_refs": [
+        "reports/scanner-results/normalized/semgrep.normalized.json"
+      ],
+      "entry_point": "src.handler.handle_upload",
+      "trust_boundaries": [
+        "HTTP request body -> trusted renderer",
+        "HTTP header token -> renderer authorization context"
+      ],
+      "attacker_controlled_steps": [
+        "request body reaches renderer input",
+        "request token reaches renderer token parameter"
+      ],
+      "required_conditions": [
+        "fixture route is enabled",
+        "renderer trusts forwarded token"
+      ],
+      "broken_security_invariants": [
+        "untrusted input must be validated before trusted rendering",
+        "request headers must not become trusted authorization state implicitly"
+      ],
+      "impact": "Fixture-scoped chain demonstrating how two defensive findings compose without exploit payloads.",
+      "safe_validation_plan": [
+        "static local trace over src/handler.py and src/report.py",
+        "benign mocked request regression test plan"
+      ],
+      "recommended_remediation": [
+        "add explicit validation boundary before render_report",
+        "validate token semantics before renderer use"
+      ]
+    }
+  ]
+}

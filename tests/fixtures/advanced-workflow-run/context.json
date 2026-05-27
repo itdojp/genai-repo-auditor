@@ -1,0 +1,11 @@
+{
+  "run_id": "advanced-workflow-run",
+  "repo": "example/advanced-workflow",
+  "repo_slug": "example__advanced-workflow",
+  "branch": "main",
+  "commit": "1111111111111111111111111111111111111111",
+  "visibility": "PRIVATE",
+  "target_repo_dir": "repo",
+  "reports_dir": "reports",
+  "network_allowed": false
+}

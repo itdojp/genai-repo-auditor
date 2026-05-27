@@ -338,6 +338,19 @@ index generation without real GitHub, Codex, scanner, network, or external
 repository access. It asserts that posture-derived targets are generated and
 that run artifact references remain run-relative.
 
+The suite also includes an advanced local-only chain / proof / adversarial
+validation fixture:
+
+```bash
+python3 -m unittest tests.integration.test_cli_workflows.CliWorkflowTests.test_advanced_chain_proof_validation_workflow_fixture -v
+```
+
+That fixture uses synthetic findings, bounded targets with coverage metadata, a
+normalized scanner lead, and mocked Codex output to exercise `gra-chains`,
+`gra-proofs --all-critical-high`, `gra-adversarial-validate
+--all-critical-high`, `gra-validate-report`, `gra-dashboard`, and `gra-sarif`
+without exploit payloads, external services, or real audit data.
+
 ## Issue creation
 
 Always review reports manually before creating GitHub Issues.
