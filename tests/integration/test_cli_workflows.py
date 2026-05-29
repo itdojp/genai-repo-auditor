@@ -120,6 +120,12 @@ class CliWorkflowTests(unittest.TestCase):
     def read_codex_calls(self, log_path: Path) -> list[Any]:
         return self.read_jsonl_calls(log_path)
 
+    def assert_codex_exec_approval_config(self, call: list[Any]) -> None:
+        self.assertEqual(["exec", "--cd"], call[:2])
+        self.assertNotIn("--ask-for-approval", call)
+        self.assertFalse(any(str(arg).startswith("--ask-for-approval=") for arg in call))
+        self.assertIn('approval_policy="never"', call)
+
     def assert_path_under(self, path: Path, base: Path) -> None:
         try:
             path.resolve(strict=False).relative_to(base.resolve())
@@ -640,6 +646,9 @@ class CliWorkflowTests(unittest.TestCase):
             def main() -> int:
                 args = sys.argv[1:]
                 record_call(args)
+                if "--ask-for-approval" in args or any(arg.startswith("--ask-for-approval=") for arg in args):
+                    print("mock codex: --ask-for-approval is not supported for codex exec", file=sys.stderr)
+                    return 2
                 run_dir = Path(arg_value(args, "--cd") or os.getcwd())
                 output_last = Path(arg_value(args, "--output-last-message") or (run_dir / "codex-final.md"))
                 fixture_dir = Path(os.environ.get("GRA_MOCK_FIXTURE_DIR", ""))
@@ -780,6 +789,7 @@ class CliWorkflowTests(unittest.TestCase):
             env_from_context(run_dir, {"OPENAI_API_KEY": "fixture-value"})
 
     def test_gra_audit_exec_with_mock_codex_validates_reports(self) -> None:
+        env, codex_log = self.env_with_codex_log()
         cp = self.run_cmd(
             [
                 REPO_ROOT / "bin" / "gra-audit",
@@ -793,6 +803,7 @@ class CliWorkflowTests(unittest.TestCase):
                 self.runs_dir,
                 "--no-lock",
             ],
+            env=env,
             check=True,
         )
         run_dir = self.runs_dir / "example__demo" / "exec-run"
@@ -818,6 +829,9 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("codex-final.md", artifact_paths)
         self.assertIn("reports/findings.json", artifact_paths)
         self.assertIn("run-manifest.schema.json", artifact_paths)
+        codex_calls = self.read_codex_calls(codex_log)
+        self.assertEqual(1, len(codex_calls), codex_calls)
+        self.assert_codex_exec_approval_config(codex_calls[0])
 
     def test_gra_audit_exec_keeps_adversarial_repository_content_untrusted(self) -> None:
         manifest_path = FIXTURES / "adversarial-repos" / "manifest.json"
@@ -1074,7 +1088,7 @@ class CliWorkflowTests(unittest.TestCase):
 
         calls = self.read_codex_calls(codex_log)
         self.assertEqual(len(calls), 1, calls)
-        self.assertEqual(calls[0][:2], ["exec", "--cd"])
+        self.assert_codex_exec_approval_config(calls[0])
         self.assertIn(str(run_dir.resolve()), calls[0])
         self.assertIn(str(final_path), calls[0])
         self.assertIn('model_reasoning_effort="medium"', calls[0])

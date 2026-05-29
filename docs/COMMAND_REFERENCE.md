@@ -12,6 +12,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 - Most commands operate on a run directory such as `runs/OWNER__REPO/RUN_ID`.
 - `--network` enables network access inside the Codex sandbox for commands that call Codex. It is disabled by default and should remain disabled unless an approved workflow requires it.
 - `--model` defaults to `gpt-5.5` and `--effort` defaults to `xhigh` for Codex-driven commands. Command-line `--model` / `--effort` options are the portable override mechanism across Codex-driven commands.
+- Non-interactive `codex exec` invocations set approval behavior through `-c 'approval_policy="never"'` rather than the interactive-only `--ask-for-approval` flag, preserving compatibility with `codex-cli 0.135.0`.
 - Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-trace`, `gra-metrics`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
 - Python commands use `argparse`; missing required arguments or invalid choices normally exit with status `2`.
 - Generated audit artifacts, cloned target repositories, scanner raw outputs, issue drafts, and local stores should remain local and should not be committed.

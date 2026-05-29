@@ -81,7 +81,8 @@ jobs:
               --output-last-message) last_message="${2:-}"; shift 2 ;;
               --json) json_output="1"; shift ;;
               --skip-git-repo-check) shift ;;
-              --model|--sandbox|--ask-for-approval|--color|-c) shift 2 ;;
+              --ask-for-approval|--ask-for-approval=*) echo "mock codex: --ask-for-approval is not supported for codex exec" >&2; exit 98 ;;
+              --model|--sandbox|--color|-c) shift 2 ;;
               -) shift ;;
               *) shift ;;
             esac

@@ -66,6 +66,44 @@ def render_template(lab_root: Path, template: Path, out: Path, env: Dict[str, st
     subprocess.run(cmd, check=True, env=env)
 
 
+def _toml_string(value: str) -> str:
+    return json.dumps(str(value))
+
+
+def codex_config_arg(key: str, value: object) -> str:
+    if isinstance(value, bool):
+        rendered = 'true' if value else 'false'
+    else:
+        rendered = _toml_string(str(value))
+    return f'{key}={rendered}'
+
+
+def build_codex_exec_args(
+    *,
+    run_dir: Path,
+    model: str,
+    effort: str,
+    network: bool = False,
+    output_last: Path,
+    approval: str = 'never',
+) -> List[str]:
+    return [
+        'codex', 'exec',
+        '--cd', str(run_dir),
+        '--skip-git-repo-check',
+        '--model', model,
+        '--sandbox', 'workspace-write',
+        '--color', 'never',
+        '--output-last-message', str(output_last),
+        '-c', codex_config_arg('approval_policy', approval),
+        '-c', codex_config_arg('model_reasoning_effort', effort),
+        '-c', codex_config_arg('web_search', 'disabled'),
+        '-c', codex_config_arg('sandbox_workspace_write.network_access', network),
+        '--json',
+        '-',
+    ]
+
+
 def run_codex_exec(
     *,
     run_dir: Path,
@@ -78,22 +116,14 @@ def run_codex_exec(
     stderr_file: Path,
     approval: str = 'never',
 ) -> int:
-    network_value = 'true' if network else 'false'
-    args = [
-        'codex', 'exec',
-        '--cd', str(run_dir),
-        '--skip-git-repo-check',
-        '--model', model,
-        '--sandbox', 'workspace-write',
-        '--ask-for-approval', approval,
-        '--color', 'never',
-        '--output-last-message', str(output_last),
-        '-c', f'model_reasoning_effort="{effort}"',
-        '-c', 'web_search="disabled"',
-        '-c', f'sandbox_workspace_write.network_access={network_value}',
-        '--json',
-        '-',
-    ]
+    args = build_codex_exec_args(
+        run_dir=run_dir,
+        model=model,
+        effort=effort,
+        network=network,
+        output_last=output_last,
+        approval=approval,
+    )
     output_last.parent.mkdir(parents=True, exist_ok=True)
     events_file.parent.mkdir(parents=True, exist_ok=True)
     stderr_file.parent.mkdir(parents=True, exist_ok=True)

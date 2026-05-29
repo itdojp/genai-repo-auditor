@@ -36,7 +36,7 @@ sqlite3
 補足:
 
 - `gh` は GitHub 認証済みで、対象リポジトリへアクセスできる必要があります。
-- 現在の実装は、非対話監査で `codex exec` を呼び出します。`--mode exec` または `--mode goal` を使う前に、互換性のある `codex` CLI をインストールして設定してください。
+- 現在の実装は、非対話監査で `codex exec` を呼び出します。`--mode exec` または `--mode goal` を使う前に、互換性のある `codex` CLI をインストールして設定してください。exec mode では `-c 'approval_policy="never"'` で approval を設定し、`codex-cli 0.135.0` と互換性のない `codex exec --ask-for-approval` は使いません。対話型 `/goal` の案内では top-level `codex --ask-for-approval` を使う場合があります。
 - `shellcheck` はプロジェクト検証用です。監査実行そのものには必須ではありません。
 - private repository を監査する場合、認証済みの `gh` account が clone / 参照できることを確認してください。
 

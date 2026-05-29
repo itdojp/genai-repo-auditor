@@ -34,7 +34,7 @@ sqlite3
 Notes:
 
 - `gh` must be authenticated to GitHub and must have access to the target repository.
-- The current implementation invokes `codex exec` for non-interactive audits. Install and configure a compatible `codex` CLI before running `--mode exec` or `--mode goal` workflows.
+- The current implementation invokes `codex exec` for non-interactive audits. Install and configure a compatible `codex` CLI before running `--mode exec` or `--mode goal` workflows. Exec-mode commands set approvals with `-c 'approval_policy="never"'`, which is compatible with `codex-cli 0.135.0`; interactive `/goal` instructions may still use the top-level `codex --ask-for-approval` flag.
 - `shellcheck` is required only for project validation, not for running an audit.
 - If you audit private repositories, ensure the authenticated `gh` account can clone and inspect them.
 
