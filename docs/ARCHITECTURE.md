@@ -38,9 +38,9 @@ codex exec \
   --skip-git-repo-check \
   --model gpt-5.5 \
   --sandbox workspace-write \
-  --ask-for-approval never \
   --json \
   --output-last-message RUN_DIR/codex-final.md \
+  -c 'approval_policy="never"' \
   -c 'model_reasoning_effort="xhigh"' \
   -c 'web_search="disabled"' \
   -c 'sandbox_workspace_write.network_access=false'

@@ -321,9 +321,9 @@ CODEX_ARGS=(
   --skip-git-repo-check
   --model "$MODEL"
   --sandbox workspace-write
-  --ask-for-approval never
   --color never
   --output-last-message "$RUN_DIR/codex-final.md"
+  -c 'approval_policy="never"'
   -c "model_reasoning_effort=\"$EFFORT\""
   -c 'web_search="disabled"'
   -c "sandbox_workspace_write.network_access=$NETWORK_VALUE"
