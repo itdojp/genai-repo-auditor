@@ -18,6 +18,7 @@
     "issue_publication_plan",
     "issue_ledger",
     "duplicate_decisions",
+    "observability",
     "artifacts",
     "run_duration"
   ],
@@ -134,6 +135,54 @@
         "by_decision": {"type": "object"},
         "exact_match_count": {"type": "integer", "minimum": 0},
         "candidate_issue_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "observability": {
+      "type": "object",
+      "required": [
+        "command_events_present",
+        "total_events",
+        "by_command",
+        "by_phase",
+        "by_exit_code",
+        "execution_durations",
+        "failures_by_target",
+        "reruns_by_target",
+        "events_by_target",
+        "validation_retry_count",
+        "validation_retries_by_target",
+        "taxonomy_normalizations_present",
+        "taxonomy_normalization_count",
+        "taxonomy_normalizations_by_target"
+      ],
+      "properties": {
+        "command_events_present": {"type": "boolean"},
+        "total_events": {"type": "integer", "minimum": 0},
+        "by_command": {"type": "object"},
+        "by_phase": {"type": "object"},
+        "by_exit_code": {"type": "object"},
+        "execution_durations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["target_id", "command", "phase", "duration_ms", "exit_code"],
+            "properties": {
+              "target_id": {"type": "string"},
+              "command": {"type": "string"},
+              "phase": {"type": "string"},
+              "duration_ms": {"type": "integer", "minimum": 0},
+              "exit_code": {"type": "integer"}
+            }
+          }
+        },
+        "failures_by_target": {"type": "object"},
+        "reruns_by_target": {"type": "object"},
+        "events_by_target": {"type": "object"},
+        "validation_retry_count": {"type": "integer", "minimum": 0},
+        "validation_retries_by_target": {"type": "object"},
+        "taxonomy_normalizations_present": {"type": "boolean"},
+        "taxonomy_normalization_count": {"type": "integer", "minimum": 0},
+        "taxonomy_normalizations_by_target": {"type": "object"}
       }
     },
     "artifacts": {

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,11 @@ PROOF_TYPES = [
 PROOF_STATUSES = ["confirmed", "failed", "not-run", "needs-human-review", "unknown"]
 TARGET_STATUSES = ["queued", "in_progress", "reviewed", "skipped", "needs_human_review", "unknown"]
 ARTIFACT_KINDS = ["file", "dir", "unknown"]
+OBSERVABILITY_COMMANDS = ["gra-research", "gra-gapfill", "gra-validate-report", "unknown"]
+OBSERVABILITY_PHASES = ["exec", "goal", "generate", "validate", "list", "unknown"]
+RUN_TARGET_ID = "__run__"
+UNKNOWN_TARGET_ID = "__unknown__"
+TARGET_ID_RE = re.compile(r"^TGT-(?:[A-Z][A-Z0-9]*-)?[0-9]{3,}$")
 
 
 class MetricsError(RuntimeError):
@@ -92,6 +98,23 @@ def list_of_dicts(data: Any, key: str) -> list[dict[str, Any]]:
     if not isinstance(values, list):
         return []
     return [item for item in values if isinstance(item, dict)]
+
+
+def load_jsonl_objects(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    records: list[dict[str, Any]] = []
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{path}:{line_number}: invalid JSONL record: {exc}") from exc
+        if not isinstance(value, dict):
+            raise ValueError(f"{path}:{line_number}: expected JSON object")
+        records.append(value)
+    return records
 
 
 def rate(numerator: int, denominator: int) -> float:
@@ -186,6 +209,123 @@ def trace_metrics(traces: list[dict[str, Any]], present: bool) -> dict[str, Any]
         "by_reachable": count_known(traces, "reachable", TRACE_VALUES, "Not assessed"),
         "by_attacker_control": count_known(traces, "attacker_control", TRACE_VALUES, "Not assessed"),
         "by_status": count_known(traces, "status", COUNT_STATUSES, "Unknown"),
+    }
+
+
+def safe_target_id(value: Any) -> str:
+    if value is None or value == "":
+        return RUN_TARGET_ID
+    text = str(value)
+    if TARGET_ID_RE.fullmatch(text):
+        return text
+    return UNKNOWN_TARGET_ID
+
+
+def safe_exit_code(value: Any) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return -1
+
+
+def safe_duration_ms(value: Any) -> int:
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return int(value)
+    return 0
+
+
+def target_ids_by_index(targets: list[dict[str, Any]]) -> dict[int, str]:
+    mapping: dict[int, str] = {}
+    for index, target in enumerate(targets):
+        mapping[index] = safe_target_id(target.get("id"))
+    return mapping
+
+
+def taxonomy_normalization_target(event: dict[str, Any], target_index: dict[int, str]) -> str:
+    field_path = event.get("field_path")
+    if isinstance(field_path, str):
+        match = re.match(r"^targets\.targets\[(\d+)\]", field_path)
+        if match:
+            return target_index.get(int(match.group(1)), UNKNOWN_TARGET_ID)
+        if field_path.startswith("findings."):
+            return "__findings__"
+    return RUN_TARGET_ID
+
+
+def observability_metrics(
+    *,
+    command_events: list[dict[str, Any]],
+    command_events_present: bool,
+    taxonomy_normalizations: list[dict[str, Any]],
+    taxonomy_normalizations_present: bool,
+    targets: list[dict[str, Any]],
+) -> dict[str, Any]:
+    durations: list[dict[str, Any]] = []
+    command_counts: Counter[str] = Counter()
+    phase_counts: Counter[str] = Counter()
+    exit_counts: Counter[str] = Counter()
+    target_counts: Counter[str] = Counter()
+    failures_by_target: Counter[str] = Counter()
+    grouped_event_counts: Counter[tuple[str, str, str]] = Counter()
+    validation_counts: Counter[str] = Counter()
+
+    for event in command_events:
+        command = safe_label(event.get("command"), OBSERVABILITY_COMMANDS, "unknown")
+        phase = safe_label(event.get("phase"), OBSERVABILITY_PHASES, "unknown")
+        target_id = safe_target_id(event.get("target_id"))
+        duration_ms = safe_duration_ms(event.get("duration_ms"))
+        exit_code = safe_exit_code(event.get("exit_code"))
+        duration_record = {
+            "target_id": target_id,
+            "command": command,
+            "phase": phase,
+            "duration_ms": duration_ms,
+            "exit_code": exit_code,
+        }
+        durations.append(duration_record)
+        command_counts[command] += 1
+        phase_counts[phase] += 1
+        exit_counts[str(exit_code)] += 1
+        target_counts[target_id] += 1
+        grouped_event_counts[(target_id, command, phase)] += 1
+        if exit_code != 0:
+            failures_by_target[target_id] += 1
+        if command == "gra-validate-report":
+            validation_counts[target_id] += 1
+
+    durations.sort(key=lambda item: (-int(item["duration_ms"]), str(item["target_id"]), str(item["command"])))
+
+    reruns_by_target: Counter[str] = Counter()
+    for (target_id, _command, _phase), count in grouped_event_counts.items():
+        if count > 1:
+            reruns_by_target[target_id] += count - 1
+
+    validation_retries_by_target = {
+        target_id: count - 1
+        for target_id, count in sorted(validation_counts.items())
+        if count > 1
+    }
+
+    target_index = target_ids_by_index(targets)
+    normalizations_by_target = Counter(
+        taxonomy_normalization_target(event, target_index)
+        for event in taxonomy_normalizations
+    )
+
+    return {
+        "command_events_present": command_events_present,
+        "total_events": len(command_events),
+        "by_command": counter_dict(command_counts, OBSERVABILITY_COMMANDS),
+        "by_phase": counter_dict(phase_counts, OBSERVABILITY_PHASES),
+        "by_exit_code": counter_dict(exit_counts),
+        "execution_durations": durations,
+        "failures_by_target": counter_dict(failures_by_target),
+        "reruns_by_target": counter_dict(reruns_by_target),
+        "events_by_target": counter_dict(target_counts),
+        "validation_retry_count": sum(validation_retries_by_target.values()),
+        "validation_retries_by_target": validation_retries_by_target,
+        "taxonomy_normalizations_present": taxonomy_normalizations_present,
+        "taxonomy_normalization_count": len(taxonomy_normalizations),
+        "taxonomy_normalizations_by_target": counter_dict(normalizations_by_target),
     }
 
 
@@ -290,6 +430,10 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
     gapfill_data = load_json(reports / "gapfill-targets.json", None)
     issue_plan = load_json(reports / "issue-publication-plan.json", None)
     issue_ledger = load_json(reports / "issue-ledger.json", None)
+    command_events_path = reports / "command-events.jsonl"
+    command_events = load_jsonl_objects(command_events_path)
+    taxonomy_normalizations_path = reports / "taxonomy-normalizations.jsonl"
+    taxonomy_normalizations = load_jsonl_objects(taxonomy_normalizations_path)
     duplicate_decisions_present = (reports / "duplicate-decisions").is_dir()
     duplicate_decisions = []
     if duplicate_decisions_present:
@@ -334,6 +478,13 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
         "issue_publication_plan": issue_plan_metrics(issue_plan, issue_plan is not None),
         "issue_ledger": ledger_metrics(issue_ledger, issue_ledger is not None),
         "duplicate_decisions": duplicate_decision_metrics(duplicate_decisions, duplicate_decisions_present),
+        "observability": observability_metrics(
+            command_events=command_events,
+            command_events_present=command_events_path.exists(),
+            taxonomy_normalizations=taxonomy_normalizations,
+            taxonomy_normalizations_present=taxonomy_normalizations_path.exists(),
+            targets=targets,
+        ),
         "artifacts": artifact_metrics(run_dir, reports, manifest),
         "run_duration": run_duration_metrics(manifest),
     }
@@ -379,6 +530,9 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
         f"| Issue plan warnings | {metrics['issue_publication_plan']['warning_count']} |",
         f"| Issue ledger published findings | {metrics['issue_ledger']['published_findings']} |",
         f"| Duplicate decisions | {metrics['duplicate_decisions']['total']} |",
+        f"| Command events | {metrics['observability']['total_events']} |",
+        f"| Validation retries | {metrics['observability']['validation_retry_count']} |",
+        f"| Taxonomy normalizations | {metrics['observability']['taxonomy_normalization_count']} |",
         f"| Report files | {metrics['artifacts']['reports_file_count']} |",
         "",
         "## Findings",
@@ -419,6 +573,26 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
     lines.append(f"| Candidate issue references | {metrics['duplicate_decisions']['candidate_issue_count']} |")
     lines.append("")
     lines.extend(markdown_counts("Decision", metrics["duplicate_decisions"]["by_decision"]))
+    lines.extend(["## Observability", "", "| Metric | Count |", "|---|---:|"])
+    lines.append(f"| Command events | {metrics['observability']['total_events']} |")
+    lines.append(f"| Validation retries | {metrics['observability']['validation_retry_count']} |")
+    lines.append(f"| Taxonomy normalizations | {metrics['observability']['taxonomy_normalization_count']} |")
+    lines.append("")
+    lines.extend(markdown_counts("Command events by command", metrics["observability"]["by_command"]))
+    lines.extend(markdown_counts("Command events by phase", metrics["observability"]["by_phase"]))
+    lines.extend(markdown_counts("Failures by target", metrics["observability"]["failures_by_target"]))
+    lines.extend(markdown_counts("Reruns by target", metrics["observability"]["reruns_by_target"]))
+    lines.extend(markdown_counts("Validation retries by target", metrics["observability"]["validation_retries_by_target"]))
+    lines.extend(markdown_counts("Taxonomy normalizations by target", metrics["observability"]["taxonomy_normalizations_by_target"]))
+    lines.extend(["### Execution durations", "", "| Target | Command | Phase | Duration ms | Exit code |", "|---|---|---|---:|---:|"])
+    for record in metrics["observability"]["execution_durations"]:
+        lines.append(
+            f"| {record['target_id']} | {record['command']} | {record['phase']} | "
+            f"{record['duration_ms']} | {record['exit_code']} |"
+        )
+    if not metrics["observability"]["execution_durations"]:
+        lines.append("| - | - | - | 0 | 0 |")
+    lines.append("")
     lines.extend(["## Artifacts", "", "| Metric | Count |", "|---|---:|"])
     lines.append(f"| Manifest artifacts | {metrics['artifacts']['manifest_artifact_total']} |")
     lines.append(f"| Report files | {metrics['artifacts']['reports_file_count']} |")

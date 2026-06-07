@@ -129,6 +129,7 @@ class ReportContractTests(unittest.TestCase):
         issue_ledger_schema = self.load_json(SCHEMAS / "issue-ledger.schema.json")
         duplicate_decision_schema = self.load_json(SCHEMAS / "duplicate-decision.schema.json")
         run_state_schema = self.load_json(SCHEMAS / "run-state.schema.json")
+        command_event_schema = self.load_json(SCHEMAS / "command-event.schema.json")
 
         self.assertTrue(set(VALIDATOR.REQUIRED_TOP).issubset(findings_schema["required"]))
         finding_required = findings_schema["properties"]["findings"]["items"]["required"]
@@ -337,6 +338,7 @@ class ReportContractTests(unittest.TestCase):
                 "issue_publication_plan",
                 "issue_ledger",
                 "duplicate_decisions",
+                "observability",
                 "artifacts",
                 "run_duration",
             },
@@ -434,6 +436,30 @@ class ReportContractTests(unittest.TestCase):
             set(run_state_schema["required"]),
         )
         self.assertEqual(["active", "paused", "blocked"], run_state_schema["properties"]["status"]["enum"])
+        self.assertEqual(
+            {
+                "schema_version",
+                "run_id",
+                "repo",
+                "command",
+                "phase",
+                "target_id",
+                "started_at",
+                "ended_at",
+                "duration_ms",
+                "exit_code",
+                "model",
+                "effort",
+                "artifact_paths",
+                "source",
+            },
+            set(command_event_schema["required"]),
+        )
+        self.assertEqual(
+            ["gra-research", "gra-gapfill", "gra-validate-report"],
+            command_event_schema["properties"]["command"]["enum"],
+        )
+        self.assertEqual(["genai-repo-auditor"], command_event_schema["properties"]["source"]["enum"])
 
     def test_valid_minimal_fixture_passes_validator(self) -> None:
         run_dir = self.copy_run()
@@ -450,6 +476,40 @@ class ReportContractTests(unittest.TestCase):
         cp = self.run_validator(run_dir)
         self.assertEqual(cp.returncode, 0, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
         self.assertIn("Scanner index: validated", cp.stdout)
+
+    def test_command_events_schema_and_safety_are_validated(self) -> None:
+        run_dir = self.copy_run()
+        events_path = run_dir / "reports" / "command-events.jsonl"
+        event = {
+            "schema_version": "1",
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "command": "gra-research",
+            "phase": "exec",
+            "target_id": "TGT-001",
+            "started_at": "2026-05-16T00:00:00Z",
+            "ended_at": "2026-05-16T00:00:02Z",
+            "duration_ms": 2000,
+            "exit_code": 0,
+            "model": "gpt-5.5",
+            "effort": "xhigh",
+            "artifact_paths": ["reports/target-research/TGT-001.md"],
+            "source": "genai-repo-auditor",
+        }
+        events_path.write_text(json.dumps(event, sort_keys=True) + "\n", encoding="utf-8")
+
+        cp = self.run_validator(run_dir)
+        self.assertEqual(cp.returncode, 0, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
+        self.assertIn("Command events: validated", cp.stdout)
+
+        bad_event = dict(event)
+        bad_event["ended_at"] = "2026-05-15T23:59:59Z"
+        bad_event["artifact_paths"] = ["../outside.txt"]
+        events_path.write_text(json.dumps(bad_event, sort_keys=True) + "\n", encoding="utf-8")
+        cp_bad = self.run_validator(run_dir)
+        self.assertNotEqual(cp_bad.returncode, 0)
+        self.assertIn("command_events[1].ended_at: must not be earlier than started_at", cp_bad.stderr)
+        self.assertIn("command_events[1].artifact_paths[0]: artifact path must not contain '..'", cp_bad.stderr)
 
     def test_metrics_rejects_raw_evidence_fields_and_safety_flag_drift(self) -> None:
         run_dir = self.copy_run()
@@ -511,6 +571,22 @@ class ReportContractTests(unittest.TestCase):
                 "by_decision": {},
                 "exact_match_count": 0,
                 "candidate_issue_count": 0,
+            },
+            "observability": {
+                "command_events_present": False,
+                "total_events": 0,
+                "by_command": {},
+                "by_phase": {},
+                "by_exit_code": {},
+                "execution_durations": [],
+                "failures_by_target": {},
+                "reruns_by_target": {},
+                "events_by_target": {},
+                "validation_retry_count": 0,
+                "validation_retries_by_target": {},
+                "taxonomy_normalizations_present": False,
+                "taxonomy_normalization_count": 0,
+                "taxonomy_normalizations_by_target": {},
             },
             "artifacts": {
                 "manifest_present": False,

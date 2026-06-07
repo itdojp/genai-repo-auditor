@@ -70,7 +70,9 @@ done
 
 gra-audit --help >/dev/null
 gra-validate-report --help >/dev/null
-gra-validate-report --run "$ROOT/tests/fixtures/minimal-run" >/dev/null
+smoke_run="$work_dir/minimal-run"
+cp -R "$ROOT/tests/fixtures/minimal-run" "$smoke_run"
+gra-validate-report --run "$smoke_run" >/dev/null
 
 if [[ -e "$sentinel" ]]; then
   echo "install smoke: a discovery command invoked a forbidden external tool:" >&2

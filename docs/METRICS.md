@@ -35,6 +35,8 @@ Metrics are computed from local report artifacts only:
 - issue publication plan selected findings and warning counts
 - issue ledger tracked, published, status, and drift-warning counts
 - duplicate decision total, exact-match count, candidate Issue references, and decision buckets
+- command event counts, execution durations, failures, reruns, and validation retries
+- taxonomy normalization counts by target when normalization logs can be mapped to target IDs
 - run artifact counts
 - run duration when present in local manifest metadata
 
@@ -45,6 +47,25 @@ stable metrics file.
 Unexpected dimension values are bucketed as `Unknown`, `unknown`, or
 `Not assessed` rather than copied verbatim. This keeps malformed local artifacts
 from leaking raw report text or secret-like values through metric labels.
+
+## Observability metrics
+
+`gra-research`, `gra-gapfill`, and `gra-validate-report` append structured
+JSONL command events to `reports/command-events.jsonl`. `gra-metrics` turns
+those events into an `observability` section with:
+
+- command counts by command, phase, and exit code
+- one sanitized duration record per command event
+- failures by target ID, with run-level validation failures grouped under
+  `__run__`
+- reruns by target ID, computed from repeated command/phase execution for the
+  same target
+- validation retry counts from repeated `gra-validate-report` executions
+- taxonomy normalization totals and per-target counts from
+  `reports/taxonomy-normalizations.jsonl`
+
+`gra-dashboard` renders the longest target executions and the highest retry /
+rerun targets from the same metrics artifact.
 
 ## Safety boundary
 

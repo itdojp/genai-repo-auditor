@@ -26,6 +26,7 @@ from target_coverage import (
     string_list,
 )
 from run_state import paused_error
+from run_events import append_command_event, start_command_event
 
 
 def print_candidates(candidates: list[dict]) -> None:
@@ -73,6 +74,25 @@ def main() -> int:
     args = parser.parse_args()
 
     run_dir = Path(args.run).resolve()
+    started_at, started_perf = start_command_event()
+    phase = "list" if args.list else "generate" if args.generate else args.mode
+    artifacts: list[Path] = []
+
+    def finish(exit_code: int) -> int:
+        append_command_event(
+            run_dir,
+            command="gra-gapfill",
+            phase=phase,
+            target_id=str(args.target) if args.target else None,
+            started_at=started_at,
+            started_perf=started_perf,
+            exit_code=exit_code,
+            model=args.model if args.target else None,
+            effort=args.effort if args.target else None,
+            artifact_paths=artifacts,
+        )
+        return exit_code
+
     if not (run_dir / "context.json").exists():
         print(f"context.json not found under {run_dir}", file=sys.stderr)
         return 2
@@ -81,28 +101,31 @@ def main() -> int:
 
     if args.list:
         print_candidates(gapfill_candidates(load_targets(run_dir)))
-        return 0
+        return finish(0)
 
     pause_message = paused_error(run_dir, action="gapfill generation or review")
     if pause_message:
         print(pause_message, file=sys.stderr)
-        return 5
+        return finish(5)
 
     if args.generate:
         payload = generate_gapfill_artifacts(run_dir)
+        reports = run_dir / ctx.get('reports_dir', 'reports')
+        artifacts.extend([reports / "COVERAGE.md", reports / "gapfill-targets.json", reports / "targets.json"])
         print(f"Wrote {run_dir / ctx.get('reports_dir', 'reports') / 'COVERAGE.md'}")
         print(f"Wrote {run_dir / ctx.get('reports_dir', 'reports') / 'gapfill-targets.json'}")
         print_candidates(gapfill_candidates(load_targets(run_dir)))
         print(f"Generated or reused {payload['generated_target_count']} gapfill target(s)")
-        return 0
+        return finish(0)
 
     try:
         target = find_target(run_dir, args.target)
     except KeyError as exc:
         print(str(exc), file=sys.stderr)
-        return 2
+        return finish(2)
 
     target_seed = write_target_seed(run_dir, target)
+    artifacts.append(target_seed)
     reports_dir = run_dir / ctx.get("reports_dir", "reports")
     coverage_file = reports_dir / "COVERAGE.md"
     output_md = reports_dir / "target-research" / f"{args.target}-gapfill.md"
@@ -122,6 +145,7 @@ def main() -> int:
     if args.mode == "goal":
         prompt = run_dir / "prompts" / "goal" / f"gapfill-{args.target}.goal.md"
         render_template(LAB_ROOT, LAB_ROOT / "prompts" / "goal" / "gapfill-target.goal.md", prompt, env)
+        artifacts.append(prompt)
         print("Prepared supervised /goal gapfill review run.")
         print(f"Run directory: {run_dir}")
         print(f"Target file: {target_seed}")
@@ -130,24 +154,29 @@ def main() -> int:
         print("\nStart Codex:")
         print(f'  codex --cd "{run_dir}" --skip-git-repo-check --model "{args.model}" --enable goals --sandbox workspace-write --ask-for-approval on-request -c \'model_reasoning_effort="{args.effort}"\' -c \'web_search="disabled"\' -c \'sandbox_workspace_write.network_access={network_value}\'')
         print("\nThen paste the contents of the goal prompt.")
-        return 0
+        return finish(0)
 
     prompt = run_dir / "prompts" / "exec" / f"gapfill-{args.target}.prompt.md"
     render_template(LAB_ROOT, LAB_ROOT / "prompts" / "exec" / "gapfill-target.prompt.md", prompt, env)
+    artifacts.append(prompt)
     print(f"Running Codex gapfill review for {args.target}: {target.get('title', '')}".strip())
+    final_path = run_dir / f"codex-gapfill-{args.target}-final.md"
+    events_path = run_dir / f"codex-gapfill-{args.target}-events.jsonl"
+    stderr_path = run_dir / f"codex-gapfill-{args.target}-stderr.txt"
     status = run_codex_exec(
         run_dir=run_dir,
         prompt_file=prompt,
         model=args.model,
         effort=args.effort,
         network=args.network,
-        output_last=run_dir / f"codex-gapfill-{args.target}-final.md",
-        events_file=run_dir / f"codex-gapfill-{args.target}-events.jsonl",
-        stderr_file=run_dir / f"codex-gapfill-{args.target}-stderr.txt",
+        output_last=final_path,
+        events_file=events_path,
+        stderr_file=stderr_path,
     )
+    artifacts.extend([final_path, events_path, stderr_path, output_md])
     print(f"Codex status: {status}")
     print(f"Gapfill report: {output_md}")
-    return status
+    return finish(status)
 
 
 if __name__ == '__main__':
