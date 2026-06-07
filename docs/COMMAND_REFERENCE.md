@@ -24,6 +24,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Prepare / full audit | `gra-audit` | Run directory, cloned target, rendered prompts, Codex output, reports |
 | Batch operation | `gra-batch` | Batch metadata, per-repository logs, `batch-results.json` |
 | Target queue | `gra-targets` | `reports/targets.json`, target queue updates |
+| Run state / pause guard | `gra-run-state` | `reports/run-state.json`, pause/resume/block status |
 | Target coverage gapfill | `gra-gapfill` | `reports/COVERAGE.md`, `reports/gapfill-targets.json`, bounded gapfill target research |
 | Research / recon / variant analysis | `gra-recon`, `gra-research`, `gra-variant` | Recon notes, target research, findings updates, variant reports |
 | Adversarial validation | `gra-adversarial-validate` | Bounded validation prompt, subject seed JSON, `reports/validation.json`, `reports/VALIDATION.md` |
@@ -98,6 +99,32 @@ Examples:
 gra-targets --run runs/OWNER__REPO/RUN_ID --generate
 gra-targets --run runs/OWNER__REPO/RUN_ID --list
 gra-targets --run runs/OWNER__REPO/RUN_ID --mark TGT-001 reviewed
+```
+
+## `gra-run-state`
+
+| Field | Details |
+|---|---|
+| Purpose | Record and inspect run-level operational state so an intentional pause is distinct from a true blocked/impasse state. |
+| Workflow category | Run state / pause guard. |
+| Required inputs | `--run RUN_DIR` and exactly one action: `--status`, `--pause`, `--resume`, `--clear-pause`, or `--block`. |
+| Key options | `--reason TEXT` for `--pause` / `--block`, `--resume-target TGT-ID`, `--resume-condition TEXT`, `--paused-by NAME`, `--blocked-by NAME`, `--resumed-by NAME`, `--final-reconcile TEXT`, and `--json`. |
+| Generated outputs | `reports/run-state.json` for write actions. `--status` and `--resume` are read-only and print the current status, pause reason, resume target, resume condition, operator metadata, and previous final reconcile summary when present. |
+| Exit status behavior | `0` for successful status/pause/resume/clear/block actions; `2` for missing context, malformed state, or missing required reason; `3` when `--clear-pause` is requested for a run that is not paused. |
+| Security / disclosure cautions | A paused run is an operational stop, not a finding or vulnerability state. While `reports/run-state.json` has `status: "paused"`, deep-review commands such as `gra-research`, `gra-gapfill --generate`, `gra-gapfill --target`, and `gra-targets --generate/--mark` refuse to start. Use `--status` or `--resume` for read-only checks, then clear the pause only after the resume condition is satisfied. |
+| Related docs | [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/TARGET_QUEUE.md`](TARGET_QUEUE.md). |
+
+Examples:
+
+```bash
+gra-run-state --run runs/OWNER__REPO/RUN_ID --pause \
+  --reason "maintenance window" \
+  --resume-target TGT-AGENT-234 \
+  --resume-condition "auditor update merged and post-merge CI passed" \
+  --final-reconcile "published known findings: 52; unpublished Medium+: 0"
+gra-run-state --run runs/OWNER__REPO/RUN_ID --status
+gra-run-state --run runs/OWNER__REPO/RUN_ID --resume
+gra-run-state --run runs/OWNER__REPO/RUN_ID --clear-pause --resumed-by maintainer
 ```
 
 ## `gra-recon`
@@ -332,7 +359,7 @@ gra-taxonomy-preflight --findings reports/findings.json --targets reports/target
 
 | Field | Details |
 |---|---|
-| Purpose | Validate `findings.json`, optional `targets.json`, optional chain reports, optional proof artifacts, optional cross-repo trace artifacts, optional adversarial validation output, optional scanner index artifacts, optional dependency artifacts, controlled taxonomy names/IDs/labels, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
+| Purpose | Validate `findings.json`, optional `targets.json`, optional chain reports, optional proof artifacts, optional cross-repo trace artifacts, optional adversarial validation output, optional scanner index artifacts, optional dependency artifacts, optional issue ledger, optional run state, controlled taxonomy names/IDs/labels, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
 | Workflow category | Validation workflow. |
 | Required inputs | One of `--run RUN_DIR` or `--findings PATH`. |
 | Key options | `--run RUN_DIR`, `--findings PATH`. |

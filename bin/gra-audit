@@ -188,6 +188,9 @@ fi
 if [[ -f "$LAB_ROOT/templates/reports/issue-ledger.schema.json" ]]; then
   cp "$LAB_ROOT/templates/reports/issue-ledger.schema.json" "$RUN_DIR/issue-ledger.schema.json"
 fi
+if [[ -f "$LAB_ROOT/templates/reports/run-state.schema.json" ]]; then
+  cp "$LAB_ROOT/templates/reports/run-state.schema.json" "$RUN_DIR/run-state.schema.json"
+fi
 if [[ -d "$LAB_ROOT/templates/taxonomies" ]]; then
   mkdir -p "$RUN_DIR/templates/taxonomies"
   cp "$LAB_ROOT"/templates/taxonomies/*.json "$RUN_DIR/templates/taxonomies/"

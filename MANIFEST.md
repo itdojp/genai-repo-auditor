@@ -20,6 +20,7 @@ bin/gra-metrics
 bin/gra-proofs
 bin/gra-recon
 bin/gra-research
+bin/gra-run-state
 bin/gra-sarif
 bin/gra-scanner-triage
 bin/gra-store
@@ -75,6 +76,7 @@ templates/reports/issue-ledger.schema.json
 templates/reports/metrics.schema.json
 templates/reports/proofs.schema.json
 templates/reports/run-manifest.schema.json
+templates/reports/run-state.schema.json
 templates/reports/scanner-index.schema.json
 templates/reports/targets.schema.json
 templates/reports/traces.schema.json

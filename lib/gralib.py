@@ -133,6 +133,12 @@ def run_codex_exec(
     stderr_file: Path,
     approval: str = 'never',
 ) -> int:
+    from run_state import paused_error
+
+    pause_message = paused_error(run_dir, action=f"Codex exec for {prompt_file.name}")
+    if pause_message:
+        print(pause_message, file=sys.stderr)
+        return 5
     args = build_codex_exec_args(
         run_dir=run_dir,
         model=model,

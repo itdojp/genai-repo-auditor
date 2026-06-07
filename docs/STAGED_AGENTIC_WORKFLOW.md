@@ -67,6 +67,28 @@ inspection bound, expected output, and chain relevance when known. Keep
 research. See [Target Queue](TARGET_QUEUE.md) for examples of good and bad
 target granularity.
 
+## Pause and resume run state
+
+Use `gra-run-state` when an audit is intentionally paused for operational
+reasons such as maintainer updates, release windows, or handoff. This records a
+`paused` state rather than overloading `blocked`, which is reserved for a true
+impasse.
+
+```bash
+gra-run-state --run runs/OWNER__REPO/RUN_ID --pause \
+  --reason "maintainer update window" \
+  --resume-target TGT-AGENT-234 \
+  --resume-condition "main branch updated and post-merge CI passed" \
+  --final-reconcile "published known findings: 52; unpublished Medium+: 0"
+gra-run-state --run runs/OWNER__REPO/RUN_ID --status
+gra-run-state --run runs/OWNER__REPO/RUN_ID --resume
+```
+
+While paused, use only read-only status checks. Deep-review starts and target
+queue mutations are guarded: `gra-research`, `gra-gapfill --generate`,
+`gra-gapfill --target`, `gra-targets --generate`, and `gra-targets --mark`
+refuse to proceed until the pause is cleared.
+
 ## Research one target
 
 ```bash

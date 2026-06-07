@@ -177,6 +177,25 @@ gra-gapfill --run runs/ORG__repo-a/RUN_ID --target TGT-001 --mode goal
 repository modification、dependency installation、live service access、
 exploit instruction を含めてはいけません。
 
+## run pause / resume state
+
+本体更新、maintainer handoff、release window などで audit run を意図的に
+止める場合は、`blocked` ではなく `paused` state を記録します。
+
+```bash
+gra-run-state --run runs/ORG__repo-a/RUN_ID --pause \
+  --reason "maintainer update window" \
+  --resume-target TGT-AGENT-234 \
+  --resume-condition "main branch updated and post-merge CI passed" \
+  --final-reconcile "published known findings: 52; unpublished Medium+: 0"
+gra-run-state --run runs/ORG__repo-a/RUN_ID --status
+gra-run-state --run runs/ORG__repo-a/RUN_ID --resume
+```
+
+paused 中は read-only status check のみに制限してください。`gra-research`、
+`gra-gapfill --generate`、`gra-gapfill --target`、`gra-targets --generate`、
+`gra-targets --mark` は paused state を検出すると開始を拒否します。
+
 ## run index
 
 ```bash

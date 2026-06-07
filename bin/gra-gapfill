@@ -25,6 +25,7 @@ from target_coverage import (
     review_depth,
     string_list,
 )
+from run_state import paused_error
 
 
 def print_candidates(candidates: list[dict]) -> None:
@@ -81,6 +82,11 @@ def main() -> int:
     if args.list:
         print_candidates(gapfill_candidates(load_targets(run_dir)))
         return 0
+
+    pause_message = paused_error(run_dir, action="gapfill generation or review")
+    if pause_message:
+        print(pause_message, file=sys.stderr)
+        return 5
 
     if args.generate:
         payload = generate_gapfill_artifacts(run_dir)

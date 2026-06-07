@@ -44,6 +44,7 @@ PROOFS_DIR = Path("reports/proofs")
 TRACES_PATH = Path("reports/traces.json")
 METRICS_PATH = Path("reports/metrics.json")
 ISSUE_LEDGER_PATH = Path("reports/issue-ledger.json")
+RUN_STATE_PATH = Path("reports/run-state.json")
 VALIDATION_DECISIONS = {"confirm", "downgrade", "invalidate", "needs-human-review"}
 VALIDATION_SUBJECT_TYPES = {"finding", "chain"}
 VALIDATION_SEVERITIES = SEVERITIES | {"Unknown"}
@@ -930,6 +931,32 @@ def validate_issue_ledger(run_dir: Path, errors: List[str]) -> bool:
     return True
 
 
+def validate_run_state(run_dir: Path, errors: List[str]) -> bool:
+    state_path = run_dir / RUN_STATE_PATH
+    if not state_path.exists():
+        return False
+    try:
+        state_data = json.loads(state_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"run_state invalid JSON: {exc}")
+        return True
+    if not isinstance(state_data, dict):
+        errors.append(f"run_state: expected type object, got {json_type_name(state_data)}")
+        return True
+    validate_schema(state_data, load_schema("run-state.schema.json"), "run_state", errors)
+    validate_generated_at(state_data.get("generated_at"), "run_state.generated_at", errors)
+    for field in ["paused_at", "blocked_at", "resumed_at"]:
+        value = state_data.get(field)
+        if value is not None:
+            validate_generated_at(value, f"run_state.{field}", errors)
+    status = state_data.get("status")
+    if status == "paused" and not state_data.get("pause_reason"):
+        errors.append("run_state.pause_reason: required when status is paused")
+    if status == "blocked" and not state_data.get("block_reason"):
+        errors.append("run_state.block_reason: required when status is blocked")
+    return True
+
+
 def validate_affected_locations(finding: Dict[str, Any], path: str, errors: List[str]) -> None:
     locs = finding.get("affected_locations")
     if not isinstance(locs, list):
@@ -1081,6 +1108,7 @@ def main() -> int:
     traces_validated = validate_traces(run_dir, findings, errors)
     metrics_validated = validate_metrics(run_dir, errors)
     issue_ledger_validated = validate_issue_ledger(run_dir, errors)
+    run_state_validated = validate_run_state(run_dir, errors)
 
     if errors:
         for e in errors:
@@ -1108,6 +1136,8 @@ def main() -> int:
         print("Metrics: validated")
     if issue_ledger_validated:
         print("Issue ledger: validated")
+    if run_state_validated:
+        print("Run state: validated")
     return 0
 
 

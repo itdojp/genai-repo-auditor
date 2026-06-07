@@ -25,6 +25,7 @@ from dependency_posture import append_dependency_posture_targets
 from provenance_posture import append_provenance_posture_targets
 from scorecard_posture import append_scorecard_posture_targets
 from target_coverage_guardrails import CoverageSerializationError
+from run_state import paused_error
 
 
 def run_taxonomy_preflight(run_dir: Path) -> int:
@@ -81,6 +82,11 @@ def main() -> int:
         except KeyError as e:
             print(str(e), file=sys.stderr)
             return 2
+
+    pause_message = paused_error(run_dir, action="target queue mutation or generation")
+    if pause_message:
+        print(pause_message, file=sys.stderr)
+        return 5
 
     if args.mark:
         target_id, status = args.mark
