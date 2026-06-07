@@ -162,6 +162,12 @@ ledger を確認します。ledger 上で同じ finding ID / fingerprint が
 1 件だけあり、現在の fingerprint が変わっている場合も、新規 Issue は作成せず
 ledger に fingerprint drift を記録します。apply 後の `issues-created.json` は
 互換性のため残りますが、継続的な公開状態確認では `issue-ledger.json` を優先します。
+dry-run / apply では、選択 finding ごとに
+`reports/duplicate-decisions/<finding_id>.json` も作成します。同じ finding ID の
+record が衝突する場合は fingerprint suffix 付きの file name を使います。この record は
+candidate Issue number、exact match の有無、`variant_of`、root cause fingerprint、
+source-to-sink fingerprint、`new` / `exact-duplicate` / `variant` /
+`related-not-duplicate` の decision、rationale、`checked_at` を保存します。
 
 GitHub 側の状態と ledger の不整合を確認する場合は、次を実行します。
 
@@ -171,12 +177,14 @@ gra-issues --run runs/OWNER__REPO/RUN_ID --verify-ledger
 
 この確認は `reports/issue-ledger.json` の published / duplicate entry を
 open GitHub Issue の fingerprint marker と照合し、見つからない場合や URL が
-異なる場合に non-zero で終了します。
+異なる場合、または published / duplicate entry に対応する duplicate decision
+record が存在しない場合に non-zero で終了します。
 
 ## 作成前チェックリスト
 
 - `gra-validate-report --run RUN_DIR` が成功している。
 - `reports/findings.json` の severity、status、confidence、public disclosure risk が妥当である。
+- `reports/duplicate-decisions/*.json` で exact duplicate / variant / related-but-not-duplicate / new の判断根拠が確認できる。
 - `reports/ATTACK_CHAINS.md` は non-public by default として扱い、Issue 本文にそのまま含めない。
 - `reports/PROOFS.md` と `reports/proofs/` は local/private by default として扱い、Issue 本文にそのまま含めない。
 - `reports/VALIDATION.md` の downgrade / invalidate / needs-human-review を確認し、必要な修正または明示承認が済んでいる。

@@ -50,6 +50,8 @@ reports/
   metrics.json
   issue-publication-plan.json
   issue-ledger.json
+  duplicate-decisions/
+    SEC-001.json
   run-state.json
   VALIDATION.md
   validation.json
@@ -144,8 +146,8 @@ installation, or producer/consumer repository modification.
 `metrics.json` is a local-only aggregate metrics artifact produced by
 `gra-metrics`. It records counts and rates for findings, adversarial validation
 decisions, chains, proofs, gapfill, traces, Issue publication plan warnings,
-Issue ledger publication states, artifact counts, and run duration when local
-metadata is available. It must not copy raw finding evidence, issue body text,
+Issue ledger publication states, duplicate decision counts, artifact counts,
+and run duration when local metadata is available. It must not copy raw finding evidence, issue body text,
 proof evidence, trace evidence, scanner lead bodies, or secret values.
 
 `issue-ledger.json` is a local publication ledger produced by `gra-issues`.
@@ -155,6 +157,14 @@ and drift warnings when current findings or GitHub inventory no longer match
 the ledger. It is the canonical local source for idempotent Issue publication;
 `issues-created.json` remains a per-command result artifact for backward
 compatibility.
+
+`reports/duplicate-decisions/*.json` are local publication-decision records
+produced by `gra-issues` before dry-run or apply output is written for a
+selected finding. They record candidate Issue numbers, exact-match status,
+variant markers, root-cause and source-to-sink fingerprints, the final decision
+(`new`, `exact-duplicate`, `variant`, or `related-not-duplicate`), rationale,
+and `checked_at`. Published or duplicate ledger entries must have a matching
+duplicate decision record during ledger verification.
 
 `run-state.json` is a local operational state artifact produced by
 `gra-run-state`. It distinguishes `paused` from `blocked`: `paused` means an
@@ -186,6 +196,10 @@ Important constraints:
   `active`, `paused`, or `blocked`; `pause_reason` is required for `paused`;
   `block_reason` is required for `blocked`; and `paused_at`, `blocked_at`, and
   `resumed_at` must be parseable ISO-8601 timestamps when present.
+- Optional `reports/duplicate-decisions/*.json` records are validated when
+  present. If `reports/issue-ledger.json` has `published` or `duplicate`
+  entries, a matching duplicate decision record is required for each
+  finding/fingerprint pair.
 - `findings[].affected_locations[].file` must be a relative target-repo path.
 - `line` and `end_line` must be positive integers when present.
 - `public_disclosure_risk` is required when `issue_recommended` is true.

@@ -74,6 +74,11 @@ It also writes `reports/issue-ledger.json`, a canonical local ledger that tracks
 each finding's publication state (`not-selected`, `pending`, `dry-run`,
 `published`, or `duplicate`), fingerprint, title, labels, body hash, source plan,
 and GitHub Issue URL/number when available.
+Dry-run and apply flows also write machine-readable duplicate decision records
+under `reports/duplicate-decisions/`. Each record captures the finding ID,
+fingerprint, candidate Issue numbers, exact-match status, variant markers,
+root-cause and source-to-sink fingerprints, the final duplicate decision, and
+the rationale reviewed before Issue creation.
 
 ## immutable publication plan
 
@@ -167,6 +172,11 @@ If a ledger has exactly one published entry for the same finding ID but the
 current fingerprint has changed, `gra-issues` also skips creation and records
 fingerprint drift in the ledger instead of opening a second Issue for the same
 finding.
+Before `gra-issues` creates or skips an Issue in apply mode, it writes
+`reports/duplicate-decisions/<finding_id>.json` (or a fingerprint-suffixed file
+when duplicate finding IDs would collide). The record distinguishes
+`exact-duplicate`, `variant`, `related-not-duplicate`, and `new` decisions so
+operators can audit why publication did or did not proceed.
 
 To compare the ledger with the current open GitHub Issue inventory, run:
 
@@ -175,5 +185,7 @@ gra-issues --run runs/OWNER__REPO/RUN_ID --verify-ledger
 ```
 
 This command does not publish. It exits non-zero when a published ledger entry no
-longer has a matching open Issue by fingerprint marker or when GitHub returns a
-different Issue URL, allowing final reconciliation to detect ledger drift.
+longer has a matching open Issue by fingerprint marker, when GitHub returns a
+different Issue URL, or when a published/duplicate ledger entry lacks a matching
+duplicate decision record. This lets final reconciliation detect both GitHub
+inventory drift and missing publication-decision evidence.

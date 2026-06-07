@@ -127,6 +127,7 @@ class ReportContractTests(unittest.TestCase):
         traces_schema = self.load_json(SCHEMAS / "traces.schema.json")
         metrics_schema = self.load_json(SCHEMAS / "metrics.schema.json")
         issue_ledger_schema = self.load_json(SCHEMAS / "issue-ledger.schema.json")
+        duplicate_decision_schema = self.load_json(SCHEMAS / "duplicate-decision.schema.json")
         run_state_schema = self.load_json(SCHEMAS / "run-state.schema.json")
 
         self.assertTrue(set(VALIDATOR.REQUIRED_TOP).issubset(findings_schema["required"]))
@@ -335,6 +336,7 @@ class ReportContractTests(unittest.TestCase):
                 "traces",
                 "issue_publication_plan",
                 "issue_ledger",
+                "duplicate_decisions",
                 "artifacts",
                 "run_duration",
             },
@@ -382,6 +384,32 @@ class ReportContractTests(unittest.TestCase):
             set(ledger_item["required"]),
         )
         self.assertEqual(["not-selected", "pending", "dry-run", "published", "duplicate"], ledger_item["properties"]["publication_status"]["enum"])
+        self.assertEqual(
+            {
+                "schema_version",
+                "run_id",
+                "repo",
+                "commit",
+                "finding_id",
+                "fingerprint",
+                "candidate_issue_numbers",
+                "exact_match",
+                "exact_match_source",
+                "exact_match_url",
+                "variant_of",
+                "root_cause_fingerprint",
+                "source_to_sink_fingerprint",
+                "decision",
+                "rationale",
+                "checked_at",
+                "source",
+            },
+            set(duplicate_decision_schema["required"]),
+        )
+        self.assertEqual(
+            ["new", "exact-duplicate", "variant", "related-not-duplicate"],
+            duplicate_decision_schema["properties"]["decision"]["enum"],
+        )
         self.assertEqual(
             {
                 "schema_version",
@@ -476,6 +504,13 @@ class ReportContractTests(unittest.TestCase):
                 "published_findings": 0,
                 "by_publication_status": {},
                 "drift_warning_count": 0,
+            },
+            "duplicate_decisions": {
+                "artifact_present": False,
+                "total": 0,
+                "by_decision": {},
+                "exact_match_count": 0,
+                "candidate_issue_count": 0,
             },
             "artifacts": {
                 "manifest_present": False,

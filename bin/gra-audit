@@ -188,6 +188,9 @@ fi
 if [[ -f "$LAB_ROOT/templates/reports/issue-ledger.schema.json" ]]; then
   cp "$LAB_ROOT/templates/reports/issue-ledger.schema.json" "$RUN_DIR/issue-ledger.schema.json"
 fi
+if [[ -f "$LAB_ROOT/templates/reports/duplicate-decision.schema.json" ]]; then
+  cp "$LAB_ROOT/templates/reports/duplicate-decision.schema.json" "$RUN_DIR/duplicate-decision.schema.json"
+fi
 if [[ -f "$LAB_ROOT/templates/reports/run-state.schema.json" ]]; then
   cp "$LAB_ROOT/templates/reports/run-state.schema.json" "$RUN_DIR/run-state.schema.json"
 fi
@@ -199,7 +202,7 @@ if [[ -f "$LAB_ROOT/templates/taxonomy-aliases.json" ]]; then
   mkdir -p "$RUN_DIR/templates"
   cp "$LAB_ROOT/templates/taxonomy-aliases.json" "$RUN_DIR/templates/taxonomy-aliases.json"
 fi
-mkdir -p "$REPORT_DIR/issue-drafts" "$REPORT_DIR/scanner-results" "$REPORT_DIR/target-research" "$REPORT_DIR/variant-analysis" "$REPORT_DIR/proofs" "$REPORT_DIR/traces"
+mkdir -p "$REPORT_DIR/issue-drafts" "$REPORT_DIR/duplicate-decisions" "$REPORT_DIR/scanner-results" "$REPORT_DIR/target-research" "$REPORT_DIR/variant-analysis" "$REPORT_DIR/proofs" "$REPORT_DIR/traces"
 
 python3 - <<PYCODE
 import json

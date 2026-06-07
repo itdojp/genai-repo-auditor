@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor Duplicate Decision",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "repo",
+    "commit",
+    "finding_id",
+    "fingerprint",
+    "candidate_issue_numbers",
+    "exact_match",
+    "exact_match_source",
+    "exact_match_url",
+    "variant_of",
+    "root_cause_fingerprint",
+    "source_to_sink_fingerprint",
+    "decision",
+    "rationale",
+    "checked_at",
+    "source"
+  ],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "run_id": {"type": "string"},
+    "repo": {"type": "string"},
+    "commit": {"type": "string"},
+    "finding_id": {"type": "string"},
+    "fingerprint": {"type": "string"},
+    "candidate_issue_numbers": {
+      "type": "array",
+      "items": {"type": "integer", "minimum": 1}
+    },
+    "exact_match": {"type": "boolean"},
+    "exact_match_source": {"type": ["string", "null"]},
+    "exact_match_url": {"type": ["string", "null"]},
+    "variant_of": {"type": "array", "items": {"type": "string"}},
+    "root_cause_fingerprint": {"type": "string"},
+    "source_to_sink_fingerprint": {"type": "string"},
+    "decision": {"enum": ["new", "exact-duplicate", "variant", "related-not-duplicate"]},
+    "rationale": {"type": "string"},
+    "checked_at": {"type": "string"},
+    "source": {"enum": ["gra-issues"]}
+  }
+}

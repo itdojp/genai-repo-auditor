@@ -85,6 +85,7 @@ def collect_artifacts(run_dir: Path) -> list[dict[str, Any]]:
         (reports_artifact(run_dir, "metrics.json"), "file"),
         (reports_artifact(run_dir, "METRICS.md"), "file"),
         (reports_artifact(run_dir, "issue-ledger.json"), "file"),
+        (reports_artifact(run_dir, "duplicate-decisions"), "dir"),
         (reports_artifact(run_dir, "run-state.json"), "file"),
         (reports_artifact(run_dir, "scanner-results/scanner-index.json"), "file"),
         (reports_artifact(run_dir, "dashboard.html"), "file"),
@@ -130,6 +131,7 @@ def collect_schemas(run_dir: Path) -> list[dict[str, str]]:
         "traces.schema.json",
         "metrics.schema.json",
         "issue-ledger.schema.json",
+        "duplicate-decision.schema.json",
         "run-state.schema.json",
         SCHEMA_FILENAME,
     ]:
