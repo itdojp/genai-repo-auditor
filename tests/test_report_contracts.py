@@ -353,6 +353,16 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual("boolean", metrics_safety["properties"]["local_artifacts_only"]["type"])
         self.assertEqual("boolean", metrics_safety["properties"]["raw_evidence_copied"]["type"])
         self.assertEqual("boolean", metrics_safety["properties"]["secrets_copied"]["type"])
+        gapfill_schema = metrics_schema["properties"]["gapfill"]
+        self.assertTrue({"current_run", "cumulative"}.issubset(gapfill_schema["required"]))
+        self.assertEqual(
+            {"candidate_count", "generated_target_count", "new_target_count", "reused_target_count"},
+            set(gapfill_schema["properties"]["current_run"]["required"]),
+        )
+        self.assertEqual(
+            {"generated_target_count", "reviewed_target_count", "targets_by_status"},
+            set(gapfill_schema["properties"]["cumulative"]["required"]),
+        )
         self.assertEqual(
             {
                 "schema_version",
@@ -546,6 +556,17 @@ class ReportContractTests(unittest.TestCase):
                 "coverage_artifact_present": False,
                 "gapfill_artifact_present": False,
                 "source_targets_recommended": 0,
+                "current_run": {
+                    "candidate_count": 0,
+                    "generated_target_count": 0,
+                    "new_target_count": 0,
+                    "reused_target_count": 0,
+                },
+                "cumulative": {
+                    "generated_target_count": 0,
+                    "reviewed_target_count": 0,
+                    "targets_by_status": {},
+                },
                 "targets_generated": 0,
                 "targets_reviewed": 0,
                 "targets_by_status": {},

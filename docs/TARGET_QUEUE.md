@@ -166,6 +166,23 @@ The generated queue entries use `TGT-GAPFILL-NNN` IDs and preserve the source
 target as `source_target_id`. Re-running `--generate` reuses existing gapfill
 targets for the same source target instead of duplicating them.
 
+`gapfill-targets.json` separates the current generate pass from cumulative
+queue progress:
+
+- `current_run.candidate_count` and `current_run.generated_target_count` describe
+  the current artifact only.
+- `current_run.new_target_count` and `current_run.reused_target_count` show
+  whether this pass created new `TGT-GAPFILL-NNN` IDs or reused existing
+  source-target requeues.
+- `cumulative.generated_target_count`, `cumulative.reviewed_target_count`, and
+  `cumulative.targets_by_status` describe all gapfill targets currently present
+  in `reports/targets.json`.
+- `candidates[]` links each source target to its generated/reused gapfill
+  target, reason, target status, and relationship (`new`, `reused`, `variant`,
+  or `duplicate`).
+- `next_targets[]` lists queued/in-progress gapfill targets in priority order
+  for final reconcile and resume planning.
+
 Run a single gapfill in exec mode:
 
 ```bash

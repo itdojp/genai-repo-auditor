@@ -85,11 +85,39 @@
     },
     "gapfill": {
       "type": "object",
-      "required": ["coverage_artifact_present", "gapfill_artifact_present", "source_targets_recommended", "targets_generated", "targets_reviewed", "targets_by_status"],
+      "required": [
+        "coverage_artifact_present",
+        "gapfill_artifact_present",
+        "source_targets_recommended",
+        "current_run",
+        "cumulative",
+        "targets_generated",
+        "targets_reviewed",
+        "targets_by_status"
+      ],
       "properties": {
         "coverage_artifact_present": {"type": "boolean"},
         "gapfill_artifact_present": {"type": "boolean"},
         "source_targets_recommended": {"type": "integer", "minimum": 0},
+        "current_run": {
+          "type": "object",
+          "required": ["candidate_count", "generated_target_count", "new_target_count", "reused_target_count"],
+          "properties": {
+            "candidate_count": {"type": "integer", "minimum": 0},
+            "generated_target_count": {"type": "integer", "minimum": 0},
+            "new_target_count": {"type": "integer", "minimum": 0},
+            "reused_target_count": {"type": "integer", "minimum": 0}
+          }
+        },
+        "cumulative": {
+          "type": "object",
+          "required": ["generated_target_count", "reviewed_target_count", "targets_by_status"],
+          "properties": {
+            "generated_target_count": {"type": "integer", "minimum": 0},
+            "reviewed_target_count": {"type": "integer", "minimum": 0},
+            "targets_by_status": {"type": "object"}
+          }
+        },
         "targets_generated": {"type": "integer", "minimum": 0},
         "targets_reviewed": {"type": "integer", "minimum": 0},
         "targets_by_status": {"type": "object"}

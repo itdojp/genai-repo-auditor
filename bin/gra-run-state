@@ -18,13 +18,44 @@ from run_state import (  # noqa: E402
     load_run_state,
     pause_run,
     pause_summary,
+    reports_dir,
     run_state_path,
     write_run_state,
 )
 
 
+def next_gapfill_targets(run_dir: Path, *, limit: int = 5) -> list[dict]:
+    path = reports_dir(run_dir) / "gapfill-targets.json"
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or not isinstance(data.get("next_targets"), list):
+        return []
+    targets = [item for item in data["next_targets"] if isinstance(item, dict)]
+    return targets[:limit]
+
+
+def print_next_gapfill_targets(run_dir: Path) -> None:
+    try:
+        targets = next_gapfill_targets(run_dir)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return
+    if not targets:
+        return
+    print("Next gapfill targets:")
+    for target in targets:
+        reason = str(target.get("gapfill_reason") or "").strip()
+        reason_text = f" - {reason}" if reason else ""
+        print(
+            f"- {target.get('target_id')} "
+            f"(source: {target.get('source_target_id')}, priority: {target.get('priority')}, "
+            f"status: {target.get('status')}){reason_text}"
+        )
+
+
 def print_resume_plan(run_dir: Path, state: dict) -> None:
     print(pause_summary(state))
+    print_next_gapfill_targets(run_dir)
     if state.get("status") != PAUSED:
         print("Run is not paused; no resume gate is active.")
         return
@@ -112,6 +143,7 @@ def main() -> int:
         print_resume_plan(run_dir, state)
     elif args.status:
         print(pause_summary(state))
+        print_next_gapfill_targets(run_dir)
         print(f"Run state file: {run_state_path(run_dir)}")
     elif state.get("status") == PAUSED:
         print(pause_summary(state))
