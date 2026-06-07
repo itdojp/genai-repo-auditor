@@ -155,6 +155,15 @@ gra-targets --run runs/OWNER__REPO/RUN_ID --generate --model gpt-5.5 --effort xh
 gra-targets --run runs/OWNER__REPO/RUN_ID --list
 ```
 
+Pause an intentional maintenance or handoff window without marking the run blocked:
+
+```bash
+gra-run-state --run runs/OWNER__REPO/RUN_ID --pause \
+  --reason "maintenance window" \
+  --resume-target TGT-AGENT-234
+gra-run-state --run runs/OWNER__REPO/RUN_ID --resume
+```
+
 Research one target:
 
 ```bash
@@ -244,6 +253,7 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-audit` | Clone a repo, create a run, execute full audit, prepare goal mode |
 | `gra-recon` | Generate inventory, threat model, and attack surface |
 | `gra-targets` | Generate, list, show, and update target queue |
+| `gra-run-state` | Record paused/resume/blocked run state and guard deep-review starts |
 | `gra-research` | Research one target with exec or supervised goal mode |
 | `gra-gapfill` | Requeue high-risk targets with incomplete coverage |
 | `gra-variant` | Find variants based on a finding or root cause |

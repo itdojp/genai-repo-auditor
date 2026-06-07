@@ -73,6 +73,25 @@ gra-issues --run "$RUN_DIR" --apply --create-labels
 
 public repository への Issue 作成はデフォルトで拒否されます。公開が意図され、組織ポリシー上承認済みの場合だけ `--allow-public` を併用してください。
 
+## 監査 run の一時停止と再開
+
+本体更新や handoff のために監査を意図的に止める場合は、`blocked` ではなく
+`paused` state を記録します。
+
+```bash
+gra-run-state --run "$RUN_DIR" --pause \
+  --reason "maintainer update window" \
+  --resume-target TGT-AGENT-234 \
+  --resume-condition "main branch updated and post-merge CI passed" \
+  --final-reconcile "published known findings: 52; unpublished Medium+: 0"
+gra-run-state --run "$RUN_DIR" --status
+gra-run-state --run "$RUN_DIR" --resume
+```
+
+paused 中は read-only status check のみに制限してください。`gra-research`、
+`gra-gapfill --generate`、`gra-gapfill --target`、`gra-targets --generate`、
+`gra-targets --mark` は paused state を検出すると開始を拒否します。
+
 ## 主要成果物
 
 ```text
@@ -94,6 +113,7 @@ runs/OWNER__REPO/RUN_ID/
     TRACE.md                  # reachability evidence。exploit proof ではない
     validation.json           # adversarial validation の機械可読出力
     VALIDATION.md             # Issue 作成前に確認する検証サマリ
+    run-state.json            # paused/resume/blocked の run-level state
     issue-drafts/             # Issue 本文候補。人間が確認する
     scanner-results/          # 任意で取り込んだ scanner output
   codex-final.md

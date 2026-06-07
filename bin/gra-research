@@ -20,6 +20,7 @@ from gralib import (
     run_codex_exec,
     write_targets,
 )
+from run_state import paused_error
 
 
 def run_taxonomy_preflight(run_dir: Path, target_id: str) -> int:
@@ -60,6 +61,10 @@ def main() -> int:
     except KeyError as e:
         print(str(e), file=sys.stderr)
         return 2
+    pause_message = paused_error(run_dir, action=f"target research for {args.target}")
+    if pause_message:
+        print(pause_message, file=sys.stderr)
+        return 5
 
     target_json = run_dir / 'reports' / 'target-research' / f'{args.target}.target.json'
     target_json.parent.mkdir(parents=True, exist_ok=True)

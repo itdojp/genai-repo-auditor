@@ -724,6 +724,7 @@ class CliWorkflowTests(unittest.TestCase):
         })
         self.assertIn({"name": "run-manifest.schema.json", "path": "run-manifest.schema.json"}, manifest["schemas"])
         self.assertIn({"name": "issue-ledger.schema.json", "path": "issue-ledger.schema.json"}, manifest["schemas"])
+        self.assertIn({"name": "run-state.schema.json", "path": "run-state.schema.json"}, manifest["schemas"])
         self.assertNotIn("run-manifest.json", self.manifest_artifact_paths(run_dir))
         self.assertIn("prompts/exec/full-audit.prompt.md", self.manifest_artifact_paths(run_dir))
         self.assertNotIn("OPENAI_API_KEY", manifest_text)
@@ -1376,6 +1377,133 @@ class CliWorkflowTests(unittest.TestCase):
         codex_calls = self.read_codex_calls(codex_log)
         self.assertEqual(2, len(codex_calls), codex_calls)
         self.assertTrue(all("sandbox_workspace_write.network_access=false" in call for call in codex_calls))
+
+    def test_gra_run_state_records_pause_resume_and_block_state(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        cp_pause = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-run-state",
+                "--run",
+                run_dir,
+                "--pause",
+                "--reason",
+                "maintainer update window",
+                "--resume-target",
+                "TGT-AGENT-234",
+                "--resume-condition",
+                "main branch updated and post-merge CI passed",
+                "--paused-by",
+                "operator",
+                "--final-reconcile",
+                "published known findings: 52; unpublished Medium+: 0",
+            ],
+            check=True,
+        )
+        self.assertIn("Wrote run state", cp_pause.stdout)
+        self.assertIn("Run state: paused", cp_pause.stdout)
+        state_path = run_dir / "reports" / "run-state.json"
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        self.assertEqual(state["status"], "paused")
+        self.assertEqual(state["pause_reason"], "maintainer update window")
+        self.assertEqual(state["resume_target"], "TGT-AGENT-234")
+        self.assertEqual(state["paused_by"], "operator")
+
+        cp_status = self.run_cmd([REPO_ROOT / "bin" / "gra-run-state", "--run", run_dir, "--status"], check=True)
+        self.assertIn("Resume target: TGT-AGENT-234", cp_status.stdout)
+        cp_resume = self.run_cmd([REPO_ROOT / "bin" / "gra-run-state", "--run", run_dir, "--resume"], check=True)
+        self.assertIn("Pause reason: maintainer update window", cp_resume.stdout)
+        self.assertIn("Previous final reconcile: published known findings: 52; unpublished Medium+: 0", cp_resume.stdout)
+        self.assertIn("Resume target: TGT-AGENT-234", cp_resume.stdout)
+
+        cp_valid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Run state: validated", cp_valid.stdout)
+
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-run-state",
+                "--run",
+                run_dir,
+                "--clear-pause",
+                "--resumed-by",
+                "operator",
+            ],
+            check=True,
+        )
+        active_state = json.loads(state_path.read_text(encoding="utf-8"))
+        self.assertEqual(active_state["status"], "active")
+        self.assertEqual(active_state["resumed_by"], "operator")
+
+        cp_block = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-run-state",
+                "--run",
+                run_dir,
+                "--block",
+                "--reason",
+                "external approval missing",
+                "--blocked-by",
+                "operator",
+            ],
+            check=True,
+        )
+        self.assertIn("Run state: blocked", cp_block.stdout)
+        blocked_state = json.loads(state_path.read_text(encoding="utf-8"))
+        self.assertEqual(blocked_state["status"], "blocked")
+        self.assertEqual(blocked_state["block_reason"], "external approval missing")
+        self.assertIsNone(blocked_state["pause_reason"])
+
+    def test_paused_run_blocks_deep_review_and_allows_read_only_status(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-run-state",
+                "--run",
+                run_dir,
+                "--pause",
+                "--reason",
+                "maintainer update window",
+                "--resume-target",
+                "TGT-001",
+                "--final-reconcile",
+                "findings 1; unpublished Medium+: 0",
+            ],
+            check=True,
+        )
+
+        status_cp = self.run_cmd([REPO_ROOT / "bin" / "gra-run-state", "--run", run_dir, "--status"], check=True)
+        self.assertIn("Run state: paused", status_cp.stdout)
+        list_cp = self.run_cmd([REPO_ROOT / "bin" / "gra-targets", "--run", run_dir, "--list"], check=True)
+        self.assertIn("TGT-001", list_cp.stdout)
+        gapfill_list_cp = self.run_cmd([REPO_ROOT / "bin" / "gra-gapfill", "--run", run_dir, "--list"], check=True)
+        self.assertIn("No gapfill candidates", gapfill_list_cp.stdout)
+
+        env, codex_log = self.env_with_codex_log()
+        research_cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-research",
+                "--run",
+                run_dir,
+                "--target",
+                "TGT-001",
+                "--mode",
+                "exec",
+            ],
+            env=env,
+        )
+        self.assertEqual(research_cp.returncode, 5, research_cp.stderr)
+        self.assertIn("Refusing to start target research for TGT-001", research_cp.stderr)
+        self.assertIn("Resume target: TGT-001", research_cp.stderr)
+        self.assertEqual(self.read_codex_calls(codex_log), [])
+        self.assertEqual(self.target_by_id(run_dir, "TGT-001")["status"], "queued")
+        self.assertFalse((run_dir / "reports" / "target-research" / "TGT-001.target.json").exists())
+
+        generate_cp = self.run_cmd([REPO_ROOT / "bin" / "gra-gapfill", "--run", run_dir, "--generate"])
+        self.assertEqual(generate_cp.returncode, 5, generate_cp.stderr)
+        self.assertIn("Refusing to start gapfill generation or review", generate_cp.stderr)
+
+        mark_cp = self.run_cmd([REPO_ROOT / "bin" / "gra-targets", "--run", run_dir, "--mark", "TGT-001", "reviewed"])
+        self.assertEqual(mark_cp.returncode, 5, mark_cp.stderr)
+        self.assertIn("Refusing to start target queue mutation or generation", mark_cp.stderr)
 
     def test_gra_research_exec_marks_target_reviewed_and_writes_codex_artifacts(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

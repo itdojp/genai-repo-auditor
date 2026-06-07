@@ -127,6 +127,7 @@ class ReportContractTests(unittest.TestCase):
         traces_schema = self.load_json(SCHEMAS / "traces.schema.json")
         metrics_schema = self.load_json(SCHEMAS / "metrics.schema.json")
         issue_ledger_schema = self.load_json(SCHEMAS / "issue-ledger.schema.json")
+        run_state_schema = self.load_json(SCHEMAS / "run-state.schema.json")
 
         self.assertTrue(set(VALIDATOR.REQUIRED_TOP).issubset(findings_schema["required"]))
         finding_required = findings_schema["properties"]["findings"]["items"]["required"]
@@ -381,6 +382,30 @@ class ReportContractTests(unittest.TestCase):
             set(ledger_item["required"]),
         )
         self.assertEqual(["not-selected", "pending", "dry-run", "published", "duplicate"], ledger_item["properties"]["publication_status"]["enum"])
+        self.assertEqual(
+            {
+                "schema_version",
+                "run_id",
+                "repo",
+                "commit",
+                "generated_at",
+                "source",
+                "status",
+                "pause_reason",
+                "resume_target",
+                "resume_condition",
+                "paused_at",
+                "paused_by",
+                "final_reconcile",
+                "block_reason",
+                "blocked_at",
+                "blocked_by",
+                "resumed_at",
+                "resumed_by",
+            },
+            set(run_state_schema["required"]),
+        )
+        self.assertEqual(["active", "paused", "blocked"], run_state_schema["properties"]["status"]["enum"])
 
     def test_valid_minimal_fixture_passes_validator(self) -> None:
         run_dir = self.copy_run()

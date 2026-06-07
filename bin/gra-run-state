@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / "lib"))
+from version import auditor_version  # noqa: E402
+from run_state import (  # noqa: E402
+    ACTIVE,
+    BLOCKED,
+    PAUSED,
+    block_run,
+    clear_pause,
+    load_run_state,
+    pause_run,
+    pause_summary,
+    run_state_path,
+    write_run_state,
+)
+
+
+def print_resume_plan(run_dir: Path, state: dict) -> None:
+    print(pause_summary(state))
+    if state.get("status") != PAUSED:
+        print("Run is not paused; no resume gate is active.")
+        return
+    print("")
+    print("Resume checklist:")
+    print("- Confirm the pause reason has been addressed.")
+    if state.get("resume_condition"):
+        print(f"- Confirm resume condition: {state.get('resume_condition')}")
+    if state.get("final_reconcile"):
+        print("- Compare the current report state with the previous final reconcile summary above.")
+    if state.get("resume_target"):
+        print(f"- Resume from target: {state.get('resume_target')}")
+    print(f"- Clear pause when ready: gra-run-state --run {run_dir} --clear-pause")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Manage GenAI Repo Auditor run pause/block state")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {auditor_version(LAB_ROOT)}")
+    parser.add_argument("--run", required=True, help="Run directory")
+    action = parser.add_mutually_exclusive_group(required=True)
+    action.add_argument("--status", action="store_true", help="Print current run state without modifying it")
+    action.add_argument("--pause", action="store_true", help="Record an intentional operational pause")
+    action.add_argument("--resume", action="store_true", help="Print the resume plan for a paused run")
+    action.add_argument("--clear-pause", action="store_true", help="Clear paused state and mark the run active")
+    action.add_argument("--block", action="store_true", help="Record an impasse/blocker state distinct from pause")
+    parser.add_argument("--reason", help="Pause or block reason")
+    parser.add_argument("--resume-target", help="Target ID to start from when resuming, e.g. TGT-AGENT-234")
+    parser.add_argument("--resume-condition", help="Condition that must be true before resuming")
+    parser.add_argument("--paused-by", help="Operator or automation identity recording the pause")
+    parser.add_argument("--blocked-by", help="Operator or automation identity recording the block")
+    parser.add_argument("--resumed-by", help="Operator or automation identity clearing the pause")
+    parser.add_argument("--final-reconcile", help="Short previous final reconcile summary")
+    parser.add_argument("--json", action="store_true", help="Print JSON state")
+    args = parser.parse_args()
+
+    run_dir = Path(args.run).resolve()
+    if not (run_dir / "context.json").exists():
+        print(f"context.json not found under {run_dir}", file=sys.stderr)
+        return 2
+
+    try:
+        if args.status or args.resume:
+            state = load_run_state(run_dir)
+        elif args.pause:
+            if not args.reason:
+                print("--pause requires --reason", file=sys.stderr)
+                return 2
+            state = pause_run(
+                run_dir,
+                reason=args.reason,
+                resume_target=args.resume_target,
+                resume_condition=args.resume_condition,
+                paused_by=args.paused_by,
+                final_reconcile=args.final_reconcile,
+            )
+            path = write_run_state(run_dir, state)
+            if not args.json:
+                print(f"Wrote run state: {path}")
+        elif args.block:
+            if not args.reason:
+                print("--block requires --reason", file=sys.stderr)
+                return 2
+            state = block_run(run_dir, reason=args.reason, blocked_by=args.blocked_by)
+            path = write_run_state(run_dir, state)
+            if not args.json:
+                print(f"Wrote run state: {path}")
+        elif args.clear_pause:
+            current = load_run_state(run_dir)
+            if current.get("status") != PAUSED:
+                print(f"Run is not paused; current status is {current.get('status') or ACTIVE}.", file=sys.stderr)
+                return 3
+            state = clear_pause(run_dir, resumed_by=args.resumed_by)
+            path = write_run_state(run_dir, state)
+            if not args.json:
+                print(f"Cleared pause: {path}")
+        else:
+            raise AssertionError("unreachable action")
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"ERROR: could not read or write run state: {exc}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True))
+    elif args.resume:
+        print_resume_plan(run_dir, state)
+    elif args.status:
+        print(pause_summary(state))
+        print(f"Run state file: {run_state_path(run_dir)}")
+    elif state.get("status") == PAUSED:
+        print(pause_summary(state))
+    elif state.get("status") == BLOCKED:
+        print(pause_summary(state))
+    else:
+        print(pause_summary(state))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

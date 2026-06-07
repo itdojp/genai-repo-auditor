@@ -20,7 +20,8 @@ experimental/P3 cross-repo trace artifact です。`METRICS.md` /
 `metrics.json` は `gra-metrics` が local report artifacts だけから生成する
 advanced workflow metrics artifact です。`issue-ledger.json` は
 `gra-issues` が生成・更新する canonical finding-to-Issue publication ledger
-です。
+です。`run-state.json` は `gra-run-state` が生成・更新する run-level pause /
+resume / blocked state artifact です。
 
 ```text
 reports/
@@ -49,6 +50,7 @@ reports/
   metrics.json
   issue-publication-plan.json
   issue-ledger.json
+  run-state.json
   VALIDATION.md
   validation.json
   AUDIT_LOG.md
@@ -154,6 +156,12 @@ the ledger. It is the canonical local source for idempotent Issue publication;
 `issues-created.json` remains a per-command result artifact for backward
 compatibility.
 
+`run-state.json` is a local operational state artifact produced by
+`gra-run-state`. It distinguishes `paused` from `blocked`: `paused` means an
+intentional temporary stop with a resume target/condition, while `blocked`
+means an impasse that needs external input or state change. Paused runs should
+only perform read-only status checks until the pause is cleared.
+
 Important constraints:
 
 - `generated_at` must be parseable ISO-8601.
@@ -174,6 +182,10 @@ Important constraints:
   `gra-gapfill --generate` uses this metadata to write `reports/COVERAGE.md`,
   `reports/gapfill-targets.json`, and bounded `TGT-GAPFILL-NNN` follow-up
   targets without treating coverage gaps as findings.
+- Optional `run-state.json` is validated when present. `status` must be
+  `active`, `paused`, or `blocked`; `pause_reason` is required for `paused`;
+  `block_reason` is required for `blocked`; and `paused_at`, `blocked_at`, and
+  `resumed_at` must be parseable ISO-8601 timestamps when present.
 - `findings[].affected_locations[].file` must be a relative target-repo path.
 - `line` and `end_line` must be positive integers when present.
 - `public_disclosure_risk` is required when `issue_recommended` is true.
