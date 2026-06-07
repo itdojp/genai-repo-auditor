@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / "lib"))
+from version import auditor_version  # noqa: E402
+
+
+def run_git(repo: Path, *args: str) -> str:
+    cp = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if cp.returncode != 0:
+        raise RuntimeError(cp.stderr.strip() or cp.stdout.strip() or f"git {' '.join(args)} failed")
+    return cp.stdout
+
+
+def parse_status_z(raw: str) -> list[dict[str, str]]:
+    if not raw:
+        return []
+    parts = raw.split("\0")
+    records: list[dict[str, str]] = []
+    index = 0
+    while index < len(parts):
+        entry = parts[index]
+        index += 1
+        if not entry:
+            continue
+        status = entry[:2]
+        path = entry[3:]
+        original_path = ""
+        if status[0] in {"R", "C"}:
+            if index < len(parts):
+                original_path = parts[index]
+                index += 1
+        records.append({"status": status, "path": path, "original_path": original_path})
+    return records
+
+
+def normalize_prefix(prefix: str) -> str:
+    text = prefix.strip().replace("\\", "/")
+    return text.rstrip("/")
+
+
+def path_matches_prefix(path: str, prefixes: list[str]) -> bool:
+    normalized = path.replace("\\", "/")
+    for prefix in prefixes:
+        if not prefix:
+            continue
+        if normalized == prefix or normalized.startswith(prefix + "/"):
+            return True
+    return False
+
+
+def classify(records: list[dict[str, str]], allowed_prefixes: list[str]) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    in_scope: list[dict[str, str]] = []
+    unrelated: list[dict[str, str]] = []
+    for record in records:
+        paths = [record.get("path", "")]
+        if record.get("original_path"):
+            paths.append(record["original_path"])
+        if paths and all(path_matches_prefix(path, allowed_prefixes) for path in paths):
+            in_scope.append(record)
+        else:
+            unrelated.append(record)
+    return in_scope, unrelated
+
+
+def markdown_table(records: list[dict[str, str]]) -> list[str]:
+    if not records:
+        return ["No changes."]
+    lines = ["| Status | Path | Original path |", "|---|---|---|"]
+    for record in records:
+        lines.append(
+            f"| `{record.get('status', '')}` | `{record.get('path', '')}` | `{record.get('original_path', '')}` |"
+        )
+    return lines
+
+
+def render_markdown(report: dict[str, Any]) -> str:
+    lines = [
+        "# Worktree Final Check",
+        "",
+        f"- Purpose: `{report['purpose']}`",
+        f"- Repository path: `{report['repo']}`",
+        f"- Branch: `{report['branch']}`",
+        f"- Head: `{report['head']}`",
+        f"- Allowed prefixes: {', '.join(f'`{p}`' for p in report['allowed_prefixes']) or '`<none>`'}",
+        "",
+        "## In-scope changes",
+        "",
+        *markdown_table(report["in_scope_changes"]),
+        "",
+        "## Unrelated changes",
+        "",
+        *markdown_table(report["unrelated_changes"]),
+        "",
+        "## Task ledger entry",
+        "",
+        "```markdown",
+        f"- Active worktree: `{report['repo']}`",
+        f"- Purpose: `{report['purpose']}`",
+        f"- Branch: `{report['branch']}`",
+        f"- Allowed prefixes: {', '.join(f'`{p}`' for p in report['allowed_prefixes']) or '`<none>`'}",
+        f"- Unrelated changes at final check: {len(report['unrelated_changes'])}",
+        "```",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Classify Git worktree changes for GenAI Repo Auditor maintenance/audit artifact separation"
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {auditor_version(LAB_ROOT)}")
+    parser.add_argument("--repo", default=".", help="Git worktree path to inspect; default: current directory")
+    parser.add_argument("--purpose", required=True, help="Purpose to record, e.g. auditor-maintenance or audit-artifact-update")
+    parser.add_argument(
+        "--allowed-prefix",
+        action="append",
+        default=[],
+        help="Path prefix considered in-scope. Repeat for multiple prefixes.",
+    )
+    parser.add_argument("--out-md", help="Optional Markdown report path")
+    parser.add_argument("--json", action="store_true", help="Print JSON instead of Markdown")
+    args = parser.parse_args()
+
+    repo = Path(args.repo).resolve()
+    allowed = [prefix for prefix in (normalize_prefix(p) for p in args.allowed_prefix) if prefix]
+    try:
+        branch = run_git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+        head = run_git(repo, "rev-parse", "HEAD").strip()
+        status_raw = run_git(repo, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+    records = parse_status_z(status_raw)
+    in_scope, unrelated = classify(records, allowed)
+    report: dict[str, Any] = {
+        "purpose": args.purpose,
+        "repo": str(repo),
+        "branch": branch,
+        "head": head,
+        "allowed_prefixes": allowed,
+        "in_scope_changes": in_scope,
+        "unrelated_changes": unrelated,
+    }
+
+    if args.out_md:
+        out_path = Path(args.out_md)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(render_markdown(report), encoding="utf-8")
+
+    if args.json:
+        print(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True))
+    else:
+        print(render_markdown(report), end="")
+    return 1 if unrelated else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

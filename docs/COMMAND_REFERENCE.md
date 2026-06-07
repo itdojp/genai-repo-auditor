@@ -25,6 +25,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Batch operation | `gra-batch` | Batch metadata, per-repository logs, `batch-results.json` |
 | Target queue | `gra-targets` | `reports/targets.json`, target queue updates |
 | Run state / pause guard | `gra-run-state` | `reports/run-state.json`, pause/resume/block status |
+| Worktree separation check | `gra-worktree-check` | Final worktree report classifying in-scope and unrelated changes |
 | Target coverage gapfill | `gra-gapfill` | `reports/COVERAGE.md`, `reports/gapfill-targets.json`, bounded gapfill target research |
 | Research / recon / variant analysis | `gra-recon`, `gra-research`, `gra-variant` | Recon notes, target research, findings updates, variant reports |
 | Adversarial validation | `gra-adversarial-validate` | Bounded validation prompt, subject seed JSON, `reports/validation.json`, `reports/VALIDATION.md` |
@@ -125,6 +126,30 @@ gra-run-state --run runs/OWNER__REPO/RUN_ID --pause \
 gra-run-state --run runs/OWNER__REPO/RUN_ID --status
 gra-run-state --run runs/OWNER__REPO/RUN_ID --resume
 gra-run-state --run runs/OWNER__REPO/RUN_ID --clear-pause --resumed-by maintainer
+```
+
+
+## `gra-worktree-check`
+
+| Field | Details |
+|---|---|
+| Purpose | Classify Git worktree changes for auditor maintenance, audit artifact update, or target-remediation separation before commit or handoff. |
+| Workflow category | Operations / worktree hygiene. |
+| Required inputs | `--purpose TEXT`. `--repo PATH` defaults to the current directory. |
+| Key options | Repeat `--allowed-prefix PREFIX` for paths that are intentionally in scope; rename/copy records are in scope only when both current and original paths stay within allowed prefixes; `--out-md OUT` writes a Markdown final-check report; `--json` prints machine-readable output. |
+| Generated outputs | Console Markdown or JSON, plus optional Markdown report containing active worktree purpose, branch/head, allowed prefixes, in-scope changes, unrelated changes, and a task-ledger snippet. |
+| Exit status behavior | `0` when all changes are in scope; `1` when unrelated changes are present; `2` when the repository cannot be inspected. |
+| Security / disclosure cautions | This command only classifies local Git status. It does not make generated audit artifacts safe to commit. Keep `runs/`, `batches/`, scanner raw output, target repository source, credentials, and secrets out of auditor maintenance PRs unless explicitly curated and redacted. |
+| Related docs | [`docs/WORKTREE_SEPARATION.md`](WORKTREE_SEPARATION.md), [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md). |
+
+```bash
+gra-worktree-check --repo worktrees/genai-repo-auditor/issue-121-worktree-separation \
+  --purpose auditor-maintenance \
+  --allowed-prefix bin \
+  --allowed-prefix lib \
+  --allowed-prefix docs \
+  --allowed-prefix tests \
+  --out-md .codex-local/tmp/worktree-final-check.md
 ```
 
 ## `gra-recon`

@@ -29,6 +29,7 @@ bin/gra-taxonomy-preflight
 bin/gra-trace
 bin/gra-validate-report
 bin/gra-variant
+bin/gra-worktree-check
 ```
 
 ## Prompts
@@ -141,6 +142,7 @@ docs/TRACE_REACHABILITY.md
 docs/USAGE.md
 docs/VARIANT_ANALYSIS.md
 docs/WORKFLOWS.md
+docs/WORKTREE_SEPARATION.md
 docs/WORKFLOW_OVERVIEW.md
 docs/ja/ADVANCED_POSTURE_WORKFLOWS.ja.md
 docs/ja/CODEX_WORK_INSTRUCTIONS.ja.md
