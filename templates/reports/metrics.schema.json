@@ -215,11 +215,15 @@
     },
     "artifacts": {
       "type": "object",
-      "required": ["manifest_present", "manifest_artifact_total", "manifest_by_kind", "reports_file_count", "reports_dir_count"],
+      "required": ["manifest_present", "manifest_artifact_total", "manifest_by_kind", "reports_file_count", "reports_dir_count", "manifest_by_retention", "latest_status_artifact_count", "archive_artifact_count", "manifest_hygiene_warnings"],
       "properties": {
         "manifest_present": {"type": "boolean"},
         "manifest_artifact_total": {"type": "integer", "minimum": 0},
         "manifest_by_kind": {"type": "object"},
+        "manifest_by_retention": {"type": "object"},
+        "latest_status_artifact_count": {"type": "integer", "minimum": 0},
+        "archive_artifact_count": {"type": "integer", "minimum": 0},
+        "manifest_hygiene_warnings": {"type": "integer", "minimum": 0},
         "reports_file_count": {"type": "integer", "minimum": 0},
         "reports_dir_count": {"type": "integer", "minimum": 0}
       }

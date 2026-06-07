@@ -35,6 +35,7 @@ PROOF_TYPES = [
 PROOF_STATUSES = ["confirmed", "failed", "not-run", "needs-human-review", "unknown"]
 TARGET_STATUSES = ["queued", "in_progress", "reviewed", "skipped", "needs_human_review", "unknown"]
 ARTIFACT_KINDS = ["file", "dir", "unknown"]
+ARTIFACT_RETENTIONS = ["latest", "supporting", "archive", "unknown"]
 OBSERVABILITY_COMMANDS = ["gra-research", "gra-gapfill", "gra-validate-report", "unknown"]
 OBSERVABILITY_PHASES = ["exec", "goal", "generate", "validate", "list", "unknown"]
 RUN_TARGET_ID = "__run__"
@@ -426,6 +427,45 @@ def artifact_metrics(run_dir: Path, reports: Path, manifest: Any) -> dict[str, A
     manifest_artifacts = []
     if isinstance(manifest, dict) and isinstance(manifest.get("artifacts"), list):
         manifest_artifacts = [item for item in manifest["artifacts"] if isinstance(item, dict)]
+    retention_summary = manifest.get("artifact_retention") if isinstance(manifest, dict) and isinstance(manifest.get("artifact_retention"), dict) else {}
+    latest_summary = retention_summary.get("latest_status_artifacts")
+    archive_summary = retention_summary.get("archive_artifacts")
+    hygiene_warnings = 0
+    if "latest_status_artifacts" in retention_summary and not isinstance(latest_summary, list):
+        hygiene_warnings += 1
+    if "archive_artifacts" in retention_summary and not isinstance(archive_summary, list):
+        hygiene_warnings += 1
+    latest_paths = (
+        {str(path) for path in latest_summary if isinstance(path, str)}
+        if isinstance(latest_summary, list)
+        else set()
+    )
+    archive_paths = (
+        {str(path) for path in archive_summary if isinstance(path, str)}
+        if isinstance(archive_summary, list)
+        else set()
+    )
+    artifact_paths = {str(item.get("path") or "") for item in manifest_artifacts}
+    retention_by_path = {str(item.get("path") or ""): item.get("retention") for item in manifest_artifacts}
+    for path in latest_paths:
+        if path not in artifact_paths:
+            hygiene_warnings += 1
+        elif retention_by_path.get(path) != "latest":
+            hygiene_warnings += 1
+    for path in archive_paths:
+        if path not in artifact_paths:
+            hygiene_warnings += 1
+        elif retention_by_path.get(path) != "archive":
+            hygiene_warnings += 1
+    for item in manifest_artifacts:
+        retention = item.get("retention")
+        path = str(item.get("path") or "")
+        if retention not in {"latest", "supporting", "archive"}:
+            hygiene_warnings += 1
+        elif retention == "latest" and path not in latest_paths:
+            hygiene_warnings += 1
+        elif retention == "archive" and path not in archive_paths:
+            hygiene_warnings += 1
     report_files = 0
     report_dirs = 0
     if reports.exists():
@@ -447,6 +487,13 @@ def artifact_metrics(run_dir: Path, reports: Path, manifest: Any) -> dict[str, A
             Counter(safe_label(item.get("kind"), ARTIFACT_KINDS, "unknown") for item in manifest_artifacts),
             ARTIFACT_KINDS,
         ),
+        "manifest_by_retention": counter_dict(
+            Counter(safe_label(item.get("retention"), ARTIFACT_RETENTIONS, "unknown") for item in manifest_artifacts),
+            ARTIFACT_RETENTIONS,
+        ),
+        "latest_status_artifact_count": len(latest_paths),
+        "archive_artifact_count": len(archive_paths),
+        "manifest_hygiene_warnings": hygiene_warnings,
         "reports_file_count": report_files,
         "reports_dir_count": report_dirs,
     }
@@ -639,8 +686,13 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
     lines.append("")
     lines.extend(["## Artifacts", "", "| Metric | Count |", "|---|---:|"])
     lines.append(f"| Manifest artifacts | {metrics['artifacts']['manifest_artifact_total']} |")
+    lines.append(f"| Latest status artifacts | {metrics['artifacts']['latest_status_artifact_count']} |")
+    lines.append(f"| Archive artifacts | {metrics['artifacts']['archive_artifact_count']} |")
+    lines.append(f"| Manifest hygiene warnings | {metrics['artifacts']['manifest_hygiene_warnings']} |")
     lines.append(f"| Report files | {metrics['artifacts']['reports_file_count']} |")
     lines.append(f"| Report directories | {metrics['artifacts']['reports_dir_count']} |")
+    lines.append("")
+    lines.extend(markdown_counts("Manifest retention", metrics['artifacts']['manifest_by_retention']))
     lines.append("")
     duration = metrics.get("run_duration", {})
     if duration.get("available"):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,62 @@ from version import auditor_version
 
 MANIFEST_FILENAME = "run-manifest.json"
 SCHEMA_FILENAME = "run-manifest.schema.json"
+RETENTION_LATEST = "latest"
+RETENTION_SUPPORTING = "supporting"
+RETENTION_ARCHIVE = "archive"
+RETENTION_CATEGORIES = {RETENTION_LATEST, RETENTION_SUPPORTING, RETENTION_ARCHIVE}
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def latest_status_paths(run_dir: Path) -> set[str]:
+    return {
+        "run-summary.txt",
+        "report-validation.txt",
+        reports_artifact(run_dir, "findings.json"),
+        reports_artifact(run_dir, "FINDINGS.md"),
+        reports_artifact(run_dir, "targets.json"),
+        reports_artifact(run_dir, "COVERAGE.md"),
+        reports_artifact(run_dir, "gapfill-targets.json"),
+        reports_artifact(run_dir, "metrics.json"),
+        reports_artifact(run_dir, "METRICS.md"),
+        reports_artifact(run_dir, "issue-ledger.json"),
+        reports_artifact(run_dir, "run-state.json"),
+        reports_artifact(run_dir, "dashboard.html"),
+    }
+
+
+def artifact_retention(run_dir: Path, rel_path: str) -> str:
+    normalized = Path(rel_path).as_posix()
+    reports_root = reports_artifact(run_dir)
+    archive_root_files = {
+        "prompt.exec.md",
+        "prompt.goal.md",
+        "codex-events.jsonl",
+        "codex-final.md",
+        "codex-stderr.txt",
+        "codex-transcript.txt",
+    }
+    if normalized in latest_status_paths(run_dir):
+        return RETENTION_LATEST
+    if (
+        normalized.startswith("prompts/")
+        or normalized in archive_root_files
+        or normalized.startswith(f"{reports_root}/target-research/")
+        or normalized == f"{reports_root}/target-research"
+        or normalized.startswith(f"{reports_root}/variant-analysis/")
+        or normalized == f"{reports_root}/variant-analysis"
+        or normalized.startswith(f"{reports_root}/scanner-results/")
+        or normalized == f"{reports_root}/scanner-results"
+    ):
+        return RETENTION_ARCHIVE
+    return RETENTION_SUPPORTING
 
 
 def utc_now() -> str:
@@ -36,9 +93,11 @@ def artifact_entry(run_dir: Path, rel_path: str, *, kind: str | None = None) -> 
         return None
     if kind is None:
         kind = "dir" if path.is_dir() else "file"
-    entry: dict[str, Any] = {"path": rel_path, "kind": kind}
+    retention = artifact_retention(run_dir, rel_path)
+    entry: dict[str, Any] = {"path": rel_path, "kind": kind, "retention": retention}
     if path.is_file():
         entry["size_bytes"] = path.stat().st_size
+        entry["sha256"] = file_sha256(path)
     return entry
 
 
@@ -113,12 +172,41 @@ def collect_artifacts(run_dir: Path) -> list[dict[str, Any]]:
     if prompts_dir.exists():
         for prompt in sorted(prompts_dir.rglob("*.md")):
             if prompt.is_file():
+                rel_path = rel_to_run(run_dir, prompt)
                 entries.append({
-                    "path": rel_to_run(run_dir, prompt),
+                    "path": rel_path,
                     "kind": "file",
+                    "retention": artifact_retention(run_dir, rel_path),
                     "size_bytes": prompt.stat().st_size,
+                    "sha256": file_sha256(prompt),
                 })
     return entries
+
+
+def artifact_retention_summary(artifacts: list[dict[str, Any]]) -> dict[str, Any]:
+    by_retention: dict[str, int] = {name: 0 for name in sorted(RETENTION_CATEGORIES)}
+    latest_paths: list[str] = []
+    archive_paths: list[str] = []
+    supporting_paths: list[str] = []
+    for artifact in artifacts:
+        retention = str(artifact.get("retention") or "")
+        if retention not in RETENTION_CATEGORIES:
+            retention = "unknown"
+        by_retention[retention] = by_retention.get(retention, 0) + 1
+        path = str(artifact.get("path") or "")
+        if retention == RETENTION_LATEST:
+            latest_paths.append(path)
+        elif retention == RETENTION_ARCHIVE:
+            archive_paths.append(path)
+        elif retention == RETENTION_SUPPORTING:
+            supporting_paths.append(path)
+    return {
+        "latest_status_artifacts": latest_paths,
+        "supporting_artifacts": supporting_paths,
+        "archive_artifacts": archive_paths,
+        "by_retention": by_retention,
+        "notes": "Latest status artifacts are the canonical handoff set. Archive artifacts are retained for reproducibility but excluded from active report validation targets.",
+    }
 
 
 def collect_schemas(run_dir: Path) -> list[dict[str, str]]:
@@ -185,6 +273,7 @@ def build_manifest(
     final_status: str | None = None,
 ) -> dict[str, Any]:
     context = load_json(run_dir / "context.json", {}) or {}
+    artifacts = collect_artifacts(run_dir)
     return {
         "schema_version": "1",
         "generated_at": utc_now(),
@@ -216,7 +305,8 @@ def build_manifest(
             "reports_dir": manifest_relative_path(run_dir, context.get("reports_dir"), "reports"),
         },
         "schemas": collect_schemas(run_dir),
-        "artifacts": collect_artifacts(run_dir),
+        "artifacts": artifacts,
+        "artifact_retention": artifact_retention_summary(artifacts),
         "execution": {
             "phase": execution_phase,
             "codex_status": none_if_empty(codex_status),

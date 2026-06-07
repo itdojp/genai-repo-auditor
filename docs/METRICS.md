@@ -37,7 +37,8 @@ Metrics are computed from local report artifacts only:
 - duplicate decision total, exact-match count, candidate Issue references, and decision buckets
 - command event counts, execution durations, failures, reruns, and validation retries
 - taxonomy normalization counts by target when normalization logs can be mapped to target IDs
-- run artifact counts
+- run artifact counts, manifest retention buckets, latest-status artifact count,
+  archive artifact count, and manifest hygiene warning count
 - run duration when present in local manifest metadata
 
 Missing optional artifacts are represented with `artifact_present: false` and
@@ -87,6 +88,29 @@ artifact from the cumulative target queue:
 The legacy `gapfill.targets_generated`, `gapfill.targets_reviewed`, and
 `gapfill.targets_by_status` fields remain as cumulative aliases for older
 consumers.
+
+## Artifact retention metrics
+
+When `run-manifest.json` is present, `gra-metrics` derives aggregate retention
+counts without copying artifact content:
+
+- `artifacts.manifest_by_retention`: counts for `latest`, `supporting`,
+  `archive`, and `unknown` manifest entries
+- `artifacts.latest_status_artifact_count`: artifacts listed in
+  `artifact_retention.latest_status_artifacts`, the canonical handoff set for
+  current run status
+- `artifacts.archive_artifact_count`: artifacts listed in
+  `artifact_retention.archive_artifacts`, retained for reproducibility but not
+  active validation targets by themselves
+- `artifacts.manifest_hygiene_warnings`: count of manifest consistency issues
+  detectable from metrics input, such as missing summary paths, invalid
+  retention values, or an archive artifact also listed as latest
+
+`gra-dashboard` renders these counts in metric cards and an Artifact retention
+table so operators can distinguish latest status artifacts from archive logs.
+Run `gra-validate-report --run RUN_DIR` for the stricter manifest hygiene gate,
+including path containment, file size, SHA-256 digest, and retention summary
+count checks.
 
 ## Safety boundary
 

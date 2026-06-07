@@ -11,6 +11,7 @@
     "paths",
     "schemas",
     "artifacts",
+    "artifact_retention",
     "execution"
   ],
   "properties": {
@@ -129,7 +130,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["path", "kind"],
+        "required": ["path", "kind", "retention"],
         "properties": {
           "path": {
             "type": "string"
@@ -137,10 +138,41 @@
           "kind": {
             "enum": ["file", "dir"]
           },
+          "retention": {
+            "enum": ["latest", "supporting", "archive"]
+          },
           "size_bytes": {
             "type": "integer",
             "minimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
           }
+        }
+      }
+    },
+    "artifact_retention": {
+      "type": "object",
+      "required": ["latest_status_artifacts", "supporting_artifacts", "archive_artifacts", "by_retention", "notes"],
+      "properties": {
+        "latest_status_artifacts": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "supporting_artifacts": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "archive_artifacts": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "by_retention": {
+          "type": "object"
+        },
+        "notes": {
+          "type": "string"
         }
       }
     },
