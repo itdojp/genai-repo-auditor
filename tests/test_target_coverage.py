@@ -15,7 +15,7 @@ FIXTURES = REPO_ROOT / "tests" / "fixtures"
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 from gralib import write_targets  # noqa: E402
-from target_coverage import next_gapfill_targets  # noqa: E402
+from target_coverage import next_gapfill_targets, target_summary  # noqa: E402
 from target_coverage_guardrails import (  # noqa: E402
     CoverageSerializationError,
     normalize_review_depth,
@@ -197,6 +197,31 @@ class TargetCoverageGuardrailTests(unittest.TestCase):
         self.assertEqual("TGT-002", next_targets[0]["source_target_id"])
         self.assertEqual("variant", next_targets[0]["relationship"])
         self.assertEqual("source two needs more review", next_targets[0]["gapfill_reason"])
+
+    def test_target_summary_preserves_variant_and_duplicate_alias_fields(self) -> None:
+        source = self.target("shallow")
+
+        variant_summary = target_summary(
+            source,
+            {
+                "id": "TGT-GAPFILL-001",
+                "status": "queued",
+                "variant_target_id": "TGT-GAPFILL-OLD",
+            },
+        )
+        self.assertEqual("variant", variant_summary["relationship"])
+        self.assertEqual("TGT-GAPFILL-OLD", variant_summary["variant_of"])
+
+        duplicate_summary = target_summary(
+            source,
+            {
+                "id": "TGT-GAPFILL-002",
+                "status": "queued",
+                "duplicate_target_id": "TGT-GAPFILL-DUP",
+            },
+        )
+        self.assertEqual("duplicate", duplicate_summary["relationship"])
+        self.assertEqual("TGT-GAPFILL-DUP", duplicate_summary["duplicate_of"])
 
 
 if __name__ == "__main__":

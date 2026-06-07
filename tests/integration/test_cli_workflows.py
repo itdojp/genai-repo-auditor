@@ -1685,12 +1685,14 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual("queued", gapfill_data["candidates"][0]["gapfill_target_status"])
         self.assertEqual("new", gapfill_data["candidates"][0]["relationship"])
         self.assertEqual("TGT-GAPFILL-001", gapfill_data["next_targets"][0]["target_id"])
+        self.assertEqual("new", gapfill_data["next_targets"][0]["relationship"])
         coverage_md = (run_dir / "reports" / "COVERAGE.md").read_text(encoding="utf-8")
         self.assertIn("## Current run", coverage_md)
         self.assertIn("Current candidate count: 1", coverage_md)
         self.assertIn("## Cumulative gapfill queue", coverage_md)
         self.assertIn("## Next gapfill targets", coverage_md)
         self.assertIn("TGT-GAPFILL-001", coverage_md)
+        self.assertIn("| 80 | TGT-GAPFILL-001 | TGT-001 | queued | new |", coverage_md)
         gapfill_target = self.target_by_id(run_dir, "TGT-GAPFILL-001")
         self.assertEqual("queued", gapfill_target["status"])
         self.assertEqual("TGT-001", gapfill_target["source_target_id"])
@@ -1704,6 +1706,7 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(0, gapfill_again["current_run"]["new_target_count"])
         self.assertEqual(1, gapfill_again["current_run"]["reused_target_count"])
         self.assertEqual("reused", gapfill_again["candidates"][0]["relationship"])
+        self.assertEqual("reused", gapfill_again["next_targets"][0]["relationship"])
         targets = json.loads(targets_path.read_text(encoding="utf-8"))["targets"]
         self.assertEqual(1, len([target for target in targets if target.get("id") == "TGT-GAPFILL-001"]))
 

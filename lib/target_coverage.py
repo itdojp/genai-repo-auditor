@@ -190,7 +190,12 @@ def gapfill_summary(
     }
 
 
-def next_gapfill_targets(targets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def next_gapfill_targets(
+    targets: list[dict[str, Any]],
+    *,
+    relationships_by_id: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    relationships_by_id = relationships_by_id or {}
     source_by_id = {str(target.get("id") or ""): target for target in targets if isinstance(target, dict)}
     queued = [
         target
@@ -208,7 +213,11 @@ def next_gapfill_targets(targets: list[dict[str, Any]]) -> list[dict[str, Any]]:
         ),
     )
     return [
-        gapfill_summary(target, source=source_by_id.get(str(target.get("source_target_id") or "")))
+        gapfill_summary(
+            target,
+            source=source_by_id.get(str(target.get("source_target_id") or "")),
+            relationship=relationships_by_id.get(str(target.get("id") or "")),
+        )
         for target in ordered
     ]
 
@@ -234,8 +243,16 @@ def target_summary(
         "gapfill_recommended": coverage.get("gapfill_recommended") is True,
         "gapfill_reason": gapfill_reason(target),
         "relationship": relationship or gapfill_relationship(gapfill_target),
-        "variant_of": gapfill_target.get("variant_of") if isinstance(gapfill_target, dict) else None,
-        "duplicate_of": gapfill_target.get("duplicate_of") if isinstance(gapfill_target, dict) else None,
+        "variant_of": (
+            gapfill_target.get("variant_of") or gapfill_target.get("variant_target_id")
+            if isinstance(gapfill_target, dict)
+            else None
+        ),
+        "duplicate_of": (
+            gapfill_target.get("duplicate_of") or gapfill_target.get("duplicate_target_id")
+            if isinstance(gapfill_target, dict)
+            else None
+        ),
         "files_reviewed": string_list(coverage.get("files_reviewed")),
         "files_skipped": string_list(coverage.get("files_skipped")),
         "commands_run": string_list(coverage.get("commands_run")),
@@ -260,11 +277,12 @@ def write_coverage_markdown(
     targets: list[dict[str, Any]],
     candidates: list[dict[str, Any]],
     generated: list[dict[str, Any]],
+    gapfill_relationships_by_id: dict[str, str] | None = None,
 ) -> Path:
     reports = reports_dir(run_dir)
     generated_by_source = {str(t.get("source_target_id") or ""): str(t.get("id") or "") for t in generated}
     all_gapfill_targets = [target for target in targets if is_gapfill_target(target)]
-    next_targets = next_gapfill_targets(targets)
+    next_targets = next_gapfill_targets(targets, relationships_by_id=gapfill_relationships_by_id)
     lines = [
         "# Target Coverage Ledger",
         "",
@@ -389,6 +407,7 @@ def generate_gapfill_artifacts(run_dir: Path) -> dict[str, Any]:
     existing_ids = {str(target.get("id") or "") for target in targets}
     generated: list[dict[str, Any]] = []
     candidate_records: list[dict[str, Any]] = []
+    relationships_by_id: dict[str, str] = {}
     newly_created_count = 0
     reused_count = 0
     changed = False
@@ -409,6 +428,7 @@ def generate_gapfill_artifacts(run_dir: Path) -> dict[str, Any]:
             reused_count += 1
         generated.append(gapfill)
         relationship = gapfill_relationship(gapfill, newly_created=newly_created)
+        relationships_by_id[str(gapfill.get("id") or "")] = relationship
         candidate_records.append(target_summary(source, gapfill, relationship=relationship))
         write_gapfill_plan(run_dir, source, gapfill)
 
@@ -417,9 +437,15 @@ def generate_gapfill_artifacts(run_dir: Path) -> dict[str, Any]:
 
     reports = reports_dir(run_dir)
     reports.mkdir(parents=True, exist_ok=True)
-    coverage_path = write_coverage_markdown(run_dir, targets=targets, candidates=candidates, generated=generated)
+    coverage_path = write_coverage_markdown(
+        run_dir,
+        targets=targets,
+        candidates=candidates,
+        generated=generated,
+        gapfill_relationships_by_id=relationships_by_id,
+    )
     all_gapfill_targets = [target for target in targets if is_gapfill_target(target)]
-    next_targets = next_gapfill_targets(targets)
+    next_targets = next_gapfill_targets(targets, relationships_by_id=relationships_by_id)
     payload = {
         "run_id": ctx.get("run_id", run_dir.name),
         "repo": ctx.get("repo", ""),
