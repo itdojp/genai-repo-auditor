@@ -67,7 +67,7 @@ Findings と targets は任意の `taxonomies` 配列で、管理された分類
 - Supply Chain Posture
 - CWE Subset
 
-`gra-validate-report` は、`taxonomies` が存在する場合に name / id / label を検証します。`gra-dashboard` と `gra-sarif` は taxonomy を集計・出力します。詳細と profile 追加手順は英語版 [`TAXONOMIES.md`](../TAXONOMIES.md) を参照してください。
+`gra-taxonomy-preflight --fix` は、`taxonomies` の既知 alias と canonical label を正規化します。`gra-validate-report` は、`taxonomies` が存在する場合に name / id / label を検証します。`gra-dashboard` と `gra-sarif` は taxonomy を集計・出力します。詳細と profile 追加手順は英語版 [`TAXONOMIES.md`](../TAXONOMIES.md) を参照してください。
 
 ## Release provenance posture
 

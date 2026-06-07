@@ -3,17 +3,45 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
-from gralib import env_from_context, find_target, load_context, load_targets, render_template, run_codex_exec, write_targets
+from gralib import (
+    ensure_taxonomy_templates,
+    env_from_context,
+    find_target,
+    load_context,
+    load_targets,
+    render_template,
+    run_codex_exec,
+    write_targets,
+)
 from agent_surface import append_agent_surface_targets
 from dependency_posture import append_dependency_posture_targets
 from provenance_posture import append_provenance_posture_targets
 from scorecard_posture import append_scorecard_posture_targets
+
+
+def run_taxonomy_preflight(run_dir: Path) -> int:
+    targets = run_dir / "reports" / "targets.json"
+    if not targets.exists():
+        return 0
+    log = run_dir / "taxonomy-preflight-targets.txt"
+    with log.open("w", encoding="utf-8") as stdout:
+        proc = subprocess.run(
+            [str(LAB_ROOT / "bin" / "gra-taxonomy-preflight"), "--run", str(run_dir), "--fix"],
+            stdout=stdout,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+    print(f"Taxonomy preflight status: {proc.returncode}")
+    print(f"Taxonomy preflight log: {log}")
+    return proc.returncode
 
 
 def print_table(targets):
@@ -75,6 +103,7 @@ def main() -> int:
 
     # generate
     ctx = load_context(run_dir)
+    ensure_taxonomy_templates(LAB_ROOT, run_dir)
     reports = run_dir / ctx.get('reports_dir', 'reports')
     reports.mkdir(parents=True, exist_ok=True)
     (run_dir / 'prompts' / 'exec').mkdir(parents=True, exist_ok=True)
@@ -114,6 +143,9 @@ def main() -> int:
     added_dependency_targets = append_dependency_posture_targets(run_dir)
     if added_dependency_targets:
         print(f'Added {len(added_dependency_targets)} dependency-posture target(s)')
+    preflight_status = run_taxonomy_preflight(run_dir)
+    if preflight_status != 0:
+        return preflight_status
     print(f'Wrote {reports / "targets.json"}')
     print_table(load_targets(run_dir))
     return 0

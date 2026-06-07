@@ -158,8 +158,10 @@ findings.json required shape:
 }
 
 Use controlled taxonomy IDs from templates/taxonomies/ when they apply. Do not
-invent ad hoc taxonomy names or IDs. Taxonomy classification is advisory and
-does not replace severity, confidence, or status.
+invent ad hoc taxonomy names, IDs, or labels. Preflight controlled taxonomy
+references against templates/taxonomy-aliases.json before finalizing central
+report artifacts. Taxonomy classification is advisory and does not replace
+severity, confidence, or status.
 
 Assessment guidance:
 - Distinguish bug existence from exploitability. A code defect can be present

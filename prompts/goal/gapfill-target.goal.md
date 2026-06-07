@@ -53,6 +53,9 @@ Required outputs:
 - Updates to {{REPORTS_DIR}}/FINDINGS.md and {{REPORTS_DIR}}/findings.json only if findings are discovered
 - Issue drafts for issue_recommended findings
 - Updated {{REPORTS_DIR}}/AUDIT_LOG.md
+- Controlled taxonomy references must use templates/taxonomies/ IDs and labels
+  and be preflighted against templates/taxonomy-aliases.json before central
+  report artifacts are finalized.
 
 Stop condition:
 - gapfill report exists

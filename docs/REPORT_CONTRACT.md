@@ -91,6 +91,12 @@ against the bundled JSON schemas using the Python standard library. It also
 applies local safety rules before downstream tools can use report-controlled
 paths.
 
+For controlled taxonomy references, run `gra-taxonomy-preflight --run RUN --fix`
+before validation. The preflight command applies deterministic aliases from
+`templates/taxonomy-aliases.json`, fixes canonical labels from
+`templates/taxonomies/*.json`, and logs applied before/after changes to
+`reports/taxonomy-normalizations.jsonl`.
+
 `provenance-posture.json` is a local posture artifact produced by `gra-recon`;
 it is advisory input for target generation and is not treated as a finding
 contract.

@@ -81,6 +81,10 @@ Required outputs:
    - Include lifecycle where possible: Candidate, Probable, Confirmed, Invalid, Accepted Risk, Informational, or Needs human review.
    - Populate structured assessment fields for bug existence, attacker reachability, boundary crossing, and impact assessment.
    - Use `Not assessed` only for dimensions that cannot be answered from safe local evidence, and explain uncertainty in `assessment_notes`.
+   - Preflight controlled taxonomy references before finalizing central artifacts.
+     Use the IDs and labels from templates/taxonomies/ and the deterministic
+     mappings in templates/taxonomy-aliases.json; do not invent taxonomy names,
+     IDs, or labels.
    - Issue drafts must be created under {{REPORTS_DIR}}/issue-drafts/ for issue_recommended findings.
 
 3. Update {{REPORTS_DIR}}/AUDIT_LOG.md with:

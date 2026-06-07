@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -64,6 +65,22 @@ def env_from_context(run_dir: Path, extra: Optional[Dict[str, str]] = None) -> D
 def render_template(lab_root: Path, template: Path, out: Path, env: Dict[str, str]) -> None:
     cmd = [sys.executable, str(lab_root / 'lib' / 'render_template.py'), str(template), str(out)]
     subprocess.run(cmd, check=True, env=env)
+
+
+def ensure_taxonomy_templates(lab_root: Path, run_dir: Path) -> None:
+    """Copy controlled taxonomy profiles and alias config into a run directory."""
+
+    source_dir = lab_root / "templates" / "taxonomies"
+    target_dir = run_dir / "templates" / "taxonomies"
+    if source_dir.exists():
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for source in sorted(source_dir.glob("*.json")):
+            shutil.copyfile(source, target_dir / source.name)
+    alias_src = lab_root / "templates" / "taxonomy-aliases.json"
+    if alias_src.exists():
+        alias_dst = run_dir / "templates" / "taxonomy-aliases.json"
+        alias_dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(alias_src, alias_dst)
 
 
 def _toml_string(value: str) -> str:

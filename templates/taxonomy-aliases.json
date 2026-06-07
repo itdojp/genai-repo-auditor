@@ -1,0 +1,84 @@
+{
+  "schema_version": "1",
+  "name_aliases": [
+    {
+      "from": "CWE",
+      "to": "CWE Subset",
+      "reason": "The bundled controlled CWE profile is named CWE Subset."
+    }
+  ],
+  "id_mappings": [
+    {
+      "from": {"name": "CWE Subset", "id": "CWE-284"},
+      "to": {"name": "CWE Subset", "id": "CWE-862"},
+      "mode": "auto",
+      "reason": "Use the bundled Missing Authorization CWE for broad access-control findings."
+    },
+    {
+      "from": {"name": "CWE", "id": "CWE-284"},
+      "to": {"name": "CWE Subset", "id": "CWE-862"},
+      "mode": "auto",
+      "reason": "Use the bundled Missing Authorization CWE for broad access-control findings."
+    },
+    {
+      "from": {"name": "CWE Subset", "id": "CWE-266"},
+      "to": {"name": "CWE Subset", "id": "CWE-269"},
+      "mode": "suggest",
+      "reason": "The bounded CWE subset represents privilege-management findings with CWE-269."
+    },
+    {
+      "from": {"name": "CWE", "id": "CWE-266"},
+      "to": {"name": "CWE Subset", "id": "CWE-269"},
+      "mode": "suggest",
+      "reason": "The bounded CWE subset represents privilege-management findings with CWE-269."
+    },
+    {
+      "from": {"name": "CWE Subset", "id": "CWE-639"},
+      "to": {"name": "CWE Subset", "id": "CWE-862"},
+      "mode": "suggest",
+      "reason": "Object authorization findings should choose Missing Authorization or Incorrect Authorization from the bounded subset."
+    },
+    {
+      "from": {"name": "CWE", "id": "CWE-639"},
+      "to": {"name": "CWE Subset", "id": "CWE-862"},
+      "mode": "suggest",
+      "reason": "Object authorization findings should choose Missing Authorization or Incorrect Authorization from the bounded subset."
+    },
+    {
+      "from": {"name": "CWE Subset", "id": "CWE-73"},
+      "to": {"name": "CWE Subset", "id": "CWE-22"},
+      "mode": "suggest",
+      "reason": "Path-control findings should select Path Traversal only when source-to-sink evidence supports that class."
+    },
+    {
+      "from": {"name": "CWE", "id": "CWE-73"},
+      "to": {"name": "CWE Subset", "id": "CWE-22"},
+      "mode": "suggest",
+      "reason": "Path-control findings should select Path Traversal only when source-to-sink evidence supports that class."
+    },
+    {
+      "from": {"name": "CWE Subset", "id": "CWE-116"},
+      "to": {"name": "CWE Subset", "id": "CWE-20"},
+      "mode": "suggest",
+      "reason": "Encoding and output-handling findings require context; use Improper Input Validation only when the evidence supports it."
+    },
+    {
+      "from": {"name": "CWE", "id": "CWE-116"},
+      "to": {"name": "CWE Subset", "id": "CWE-20"},
+      "mode": "suggest",
+      "reason": "Encoding and output-handling findings require context; use Improper Input Validation only when the evidence supports it."
+    },
+    {
+      "from": {"name": "CWE Subset", "id": "CWE-345"},
+      "to": {"name": "CWE Subset", "id": "CWE-287"},
+      "mode": "suggest",
+      "reason": "Authenticity-verification findings require context; use Improper Authentication only when the evidence supports it."
+    },
+    {
+      "from": {"name": "CWE", "id": "CWE-345"},
+      "to": {"name": "CWE Subset", "id": "CWE-287"},
+      "mode": "suggest",
+      "reason": "Authenticity-verification findings require context; use Improper Authentication only when the evidence supports it."
+    }
+  ]
+}

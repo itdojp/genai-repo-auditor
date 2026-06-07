@@ -140,6 +140,7 @@ selected subjects should be confirmed, downgraded, invalidated, or marked
 
 ```bash
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high --model gpt-5.5 --effort xhigh
+gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID --fix
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
 
@@ -171,6 +172,7 @@ new findings and must not generate exploit payloads or weaponized steps.
 
 ```bash
 gra-chains --run runs/OWNER__REPO/RUN_ID --model gpt-5.5 --effort xhigh
+gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID --fix
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
 
@@ -309,6 +311,7 @@ Scanner results are leads. They are not automatically treated as findings.
 ## Reporting
 
 ```bash
+gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID --fix
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 gra-dashboard --run runs/OWNER__REPO/RUN_ID
 gra-sarif --run runs/OWNER__REPO/RUN_ID

@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import copy
+import datetime as dt
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / "lib"))
+from version import auditor_version  # noqa: E402
+from taxonomies import (  # noqa: E402
+    TaxonomyAliasError,
+    TaxonomyProfileError,
+    load_taxonomy_aliases,
+    load_taxonomy_profiles,
+    normalize_taxonomy_refs,
+    taxonomy_label_map,
+    validate_taxonomy_refs,
+)
+
+
+def utc_now() -> str:
+    return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def write_json(path: Path, data: Any) -> None:
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def load_json(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def default_log_path(run_dir: Path | None) -> Path | None:
+    if run_dir is None:
+        return None
+    return run_dir / "reports" / "taxonomy-normalizations.jsonl"
+
+
+def append_change_log(log_path: Path | None, *, artifact: Path, changes: list[dict[str, Any]]) -> None:
+    if not log_path or not changes:
+        return
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("a", encoding="utf-8") as handle:
+        for change in changes:
+            event = {
+                "timestamp": utc_now(),
+                "source": "gra-taxonomy-preflight",
+                "artifact": artifact.as_posix(),
+                "field_path": change.get("field_path"),
+                "before": change.get("before"),
+                "after": change.get("after"),
+                "reason": change.get("reason"),
+            }
+            handle.write(json.dumps(event, sort_keys=True, ensure_ascii=False) + "\n")
+
+
+def normalize_artifact(
+    path: Path,
+    *,
+    kind: str,
+    fix: bool,
+    required: bool,
+    log_path: Path | None,
+    profiles: dict[str, dict[str, Any]],
+    labels: dict[tuple[str, str], str],
+    aliases: dict[str, Any],
+) -> tuple[int, int, list[str]]:
+    if not path.exists():
+        if required:
+            return 0, 1, [f"{path}: artifact not found"]
+        return 0, 0, []
+    try:
+        data = load_json(path)
+    except Exception as exc:
+        return 0, 0, [f"{path}: invalid JSON: {exc}"]
+    if not isinstance(data, dict):
+        return 0, 0, [f"{path}: expected top-level JSON object"]
+
+    collection_key = "findings" if kind == "findings" else "targets"
+    collection = data.get(collection_key)
+    if not isinstance(collection, list):
+        return 0, 0, [f"{path}: {collection_key} must be a list"]
+
+    updated = copy.deepcopy(data)
+    updated_collection = updated.get(collection_key)
+    if not isinstance(updated_collection, list):
+        return 0, 0, [f"{path}: {collection_key} must be a list"]
+
+    all_changes: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for index, item in enumerate(updated_collection):
+        item_path = f"{kind}.{collection_key}[{index}]"
+        if not isinstance(item, dict):
+            continue
+        if "taxonomies" not in item:
+            continue
+        normalized, changes, normalization_errors = normalize_taxonomy_refs(
+            item.get("taxonomies"),
+            f"{item_path}.taxonomies",
+            profiles,
+            labels,
+            aliases,
+        )
+        item["taxonomies"] = normalized
+        all_changes.extend(changes)
+        errors.extend(normalization_errors)
+
+    if fix and all_changes:
+        write_json(path, updated)
+        append_change_log(log_path, artifact=path, changes=all_changes)
+    elif not fix:
+        # In preflight-only mode, report the same controlled-taxonomy validation
+        # errors users will otherwise see from gra-validate-report, plus the
+        # deterministic normalizations that would be applied by --fix.
+        validation_errors: list[str] = []
+        for index, item in enumerate(collection):
+            item_path = f"{kind}.{collection_key}[{index}]"
+            if isinstance(item, dict) and "taxonomies" in item:
+                validate_taxonomy_refs(
+                    item.get("taxonomies"),
+                    f"{item_path}.taxonomies",
+                    validation_errors,
+                    profiles,
+                    labels,
+                    aliases,
+                )
+        errors = validation_errors or errors
+
+    return len(all_changes), len(errors), errors
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Preflight and normalize controlled taxonomy references")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {auditor_version(LAB_ROOT)}")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--run", help="Audit run directory containing reports/findings.json and reports/targets.json")
+    source.add_argument("--findings", help="Path to findings.json")
+    parser.add_argument("--targets", help="Path to targets.json when --findings is used")
+    parser.add_argument("--fix", action="store_true", help="Apply deterministic taxonomy aliases and canonical labels")
+    parser.add_argument(
+        "--log",
+        help="JSONL log path for applied normalizations. Defaults to reports/taxonomy-normalizations.jsonl with --run.",
+    )
+    args = parser.parse_args()
+
+    run_dir = Path(args.run).resolve() if args.run else None
+    findings_path = run_dir / "reports" / "findings.json" if run_dir else Path(args.findings).resolve()
+    targets_path = run_dir / "reports" / "targets.json" if run_dir else (Path(args.targets).resolve() if args.targets else None)
+    log_path = Path(args.log).resolve() if args.log else default_log_path(run_dir)
+
+    try:
+        profiles = load_taxonomy_profiles()
+        labels = taxonomy_label_map(profiles)
+        aliases = load_taxonomy_aliases()
+    except (TaxonomyProfileError, TaxonomyAliasError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    total_changes = 0
+    total_errors = 0
+    all_errors: list[str] = []
+
+    for path, kind, required in [
+        (findings_path, "findings", run_dir is None),
+        (targets_path, "targets", run_dir is None and args.targets is not None),
+    ]:
+        if path is None:
+            continue
+        changes, error_count, errors = normalize_artifact(
+            path,
+            kind=kind,
+            fix=args.fix,
+            required=required,
+            log_path=log_path,
+            profiles=profiles,
+            labels=labels,
+            aliases=aliases,
+        )
+        total_changes += changes
+        total_errors += error_count
+        all_errors.extend(errors)
+        if path.exists():
+            action = "normalized" if args.fix else "would normalize"
+            print(f"{path}: {action} {changes} taxonomy reference(s)")
+
+    for error in all_errors:
+        print(f"ERROR: {error}", file=sys.stderr)
+
+    if total_errors:
+        print(f"Taxonomy preflight failed: {total_errors} unresolved error(s)", file=sys.stderr)
+        return 1
+    if total_changes and not args.fix:
+        print(f"Taxonomy preflight found {total_changes} deterministic normalization(s); rerun with --fix.", file=sys.stderr)
+        return 1
+    print(f"Taxonomy preflight OK: {total_changes} normalization(s) {'applied' if args.fix else 'needed'}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

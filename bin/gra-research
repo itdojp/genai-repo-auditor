@@ -3,13 +3,42 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
-from gralib import env_from_context, find_target, load_context, load_targets, render_template, run_codex_exec, write_targets
+from gralib import (
+    ensure_taxonomy_templates,
+    env_from_context,
+    find_target,
+    load_context,
+    load_targets,
+    render_template,
+    run_codex_exec,
+    write_targets,
+)
+
+
+def run_taxonomy_preflight(run_dir: Path, target_id: str) -> int:
+    findings = run_dir / "reports" / "findings.json"
+    targets = run_dir / "reports" / "targets.json"
+    if not findings.exists() and not targets.exists():
+        return 0
+    log = run_dir / f"taxonomy-preflight-{target_id}.txt"
+    with log.open("w", encoding="utf-8") as stdout:
+        proc = subprocess.run(
+            [str(LAB_ROOT / "bin" / "gra-taxonomy-preflight"), "--run", str(run_dir), "--fix"],
+            stdout=stdout,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+    print(f"Taxonomy preflight status: {proc.returncode}")
+    print(f"Taxonomy preflight log: {log}")
+    return proc.returncode
 
 
 def main() -> int:
@@ -25,6 +54,7 @@ def main() -> int:
 
     run_dir = Path(args.run).resolve()
     ctx = load_context(run_dir)
+    ensure_taxonomy_templates(LAB_ROOT, run_dir)
     try:
         target = find_target(run_dir, args.target)
     except KeyError as e:
@@ -76,17 +106,18 @@ def main() -> int:
         events_file=run_dir / f'codex-research-{args.target}-events.jsonl',
         stderr_file=run_dir / f'codex-research-{args.target}-stderr.txt',
     )
+    preflight_status = run_taxonomy_preflight(run_dir, args.target)
 
     targets = load_targets(run_dir)
     for t in targets:
         if str(t.get('id')) == args.target:
-            t['status'] = 'reviewed' if status == 0 else 'needs_human_review'
+            t['status'] = 'reviewed' if status == 0 and preflight_status == 0 else 'needs_human_review'
     write_targets(run_dir, targets)
 
     print(f'Codex status: {status}')
     print(f'Research report: {run_dir / "reports" / "target-research" / (args.target + ".md")}')
     print(f'Findings: {run_dir / "reports" / "findings.json"}')
-    return status
+    return preflight_status if status == 0 and preflight_status != 0 else status
 
 
 if __name__ == '__main__':

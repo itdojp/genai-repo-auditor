@@ -14,7 +14,17 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
-from taxonomies import TaxonomyProfileError, load_taxonomy_profiles, taxonomy_label_map, validate_taxonomy_refs  # noqa: E402
+from taxonomies import (  # noqa: E402
+    TaxonomyAliasError,
+    load_taxonomy_aliases,
+    load_taxonomy_profiles,
+    normalize_taxonomy_refs,
+    suggest_taxonomy_replacement,
+    taxonomy_label_map,
+    validate_taxonomy_refs,
+    TaxonomyProfileError,
+)
+from gralib import ensure_taxonomy_templates  # noqa: E402
 
 
 class TaxonomyTests(unittest.TestCase):
@@ -81,6 +91,12 @@ class TaxonomyTests(unittest.TestCase):
         self.assertEqual(labels[("OWASP LLM Top 10 2025", "LLM01")], "Prompt Injection")
         self.assertEqual(labels[("MCP Security", "MCP-TOKEN-PASSTHROUGH")], "Token Passthrough")
 
+    def test_run_directories_receive_taxonomy_profiles_and_aliases(self) -> None:
+        run_dir = self.work_dir / "run"
+        ensure_taxonomy_templates(REPO_ROOT, run_dir)
+        self.assertTrue((run_dir / "templates" / "taxonomies" / "cwe-subset.json").exists())
+        self.assertTrue((run_dir / "templates" / "taxonomy-aliases.json").exists())
+
     def test_taxonomy_profile_loader_rejects_malformed_and_duplicate_profiles(self) -> None:
         malformed_dir = self.work_dir / "malformed-taxonomies"
         malformed_dir.mkdir()
@@ -96,6 +112,19 @@ class TaxonomyTests(unittest.TestCase):
         with self.assertRaisesRegex(TaxonomyProfileError, "duplicate taxonomy profile name"):
             load_taxonomy_profiles(duplicate_dir)
 
+    def test_taxonomy_alias_loader_rejects_malformed_aliases(self) -> None:
+        malformed = self.work_dir / "bad-aliases.json"
+        malformed.write_text('{"name_aliases": "CWE"}\n', encoding="utf-8")
+        with self.assertRaisesRegex(TaxonomyAliasError, "name_aliases must be a list"):
+            load_taxonomy_aliases(malformed)
+        malformed_mapping = self.work_dir / "bad-id-mapping.json"
+        self.write_json(
+            malformed_mapping,
+            {"name_aliases": [], "id_mappings": [{"from": {"name": "CWE"}, "to": {"name": "CWE Subset"}}]},
+        )
+        with self.assertRaisesRegex(TaxonomyAliasError, "id_mappings\\[0\\].from.id"):
+            load_taxonomy_aliases(malformed_mapping)
+
     def test_validate_report_reports_malformed_taxonomy_profiles_without_traceback(self) -> None:
         run_dir = self.copy_run()
         taxonomy_dir = self.work_dir / "bad-taxonomies"
@@ -106,7 +135,7 @@ class TaxonomyTests(unittest.TestCase):
 
         cp = self.run_cmd(REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir, env=env)
         self.assertNotEqual(cp.returncode, 0)
-        self.assertIn("taxonomy profiles:", cp.stderr)
+        self.assertIn("taxonomy profiles/aliases:", cp.stderr)
         self.assertIn("invalid taxonomy JSON", cp.stderr)
         self.assertNotIn("Traceback", cp.stderr)
 
@@ -126,6 +155,53 @@ class TaxonomyTests(unittest.TestCase):
             errors,
         )
 
+    def test_taxonomy_preflight_normalizes_known_aliases_and_labels(self) -> None:
+        profiles = load_taxonomy_profiles()
+        labels = taxonomy_label_map(profiles)
+        refs = [
+            {"name": "CWE", "id": "CWE-284", "label": "Improper Access Control"},
+            {"name": "CWE Subset", "id": "CWE-94", "label": "Improper Control of Generation of Code"},
+        ]
+        normalized, changes, errors = normalize_taxonomy_refs(
+            refs,
+            "findings.findings[0].taxonomies",
+            profiles,
+            labels,
+            load_taxonomy_aliases(),
+        )
+        self.assertEqual([], errors)
+        self.assertEqual(
+            [
+                {"name": "CWE Subset", "id": "CWE-862", "label": "Missing Authorization"},
+                {"name": "CWE Subset", "id": "CWE-94", "label": "Code Injection"},
+            ],
+            normalized,
+        )
+        self.assertEqual(2, len(changes))
+        self.assertEqual("findings.findings[0].taxonomies[0]", changes[0]["field_path"])
+        self.assertIn("CWE-284", json.dumps(changes[0]["before"]))
+        self.assertIn("CWE-862", json.dumps(changes[0]["after"]))
+
+    def test_validate_taxonomy_refs_suggests_configured_replacements(self) -> None:
+        profiles = load_taxonomy_profiles()
+        labels = taxonomy_label_map(profiles)
+        suggestion = suggest_taxonomy_replacement("CWE Subset", "CWE-266", profiles, labels, load_taxonomy_aliases())
+        self.assertIsNotNone(suggestion)
+        self.assertEqual("CWE-269", suggestion["id"])
+        self.assertEqual("suggest", suggestion["mode"])
+        errors: list[str] = []
+        validate_taxonomy_refs(
+            [{"name": "CWE Subset", "id": "CWE-266", "label": "Incorrect Privilege Assignment"}],
+            "findings.findings[0].taxonomies",
+            errors,
+            profiles,
+            labels,
+            load_taxonomy_aliases(),
+        )
+        self.assertEqual(1, len(errors))
+        self.assertIn("unknown id 'CWE-266'", errors[0])
+        self.assertIn("suggested replacement CWE Subset:CWE-269", errors[0])
+
     def test_validate_report_accepts_controlled_taxonomy_ids(self) -> None:
         run_dir = self.copy_run()
         self.add_taxonomies(run_dir)
@@ -144,6 +220,51 @@ class TaxonomyTests(unittest.TestCase):
         self.assertNotEqual(cp.returncode, 0)
         self.assertIn("unknown id 'CWE-999999'", cp.stderr)
         self.assertIn("does not match taxonomy label 'Prompt Injection'", cp.stderr)
+
+    def test_taxonomy_preflight_cli_fixes_fixture_before_validation(self) -> None:
+        run_dir = self.copy_run()
+        self.add_taxonomies(run_dir)
+        findings_path = run_dir / "reports" / "findings.json"
+        findings = self.load_json(findings_path)
+        findings["findings"][0]["taxonomies"][0] = {
+            "name": "CWE",
+            "id": "CWE-284",
+            "label": "Improper Access Control",
+        }
+        findings["findings"][0]["taxonomies"][1]["label"] = "Wrong label"
+        self.write_json(findings_path, findings)
+
+        before = self.run_cmd(REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir)
+        self.assertNotEqual(before.returncode, 0)
+        self.assertIn("suggested replacement CWE Subset:CWE-862", before.stderr)
+
+        fix = self.run_cmd(REPO_ROOT / "bin" / "gra-taxonomy-preflight", "--run", run_dir, "--fix")
+        self.assertEqual(fix.returncode, 0, f"stdout:\n{fix.stdout}\nstderr:\n{fix.stderr}")
+        updated = self.load_json(findings_path)
+        self.assertEqual(
+            {"name": "CWE Subset", "id": "CWE-862", "label": "Missing Authorization"},
+            updated["findings"][0]["taxonomies"][0],
+        )
+        self.assertEqual(
+            {"name": "OWASP LLM Top 10 2025", "id": "LLM01", "label": "Prompt Injection"},
+            updated["findings"][0]["taxonomies"][1],
+        )
+        log_path = run_dir / "reports" / "taxonomy-normalizations.jsonl"
+        self.assertTrue(log_path.exists())
+        log_lines = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+        self.assertGreaterEqual(len(log_lines), 2)
+        self.assertEqual("gra-taxonomy-preflight", log_lines[0]["source"])
+        self.assertIn("before", log_lines[0])
+        self.assertIn("after", log_lines[0])
+
+        after = self.run_cmd(REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir)
+        self.assertEqual(after.returncode, 0, f"stdout:\n{after.stdout}\nstderr:\n{after.stderr}")
+
+    def test_taxonomy_preflight_cli_rejects_missing_explicit_findings_path(self) -> None:
+        missing = self.work_dir / "missing-findings.json"
+        cp = self.run_cmd(REPO_ROOT / "bin" / "gra-taxonomy-preflight", "--findings", missing)
+        self.assertEqual(cp.returncode, 1)
+        self.assertIn("artifact not found", cp.stderr)
 
     def test_dashboard_and_sarif_include_taxonomy_metadata(self) -> None:
         run_dir = self.copy_run()

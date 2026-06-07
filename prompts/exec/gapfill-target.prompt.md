@@ -61,6 +61,8 @@ Required outputs:
    - Deduplicate by root cause, affected path, and trust boundary.
    - Set target_id to {{TARGET_ID}} or to the generated gapfill target ID when applicable.
    - Populate structured assessment fields where evidence supports them.
+   - Preflight controlled taxonomy names, IDs, and labels against
+     templates/taxonomy-aliases.json before finalizing central artifacts.
    - Keep Issue drafts under {{REPORTS_DIR}}/issue-drafts/.
 
 3. If you update target coverage metadata, preserve existing target fields and set:

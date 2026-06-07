@@ -25,7 +25,7 @@
    ↓
 5. reports/ に監査レポートと findings.json を生成
    ↓
-6. gra-validate-report でレポート契約を検証
+6. gra-taxonomy-preflight と gra-validate-report で taxonomy とレポート契約を検証
    ↓
 7. 必要に応じて gra-gapfill で shallow coverage を requeue
    ↓

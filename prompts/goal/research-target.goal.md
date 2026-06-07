@@ -70,6 +70,9 @@ Required outputs:
   `attacker_reachability`, `boundary_crossing`, `impact_assessment`, and
   `assessment_notes`. Separate code-defect evidence from reachability,
   boundary-crossing, and impact evidence.
+- Controlled taxonomy references for any new finding or target coverage update
+  must use templates/taxonomies/ IDs and labels. Preflight them against
+  templates/taxonomy-aliases.json before finalizing central report artifacts.
 
 Stop condition:
 - target research report exists

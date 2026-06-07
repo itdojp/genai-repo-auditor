@@ -31,7 +31,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Safe local proofs | `gra-proofs` | Benign proof prompt, subject seed JSON, `reports/proofs.json`, `reports/PROOFS.md`, `reports/proofs/` |
 | Cross-repo trace reachability | `gra-trace` | Experimental/P3 trace prompt, subject seed JSON, `reports/traces.json`, `reports/TRACE.md` |
 | Scanner triage | `gra-ingest`, `gra-scanner-triage` | Raw scanner copies, redacted normalized leads, scanner index, Scorecard posture artifacts, dependency posture artifacts, triage output |
-| Validation | `gra-validate-report` | Report contract validation result |
+| Validation | `gra-taxonomy-preflight`, `gra-validate-report` | Controlled taxonomy preflight, report contract validation result |
 | Reporting / persistence | `gra-metrics`, `gra-dashboard`, `gra-sarif`, `gra-store`, `gra-index` | Local metrics, HTML dashboard, SARIF, SQLite store, run index |
 | Issue workflow | `gra-issues` | Dry-run previews or GitHub Issues after human review |
 
@@ -43,8 +43,8 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Workflow category | Prepare / exec / validation entry point. |
 | Required inputs | `--repo OWNER/REPO`. The host must have `git`, `gh`, `codex`, and `python3` available. |
 | Key options | `--branch REF`, `--mode exec\|goal\|prepare`, `--model MODEL`, `--effort EFFORT`, `--depth N`, `--run-id ID`, `--runs-dir DIR`, `--codex-json`, `--network`, `--no-lock`, `--allow-invalid-report`. |
-| Generated outputs | `context.json`, `run-manifest.json`, cloned `repo/`, `reports/`, rendered `prompt.exec.md` / `prompt.goal.md`, `prompts/`, copied schemas, Codex event/output files, `report-validation.txt`, and `run-summary.txt`. |
-| Exit status behavior | `0` for successful prepare/goal setup or successful exec with valid report; `2` for usage errors; `1` for missing required local commands or missing/invalid reports when Codex itself succeeds; `12` for lock contention; in exec mode Codex or validation status can be propagated. |
+| Generated outputs | `context.json`, `run-manifest.json`, cloned `repo/`, `reports/`, rendered `prompt.exec.md` / `prompt.goal.md`, `prompts/`, copied schemas and taxonomy templates, Codex event/output files, `taxonomy-preflight.txt`, `report-validation.txt`, and `run-summary.txt`. |
+| Exit status behavior | `0` for successful prepare/goal setup or successful exec with valid report; `2` for usage errors; `1` for missing required local commands or missing/invalid reports when Codex itself succeeds; `12` for lock contention; in exec mode Codex, taxonomy preflight, or validation status can be propagated. |
 | Security / disclosure cautions | Use only on repositories you are authorized to audit. Keep generated reports local. `run-manifest.json` is bounded, run-relative metadata for support diagnostics; it must not be treated as a substitute for reviewing findings or issue drafts. Use `--network` and `--allow-invalid-report` only with explicit operational justification. Do not disable locks for concurrent same-repository audits unless you can isolate output paths safely. |
 | Related docs | [`docs/LOCAL_INSTALL_AND_AUDIT.md`](LOCAL_INSTALL_AND_AUDIT.md), [`docs/NORMAL_WORKFLOW.md`](NORMAL_WORKFLOW.md), [`docs/GOAL_DEEP_DIVE_WORKFLOW.md`](GOAL_DEEP_DIVE_WORKFLOW.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
 
@@ -87,8 +87,8 @@ gra-batch --repo-list examples/repos.txt.example --concurrency 1 --mode exec
 | Workflow category | Target workflow. |
 | Required inputs | `--run RUN_DIR` and exactly one action: `--generate`, `--list`, `--show TGT-ID`, or `--mark TGT-ID STATUS`. |
 | Key options | `--model MODEL`, `--effort EFFORT`, `--network`. `--mark` accepts `queued`, `in_progress`, `reviewed`, `skipped`, or `needs_human_review`. |
-| Generated outputs | For `--generate`: `prompts/exec/generate-targets.prompt.md`, `codex-targets-events.jsonl`, `codex-targets-stderr.txt`, `codex-targets-final.md`, and the expected `reports/targets.json`. Targets can include optional `coverage` metadata for review depth, reviewed/skipped files, commands, unresolved questions, and gapfill recommendation. If `reports/agent-surface.json` exists, high-risk AI agent / MCP surfaces are appended as `TGT-AGENT-NNN` targets. If `reports/provenance-posture.json` exists, release provenance posture recommendations are appended as `TGT-PROVENANCE-NNN` targets. If `reports/supply-chain-posture.json` exists, low-scoring OpenSSF Scorecard posture checks with `target_recommended: true` are appended as `TGT-SCORECARD-NNN` targets. If `reports/dependencies.json` exists, high-signal dependency vulnerability records with dependency paths are appended as `TGT-DEPENDENCY-NNN` targets. For `--mark`: updated target status in `reports/targets.json`. `--list` and `--show` write to stdout only. |
-| Exit status behavior | `0` for successful list/show/mark/generate; `1` when Codex completes but `reports/targets.json` is missing after generation; `2` for missing context, unknown target, or invalid target status. Codex execution status is returned for generation failures. |
+| Generated outputs | For `--generate`: `prompts/exec/generate-targets.prompt.md`, `codex-targets-events.jsonl`, `codex-targets-stderr.txt`, `codex-targets-final.md`, `taxonomy-preflight-targets.txt`, optional `reports/taxonomy-normalizations.jsonl`, and the expected `reports/targets.json`. Targets can include optional `coverage` metadata for review depth, reviewed/skipped files, commands, unresolved questions, and gapfill recommendation. If `reports/agent-surface.json` exists, high-risk AI agent / MCP surfaces are appended as `TGT-AGENT-NNN` targets. If `reports/provenance-posture.json` exists, release provenance posture recommendations are appended as `TGT-PROVENANCE-NNN` targets. If `reports/supply-chain-posture.json` exists, low-scoring OpenSSF Scorecard posture checks with `target_recommended: true` are appended as `TGT-SCORECARD-NNN` targets. If `reports/dependencies.json` exists, high-signal dependency vulnerability records with dependency paths are appended as `TGT-DEPENDENCY-NNN` targets. For `--mark`: updated target status in `reports/targets.json`. `--list` and `--show` write to stdout only. |
+| Exit status behavior | `0` for successful list/show/mark/generate; `1` when Codex completes but `reports/targets.json` is missing after generation; `2` for missing context, unknown target, or invalid target status. Codex execution status is returned for generation failures; taxonomy preflight status is returned when deterministic normalization cannot resolve taxonomy errors. |
 | Security / disclosure cautions | Target queues are local planning artifacts. Review generated scope before using it to drive deeper research. Avoid network access unless the audit plan explicitly requires it. |
 | Related docs | [`docs/TARGET_QUEUE.md`](TARGET_QUEUE.md), [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md), [`docs/AGENT_SURFACE_DISCOVERY.md`](AGENT_SURFACE_DISCOVERY.md), [`docs/PROVENANCE_POSTURE.md`](PROVENANCE_POSTURE.md), [`docs/SCORECARD_INGESTION.md`](SCORECARD_INGESTION.md), [`docs/DEPENDENCY_INGESTION.md`](DEPENDENCY_INGESTION.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md). |
 
@@ -127,8 +127,8 @@ gra-recon --run runs/OWNER__REPO/RUN_ID --model gpt-5.5 --effort xhigh
 | Workflow category | Research workflow. |
 | Required inputs | `--run RUN_DIR --target TGT-ID`. |
 | Key options | `--mode exec\|goal`, `--model MODEL`, `--effort EFFORT`, `--network`. |
-| Generated outputs | Target seed JSON under `reports/target-research/`, rendered target prompt, Codex event/output files, expected target research report under `reports/target-research/TGT-ID.md`, and possible updates to `reports/findings.json`. Exec mode marks the target `in_progress` before execution and `reviewed` or `needs_human_review` after execution. |
-| Exit status behavior | `0` for successful goal preparation or successful Codex exec; `2` when the requested target is not found; exec mode returns Codex execution status. |
+| Generated outputs | Target seed JSON under `reports/target-research/`, rendered target prompt, Codex event/output files, `taxonomy-preflight-TGT-ID.txt`, optional `reports/taxonomy-normalizations.jsonl`, expected target research report under `reports/target-research/TGT-ID.md`, and possible updates to `reports/findings.json`. Exec mode marks the target `in_progress` before execution and `reviewed` or `needs_human_review` after execution. |
+| Exit status behavior | `0` for successful goal preparation or successful Codex exec plus taxonomy preflight; `2` when the requested target is not found; exec mode returns Codex execution status or taxonomy preflight status when normalization cannot resolve taxonomy errors. |
 | Security / disclosure cautions | Treat target research as analysis, not exploitation. Keep evidence minimal and avoid reconstructing secret values in outputs. |
 | Related docs | [`docs/TARGET_QUEUE.md`](TARGET_QUEUE.md), [`docs/GOAL_DEEP_DIVE_WORKFLOW.md`](GOAL_DEEP_DIVE_WORKFLOW.md), [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md). |
 
@@ -307,18 +307,39 @@ Example:
 gra-scanner-triage --run runs/OWNER__REPO/RUN_ID --model gpt-5.5 --effort xhigh
 ```
 
+## `gra-taxonomy-preflight`
+
+| Field | Details |
+|---|---|
+| Purpose | Check controlled taxonomy references in `reports/findings.json` and `reports/targets.json`, propose configured replacements, and optionally apply deterministic aliases and canonical labels before report validation. |
+| Workflow category | Validation workflow. |
+| Required inputs | One of `--run RUN_DIR` or `--findings PATH`. Use `--targets PATH` with `--findings` when target taxonomy references should also be checked. |
+| Key options | `--fix` applies deterministic mappings and canonical label corrections; `--log PATH` overrides the default JSONL change log path. |
+| Generated outputs | Console preflight result. With `--fix --run`, applied changes are appended to `reports/taxonomy-normalizations.jsonl` with timestamp, artifact path, field path, before/after reference, and reason. |
+| Exit status behavior | `0` when no unresolved taxonomy errors remain; `1` for invalid JSON, unresolved taxonomy errors, or preflight-only mode when deterministic normalizations are available but `--fix` was not supplied; parser error status `2` for missing required source arguments. |
+| Security / disclosure cautions | The command edits only local audit artifacts when `--fix` is supplied. Review the JSONL change log before publishing findings or issue drafts. |
+| Related docs | [`docs/TAXONOMIES.md`](TAXONOMIES.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
+
+Examples:
+
+```bash
+gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID
+gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID --fix
+gra-taxonomy-preflight --findings reports/findings.json --targets reports/targets.json --fix --log reports/taxonomy-normalizations.jsonl
+```
+
 ## `gra-validate-report`
 
 | Field | Details |
 |---|---|
-| Purpose | Validate `findings.json`, optional `targets.json`, optional chain reports, optional proof artifacts, optional cross-repo trace artifacts, optional adversarial validation output, optional scanner index artifacts, optional dependency artifacts, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
+| Purpose | Validate `findings.json`, optional `targets.json`, optional chain reports, optional proof artifacts, optional cross-repo trace artifacts, optional adversarial validation output, optional scanner index artifacts, optional dependency artifacts, controlled taxonomy names/IDs/labels, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
 | Workflow category | Validation workflow. |
 | Required inputs | One of `--run RUN_DIR` or `--findings PATH`. |
 | Key options | `--run RUN_DIR`, `--findings PATH`. |
 | Generated outputs | Console validation result. When called by `gra-audit`, output is commonly captured in `run-summary.txt` and `report-validation.txt`. |
 | Exit status behavior | `0` when validation passes; `1` for invalid JSON or validation errors; parser error status `2` when neither `--run` nor `--findings` is supplied. |
 | Security / disclosure cautions | Validation reduces risk but is not a substitute for human review. Check findings and issue drafts before sharing outside the approved audience. |
-| Related docs | [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
+| Related docs | [`docs/TAXONOMIES.md`](TAXONOMIES.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
 
 Examples:
 
