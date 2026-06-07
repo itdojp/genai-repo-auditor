@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from gralib import load_context, utc_now, write_json
+from duplicate_decisions import duplicate_decision_metrics
 from issue_ledger import ledger_metrics
 
 COUNT_STATUSES = [
@@ -289,6 +290,13 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
     gapfill_data = load_json(reports / "gapfill-targets.json", None)
     issue_plan = load_json(reports / "issue-publication-plan.json", None)
     issue_ledger = load_json(reports / "issue-ledger.json", None)
+    duplicate_decisions_present = (reports / "duplicate-decisions").is_dir()
+    duplicate_decisions = []
+    if duplicate_decisions_present:
+        duplicate_decisions = [
+            load_json(path, {})
+            for path in sorted((reports / "duplicate-decisions").glob("*.json"))
+        ]
     manifest = load_json(run_dir / "run-manifest.json", None)
 
     findings = list_of_dicts(findings_data, "findings")
@@ -325,6 +333,7 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
         "traces": trace_metrics(traces, traces_data is not None),
         "issue_publication_plan": issue_plan_metrics(issue_plan, issue_plan is not None),
         "issue_ledger": ledger_metrics(issue_ledger, issue_ledger is not None),
+        "duplicate_decisions": duplicate_decision_metrics(duplicate_decisions, duplicate_decisions_present),
         "artifacts": artifact_metrics(run_dir, reports, manifest),
         "run_duration": run_duration_metrics(manifest),
     }
@@ -369,6 +378,7 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
         f"| Traces | {metrics['traces']['total']} |",
         f"| Issue plan warnings | {metrics['issue_publication_plan']['warning_count']} |",
         f"| Issue ledger published findings | {metrics['issue_ledger']['published_findings']} |",
+        f"| Duplicate decisions | {metrics['duplicate_decisions']['total']} |",
         f"| Report files | {metrics['artifacts']['reports_file_count']} |",
         "",
         "## Findings",
@@ -403,6 +413,12 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
     lines.append(f"| Drift warnings | {metrics['issue_ledger']['drift_warning_count']} |")
     lines.append("")
     lines.extend(markdown_counts("Publication status", metrics["issue_ledger"]["by_publication_status"]))
+    lines.extend(["## Duplicate decisions", "", "| Metric | Count |", "|---|---:|"])
+    lines.append(f"| Total | {metrics['duplicate_decisions']['total']} |")
+    lines.append(f"| Exact matches | {metrics['duplicate_decisions']['exact_match_count']} |")
+    lines.append(f"| Candidate issue references | {metrics['duplicate_decisions']['candidate_issue_count']} |")
+    lines.append("")
+    lines.extend(markdown_counts("Decision", metrics["duplicate_decisions"]["by_decision"]))
     lines.extend(["## Artifacts", "", "| Metric | Count |", "|---|---:|"])
     lines.append(f"| Manifest artifacts | {metrics['artifacts']['manifest_artifact_total']} |")
     lines.append(f"| Report files | {metrics['artifacts']['reports_file_count']} |")

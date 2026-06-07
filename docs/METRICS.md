@@ -34,6 +34,7 @@ Metrics are computed from local report artifacts only:
 - trace reachability counts
 - issue publication plan selected findings and warning counts
 - issue ledger tracked, published, status, and drift-warning counts
+- duplicate decision total, exact-match count, candidate Issue references, and decision buckets
 - run artifact counts
 - run duration when present in local manifest metadata
 

@@ -44,6 +44,7 @@ PROOFS_DIR = Path("reports/proofs")
 TRACES_PATH = Path("reports/traces.json")
 METRICS_PATH = Path("reports/metrics.json")
 ISSUE_LEDGER_PATH = Path("reports/issue-ledger.json")
+DUPLICATE_DECISIONS_DIR = Path("reports/duplicate-decisions")
 RUN_STATE_PATH = Path("reports/run-state.json")
 VALIDATION_DECISIONS = {"confirm", "downgrade", "invalidate", "needs-human-review"}
 VALIDATION_SUBJECT_TYPES = {"finding", "chain"}
@@ -931,6 +932,69 @@ def validate_issue_ledger(run_dir: Path, errors: List[str]) -> bool:
     return True
 
 
+def validate_duplicate_decisions(run_dir: Path, errors: List[str]) -> bool:
+    decisions_dir = run_dir / DUPLICATE_DECISIONS_DIR
+    ledger_path = run_dir / ISSUE_LEDGER_PATH
+    ledger_entries: List[Dict[str, Any]] = []
+    if ledger_path.exists():
+        try:
+            ledger_data = json.loads(ledger_path.read_text(encoding="utf-8"))
+            if isinstance(ledger_data, dict):
+                ledger_entries = [entry for entry in ledger_data.get("findings") or [] if isinstance(entry, dict)]
+        except Exception as exc:
+            errors.append(f"duplicate_decisions: could not read issue ledger for reconciliation: {exc}")
+
+    published_entries = [
+        entry
+        for entry in ledger_entries
+        if str(entry.get("publication_status") or "") in {"published", "duplicate"}
+    ]
+    if not decisions_dir.exists():
+        if published_entries:
+            errors.append("duplicate_decisions: reports/duplicate-decisions is required when issue ledger has published or duplicate entries")
+        return False
+    if not decisions_dir.is_dir():
+        errors.append("duplicate_decisions: reports/duplicate-decisions must be a directory")
+        return True
+
+    records: Dict[tuple[str, str], Dict[str, Any]] = {}
+    for decision_path in sorted(decisions_dir.glob("*.json")):
+        rel = decision_path.relative_to(run_dir).as_posix()
+        try:
+            decision = json.loads(decision_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            errors.append(f"{rel}: invalid JSON: {exc}")
+            continue
+        if not isinstance(decision, dict):
+            errors.append(f"{rel}: expected type object, got {json_type_name(decision)}")
+            continue
+        validate_schema(decision, load_schema("duplicate-decision.schema.json"), rel, errors)
+        validate_generated_at(decision.get("checked_at"), f"{rel}.checked_at", errors)
+        for field in ["root_cause_fingerprint", "source_to_sink_fingerprint"]:
+            if not re.fullmatch(r"[a-f0-9]{24}", str(decision.get(field) or "")):
+                errors.append(f"{rel}.{field}: expected 24 lowercase hex characters")
+        key = (str(decision.get("finding_id") or ""), str(decision.get("fingerprint") or ""))
+        if key in records:
+            errors.append(f"{rel}: duplicate decision record for finding/fingerprint {key[0]} / {key[1]}")
+        records[key] = decision
+        exact_match = decision.get("exact_match")
+        if exact_match is True:
+            if decision.get("decision") != "exact-duplicate":
+                errors.append(f"{rel}.decision: exact_match=true requires decision exact-duplicate")
+            if not decision.get("exact_match_url") or not decision.get("exact_match_source"):
+                errors.append(f"{rel}.exact_match_url: exact_match=true requires exact_match_url and exact_match_source")
+        elif exact_match is False:
+            if decision.get("exact_match_url") is not None or decision.get("exact_match_source") is not None:
+                errors.append(f"{rel}.exact_match_url: exact_match=false requires null exact_match_url and exact_match_source")
+
+    for entry in published_entries:
+        finding_id = str(entry.get("finding_id") or "")
+        fingerprint = str(entry.get("fingerprint") or "")
+        if (finding_id, fingerprint) not in records:
+            errors.append(f"duplicate_decisions: missing record for published ledger finding {finding_id} fingerprint {fingerprint}")
+    return True
+
+
 def validate_run_state(run_dir: Path, errors: List[str]) -> bool:
     state_path = run_dir / RUN_STATE_PATH
     if not state_path.exists():
@@ -1108,6 +1172,7 @@ def main() -> int:
     traces_validated = validate_traces(run_dir, findings, errors)
     metrics_validated = validate_metrics(run_dir, errors)
     issue_ledger_validated = validate_issue_ledger(run_dir, errors)
+    duplicate_decisions_validated = validate_duplicate_decisions(run_dir, errors)
     run_state_validated = validate_run_state(run_dir, errors)
 
     if errors:
@@ -1136,6 +1201,8 @@ def main() -> int:
         print("Metrics: validated")
     if issue_ledger_validated:
         print("Issue ledger: validated")
+    if duplicate_decisions_validated:
+        print("Duplicate decisions: validated")
     if run_state_validated:
         print("Run state: validated")
     return 0

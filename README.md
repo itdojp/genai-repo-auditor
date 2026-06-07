@@ -269,7 +269,7 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-dashboard` | Generate local HTML dashboard with metrics links when present |
 | `gra-sarif` | Generate SARIF output |
 | `gra-store` | Import run data into SQLite |
-| `gra-issues` | Create GitHub Issues from reviewed findings |
+| `gra-issues` | Create GitHub Issues from reviewed findings with issue ledger and duplicate decision records |
 | `gra-batch` | Audit multiple repositories sequentially or with low concurrency |
 | `gra-index` | Build an index across runs |
 

@@ -52,6 +52,7 @@
           "labels": {"type": "array", "items": {"type": "string"}},
           "body_hash": {"type": ["string", "null"]},
           "current_body_hash": {"type": ["string", "null"]},
+          "duplicate_decision_file": {"type": "string"},
           "published_at": {"type": ["string", "null"]},
           "source_plan": {"type": ["string", "null"]},
           "plan_sha256": {"type": ["string", "null"]},

@@ -17,6 +17,7 @@
     "traces",
     "issue_publication_plan",
     "issue_ledger",
+    "duplicate_decisions",
     "artifacts",
     "run_duration"
   ],
@@ -122,6 +123,17 @@
         "published_findings": {"type": "integer", "minimum": 0},
         "by_publication_status": {"type": "object"},
         "drift_warning_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "duplicate_decisions": {
+      "type": "object",
+      "required": ["artifact_present", "total", "by_decision", "exact_match_count", "candidate_issue_count"],
+      "properties": {
+        "artifact_present": {"type": "boolean"},
+        "total": {"type": "integer", "minimum": 0},
+        "by_decision": {"type": "object"},
+        "exact_match_count": {"type": "integer", "minimum": 0},
+        "candidate_issue_count": {"type": "integer", "minimum": 0}
       }
     },
     "artifacts": {

@@ -698,6 +698,7 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertTrue((run_dir / "context.json").exists())
         self.assertTrue((run_dir / "prompts" / "exec" / "full-audit.prompt.md").exists())
         self.assertTrue((run_dir / "reports" / "issue-drafts").is_dir())
+        self.assertTrue((run_dir / "reports" / "duplicate-decisions").is_dir())
         ctx = json.loads((run_dir / "context.json").read_text(encoding="utf-8"))
         self.assertEqual(ctx["repo"], "example/demo")
         self.assertEqual(ctx["repo_slug"], "example__demo")
@@ -724,6 +725,7 @@ class CliWorkflowTests(unittest.TestCase):
         })
         self.assertIn({"name": "run-manifest.schema.json", "path": "run-manifest.schema.json"}, manifest["schemas"])
         self.assertIn({"name": "issue-ledger.schema.json", "path": "issue-ledger.schema.json"}, manifest["schemas"])
+        self.assertIn({"name": "duplicate-decision.schema.json", "path": "duplicate-decision.schema.json"}, manifest["schemas"])
         self.assertIn({"name": "run-state.schema.json", "path": "run-state.schema.json"}, manifest["schemas"])
         self.assertNotIn("run-manifest.json", self.manifest_artifact_paths(run_dir))
         self.assertIn("prompts/exec/full-audit.prompt.md", self.manifest_artifact_paths(run_dir))
@@ -3224,6 +3226,15 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(result["created"][0]["fingerprint"], FIXTURE_FINGERPRINT)
         self.assertEqual(len(result["created"][0]["issue_body_sha256"]), 64)
         self.assertEqual(result["created"][0]["issue_body_sha256"], result["created"][0]["issue_body_sha256"].lower())
+        decision_path = run_dir / "reports" / "duplicate-decisions" / "SEC-001.json"
+        self.assertTrue(decision_path.is_file())
+        decision = json.loads(decision_path.read_text(encoding="utf-8"))
+        self.assertEqual(decision["finding_id"], "SEC-001")
+        self.assertEqual(decision["fingerprint"], FIXTURE_FINGERPRINT)
+        self.assertEqual(decision["decision"], "new")
+        self.assertFalse(decision["exact_match"])
+        self.assertEqual(len(decision["root_cause_fingerprint"]), 24)
+        self.assertEqual(len(decision["source_to_sink_fingerprint"]), 24)
 
         apply_run = self.copy_fixture_run("minimal-run")
         cp_apply = self.run_cmd(
@@ -3240,6 +3251,46 @@ class CliWorkflowTests(unittest.TestCase):
             check=True,
         )
         self.assertIn("CREATED SEC-001", cp_apply.stdout)
+
+    def test_gra_issues_duplicate_decisions_distinguish_variant_and_related_candidates(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        findings_path = run_dir / "reports" / "findings.json"
+        findings = json.loads(findings_path.read_text(encoding="utf-8"))
+        findings["findings"][0]["variant_of"] = "SEC-ROOT"
+        related = dict(findings["findings"][0])
+        related.update(
+            {
+                "id": "SEC-002",
+                "fingerprint": "fixture-related-fingerprint-0002",
+                "issue_title": "[Security][High] Related but distinct fixture finding",
+                "issue_body_file": "",
+                "variant_of": "",
+                "related_issue_numbers": [10, "https://github.example.invalid/example/demo/issues/11"],
+            }
+        )
+        findings["findings"].append(related)
+        findings_path.write_text(json.dumps(findings, indent=2) + "\n", encoding="utf-8")
+
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--dry-run",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            check=True,
+        )
+
+        variant_decision = json.loads((run_dir / "reports" / "duplicate-decisions" / "SEC-001.json").read_text(encoding="utf-8"))
+        related_decision = json.loads((run_dir / "reports" / "duplicate-decisions" / "SEC-002.json").read_text(encoding="utf-8"))
+        self.assertEqual(variant_decision["decision"], "variant")
+        self.assertEqual(variant_decision["variant_of"], ["SEC-ROOT"])
+        self.assertEqual(related_decision["decision"], "related-not-duplicate")
+        self.assertEqual(related_decision["candidate_issue_numbers"], [10, 11])
 
     def test_gra_issues_plan_and_apply_plan_bind_exact_issue_content(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -3514,6 +3565,43 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(cp.returncode, 2, cp.stderr)
         self.assertIn("issue ledger not found", cp.stderr)
 
+    def test_gra_issues_verify_ledger_requires_duplicate_decision_for_published_issue(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        plan_path = run_dir / "reports" / "issue-publication-plan.json"
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--plan",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            check=True,
+        )
+        issue_url = "https://github.example.invalid/example/demo/issues/77"
+        env, _apply_log = self.env_with_gh_log(GRA_MOCK_ISSUE_URL=issue_url)
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply-plan",
+                plan_path,
+            ],
+            env=env,
+            check=True,
+        )
+        shutil.rmtree(run_dir / "reports" / "duplicate-decisions")
+
+        verify_env, _verify_log = self.env_with_gh_log(GRA_MOCK_EXISTING_ISSUE_URL=issue_url)
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-issues", "--run", run_dir, "--verify-ledger"], env=verify_env)
+
+        self.assertEqual(cp.returncode, 4, cp.stderr)
+        self.assertIn("duplicate decision record missing", cp.stderr)
+
     def test_gra_metrics_reports_issue_ledger_counts(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         issue_url = "https://github.example.invalid/example/demo/issues/74"
@@ -3539,6 +3627,9 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(metrics["issue_ledger"]["tracked_findings"], 1)
         self.assertEqual(metrics["issue_ledger"]["published_findings"], 1)
         self.assertEqual(metrics["issue_ledger"]["by_publication_status"], {"published": 1})
+        self.assertTrue(metrics["duplicate_decisions"]["artifact_present"])
+        self.assertEqual(metrics["duplicate_decisions"]["total"], 1)
+        self.assertEqual(metrics["duplicate_decisions"]["by_decision"], {"new": 1})
 
     def test_gra_store_imports_issue_ledger_when_present(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -4158,6 +4249,13 @@ class CliWorkflowTests(unittest.TestCase):
                 "fingerprint": FIXTURE_FINGERPRINT,
             }
         ])
+        decision = json.loads((run_dir / "reports" / "duplicate-decisions" / "SEC-001.json").read_text(encoding="utf-8"))
+        self.assertEqual(decision["decision"], "exact-duplicate")
+        self.assertTrue(decision["exact_match"])
+        self.assertEqual(decision["exact_match_source"], "github-fingerprint-search")
+        self.assertEqual(decision["candidate_issue_numbers"], [7])
+        ledger = json.loads((run_dir / "reports" / "issue-ledger.json").read_text(encoding="utf-8"))
+        self.assertEqual(ledger["findings"][0]["duplicate_decision_file"], "reports/duplicate-decisions/SEC-001.json")
 
         calls = self.read_gh_calls(log_path)
         self.assert_gh_called(calls, ["repo", "view"])

@@ -71,6 +71,7 @@ templates/reports/FINDINGS.md
 templates/reports/ISSUE_BODY.md
 templates/reports/chains.schema.json
 templates/reports/dependencies.schema.json
+templates/reports/duplicate-decision.schema.json
 templates/reports/findings.schema.json
 templates/reports/issue-ledger.schema.json
 templates/reports/metrics.schema.json

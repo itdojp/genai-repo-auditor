@@ -15,6 +15,12 @@ LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
 from version import auditor_version
 from report_safety import ReportSafetyError, safe_issue_body_path  # noqa: E402
+from duplicate_decisions import (  # noqa: E402
+    decision_for as duplicate_decision_for,
+    rel_to_run as duplicate_decision_rel_to_run,
+    verify_ledger_decisions as verify_duplicate_decisions_for_ledger,
+    write_duplicate_decision,
+)
 from issue_ledger import (  # noqa: E402
     base_entry as ledger_base_entry,
     default_ledger_path,
@@ -481,6 +487,10 @@ def plan_entry_key(entry: Dict[str, Any]) -> str:
     return f"{entry.get('id', 'SEC-UNKNOWN')}\0{entry.get('fingerprint', '')}"
 
 
+def finding_key(finding_id: object, fingerprint: object) -> str:
+    return f"{str(finding_id or 'SEC-UNKNOWN')}\0{str(fingerprint or '')}"
+
+
 def build_publication_plan(
     *,
     repo: str,
@@ -679,6 +689,32 @@ def write_issue_ledger_snapshot(
     return ledger
 
 
+def record_duplicate_decision(
+    *,
+    run_dir: Path,
+    run_id: str,
+    repo: str,
+    commit: str,
+    finding: Dict[str, Any],
+    fingerprint: str,
+    exact_match_url: Optional[str] = None,
+    exact_match_source: Optional[str] = None,
+) -> Tuple[str, str]:
+    decision = duplicate_decision_for(
+        run_id=run_id,
+        repo=repo,
+        commit=commit,
+        finding=finding,
+        fingerprint=fingerprint,
+        exact_match_url=exact_match_url,
+        exact_match_source=exact_match_source,
+    )
+    path = write_duplicate_decision(run_dir, decision)
+    rel_path = duplicate_decision_rel_to_run(run_dir, path)
+    print(f"Wrote duplicate decision: {rel_path}")
+    return rel_path, str(decision.get("decision") or "")
+
+
 def verify_ledger_against_github(repo: str, ledger: Dict[str, Any]) -> List[str]:
     drifts: List[str] = []
     for entry in ledger.get("findings") or []:
@@ -818,6 +854,7 @@ def main() -> int:
             print(f"ERROR: could not read issue ledger: {exc}", file=sys.stderr)
             return 2
         drifts = verify_ledger_against_github(repo, ledger)
+        drifts.extend(verify_duplicate_decisions_for_ledger(run_dir, ledger))
         if drifts:
             print("Issue ledger drift detected:", file=sys.stderr)
             for drift in drifts:
@@ -968,6 +1005,8 @@ def main() -> int:
         "plan_path": str(plan_path) if plan_path else str(default_plan_path(run_dir)),
         "plan_sha256": plan_sha256,
         "ledger_path": str(default_ledger_path(run_dir)),
+        "duplicate_decisions_path": str(run_dir / "reports" / "duplicate-decisions"),
+        "duplicate_decisions": [],
         "created": [],
         "skipped": [],
     }
@@ -999,6 +1038,12 @@ def main() -> int:
         print_plan_summary(default_plan_path(run_dir), preview_plan)
         issue_entries = [(entry, preview_bodies.get(plan_entry_key(entry), "")) for entry in preview_plan["selected_findings"]]
 
+    findings_by_key = {
+        finding_key(str(finding.get("id") or "SEC-UNKNOWN"), stable_fingerprint(repo, finding)): finding
+        for finding in all_findings
+        if isinstance(finding, dict)
+    }
+
     try:
         existing_ledger = load_ledger(default_ledger_path(run_dir), run_id=run_id, repo=repo, commit=commit)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -1013,6 +1058,7 @@ def main() -> int:
         labels = list(entry.get("labels") or [])
         body_hash = str(entry.get("issue_body_sha256") or sha256_text(body))
         ledger_key = plan_entry_key(entry)
+        original_finding = findings_by_key.get(ledger_key) or {"id": finding_id}
         ledger_entry = ledger_entry_from_plan_entry(
             entry,
             body,
@@ -1043,6 +1089,28 @@ def main() -> int:
                     state=str(existing_from_ledger.get("state") or "open"),
                 )
         if existing_from_ledger:
+            decision_file, decision_value = record_duplicate_decision(
+                run_dir=run_dir,
+                run_id=run_id,
+                repo=repo,
+                commit=commit,
+                finding=original_finding,
+                fingerprint=fingerprint,
+                exact_match_url=str(existing_from_ledger.get("url") or ""),
+                exact_match_source="issue-ledger",
+            )
+            ledger_overrides.setdefault(ledger_key, ledger_mark_published(
+                ledger_entry,
+                url=str(existing_from_ledger.get("url") or ""),
+                published_at=str(existing_from_ledger.get("published_at") or "") or ledger_utc_now(),
+                duplicate_detected=(
+                    bool(existing_from_ledger.get("duplicate_detected"))
+                    or str(existing_from_ledger.get("publication_status") or "") == "duplicate"
+                ),
+                state=str(existing_from_ledger.get("state") or "open"),
+            ))
+            ledger_overrides[ledger_key]["duplicate_decision_file"] = decision_file
+            result["duplicate_decisions"].append({"id": finding_id, "path": decision_file, "decision": decision_value})
             result["skipped"].append({
                 "id": finding_id,
                 "reason": "ledger",
@@ -1054,10 +1122,33 @@ def main() -> int:
 
         existing = None if dry_run else issue_exists(repo, fingerprint)
         if existing:
+            decision_file, decision_value = record_duplicate_decision(
+                run_dir=run_dir,
+                run_id=run_id,
+                repo=repo,
+                commit=commit,
+                finding=original_finding,
+                fingerprint=fingerprint,
+                exact_match_url=existing,
+                exact_match_source="github-fingerprint-search",
+            )
             result["skipped"].append({"id": finding_id, "reason": "duplicate", "url": existing, "fingerprint": fingerprint})
             ledger_overrides[ledger_key] = ledger_mark_published(ledger_entry, url=existing, duplicate_detected=True)
+            ledger_overrides[ledger_key]["duplicate_decision_file"] = decision_file
+            result["duplicate_decisions"].append({"id": finding_id, "path": decision_file, "decision": decision_value})
             print(f"SKIP duplicate {finding_id}: {existing}")
             continue
+
+        decision_file, decision_value = record_duplicate_decision(
+            run_dir=run_dir,
+            run_id=run_id,
+            repo=repo,
+            commit=commit,
+            finding=original_finding,
+            fingerprint=fingerprint,
+        )
+        ledger_entry["duplicate_decision_file"] = decision_file
+        result["duplicate_decisions"].append({"id": finding_id, "path": decision_file, "decision": decision_value})
 
         if dry_run:
             print("---")
