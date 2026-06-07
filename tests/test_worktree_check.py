@@ -107,6 +107,40 @@ class WorktreeCheckTests(unittest.TestCase):
         report = json.loads(cp.stdout)
         self.assertEqual([], report["unrelated_changes"])
 
+    def test_worktree_check_reports_rename_path_and_original_path(self) -> None:
+        repo = self.make_repo()
+        (repo / "docs").mkdir()
+        (repo / "docs" / "guide.md").write_text("updated\n", encoding="utf-8")
+        self.git(repo, "add", "docs/guide.md")
+        self.git(repo, "commit", "-m", "add guide")
+        self.git(repo, "mv", "docs/guide.md", "docs/guide-renamed.md")
+        (repo / "scratch.txt").write_text("local\n", encoding="utf-8")
+
+        cp = subprocess.run(
+            [
+                sys.executable,
+                str(REPO_ROOT / "bin" / "gra-worktree-check"),
+                "--repo",
+                str(repo),
+                "--purpose",
+                "auditor-maintenance",
+                "--allowed-prefix",
+                "docs",
+                "--json",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+        self.assertEqual(1, cp.returncode, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
+        report = json.loads(cp.stdout)
+        rename = next(item for item in report["in_scope_changes"] if item["status"].startswith("R"))
+        self.assertEqual("docs/guide-renamed.md", rename["path"])
+        self.assertEqual("docs/guide.md", rename["original_path"])
+        self.assertEqual(["scratch.txt"], [item["path"] for item in report["unrelated_changes"]])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
