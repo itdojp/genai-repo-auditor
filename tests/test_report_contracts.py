@@ -889,6 +889,9 @@ class ReportContractTests(unittest.TestCase):
                 artifact["retention"] = "archive"
                 artifact["sha256"] = "0" * 64
                 break
+        manifest["artifact_retention"]["latest_status_artifacts"] = [
+            path for path in manifest["artifact_retention"]["latest_status_artifacts"] if path != "reports/targets.json"
+        ]
         manifest["artifact_retention"]["by_retention"]["latest"] = 999
         self.write_json(run_dir / "run-manifest.json", manifest)
 
@@ -897,6 +900,7 @@ class ReportContractTests(unittest.TestCase):
         self.assertIn("run_manifest.artifacts", cp.stderr)
         self.assertIn("sha256: value does not match file digest", cp.stderr)
         self.assertIn("reports/findings.json must have retention 'latest'", cp.stderr)
+        self.assertIn("missing latest artifact from summary: reports/targets.json", cp.stderr)
         self.assertIn("artifact_retention.by_retention.latest", cp.stderr)
 
     def test_scanner_index_schema_accepts_normalized_artifact_fields(self) -> None:

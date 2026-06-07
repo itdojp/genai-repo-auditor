@@ -1066,33 +1066,61 @@ def validate_run_manifest(run_dir: Path, errors: List[str]) -> bool:
 
     retention_summary = manifest_data.get("artifact_retention") if isinstance(manifest_data.get("artifact_retention"), dict) else {}
     latest_paths = retention_summary.get("latest_status_artifacts")
+    supporting_paths = retention_summary.get("supporting_artifacts")
     archive_paths = retention_summary.get("archive_artifacts")
     execution = manifest_data.get("execution") if isinstance(manifest_data.get("execution"), dict) else {}
     completed_manifest = execution.get("phase") == "completed"
     if not isinstance(latest_paths, list) or (completed_manifest and not latest_paths):
         errors.append("run_manifest.artifact_retention.latest_status_artifacts: must be a non-empty list for completed manifests")
         latest_paths = []
+    if not isinstance(supporting_paths, list):
+        errors.append("run_manifest.artifact_retention.supporting_artifacts: must be a list")
+        supporting_paths = []
     if not isinstance(archive_paths, list):
         errors.append("run_manifest.artifact_retention.archive_artifacts: must be a list")
         archive_paths = []
 
     latest_set = {str(path) for path in latest_paths if isinstance(path, str)}
+    supporting_set = {str(path) for path in supporting_paths if isinstance(path, str)}
     archive_set = {str(path) for path in archive_paths if isinstance(path, str)}
-    overlap = sorted(latest_set & archive_set)
-    if overlap:
-        errors.append(f"run_manifest.artifact_retention: latest and archive artifacts overlap: {', '.join(overlap)}")
+    for left_name, left_set, right_name, right_set in [
+        ("latest", latest_set, "supporting", supporting_set),
+        ("latest", latest_set, "archive", archive_set),
+        ("supporting", supporting_set, "archive", archive_set),
+    ]:
+        overlap = sorted(left_set & right_set)
+        if overlap:
+            errors.append(
+                f"run_manifest.artifact_retention: {left_name} and {right_name} artifacts overlap: {', '.join(overlap)}"
+            )
     for path in sorted(latest_set):
         artifact = artifact_by_path.get(path)
         if artifact is None:
             errors.append(f"run_manifest.artifact_retention.latest_status_artifacts: path is not listed in artifacts: {path}")
         elif artifact.get("retention") != "latest":
             errors.append(f"run_manifest.artifact_retention.latest_status_artifacts: {path} must have retention 'latest'")
+    for path in sorted(supporting_set):
+        artifact = artifact_by_path.get(path)
+        if artifact is None:
+            errors.append(f"run_manifest.artifact_retention.supporting_artifacts: path is not listed in artifacts: {path}")
+        elif artifact.get("retention") != "supporting":
+            errors.append(f"run_manifest.artifact_retention.supporting_artifacts: {path} must have retention 'supporting'")
     for path in sorted(archive_set):
         artifact = artifact_by_path.get(path)
         if artifact is None:
             errors.append(f"run_manifest.artifact_retention.archive_artifacts: path is not listed in artifacts: {path}")
         elif artifact.get("retention") != "archive":
             errors.append(f"run_manifest.artifact_retention.archive_artifacts: {path} must have retention 'archive'")
+    summary_sets = {
+        "latest": ("latest_status_artifacts", latest_set),
+        "supporting": ("supporting_artifacts", supporting_set),
+        "archive": ("archive_artifacts", archive_set),
+    }
+    for path, artifact in sorted(artifact_by_path.items()):
+        retention = artifact.get("retention")
+        if retention in summary_sets and path not in summary_sets[retention][1]:
+            field_name = summary_sets[retention][0]
+            errors.append(f"run_manifest.artifact_retention.{field_name}: missing {retention} artifact from summary: {path}")
     by_retention = retention_summary.get("by_retention") if isinstance(retention_summary.get("by_retention"), dict) else {}
     for key in ["latest", "supporting", "archive"]:
         if by_retention.get(key) != retention_counts.get(key, 0):

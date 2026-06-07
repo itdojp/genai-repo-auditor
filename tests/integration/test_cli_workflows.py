@@ -2685,7 +2685,33 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(1, metrics["artifacts"]["manifest_by_retention"]["unknown"])
         self.assertEqual(0, metrics["artifacts"]["latest_status_artifact_count"])
         self.assertEqual(0, metrics["artifacts"]["archive_artifact_count"])
-        self.assertEqual(1, metrics["artifacts"]["manifest_hygiene_warnings"])
+        self.assertEqual(3, metrics["artifacts"]["manifest_hygiene_warnings"])
+
+    def test_gra_metrics_counts_manifest_retention_summary_mismatches(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        (run_dir / "run-manifest.json").write_text(
+            json.dumps(
+                {
+                    "artifacts": [{"path": "reports/findings.json", "kind": "file", "retention": "latest"}],
+                    "artifact_retention": {
+                        "latest_status_artifacts": [],
+                        "supporting_artifacts": [],
+                        "archive_artifacts": ["reports/findings.json"],
+                        "by_retention": {"latest": 1, "supporting": 0, "archive": 0},
+                        "notes": "fixture",
+                    },
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
+        self.assertEqual(0, metrics["artifacts"]["latest_status_artifact_count"])
+        self.assertEqual(1, metrics["artifacts"]["archive_artifact_count"])
+        self.assertEqual(2, metrics["artifacts"]["manifest_hygiene_warnings"])
 
     def test_gra_trace_exec_with_consumer_run_writes_trace_artifacts(self) -> None:
         producer_run = self.copy_fixture_run("minimal-run")

@@ -430,6 +430,11 @@ def artifact_metrics(run_dir: Path, reports: Path, manifest: Any) -> dict[str, A
     retention_summary = manifest.get("artifact_retention") if isinstance(manifest, dict) and isinstance(manifest.get("artifact_retention"), dict) else {}
     latest_summary = retention_summary.get("latest_status_artifacts")
     archive_summary = retention_summary.get("archive_artifacts")
+    hygiene_warnings = 0
+    if "latest_status_artifacts" in retention_summary and not isinstance(latest_summary, list):
+        hygiene_warnings += 1
+    if "archive_artifacts" in retention_summary and not isinstance(archive_summary, list):
+        hygiene_warnings += 1
     latest_paths = (
         {str(path) for path in latest_summary if isinstance(path, str)}
         if isinstance(latest_summary, list)
@@ -441,16 +446,25 @@ def artifact_metrics(run_dir: Path, reports: Path, manifest: Any) -> dict[str, A
         else set()
     )
     artifact_paths = {str(item.get("path") or "") for item in manifest_artifacts}
-    hygiene_warnings = 0
-    for path in latest_paths | archive_paths:
+    retention_by_path = {str(item.get("path") or ""): item.get("retention") for item in manifest_artifacts}
+    for path in latest_paths:
         if path not in artifact_paths:
+            hygiene_warnings += 1
+        elif retention_by_path.get(path) != "latest":
+            hygiene_warnings += 1
+    for path in archive_paths:
+        if path not in artifact_paths:
+            hygiene_warnings += 1
+        elif retention_by_path.get(path) != "archive":
             hygiene_warnings += 1
     for item in manifest_artifacts:
         retention = item.get("retention")
         path = str(item.get("path") or "")
         if retention not in {"latest", "supporting", "archive"}:
             hygiene_warnings += 1
-        if retention == "archive" and path in latest_paths:
+        elif retention == "latest" and path not in latest_paths:
+            hygiene_warnings += 1
+        elif retention == "archive" and path not in archive_paths:
             hygiene_warnings += 1
     report_files = 0
     report_dirs = 0
