@@ -124,6 +124,38 @@ class TaxonomyTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(TaxonomyAliasError, "id_mappings\\[0\\].from.id"):
             load_taxonomy_aliases(malformed_mapping)
+        duplicate_name = self.work_dir / "duplicate-name-alias.json"
+        self.write_json(
+            duplicate_name,
+            {
+                "name_aliases": [
+                    {"from": "CWE", "to": "CWE Subset"},
+                    {"from": "CWE", "to": "Other CWE"},
+                ],
+                "id_mappings": [],
+            },
+        )
+        with self.assertRaisesRegex(TaxonomyAliasError, "duplicate alias 'CWE'"):
+            load_taxonomy_aliases(duplicate_name)
+        duplicate_mapping = self.work_dir / "duplicate-id-mapping.json"
+        self.write_json(
+            duplicate_mapping,
+            {
+                "name_aliases": [],
+                "id_mappings": [
+                    {
+                        "from": {"name": "CWE Subset", "id": "CWE-284"},
+                        "to": {"name": "CWE Subset", "id": "CWE-862"},
+                    },
+                    {
+                        "from": {"name": "CWE Subset", "id": "CWE-284"},
+                        "to": {"name": "CWE Subset", "id": "CWE-863"},
+                    },
+                ],
+            },
+        )
+        with self.assertRaisesRegex(TaxonomyAliasError, "duplicate mapping 'CWE Subset':'CWE-284'"):
+            load_taxonomy_aliases(duplicate_mapping)
 
     def test_validate_report_reports_malformed_taxonomy_profiles_without_traceback(self) -> None:
         run_dir = self.copy_run()

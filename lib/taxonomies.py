@@ -100,6 +100,7 @@ def taxonomy_label_map(profiles: dict[str, dict[str, Any]] | None = None) -> dic
 
 
 def validate_taxonomy_aliases(aliases: dict[str, Any], *, source: str = "taxonomy aliases") -> None:
+    seen_name_aliases: dict[str, int] = {}
     for index, item in enumerate(aliases.get("name_aliases") or []):
         if not isinstance(item, dict):
             raise TaxonomyAliasError(f"{source}: name_aliases[{index}]: alias entry must be an object")
@@ -107,7 +108,15 @@ def validate_taxonomy_aliases(aliases: dict[str, Any], *, source: str = "taxonom
             raise TaxonomyAliasError(f"{source}: name_aliases[{index}].from: must be a non-empty string")
         if not isinstance(item.get("to"), str) or not item.get("to", "").strip():
             raise TaxonomyAliasError(f"{source}: name_aliases[{index}].to: must be a non-empty string")
+        alias_from = str(item["from"])
+        if alias_from in seen_name_aliases:
+            raise TaxonomyAliasError(
+                f"{source}: name_aliases[{index}].from: duplicate alias {alias_from!r}; "
+                f"already defined at name_aliases[{seen_name_aliases[alias_from]}]"
+            )
+        seen_name_aliases[alias_from] = index
 
+    seen_id_mappings: dict[tuple[str, str], int] = {}
     for index, item in enumerate(aliases.get("id_mappings") or []):
         if not isinstance(item, dict):
             raise TaxonomyAliasError(f"{source}: id_mappings[{index}]: mapping entry must be an object")
@@ -128,10 +137,18 @@ def validate_taxonomy_aliases(aliases: dict[str, Any], *, source: str = "taxonom
         mode = str(item.get("mode") or "suggest").strip().lower()
         if mode not in {"auto", "suggest"}:
             raise TaxonomyAliasError(f"{source}: id_mappings[{index}].mode: must be 'auto' or 'suggest'")
+        mapping_key = (str(source_ref["name"]), str(source_ref["id"]))
+        if mapping_key in seen_id_mappings:
+            raise TaxonomyAliasError(
+                f"{source}: id_mappings[{index}].from: duplicate mapping {mapping_key[0]!r}:{mapping_key[1]!r}; "
+                f"already defined at id_mappings[{seen_id_mappings[mapping_key]}]"
+            )
+        seen_id_mappings[mapping_key] = index
 
 
 def taxonomy_name_alias_map(aliases: dict[str, Any] | None = None) -> dict[str, dict[str, str]]:
     aliases = aliases if aliases is not None else load_taxonomy_aliases()
+    validate_taxonomy_aliases(aliases)
     mapping: dict[str, dict[str, str]] = {}
     for index, item in enumerate(aliases.get("name_aliases") or []):
         if not isinstance(item, dict):
@@ -151,6 +168,7 @@ def taxonomy_name_alias_map(aliases: dict[str, Any] | None = None) -> dict[str, 
 
 def taxonomy_id_mapping_map(aliases: dict[str, Any] | None = None) -> dict[tuple[str, str], dict[str, str]]:
     aliases = aliases if aliases is not None else load_taxonomy_aliases()
+    validate_taxonomy_aliases(aliases)
     mapping: dict[tuple[str, str], dict[str, str]] = {}
     for index, item in enumerate(aliases.get("id_mappings") or []):
         if not isinstance(item, dict):
