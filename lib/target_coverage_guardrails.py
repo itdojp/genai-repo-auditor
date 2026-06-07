@@ -35,8 +35,10 @@ def normalize_review_depth(value: Any, *, field_path: str) -> tuple[str, str | N
             f"{field_path}: invalid review depth {value!r}; allowed values: {allowed}; aliases: {aliases}"
         )
     reason = None
-    if normalized != value:
+    if raw.lower() in TARGET_REVIEW_DEPTH_ALIASES:
         reason = f"normalized coverage.review_depth alias {value!r} -> {normalized!r}"
+    elif normalized != value:
+        reason = f"canonicalized coverage.review_depth value {value!r} -> {normalized!r}"
     return normalized, reason
 
 

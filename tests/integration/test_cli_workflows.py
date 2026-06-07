@@ -1119,6 +1119,37 @@ class CliWorkflowTests(unittest.TestCase):
         calls = self.read_codex_calls(codex_log)
         self.assertEqual(len(calls), 2, calls)
 
+    def test_gra_targets_generate_normalizes_codex_written_review_depth_alias(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        fixture_dir = self.work_dir / "bounded-depth-codex-fixture"
+        shutil.copytree(FIXTURES / "minimal-run", fixture_dir)
+        targets_path = fixture_dir / "reports" / "targets.json"
+        targets_data = json.loads(targets_path.read_text(encoding="utf-8"))
+        targets_data["targets"][0]["coverage"] = {
+            "review_depth": "bounded-deep",
+            "files_reviewed": ["app.py"],
+            "files_skipped": [],
+            "commands_run": [],
+            "unresolved_questions": [],
+            "gapfill_recommended": False,
+            "gapfill_reason": "fixture complete",
+        }
+        targets_path.write_text(json.dumps(targets_data, indent=2) + "\n", encoding="utf-8")
+        env, codex_log = self.env_with_codex_log(GRA_MOCK_FIXTURE_DIR=str(fixture_dir))
+
+        cp_targets = self.run_cmd([REPO_ROOT / "bin" / "gra-targets", "--run", run_dir, "--generate"], env=env, check=True)
+        self.assertIn("Wrote", cp_targets.stdout)
+        targets = json.loads((run_dir / "reports" / "targets.json").read_text(encoding="utf-8"))["targets"]
+        self.assertEqual("deep", targets[0]["coverage"]["review_depth"])
+        self.assertTrue((run_dir / "reports" / "coverage-normalizations.jsonl").exists())
+        self.assertIn("`bounded-deep` -> `deep`", (run_dir / "reports" / "AUDIT_LOG.md").read_text(encoding="utf-8"))
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("OK:", cp_validate.stdout)
+
+        calls = self.read_codex_calls(codex_log)
+        self.assertEqual(len(calls), 1, calls)
+
     def test_gra_targets_generate_appends_provenance_posture_targets(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         self.write_provenance_fixture_repo(run_dir)

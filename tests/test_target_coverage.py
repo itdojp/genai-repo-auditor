@@ -89,6 +89,10 @@ class TargetCoverageGuardrailTests(unittest.TestCase):
             ("deep", "normalized coverage.review_depth alias 'bounded_deep' -> 'deep'"),
             normalize_review_depth("bounded_deep", field_path="coverage.review_depth"),
         )
+        self.assertEqual(
+            ("deep", "canonicalized coverage.review_depth value 'Deep' -> 'deep'"),
+            normalize_review_depth("Deep", field_path="coverage.review_depth"),
+        )
 
     def test_normalize_review_depth_rejects_unknown_values(self) -> None:
         with self.assertRaisesRegex(CoverageSerializationError, "invalid review depth 'broad'"):
