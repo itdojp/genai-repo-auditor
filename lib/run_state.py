@@ -24,7 +24,15 @@ def load_json(path: Path, default: Any) -> Any:
 
 def reports_dir(run_dir: Path) -> Path:
     context = load_json(run_dir / "context.json", {}) or {}
-    return run_dir / str(context.get("reports_dir") or "reports")
+    raw = Path(str(context.get("reports_dir") or "reports"))
+    if raw.is_absolute() or ".." in raw.parts:
+        raise ValueError(f"reports_dir must be a relative path under the run directory: {raw}")
+    current = run_dir
+    for part in raw.parts:
+        current = current / part
+        if current.exists() and current.is_symlink():
+            raise ValueError(f"reports_dir must not contain symlink components: {raw}")
+    return run_dir / raw
 
 
 def run_state_path(run_dir: Path) -> Path:
@@ -170,13 +178,14 @@ def paused_error(run_dir: Path, *, action: str) -> str | None:
     try:
         state = load_run_state(run_dir)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
-        state_path = run_state_path(run_dir)
-        if state_path.exists():
-            return (
-                f"Refusing to start {action} because run state could not be read safely: {exc}.\n"
-                f"Fix or remove {state_path} after confirming whether the run is paused."
-            )
-        return None
+        try:
+            state_path = run_state_path(run_dir)
+        except (OSError, ValueError, json.JSONDecodeError):
+            state_path = run_dir / RUN_STATE_REL_PATH
+        return (
+            f"Refusing to start {action} because run state could not be read safely: {exc}.\n"
+            f"Fix or remove {state_path} after confirming whether the run is paused."
+        )
     if str(state.get("status") or "") != PAUSED:
         return None
     return (
