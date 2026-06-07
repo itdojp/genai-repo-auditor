@@ -120,6 +120,13 @@ class CliWorkflowTests(unittest.TestCase):
     def read_codex_calls(self, log_path: Path) -> list[Any]:
         return self.read_jsonl_calls(log_path)
 
+    def read_command_events(self, run_dir: Path) -> list[dict[str, Any]]:
+        ctx = json.loads((run_dir / "context.json").read_text(encoding="utf-8"))
+        path = run_dir / ctx.get("reports_dir", "reports") / "command-events.jsonl"
+        if not path.exists():
+            return []
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
     def assert_codex_exec_approval_config(self, call: list[Any]) -> None:
         self.assertEqual(["exec", "--cd"], call[:2])
         self.assertNotIn("--ask-for-approval", call)
@@ -727,6 +734,8 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn({"name": "issue-ledger.schema.json", "path": "issue-ledger.schema.json"}, manifest["schemas"])
         self.assertIn({"name": "duplicate-decision.schema.json", "path": "duplicate-decision.schema.json"}, manifest["schemas"])
         self.assertIn({"name": "run-state.schema.json", "path": "run-state.schema.json"}, manifest["schemas"])
+        self.assertIn({"name": "command-event.schema.json", "path": "command-event.schema.json"}, manifest["schemas"])
+        self.assertTrue((run_dir / "command-event.schema.json").exists())
         self.assertNotIn("run-manifest.json", self.manifest_artifact_paths(run_dir))
         self.assertIn("prompts/exec/full-audit.prompt.md", self.manifest_artifact_paths(run_dir))
         self.assertNotIn("OPENAI_API_KEY", manifest_text)
@@ -1547,6 +1556,18 @@ class CliWorkflowTests(unittest.TestCase):
         calls = self.read_codex_calls(codex_log)
         self.assertEqual(len(calls), 1, calls)
         self.assertIn(str(final_path), calls[0])
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        event = events[0]
+        self.assertEqual("gra-research", event["command"])
+        self.assertEqual("exec", event["phase"])
+        self.assertEqual("TGT-001", event["target_id"])
+        self.assertEqual(0, event["exit_code"])
+        self.assertGreaterEqual(event["duration_ms"], 0)
+        self.assertEqual("gpt-5.5", event["model"])
+        self.assertEqual("xhigh", event["effort"])
+        self.assertIn("reports/target-research/TGT-001.target.json", event["artifact_paths"])
+        self.assertIn("codex-research-TGT-001-final.md", event["artifact_paths"])
 
     def test_gra_research_exec_failure_marks_target_needs_human_review(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -1580,6 +1601,11 @@ class CliWorkflowTests(unittest.TestCase):
             (run_dir / "codex-research-TGT-001-events.jsonl").read_text(encoding="utf-8"),
         )
         self.assertEqual(len(self.read_codex_calls(codex_log)), 1)
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assertEqual("gra-research", events[0]["command"])
+        self.assertEqual("TGT-001", events[0]["target_id"])
+        self.assertEqual(42, events[0]["exit_code"])
 
     def test_gra_research_goal_prepares_prompt_without_codex_exec(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -1607,6 +1633,11 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(self.target_by_id(run_dir, "TGT-001")["status"], "queued")
         self.assertEqual(self.read_codex_calls(codex_log), [])
         self.assertFalse((run_dir / "codex-research-TGT-001-final.md").exists())
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assertEqual("gra-research", events[0]["command"])
+        self.assertEqual("goal", events[0]["phase"])
+        self.assertEqual("TGT-001", events[0]["target_id"])
 
     def test_gra_gapfill_lists_generates_and_prepares_goal_prompt(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -1671,6 +1702,10 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("Focus on `files_skipped`, `unresolved_questions`, and `gapfill_reason`", prompt_text)
         self.assertNotIn("{{", prompt_text)
         self.assertEqual(self.read_codex_calls(codex_log), [])
+        events = self.read_command_events(run_dir)
+        self.assertEqual(["list", "generate", "generate", "goal"], [event["phase"] for event in events])
+        self.assertTrue(all(event["command"] == "gra-gapfill" for event in events))
+        self.assertEqual("TGT-001", events[-1]["target_id"])
 
     def test_gra_gapfill_exec_renders_seed_and_writes_codex_artifacts(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -1706,6 +1741,13 @@ class CliWorkflowTests(unittest.TestCase):
         calls = self.read_codex_calls(codex_log)
         self.assertEqual(len(calls), 1, calls)
         self.assertIn(str(final_path), calls[0])
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assertEqual("gra-gapfill", events[0]["command"])
+        self.assertEqual("exec", events[0]["phase"])
+        self.assertEqual("TGT-001", events[0]["target_id"])
+        self.assertEqual(0, events[0]["exit_code"])
+        self.assertIn("codex-gapfill-TGT-001-final.md", events[0]["artifact_paths"])
 
     def test_gra_gapfill_respects_configured_reports_dir(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -1735,6 +1777,7 @@ class CliWorkflowTests(unittest.TestCase):
         artifact_paths = {entry["path"] for entry in collect_artifacts(run_dir)}
         self.assertIn("custom-reports/COVERAGE.md", artifact_paths)
         self.assertIn("custom-reports/gapfill-targets.json", artifact_paths)
+        self.assertIn("custom-reports/command-events.jsonl", artifact_paths)
         self.assertIn("custom-reports/target-research", artifact_paths)
         self.assertNotIn("reports/COVERAGE.md", artifact_paths)
 
@@ -2278,6 +2321,92 @@ class CliWorkflowTests(unittest.TestCase):
 
         cp_gapfill = self.run_cmd([REPO_ROOT / "bin" / "gra-gapfill", "--run", run_dir, "--generate"], check=True)
         self.assertIn("Generated or reused 3 gapfill target(s)", cp_gapfill.stdout)
+        command_events = run_dir / "reports" / "command-events.jsonl"
+        with command_events.open("a", encoding="utf-8") as handle:
+            for event in [
+                {
+                    "schema_version": "1",
+                    "run_id": "advanced-workflow-run",
+                    "repo": "example/advanced-workflow",
+                    "command": "gra-research",
+                    "phase": "exec",
+                    "target_id": "TGT-101",
+                    "started_at": "2026-05-28T00:00:00Z",
+                    "ended_at": "2026-05-28T00:00:05Z",
+                    "duration_ms": 5000,
+                    "exit_code": 0,
+                    "model": "gpt-5.5",
+                    "effort": "xhigh",
+                    "artifact_paths": ["reports/target-research/TGT-101.md"],
+                    "source": "genai-repo-auditor",
+                },
+                {
+                    "schema_version": "1",
+                    "run_id": "advanced-workflow-run",
+                    "repo": "example/advanced-workflow",
+                    "command": "gra-research",
+                    "phase": "exec",
+                    "target_id": "TGT-101",
+                    "started_at": "2026-05-28T00:01:00Z",
+                    "ended_at": "2026-05-28T00:01:09Z",
+                    "duration_ms": 9000,
+                    "exit_code": 42,
+                    "model": "gpt-5.5",
+                    "effort": "xhigh",
+                    "artifact_paths": ["codex-research-TGT-101-final.md"],
+                    "source": "genai-repo-auditor",
+                },
+                {
+                    "schema_version": "1",
+                    "run_id": "advanced-workflow-run",
+                    "repo": "example/advanced-workflow",
+                    "command": "gra-validate-report",
+                    "phase": "validate",
+                    "target_id": None,
+                    "started_at": "2026-05-28T00:02:00Z",
+                    "ended_at": "2026-05-28T00:02:01Z",
+                    "duration_ms": 1000,
+                    "exit_code": 1,
+                    "model": None,
+                    "effort": None,
+                    "artifact_paths": ["reports/findings.json"],
+                    "source": "genai-repo-auditor",
+                },
+                {
+                    "schema_version": "1",
+                    "run_id": "advanced-workflow-run",
+                    "repo": "example/advanced-workflow",
+                    "command": "gra-validate-report",
+                    "phase": "validate",
+                    "target_id": None,
+                    "started_at": "2026-05-28T00:03:00Z",
+                    "ended_at": "2026-05-28T00:03:01Z",
+                    "duration_ms": 1000,
+                    "exit_code": 0,
+                    "model": None,
+                    "effort": None,
+                    "artifact_paths": ["reports/findings.json"],
+                    "source": "genai-repo-auditor",
+                },
+            ]:
+                handle.write(json.dumps(event, sort_keys=True) + "\n")
+        taxonomy_log = run_dir / "reports" / "taxonomy-normalizations.jsonl"
+        taxonomy_log.write_text(
+            json.dumps(
+                {
+                    "timestamp": "2026-05-28T00:04:00Z",
+                    "source": "gra-taxonomy-preflight",
+                    "artifact": str(run_dir / "reports" / "targets.json"),
+                    "field_path": "targets.targets[0].taxonomies[0]",
+                    "before": {"name": "CWE", "id": "CWE-284", "label": "Improper Access Control"},
+                    "after": {"name": "CWE Subset", "id": "CWE-862", "label": "Missing Authorization"},
+                    "reason": "alias",
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
         cp_metrics = self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
         self.assertIn("Wrote", cp_metrics.stdout)
@@ -2286,6 +2415,9 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("Chains: 1", cp_metrics.stdout)
         self.assertIn("Proofs: 2", cp_metrics.stdout)
         self.assertIn("Traces: 1", cp_metrics.stdout)
+        self.assertIn("Command events: 5", cp_metrics.stdout)
+        self.assertIn("Validation retries: 1", cp_metrics.stdout)
+        self.assertIn("Taxonomy normalizations: 1", cp_metrics.stdout)
 
         metrics_text = (run_dir / "reports" / "metrics.json").read_text(encoding="utf-8")
         metrics_md = (run_dir / "reports" / "METRICS.md").read_text(encoding="utf-8")
@@ -2316,10 +2448,21 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(3, metrics["gapfill"]["targets_generated"])
         self.assertEqual(1, metrics["traces"]["total"])
         self.assertEqual(2, metrics["issue_publication_plan"]["warning_count"])
+        self.assertEqual(5, metrics["observability"]["total_events"])
+        self.assertEqual(1, metrics["observability"]["failures_by_target"]["TGT-101"])
+        self.assertEqual(1, metrics["observability"]["failures_by_target"]["__run__"])
+        self.assertEqual(1, metrics["observability"]["reruns_by_target"]["TGT-101"])
+        self.assertEqual(1, metrics["observability"]["validation_retry_count"])
+        self.assertEqual(1, metrics["observability"]["validation_retries_by_target"]["__run__"])
+        self.assertEqual(1, metrics["observability"]["taxonomy_normalization_count"])
+        self.assertEqual(1, metrics["observability"]["taxonomy_normalizations_by_target"]["TGT-101"])
+        self.assertEqual("TGT-101", metrics["observability"]["execution_durations"][0]["target_id"])
+        self.assertEqual(9000, metrics["observability"]["execution_durations"][0]["duration_ms"])
         self.assertGreater(metrics["artifacts"]["reports_file_count"], 0)
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
         self.assertIn("Metrics: validated", cp_validate.stdout)
+        self.assertIn("Command events: validated", cp_validate.stdout)
 
         cp_dashboard = self.run_cmd([REPO_ROOT / "bin" / "gra-dashboard", "--run", run_dir], check=True)
         self.assertIn("dashboard.html", cp_dashboard.stdout)
@@ -2328,6 +2471,10 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("metrics.json", dashboard)
         self.assertIn("METRICS.md", dashboard)
         self.assertIn("Downgrade/invalidate rate", dashboard)
+        self.assertIn("Long-running target executions", dashboard)
+        self.assertIn("High retry / rerun targets", dashboard)
+        self.assertIn("Taxonomy normalizations", dashboard)
+        self.assertIn("TGT-101", dashboard)
 
     def test_gra_metrics_handles_missing_optional_artifacts(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

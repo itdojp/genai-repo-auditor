@@ -154,7 +154,7 @@ gra-recon --run runs/OWNER__REPO/RUN_ID --model gpt-5.5 --effort xhigh
 | Workflow category | Research workflow. |
 | Required inputs | `--run RUN_DIR --target TGT-ID`. |
 | Key options | `--mode exec\|goal`, `--model MODEL`, `--effort EFFORT`, `--network`. |
-| Generated outputs | Target seed JSON under `reports/target-research/`, rendered target prompt, Codex event/output files, `taxonomy-preflight-TGT-ID.txt`, optional `reports/taxonomy-normalizations.jsonl`, optional `reports/coverage-normalizations.jsonl` / `reports/AUDIT_LOG.md` entries for `coverage.review_depth` aliases, expected target research report under `reports/target-research/TGT-ID.md`, and possible updates to `reports/findings.json`. Exec mode marks the target `in_progress` before execution and `reviewed` or `needs_human_review` after execution. |
+| Generated outputs | Target seed JSON under `reports/target-research/`, rendered target prompt, Codex event/output files, `taxonomy-preflight-TGT-ID.txt`, a structured command event appended to `reports/command-events.jsonl`, optional `reports/taxonomy-normalizations.jsonl`, optional `reports/coverage-normalizations.jsonl` / `reports/AUDIT_LOG.md` entries for `coverage.review_depth` aliases, expected target research report under `reports/target-research/TGT-ID.md`, and possible updates to `reports/findings.json`. Exec mode marks the target `in_progress` before execution and `reviewed` or `needs_human_review` after execution. |
 | Exit status behavior | `0` for successful goal preparation or successful Codex exec plus taxonomy preflight; `2` when the requested target is not found; exec mode returns Codex execution status or taxonomy preflight status when normalization cannot resolve taxonomy errors. |
 | Security / disclosure cautions | Treat target research as analysis, not exploitation. Keep evidence minimal and avoid reconstructing secret values in outputs. |
 | Related docs | [`docs/TARGET_QUEUE.md`](TARGET_QUEUE.md), [`docs/GOAL_DEEP_DIVE_WORKFLOW.md`](GOAL_DEEP_DIVE_WORKFLOW.md), [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md). |
@@ -174,7 +174,7 @@ gra-research --run runs/OWNER__REPO/RUN_ID --target TGT-001 --mode goal
 | Workflow category | Target coverage workflow. |
 | Required inputs | `--run RUN_DIR` and exactly one action: `--list`, `--generate`, or `--target TGT-ID`. |
 | Key options | `--mode exec\|goal` for `--target`, `--model MODEL`, `--effort EFFORT`, `--network`. |
-| Generated outputs | `--list` prints candidates. `--generate` writes `reports/COVERAGE.md`, `reports/gapfill-targets.json`, one plan per source target under `reports/target-research/TGT-XXX-gapfill.md`, appends deterministic `TGT-GAPFILL-NNN` targets to `reports/targets.json` without duplicating existing source-target requeues, and may write `reports/coverage-normalizations.jsonl` / `reports/AUDIT_LOG.md` entries when review-depth aliases are normalized. `--target` renders `prompts/exec/gapfill-<TGT-ID>.prompt.md` or `prompts/goal/gapfill-<TGT-ID>.goal.md`, writes a seed JSON under `reports/target-research/`, and in exec mode writes Codex event/output files. |
+| Generated outputs | `--list` prints candidates. All actions append a structured command event to `reports/command-events.jsonl`. `--generate` writes `reports/COVERAGE.md`, `reports/gapfill-targets.json`, one plan per source target under `reports/target-research/TGT-XXX-gapfill.md`, appends deterministic `TGT-GAPFILL-NNN` targets to `reports/targets.json` without duplicating existing source-target requeues, and may write `reports/coverage-normalizations.jsonl` / `reports/AUDIT_LOG.md` entries when review-depth aliases are normalized. `--target` renders `prompts/exec/gapfill-<TGT-ID>.prompt.md` or `prompts/goal/gapfill-<TGT-ID>.goal.md`, writes a seed JSON under `reports/target-research/`, and in exec mode writes Codex event/output files. |
 | Exit status behavior | `0` for successful list/generate/goal setup or successful exec; `2` for missing context or unknown target; exec mode returns Codex execution status. |
 | Security / disclosure cautions | Gapfill is bounded local review. It must not broaden into a full audit, modify the target repository, install dependencies, contact live services, or generate exploit instructions. |
 | Related docs | [`docs/TARGET_QUEUE.md`](TARGET_QUEUE.md), [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
@@ -359,11 +359,11 @@ gra-taxonomy-preflight --findings reports/findings.json --targets reports/target
 
 | Field | Details |
 |---|---|
-| Purpose | Validate `findings.json`, optional `targets.json`, optional chain reports, optional proof artifacts, optional cross-repo trace artifacts, optional adversarial validation output, optional scanner index artifacts, optional dependency artifacts, optional issue ledger, optional duplicate decision records, optional run state, controlled taxonomy names/IDs/labels, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
+| Purpose | Validate `findings.json`, optional `targets.json`, optional chain reports, optional proof artifacts, optional cross-repo trace artifacts, optional adversarial validation output, optional scanner index artifacts, optional dependency artifacts, optional issue ledger, optional duplicate decision records, optional run state, optional command event records, controlled taxonomy names/IDs/labels, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
 | Workflow category | Validation workflow. |
 | Required inputs | One of `--run RUN_DIR` or `--findings PATH`. |
 | Key options | `--run RUN_DIR`, `--findings PATH`. |
-| Generated outputs | Console validation result. When called by `gra-audit`, output is commonly captured in `run-summary.txt` and `report-validation.txt`. |
+| Generated outputs | Console validation result and a structured command event appended to `reports/command-events.jsonl`. When called by `gra-audit`, output is commonly captured in `run-summary.txt` and `report-validation.txt`. |
 | Exit status behavior | `0` when validation passes; `1` for invalid JSON or validation errors; parser error status `2` when neither `--run` nor `--findings` is supplied. |
 | Security / disclosure cautions | Validation reduces risk but is not a substitute for human review. Check findings and issue drafts before sharing outside the approved audience. |
 | Related docs | [`docs/TAXONOMIES.md`](TAXONOMIES.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
@@ -383,7 +383,7 @@ gra-validate-report --findings runs/OWNER__REPO/RUN_ID/reports/findings.json
 | Workflow category | Reporting workflow. |
 | Required inputs | `--run RUN_DIR`. |
 | Key options | `--out-json OUT` and `--out-md OUT` to override the default `reports/metrics.json` and `reports/METRICS.md`. |
-| Generated outputs | `reports/metrics.json` and `reports/METRICS.md` with counts for findings, adversarial validation decisions, downgrade/invalidate rate, chains, proofs, gapfill, traces, issue publication plan warnings, artifact counts, and run duration when available. |
+| Generated outputs | `reports/metrics.json` and `reports/METRICS.md` with counts for findings, adversarial validation decisions, downgrade/invalidate rate, chains, proofs, gapfill, traces, issue publication plan warnings, duplicate decisions, command-event durations, failures, reruns, validation retries, taxonomy normalizations, artifact counts, and run duration when available. |
 | Exit status behavior | `0` when metrics are written; parser status `2` for usage errors; unsafe `reports_dir` or unreadable local artifacts return `2`. |
 | Security / disclosure cautions | Metrics are generated from local report artifacts only and intentionally omit raw finding evidence, issue body text, proof evidence, trace evidence, scanner lead bodies, and secret values. Keep metrics local unless aggregate repository risk information is approved for sharing. |
 | Related docs | [`docs/METRICS.md`](METRICS.md), [`docs/REPORTING_AND_STORE.md`](REPORTING_AND_STORE.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
@@ -398,11 +398,11 @@ gra-metrics --run runs/OWNER__REPO/RUN_ID
 
 | Field | Details |
 |---|---|
-| Purpose | Generate a local HTML dashboard summarizing a run's findings, structured finding assessment dimensions, target queue, advanced workflow metrics when present, Scorecard supply-chain posture, dependency risk posture, and scanner result index. |
+| Purpose | Generate a local HTML dashboard summarizing a run's findings, structured finding assessment dimensions, target queue, advanced workflow metrics and observability when present, Scorecard supply-chain posture, dependency risk posture, and scanner result index. |
 | Workflow category | Reporting workflow. |
 | Required inputs | `--run RUN_DIR`. |
 | Key options | `--out OUT` to override the default `reports/dashboard.html`. |
-| Generated outputs | HTML dashboard file with links to `metrics.json` and `METRICS.md` when `gra-metrics` has been run. |
+| Generated outputs | HTML dashboard file with links to `metrics.json` and `METRICS.md` when `gra-metrics` has been run, including longest command durations and high retry / rerun targets from observability metrics. |
 | Exit status behavior | `0` when the dashboard is written; parser status `2` for usage errors. Unexpected unreadable input or write failures surface as non-zero Python errors. |
 | Security / disclosure cautions | The dashboard can contain finding titles, locations, and evidence. Keep it local unless disclosure has been approved. |
 | Related docs | [`docs/REPORTING_AND_STORE.md`](REPORTING_AND_STORE.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |

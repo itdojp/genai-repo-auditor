@@ -21,7 +21,9 @@ experimental/P3 cross-repo trace artifact です。`METRICS.md` /
 advanced workflow metrics artifact です。`issue-ledger.json` は
 `gra-issues` が生成・更新する canonical finding-to-Issue publication ledger
 です。`run-state.json` は `gra-run-state` が生成・更新する run-level pause /
-resume / blocked state artifact です。
+resume / blocked state artifact です。`command-events.jsonl` は target
+research、gapfill、report validation の実行時間・終了コード・関連 artifact
+を記録する structured observability artifact です。
 
 ```text
 reports/
@@ -53,6 +55,7 @@ reports/
   duplicate-decisions/
     SEC-001.json
   run-state.json
+  command-events.jsonl
   VALIDATION.md
   validation.json
   AUDIT_LOG.md
@@ -94,7 +97,8 @@ findings[].labels
 `gra-validate-report` validates `findings.json`, optional `targets.json`,
 optional chain synthesis output, optional proof artifacts, optional adversarial
 validation output, optional cross-repo trace output, optional metrics output,
-optional issue ledger output, optional scanner index artifacts, and optional dependency/posture artifacts
+optional issue ledger output, optional command event output, optional scanner
+index artifacts, and optional dependency/posture artifacts
 against the bundled JSON schemas using the Python standard library. It also
 applies local safety rules before downstream tools can use report-controlled
 paths.
@@ -172,6 +176,13 @@ intentional temporary stop with a resume target/condition, while `blocked`
 means an impasse that needs external input or state change. Paused runs should
 only perform read-only status checks until the pause is cleared.
 
+`command-events.jsonl` is a local structured observability artifact appended by
+`gra-research`, `gra-gapfill`, and `gra-validate-report`. Each line is one JSON
+object with `target_id`, `command`, `phase`, `started_at`, `ended_at`,
+`duration_ms`, `exit_code`, `model`, `effort`, and `artifact_paths`.
+`gra-metrics` uses these events to report per-execution durations, failures,
+reruns, validation retries, and target-level normalization counts.
+
 Important constraints:
 
 - `generated_at` must be parseable ISO-8601.
@@ -196,6 +207,10 @@ Important constraints:
   `active`, `paused`, or `blocked`; `pause_reason` is required for `paused`;
   `block_reason` is required for `blocked`; and `paused_at`, `blocked_at`, and
   `resumed_at` must be parseable ISO-8601 timestamps when present.
+- Optional `reports/command-events.jsonl` records are validated when present.
+  Each line must match `templates/reports/command-event.schema.json`, use a
+  known command/phase, keep artifact paths relative to the run directory, and
+  use non-negative durations with `ended_at` not earlier than `started_at`.
 - Optional `reports/duplicate-decisions/*.json` records are validated when
   present. If `reports/issue-ledger.json` has `published` or `duplicate`
   entries, a matching duplicate decision record is required for each
@@ -271,7 +286,10 @@ Important constraints:
   `source: local-report-artifacts`, set `safety.local_artifacts_only` to `true`,
   and set
   `safety.raw_evidence_copied` / `safety.secrets_copied` to `false`. Metrics
-  output must stay aggregate-only and avoid raw evidence fields.
+  output must stay aggregate-only and avoid raw evidence fields. Its
+  `observability` section may include sanitized command names, phases, target
+  IDs, durations, exit codes, retry counts, failure counts, and taxonomy
+  normalization counts, but must not copy raw evidence or command transcripts.
 
 `issue_body_file`, when present, must point to a regular `.md` file under
 `reports/issue-drafts/`, for example:
