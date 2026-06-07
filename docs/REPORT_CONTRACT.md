@@ -156,6 +156,9 @@ Important constraints:
   `review_depth` must be `none`, `shallow`, `medium`, or `deep`; reviewed,
   skipped, command, and unresolved-question fields must be string lists;
   `gapfill_recommended` must be boolean; and `gapfill_reason` must be a string.
+  `write_targets()` applies write-time guardrails for this field: known aliases
+  such as `bounded-deep` are serialized as `deep`, and unknown values are
+  rejected before `reports/targets.json` is overwritten.
   `gra-gapfill --generate` uses this metadata to write `reports/COVERAGE.md`,
   `reports/gapfill-targets.json`, and bounded `TGT-GAPFILL-NNN` follow-up
   targets without treating coverage gaps as findings.

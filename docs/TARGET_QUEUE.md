@@ -43,6 +43,12 @@ bounded and reviewable:
   - `gapfill_recommended`
   - `gapfill_reason`
 
+`write_targets()` enforces `coverage.review_depth` at serialization time.
+Configured aliases such as `bounded-deep`, `bounded_deep`, and `bounded deep`
+are written as `deep`; any other enum value is rejected before
+`reports/targets.json` is overwritten. Alias normalizations are recorded in
+`reports/coverage-normalizations.jsonl` and appended to `reports/AUDIT_LOG.md`.
+
 Good target:
 
 ```text
