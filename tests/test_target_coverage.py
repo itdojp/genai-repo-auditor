@@ -15,7 +15,7 @@ FIXTURES = REPO_ROOT / "tests" / "fixtures"
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 from gralib import write_targets  # noqa: E402
-from target_coverage import (  # noqa: E402
+from target_coverage_guardrails import (  # noqa: E402
     CoverageSerializationError,
     normalize_review_depth,
     normalize_targets_coverage_for_write,

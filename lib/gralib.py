@@ -162,9 +162,7 @@ def load_targets(run_dir: Path) -> List[Dict[str, Any]]:
 
 
 def write_targets(run_dir: Path, targets: List[Dict[str, Any]]) -> None:
-    # Imported lazily because target_coverage imports this module for shared
-    # run/context helpers.
-    from target_coverage import append_coverage_normalization_log, normalize_targets_coverage_for_write
+    from target_coverage_guardrails import append_coverage_normalization_log, normalize_targets_coverage_for_write
 
     ctx = load_context(run_dir)
     reports_dir = run_dir / ctx.get('reports_dir', 'reports')
@@ -179,7 +177,7 @@ def write_targets(run_dir: Path, targets: List[Dict[str, Any]]) -> None:
         'targets': normalized_targets,
     })
     write_json(reports_dir / 'targets.json', data)
-    append_coverage_normalization_log(run_dir, coverage_changes)
+    append_coverage_normalization_log(reports_dir, coverage_changes)
 
 
 def find_target(run_dir: Path, target_id: str) -> Dict[str, Any]:
