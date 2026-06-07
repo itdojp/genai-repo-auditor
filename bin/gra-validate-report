@@ -43,6 +43,7 @@ PROOFS_PATH = Path("reports/proofs.json")
 PROOFS_DIR = Path("reports/proofs")
 TRACES_PATH = Path("reports/traces.json")
 METRICS_PATH = Path("reports/metrics.json")
+ISSUE_LEDGER_PATH = Path("reports/issue-ledger.json")
 VALIDATION_DECISIONS = {"confirm", "downgrade", "invalidate", "needs-human-review"}
 VALIDATION_SUBJECT_TYPES = {"finding", "chain"}
 VALIDATION_SEVERITIES = SEVERITIES | {"Unknown"}
@@ -903,6 +904,32 @@ def validate_metrics(run_dir: Path, errors: List[str]) -> bool:
     return True
 
 
+def validate_issue_ledger(run_dir: Path, errors: List[str]) -> bool:
+    ledger_path = run_dir / ISSUE_LEDGER_PATH
+    if not ledger_path.exists():
+        return False
+    try:
+        ledger_data = json.loads(ledger_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"issue_ledger invalid JSON: {exc}")
+        return True
+    if not isinstance(ledger_data, dict):
+        errors.append(f"issue_ledger: expected type object, got {json_type_name(ledger_data)}")
+        return True
+    validate_schema(ledger_data, load_schema("issue-ledger.schema.json"), "issue_ledger", errors)
+    validate_generated_at(ledger_data.get("generated_at"), "issue_ledger.generated_at", errors)
+    for index, entry in enumerate(ledger_data.get("findings") or []):
+        if not isinstance(entry, dict):
+            continue
+        body_hash = entry.get("body_hash")
+        if body_hash is not None and not re.fullmatch(r"[a-f0-9]{64}", str(body_hash)):
+            errors.append(f"issue_ledger.findings[{index}].body_hash: expected lowercase SHA-256 or null")
+        current_body_hash = entry.get("current_body_hash")
+        if current_body_hash is not None and not re.fullmatch(r"[a-f0-9]{64}", str(current_body_hash)):
+            errors.append(f"issue_ledger.findings[{index}].current_body_hash: expected lowercase SHA-256 or null")
+    return True
+
+
 def validate_affected_locations(finding: Dict[str, Any], path: str, errors: List[str]) -> None:
     locs = finding.get("affected_locations")
     if not isinstance(locs, list):
@@ -1053,6 +1080,7 @@ def main() -> int:
     proofs_validated = validate_proofs(run_dir, findings, errors)
     traces_validated = validate_traces(run_dir, findings, errors)
     metrics_validated = validate_metrics(run_dir, errors)
+    issue_ledger_validated = validate_issue_ledger(run_dir, errors)
 
     if errors:
         for e in errors:
@@ -1078,6 +1106,8 @@ def main() -> int:
         print("Traces: validated")
     if metrics_validated:
         print("Metrics: validated")
+    if issue_ledger_validated:
+        print("Issue ledger: validated")
     return 0
 
 

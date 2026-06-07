@@ -723,6 +723,7 @@ class CliWorkflowTests(unittest.TestCase):
             "final_status": None,
         })
         self.assertIn({"name": "run-manifest.schema.json", "path": "run-manifest.schema.json"}, manifest["schemas"])
+        self.assertIn({"name": "issue-ledger.schema.json", "path": "issue-ledger.schema.json"}, manifest["schemas"])
         self.assertNotIn("run-manifest.json", self.manifest_artifact_paths(run_dir))
         self.assertIn("prompts/exec/full-audit.prompt.md", self.manifest_artifact_paths(run_dir))
         self.assertNotIn("OPENAI_API_KEY", manifest_text)
@@ -3163,6 +3164,282 @@ class CliWorkflowTests(unittest.TestCase):
         self.assert_gh_called(calls, ["repo", "view"])
         self.assert_gh_called(calls, ["issue", "list"])
         self.assert_gh_called(calls, ["issue", "create"])
+
+    def test_gra_issues_plan_writes_canonical_issue_ledger_for_all_findings(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        findings_path = run_dir / "reports" / "findings.json"
+        findings = json.loads(findings_path.read_text(encoding="utf-8"))
+        low = dict(findings["findings"][0])
+        low.update(
+            {
+                "id": "SEC-002",
+                "fingerprint": "fixture-fingerprint-low-0002",
+                "severity": "Low",
+                "issue_title": "[Security][Low] Low severity fixture finding",
+                "issue_body_file": "",
+            }
+        )
+        findings["findings"].append(low)
+        findings_path.write_text(json.dumps(findings, indent=2) + "\n", encoding="utf-8")
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--plan",
+                "--statuses",
+                "Confirmed",
+            ],
+            check=True,
+        )
+
+        self.assertIn("Wrote issue ledger", cp.stdout)
+        ledger_path = run_dir / "reports" / "issue-ledger.json"
+        ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+        self.assertEqual(ledger["schema_version"], "1")
+        self.assertEqual(ledger["repo"], "example/demo")
+        entries = {entry["finding_id"]: entry for entry in ledger["findings"]}
+        self.assertEqual(sorted(entries), ["SEC-001", "SEC-002"])
+        self.assertEqual(entries["SEC-001"]["publication_status"], "pending")
+        self.assertEqual(entries["SEC-001"]["source_plan"], "reports/issue-publication-plan.json")
+        self.assertEqual(len(entries["SEC-001"]["plan_sha256"]), 64)
+        self.assertEqual(entries["SEC-001"]["body_hash"], entries["SEC-001"]["body_hash"].lower())
+        self.assertEqual(entries["SEC-002"]["publication_status"], "not-selected")
+        self.assertEqual(entries["SEC-002"]["selection_reason"], "severity below High")
+        self.assertIsNone(entries["SEC-002"]["url"])
+        cp_valid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Issue ledger: validated", cp_valid.stdout)
+
+    def test_gra_issues_apply_plan_is_idempotent_from_issue_ledger(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        plan_path = run_dir / "reports" / "issue-publication-plan.json"
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--plan",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            check=True,
+        )
+        issue_url = "https://github.example.invalid/example/demo/issues/72"
+        env, _first_log = self.env_with_gh_log(GRA_MOCK_ISSUE_URL=issue_url)
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply-plan",
+                plan_path,
+            ],
+            env=env,
+            check=True,
+        )
+
+        second_env, second_log = self.env_with_gh_log()
+        if second_log.exists():
+            second_log.unlink()
+        cp_second = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply-plan",
+                plan_path,
+            ],
+            env=second_env,
+            check=True,
+        )
+
+        self.assertIn(f"SKIP ledger SEC-001: {issue_url}", cp_second.stdout)
+        result = json.loads((run_dir / "issues-created.json").read_text(encoding="utf-8"))
+        self.assertEqual(result["created"], [])
+        self.assertEqual(result["skipped"][0]["reason"], "ledger")
+        calls = self.read_gh_calls(second_log)
+        self.assert_gh_called(calls, ["repo", "view"])
+        self.assert_gh_not_called(calls, ["issue", "list"])
+        self.assert_gh_not_called(calls, ["issue", "create"])
+
+    def test_gra_issues_ledger_prevents_same_finding_id_duplicate_after_fingerprint_drift(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        issue_url = "https://github.example.invalid/example/demo/issues/76"
+        env, _first_log = self.env_with_gh_log(GRA_MOCK_ISSUE_URL=issue_url)
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            env=env,
+            check=True,
+        )
+
+        findings_path = run_dir / "reports" / "findings.json"
+        findings = json.loads(findings_path.read_text(encoding="utf-8"))
+        findings["findings"][0]["fingerprint"] = "fixture-fingerprint-drift-0076"
+        findings["findings"][0]["issue_body_file"] = ""
+        findings_path.write_text(json.dumps(findings, indent=2) + "\n", encoding="utf-8")
+
+        second_env, second_log = self.env_with_gh_log()
+        if second_log.exists():
+            second_log.unlink()
+        cp_second = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            env=second_env,
+            check=True,
+        )
+
+        self.assertIn(f"SKIP ledger SEC-001: {issue_url}", cp_second.stdout)
+        calls = self.read_gh_calls(second_log)
+        self.assert_gh_called(calls, ["repo", "view"])
+        self.assert_gh_not_called(calls, ["issue", "list"])
+        self.assert_gh_not_called(calls, ["issue", "create"])
+        ledger = json.loads((run_dir / "reports" / "issue-ledger.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(ledger["findings"]), 1)
+        entry = ledger["findings"][0]
+        self.assertEqual(entry["finding_id"], "SEC-001")
+        self.assertEqual(entry["fingerprint"], "fixture-fingerprint-drift-0076")
+        self.assertEqual(entry["previous_fingerprint"], FIXTURE_FINGERPRINT)
+        self.assertEqual(entry["url"], issue_url)
+        self.assertIn("current fingerprint differs from published ledger fingerprint", entry["drift"])
+
+    def test_gra_issues_verify_ledger_detects_github_drift(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        plan_path = run_dir / "reports" / "issue-publication-plan.json"
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--plan",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            check=True,
+        )
+        issue_url = "https://github.example.invalid/example/demo/issues/73"
+        env, _apply_log = self.env_with_gh_log(GRA_MOCK_ISSUE_URL=issue_url)
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply-plan",
+                plan_path,
+            ],
+            env=env,
+            check=True,
+        )
+
+        drift_env, drift_log = self.env_with_gh_log()
+        cp_drift = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--verify-ledger",
+            ],
+            env=drift_env,
+        )
+        self.assertEqual(cp_drift.returncode, 4, cp_drift.stderr)
+        self.assertIn("Issue ledger drift detected", cp_drift.stderr)
+        self.assertIn("no open GitHub issue found", cp_drift.stderr)
+        self.assert_gh_called(self.read_gh_calls(drift_log), ["issue", "list"])
+
+        ok_env, _ok_log = self.env_with_gh_log(GRA_MOCK_EXISTING_ISSUE_URL=issue_url)
+        cp_ok = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--verify-ledger",
+            ],
+            env=ok_env,
+            check=True,
+        )
+        self.assertIn("Issue ledger verified", cp_ok.stdout)
+
+    def test_gra_issues_verify_ledger_requires_existing_ledger(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-issues", "--run", run_dir, "--verify-ledger"])
+        self.assertEqual(cp.returncode, 2, cp.stderr)
+        self.assertIn("issue ledger not found", cp.stderr)
+
+    def test_gra_metrics_reports_issue_ledger_counts(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        issue_url = "https://github.example.invalid/example/demo/issues/74"
+        env, _log_path = self.env_with_gh_log(GRA_MOCK_ISSUE_URL=issue_url)
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            env=env,
+            check=True,
+        )
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
+        self.assertTrue(metrics["issue_ledger"]["artifact_present"])
+        self.assertEqual(metrics["issue_ledger"]["tracked_findings"], 1)
+        self.assertEqual(metrics["issue_ledger"]["published_findings"], 1)
+        self.assertEqual(metrics["issue_ledger"]["by_publication_status"], {"published": 1})
+
+    def test_gra_store_imports_issue_ledger_when_present(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        issue_url = "https://github.example.invalid/example/demo/issues/75"
+        env, _log_path = self.env_with_gh_log(GRA_MOCK_ISSUE_URL=issue_url)
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            env=env,
+            check=True,
+        )
+        db_path = self.work_dir / "ledger-store.sqlite"
+        self.run_cmd([REPO_ROOT / "bin" / "gra-store", "--run", run_dir, "--db", db_path], check=True)
+
+        with sqlite3.connect(db_path) as conn:
+            row = conn.execute("select finding_id, fingerprint, url, data_json from issues").fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row[:3], ("SEC-001", FIXTURE_FINGERPRINT, issue_url))
+        stored = json.loads(row[3])
+        self.assertEqual(stored["publication_status"], "published")
+        self.assertEqual(stored["body_hash"], stored["body_hash"].lower())
 
     def test_gra_issues_plan_includes_advanced_validation_summary(self) -> None:
         run_dir = self.copy_fixture_run("advanced-workflow-run")

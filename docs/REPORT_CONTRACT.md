@@ -18,7 +18,9 @@ safe local proof artifact です。`TRACE.md` / `traces.json` は `gra-trace`
 が producer finding と consumer repository の reachability を整理する
 experimental/P3 cross-repo trace artifact です。`METRICS.md` /
 `metrics.json` は `gra-metrics` が local report artifacts だけから生成する
-advanced workflow metrics artifact です。
+advanced workflow metrics artifact です。`issue-ledger.json` は
+`gra-issues` が生成・更新する canonical finding-to-Issue publication ledger
+です。
 
 ```text
 reports/
@@ -45,6 +47,8 @@ reports/
     sec-001-org-consumer.subjects.json
   METRICS.md
   metrics.json
+  issue-publication-plan.json
+  issue-ledger.json
   VALIDATION.md
   validation.json
   AUDIT_LOG.md
@@ -86,7 +90,7 @@ findings[].labels
 `gra-validate-report` validates `findings.json`, optional `targets.json`,
 optional chain synthesis output, optional proof artifacts, optional adversarial
 validation output, optional cross-repo trace output, optional metrics output,
-optional scanner index artifacts, and optional dependency/posture artifacts
+optional issue ledger output, optional scanner index artifacts, and optional dependency/posture artifacts
 against the bundled JSON schemas using the Python standard library. It also
 applies local safety rules before downstream tools can use report-controlled
 paths.
@@ -138,9 +142,17 @@ installation, or producer/consumer repository modification.
 `metrics.json` is a local-only aggregate metrics artifact produced by
 `gra-metrics`. It records counts and rates for findings, adversarial validation
 decisions, chains, proofs, gapfill, traces, Issue publication plan warnings,
-artifact counts, and run duration when local metadata is available. It must not
-copy raw finding evidence, issue body text, proof evidence, trace evidence,
-scanner lead bodies, or secret values.
+Issue ledger publication states, artifact counts, and run duration when local
+metadata is available. It must not copy raw finding evidence, issue body text,
+proof evidence, trace evidence, scanner lead bodies, or secret values.
+
+`issue-ledger.json` is a local publication ledger produced by `gra-issues`.
+It records each finding's publication state, fingerprint, title, labels, body
+hash, source plan, plan hash, GitHub Issue URL/number, state, published time,
+and drift warnings when current findings or GitHub inventory no longer match
+the ledger. It is the canonical local source for idempotent Issue publication;
+`issues-created.json` remains a per-command result artifact for backward
+compatibility.
 
 Important constraints:
 

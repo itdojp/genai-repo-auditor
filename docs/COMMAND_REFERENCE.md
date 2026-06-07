@@ -33,7 +33,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Scanner triage | `gra-ingest`, `gra-scanner-triage` | Raw scanner copies, redacted normalized leads, scanner index, Scorecard posture artifacts, dependency posture artifacts, triage output |
 | Validation | `gra-taxonomy-preflight`, `gra-validate-report` | Controlled taxonomy preflight, report contract validation result |
 | Reporting / persistence | `gra-metrics`, `gra-dashboard`, `gra-sarif`, `gra-store`, `gra-index` | Local metrics, HTML dashboard, SARIF, SQLite store, run index |
-| Issue workflow | `gra-issues` | Dry-run previews or GitHub Issues after human review |
+| Issue workflow | `gra-issues` | Dry-run previews, canonical issue ledger, ledger verification, or GitHub Issues after human review |
 
 ## `gra-audit`
 
@@ -450,10 +450,10 @@ gra-index --runs-dir runs
 | Purpose | Create GitHub Issues from reviewed findings, preview what would be created in dry-run mode, or bind approval to an immutable publication plan. |
 | Workflow category | Issue workflow. |
 | Required inputs | `--run RUN_DIR`. The target repository is read from `findings.json` or `context.json`, or overridden with `--repo OWNER/REPO`. The `gh` CLI must be authenticated for apply mode. |
-| Key options | `--repo OWNER/REPO`, `--min-severity Critical\|High\|Medium\|Low\|Informational`, `--statuses LIST`, `--dry-run`, `--plan`, `--apply`, `--apply-plan PLAN`, `--replan`, `--require-advanced-validation`, `--allow-public`, `--create-labels`, `--assignee ASSIGNEE`, `--max-issues N`. |
-| Generated outputs | Preview text in dry-run mode, `reports/issue-publication-plan.json` in plan mode, GitHub Issues in apply mode, and `issues-created.json` under the run directory. `issues-created.json` records `plan_sha256` when `--apply-plan` is used. |
-| Exit status behavior | `0` for successful dry-run, plan creation, or issue creation; `2` for missing repo metadata, invalid plans, or unsafe issue body references; `3` when apply mode refuses public or unknown repository visibility without `--allow-public`; `4` when selected findings exceed `--max-issues`, an immutable publication plan no longer matches current findings/drafts/advanced evidence, or `--require-advanced-validation` finds missing required evidence or blocking validation decisions; `gh` command failures return non-zero. |
-| Security / disclosure cautions | Default behavior is dry-run. Apply mode refuses public or unknown repositories unless `--allow-public` is explicitly provided. Prefer `--plan` followed by reviewed `--apply-plan` when approval must be bound to exact Issue titles, labels, fingerprints, body hashes, chain membership, and advanced-validation evidence state. Human review is required before creating issues, especially for security-sensitive findings and issue body drafts. `ATTACK_CHAINS.md` contents are non-public by default and are not copied into generated Issue bodies. |
+| Key options | `--repo OWNER/REPO`, `--min-severity Critical\|High\|Medium\|Low\|Informational`, `--statuses LIST`, `--dry-run`, `--plan`, `--apply`, `--apply-plan PLAN`, `--replan`, `--verify-ledger`, `--require-advanced-validation`, `--allow-public`, `--create-labels`, `--assignee ASSIGNEE`, `--max-issues N`. |
+| Generated outputs | Preview text in dry-run mode, `reports/issue-publication-plan.json` in plan mode, canonical `reports/issue-ledger.json` for all modes that evaluate findings, GitHub Issues in apply mode, and `issues-created.json` under the run directory. `issues-created.json` records `plan_sha256` when `--apply-plan` is used. |
+| Exit status behavior | `0` for successful dry-run, plan creation, ledger verification, or issue creation; `2` for missing repo metadata, invalid plans/ledgers, incompatible issue-workflow options, or unsafe issue body references; `3` when apply mode refuses public or unknown repository visibility without `--allow-public`; `4` when selected findings exceed `--max-issues`, an immutable publication plan no longer matches current findings/drafts/advanced evidence, `--verify-ledger` detects GitHub inventory drift, or `--require-advanced-validation` finds missing required evidence or blocking validation decisions; `gh` command failures return non-zero. |
+| Security / disclosure cautions | Default behavior is dry-run. Apply mode refuses public or unknown repositories unless `--allow-public` is explicitly provided. Prefer `--plan` followed by reviewed `--apply-plan` when approval must be bound to exact Issue titles, labels, fingerprints, body hashes, chain membership, and advanced-validation evidence state. `reports/issue-ledger.json` is the local source of truth for publication state and is checked before creating duplicate Issues on re-run. Human review is required before creating issues, especially for security-sensitive findings and issue body drafts. `ATTACK_CHAINS.md` contents are non-public by default and are not copied into generated Issue bodies. |
 | Related docs | [`docs/ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
 
 Examples:
@@ -462,6 +462,7 @@ Examples:
 gra-issues --run runs/OWNER__REPO/RUN_ID --dry-run
 gra-issues --run runs/OWNER__REPO/RUN_ID --plan --require-advanced-validation
 gra-issues --run runs/OWNER__REPO/RUN_ID --apply-plan runs/OWNER__REPO/RUN_ID/reports/issue-publication-plan.json --create-labels
+gra-issues --run runs/OWNER__REPO/RUN_ID --verify-ledger
 gra-issues --run runs/OWNER__REPO/RUN_ID --apply --create-labels
 ```
 

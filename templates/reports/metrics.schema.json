@@ -16,6 +16,7 @@
     "gapfill",
     "traces",
     "issue_publication_plan",
+    "issue_ledger",
     "artifacts",
     "run_duration"
   ],
@@ -110,6 +111,17 @@
         "artifact_present": {"type": "boolean"},
         "selected_findings": {"type": "integer", "minimum": 0},
         "warning_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "issue_ledger": {
+      "type": "object",
+      "required": ["artifact_present", "tracked_findings", "published_findings", "by_publication_status", "drift_warning_count"],
+      "properties": {
+        "artifact_present": {"type": "boolean"},
+        "tracked_findings": {"type": "integer", "minimum": 0},
+        "published_findings": {"type": "integer", "minimum": 0},
+        "by_publication_status": {"type": "object"},
+        "drift_warning_count": {"type": "integer", "minimum": 0}
       }
     },
     "artifacts": {
