@@ -990,8 +990,15 @@ def validate_duplicate_decisions(run_dir: Path, errors: List[str]) -> bool:
     for entry in published_entries:
         finding_id = str(entry.get("finding_id") or "")
         fingerprint = str(entry.get("fingerprint") or "")
-        if (finding_id, fingerprint) not in records:
+        record = records.get((finding_id, fingerprint))
+        if not record:
             errors.append(f"duplicate_decisions: missing record for published ledger finding {finding_id} fingerprint {fingerprint}")
+            continue
+        if str(entry.get("publication_status") or "") == "duplicate" and record.get("decision") != "exact-duplicate":
+            errors.append(
+                f"duplicate_decisions: duplicate ledger finding {finding_id} requires exact-duplicate decision, "
+                f"got {record.get('decision')!r}"
+            )
     return True
 
 

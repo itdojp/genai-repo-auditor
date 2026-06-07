@@ -3602,6 +3602,34 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(cp.returncode, 4, cp.stderr)
         self.assertIn("duplicate decision record missing", cp.stderr)
 
+    def test_validate_report_rejects_duplicate_ledger_with_non_duplicate_decision(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        existing_url = "https://github.example.invalid/example/demo/issues/78"
+        env, _log_path = self.env_with_gh_log(GRA_MOCK_EXISTING_ISSUE_URL=existing_url)
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            env=env,
+            check=True,
+        )
+        decision_path = run_dir / "reports" / "duplicate-decisions" / "SEC-001.json"
+        decision = json.loads(decision_path.read_text(encoding="utf-8"))
+        decision["decision"] = "new"
+        decision_path.write_text(json.dumps(decision, indent=2) + "\n", encoding="utf-8")
+
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir])
+
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("requires exact-duplicate decision", cp.stderr)
+
     def test_gra_metrics_reports_issue_ledger_counts(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         issue_url = "https://github.example.invalid/example/demo/issues/74"
