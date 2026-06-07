@@ -45,9 +45,9 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Workflow category | Prepare / exec / validation entry point. |
 | Required inputs | `--repo OWNER/REPO`. The host must have `git`, `gh`, `codex`, and `python3` available. |
 | Key options | `--branch REF`, `--mode exec\|goal\|prepare`, `--model MODEL`, `--effort EFFORT`, `--depth N`, `--run-id ID`, `--runs-dir DIR`, `--codex-json`, `--network`, `--no-lock`, `--allow-invalid-report`. |
-| Generated outputs | `context.json`, `run-manifest.json`, cloned `repo/`, `reports/`, rendered `prompt.exec.md` / `prompt.goal.md`, `prompts/`, copied schemas and taxonomy templates, Codex event/output files, `taxonomy-preflight.txt`, `report-validation.txt`, and `run-summary.txt`. |
+| Generated outputs | `context.json`, `run-manifest.json`, cloned `repo/`, `reports/`, rendered `prompt.exec.md` / `prompt.goal.md`, `prompts/`, copied schemas and taxonomy templates, Codex event/output files, `taxonomy-preflight.txt`, `report-validation.txt`, and `run-summary.txt`. The run manifest classifies artifacts as `latest`, `supporting`, or `archive` and records SHA-256 digests for file artifacts. |
 | Exit status behavior | `0` for successful prepare/goal setup or successful exec with valid report; `2` for usage errors; `1` for missing required local commands or missing/invalid reports when Codex itself succeeds; `12` for lock contention; in exec mode Codex, taxonomy preflight, or validation status can be propagated. |
-| Security / disclosure cautions | Use only on repositories you are authorized to audit. Keep generated reports local. `run-manifest.json` is bounded, run-relative metadata for support diagnostics; it must not be treated as a substitute for reviewing findings or issue drafts. Use `--network` and `--allow-invalid-report` only with explicit operational justification. Do not disable locks for concurrent same-repository audits unless you can isolate output paths safely. |
+| Security / disclosure cautions | Use only on repositories you are authorized to audit. Keep generated reports local. `run-manifest.json` is bounded, run-relative metadata for support diagnostics; it must not be treated as a substitute for reviewing findings or issue drafts, and `archive` retention does not make transcripts or scanner leads safe to publish. Use `--network` and `--allow-invalid-report` only with explicit operational justification. Do not disable locks for concurrent same-repository audits unless you can isolate output paths safely. |
 | Related docs | [`docs/LOCAL_INSTALL_AND_AUDIT.md`](LOCAL_INSTALL_AND_AUDIT.md), [`docs/NORMAL_WORKFLOW.md`](NORMAL_WORKFLOW.md), [`docs/GOAL_DEEP_DIVE_WORKFLOW.md`](GOAL_DEEP_DIVE_WORKFLOW.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
 
 Example:
@@ -384,11 +384,11 @@ gra-taxonomy-preflight --findings reports/findings.json --targets reports/target
 
 | Field | Details |
 |---|---|
-| Purpose | Validate `findings.json`, optional `targets.json`, optional chain reports, optional proof artifacts, optional cross-repo trace artifacts, optional adversarial validation output, optional scanner index artifacts, optional dependency artifacts, optional issue ledger, optional duplicate decision records, optional run state, optional command event records, controlled taxonomy names/IDs/labels, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
+| Purpose | Validate `findings.json`, optional `targets.json`, optional chain reports, optional proof artifacts, optional cross-repo trace artifacts, optional adversarial validation output, optional scanner index artifacts, optional dependency artifacts, optional issue ledger, optional duplicate decision records, optional run state, optional command event records, optional run manifest artifact retention and digest hygiene, controlled taxonomy names/IDs/labels, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
 | Workflow category | Validation workflow. |
 | Required inputs | One of `--run RUN_DIR` or `--findings PATH`. |
 | Key options | `--run RUN_DIR`, `--findings PATH`. |
-| Generated outputs | Console validation result and a structured command event appended to `reports/command-events.jsonl`. When called by `gra-audit`, output is commonly captured in `run-summary.txt` and `report-validation.txt`. |
+| Generated outputs | Console validation result, including `Run manifest: validated` when `run-manifest.json` passes hygiene checks, and a structured command event appended to `reports/command-events.jsonl`. When called by `gra-audit`, output is commonly captured in `run-summary.txt` and `report-validation.txt`. |
 | Exit status behavior | `0` when validation passes; `1` for invalid JSON or validation errors; parser error status `2` when neither `--run` nor `--findings` is supplied. |
 | Security / disclosure cautions | Validation reduces risk but is not a substitute for human review. Check findings and issue drafts before sharing outside the approved audience. |
 | Related docs | [`docs/TAXONOMIES.md`](TAXONOMIES.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
@@ -408,7 +408,7 @@ gra-validate-report --findings runs/OWNER__REPO/RUN_ID/reports/findings.json
 | Workflow category | Reporting workflow. |
 | Required inputs | `--run RUN_DIR`. |
 | Key options | `--out-json OUT` and `--out-md OUT` to override the default `reports/metrics.json` and `reports/METRICS.md`. |
-| Generated outputs | `reports/metrics.json` and `reports/METRICS.md` with counts for findings, adversarial validation decisions, downgrade/invalidate rate, chains, proofs, gapfill current/cumulative queue state, traces, issue publication plan warnings, duplicate decisions, command-event durations, failures, reruns, validation retries, taxonomy normalizations, artifact counts, and run duration when available. |
+| Generated outputs | `reports/metrics.json` and `reports/METRICS.md` with counts for findings, adversarial validation decisions, downgrade/invalidate rate, chains, proofs, gapfill current/cumulative queue state, traces, issue publication plan warnings, duplicate decisions, command-event durations, failures, reruns, validation retries, taxonomy normalizations, artifact counts, manifest retention buckets, manifest hygiene warning counts, and run duration when available. |
 | Exit status behavior | `0` when metrics are written; parser status `2` for usage errors; unsafe `reports_dir` or unreadable local artifacts return `2`. |
 | Security / disclosure cautions | Metrics are generated from local report artifacts only and intentionally omit raw finding evidence, issue body text, proof evidence, trace evidence, scanner lead bodies, and secret values. Keep metrics local unless aggregate repository risk information is approved for sharing. |
 | Related docs | [`docs/METRICS.md`](METRICS.md), [`docs/REPORTING_AND_STORE.md`](REPORTING_AND_STORE.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
@@ -423,11 +423,11 @@ gra-metrics --run runs/OWNER__REPO/RUN_ID
 
 | Field | Details |
 |---|---|
-| Purpose | Generate a local HTML dashboard summarizing a run's findings, structured finding assessment dimensions, target queue, gapfill current/cumulative queue state, advanced workflow metrics and observability when present, Scorecard supply-chain posture, dependency risk posture, and scanner result index. |
+| Purpose | Generate a local HTML dashboard summarizing a run's findings, structured finding assessment dimensions, target queue, gapfill current/cumulative queue state, advanced workflow metrics, artifact retention, and observability when present, Scorecard supply-chain posture, dependency risk posture, and scanner result index. |
 | Workflow category | Reporting workflow. |
 | Required inputs | `--run RUN_DIR`. |
 | Key options | `--out OUT` to override the default `reports/dashboard.html`. |
-| Generated outputs | HTML dashboard file with links to `metrics.json` and `METRICS.md` when `gra-metrics` has been run, including current source-to-gapfill relationships, prioritized next gapfill targets, longest command durations, and high retry / rerun targets from observability metrics. |
+| Generated outputs | HTML dashboard file with links to `metrics.json` and `METRICS.md` when `gra-metrics` has been run, including current source-to-gapfill relationships, prioritized next gapfill targets, latest/archive artifact retention counts, manifest hygiene warnings, longest command durations, and high retry / rerun targets from observability metrics. |
 | Exit status behavior | `0` when the dashboard is written; parser status `2` for usage errors. Unexpected unreadable input or write failures surface as non-zero Python errors. |
 | Security / disclosure cautions | The dashboard can contain finding titles, locations, and evidence. Keep it local unless disclosure has been approved. |
 | Related docs | [`docs/REPORTING_AND_STORE.md`](REPORTING_AND_STORE.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |

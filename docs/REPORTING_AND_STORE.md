@@ -8,12 +8,20 @@ gra-validate-report --run runs/OWNER__REPO/RUN_ID
 
 Each `gra-audit` run writes `run-manifest.json` at the run root. The manifest
 contains bounded provenance metadata such as auditor version, command mode,
-repository ref, network setting, schema filenames, and generated artifact paths.
-It does not contain environment variables, credentials, raw scanner contents, or
-full finding evidence. Paths in the manifest are run-relative; the artifact list
-intentionally omits `run-manifest.json` itself to avoid unstable self-referential
-size metadata. Treat it as support metadata; it is not a substitute for human
-review of `reports/findings.json`, issue drafts, or scanner leads.
+repository ref, network setting, schema filenames, generated artifact paths,
+retention categories, and file size / SHA-256 digests. It does not contain
+environment variables, credentials, raw scanner contents, or full finding
+evidence. Paths in the manifest are run-relative; the artifact list intentionally
+omits `run-manifest.json` itself to avoid unstable self-referential size
+metadata. Treat it as support metadata; it is not a substitute for human review
+of `reports/findings.json`, issue drafts, or scanner leads.
+
+The manifest separates `latest` status artifacts from `supporting` files and
+`archive` reproducibility artifacts. `artifact_retention.latest_status_artifacts`
+is the canonical handoff set for current run status. `archive_artifacts` keeps
+prompts, transcripts, target research, variant analysis, scanner-result trees,
+and similar logs discoverable with digests even when they are not active
+validation targets.
 
 Generate local metrics and dashboard:
 
@@ -25,15 +33,16 @@ open runs/OWNER__REPO/RUN_ID/reports/dashboard.html
 
 The metrics report summarizes findings, validation decisions,
 downgrade/invalidate rate, chains, proofs, gapfill, traces, Issue plan warnings,
-Issue ledger publication states, artifact counts, and run duration when local metadata is available. It
-intentionally omits raw finding evidence, issue body text, proof evidence, trace
-evidence, scanner lead bodies, and secret values.
+Issue ledger publication states, artifact counts, manifest retention buckets,
+manifest hygiene warning counts, and run duration when local metadata is
+available. It intentionally omits raw finding evidence, issue body text, proof
+evidence, trace evidence, scanner lead bodies, and secret values.
 
 The dashboard summarizes findings, target status, taxonomy mappings, advanced
-workflow metrics when `reports/metrics.json` exists, OpenSSF Scorecard
-supply-chain posture when `reports/supply-chain-posture.json` exists, dependency
-risk posture when `reports/dependencies.json` exists, and the scanner result
-index.
+workflow metrics when `reports/metrics.json` exists, artifact retention status,
+OpenSSF Scorecard supply-chain posture when `reports/supply-chain-posture.json`
+exists, dependency risk posture when `reports/dependencies.json` exists, and the
+scanner result index.
 
 Generate SARIF:
 

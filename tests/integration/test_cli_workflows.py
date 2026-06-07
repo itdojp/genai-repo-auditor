@@ -153,6 +153,10 @@ class CliWorkflowTests(unittest.TestCase):
         manifest = self.load_manifest(run_dir)
         return {str(item["path"]) for item in manifest["artifacts"]}
 
+    def manifest_artifacts_by_path(self, run_dir: Path) -> dict[str, dict]:
+        manifest = self.load_manifest(run_dir)
+        return {str(item["path"]): item for item in manifest["artifacts"]}
+
     def write_optional_posture_artifacts(self, run_dir: Path) -> None:
         reports = run_dir / "reports"
         (run_dir / "run-manifest.json").write_text(
@@ -738,6 +742,13 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertTrue((run_dir / "command-event.schema.json").exists())
         self.assertNotIn("run-manifest.json", self.manifest_artifact_paths(run_dir))
         self.assertIn("prompts/exec/full-audit.prompt.md", self.manifest_artifact_paths(run_dir))
+        artifacts_by_path = self.manifest_artifacts_by_path(run_dir)
+        self.assertEqual("archive", artifacts_by_path["prompts/exec/full-audit.prompt.md"]["retention"])
+        self.assertRegex(artifacts_by_path["context.json"]["sha256"], r"^[a-f0-9]{64}$")
+        self.assertEqual(
+            len(manifest["artifact_retention"]["archive_artifacts"]),
+            manifest["artifact_retention"]["by_retention"]["archive"],
+        )
         self.assertNotIn("OPENAI_API_KEY", manifest_text)
         self.assertNotIn("fixture-secret-value", manifest_text)
         self.assertNotIn(str(self.runs_dir), manifest_text)
@@ -842,6 +853,18 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("codex-final.md", artifact_paths)
         self.assertIn("reports/findings.json", artifact_paths)
         self.assertIn("run-manifest.schema.json", artifact_paths)
+        artifacts_by_path = self.manifest_artifacts_by_path(run_dir)
+        self.assertEqual("latest", artifacts_by_path["run-summary.txt"]["retention"])
+        self.assertEqual("latest", artifacts_by_path["report-validation.txt"]["retention"])
+        self.assertEqual("latest", artifacts_by_path["reports/findings.json"]["retention"])
+        self.assertEqual("archive", artifacts_by_path["codex-events.jsonl"]["retention"])
+        self.assertEqual("supporting", artifacts_by_path["run-manifest.schema.json"]["retention"])
+        self.assertRegex(artifacts_by_path["reports/findings.json"]["sha256"], r"^[a-f0-9]{64}$")
+        retention = manifest["artifact_retention"]
+        self.assertIn("run-summary.txt", retention["latest_status_artifacts"])
+        self.assertIn("report-validation.txt", retention["latest_status_artifacts"])
+        self.assertIn("reports/findings.json", retention["latest_status_artifacts"])
+        self.assertIn("codex-events.jsonl", retention["archive_artifacts"])
         codex_calls = self.read_codex_calls(codex_log)
         self.assertEqual(1, len(codex_calls), codex_calls)
         self.assert_codex_exec_approval_config(codex_calls[0])
@@ -2469,6 +2492,9 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("Command events: 5", cp_metrics.stdout)
         self.assertIn("Validation retries: 1", cp_metrics.stdout)
         self.assertIn("Taxonomy normalizations: 1", cp_metrics.stdout)
+        self.assertIn("Latest status artifacts:", cp_metrics.stdout)
+        self.assertIn("Archive artifacts:", cp_metrics.stdout)
+        self.assertIn("Manifest hygiene warnings:", cp_metrics.stdout)
 
         metrics_text = (run_dir / "reports" / "metrics.json").read_text(encoding="utf-8")
         metrics_md = (run_dir / "reports" / "METRICS.md").read_text(encoding="utf-8")
@@ -2513,6 +2539,10 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual("TGT-101", metrics["observability"]["execution_durations"][0]["target_id"])
         self.assertEqual(9000, metrics["observability"]["execution_durations"][0]["duration_ms"])
         self.assertGreater(metrics["artifacts"]["reports_file_count"], 0)
+        self.assertIn("manifest_by_retention", metrics["artifacts"])
+        self.assertIn("latest_status_artifact_count", metrics["artifacts"])
+        self.assertIn("archive_artifact_count", metrics["artifacts"])
+        self.assertIn("manifest_hygiene_warnings", metrics["artifacts"])
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
         self.assertIn("Metrics: validated", cp_validate.stdout)
@@ -2532,6 +2562,9 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("Gapfill current and cumulative queue", dashboard)
         self.assertIn("Current source-to-gapfill relationships", dashboard)
         self.assertIn("Next gapfill targets", dashboard)
+        self.assertIn("Artifact retention", dashboard)
+        self.assertIn("Latest status artifacts", dashboard)
+        self.assertIn("Archive artifacts", dashboard)
 
     def test_gra_metrics_handles_missing_optional_artifacts(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -2621,7 +2654,17 @@ class CliWorkflowTests(unittest.TestCase):
             encoding="utf-8",
         )
         (run_dir / "run-manifest.json").write_text(
-            json.dumps({"artifacts": [{"path": "reports/findings.json", "kind": secret}]}, indent=2) + "\n",
+            json.dumps(
+                {
+                    "artifacts": [{"path": "reports/findings.json", "kind": secret, "retention": secret}],
+                    "artifact_retention": {
+                        "latest_status_artifacts": secret,
+                        "archive_artifacts": secret,
+                    },
+                },
+                indent=2,
+            )
+            + "\n",
             encoding="utf-8",
         )
 
@@ -2639,6 +2682,10 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(1, metrics["gapfill"]["targets_by_status"]["unknown"])
         self.assertEqual(1, metrics["traces"]["by_reachable"]["Not assessed"])
         self.assertEqual(1, metrics["artifacts"]["manifest_by_kind"]["unknown"])
+        self.assertEqual(1, metrics["artifacts"]["manifest_by_retention"]["unknown"])
+        self.assertEqual(0, metrics["artifacts"]["latest_status_artifact_count"])
+        self.assertEqual(0, metrics["artifacts"]["archive_artifact_count"])
+        self.assertEqual(1, metrics["artifacts"]["manifest_hygiene_warnings"])
 
     def test_gra_trace_exec_with_consumer_run_writes_trace_artifacts(self) -> None:
         producer_run = self.copy_fixture_run("minimal-run")

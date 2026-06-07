@@ -23,9 +23,13 @@ advanced workflow metrics artifact です。`issue-ledger.json` は
 です。`run-state.json` は `gra-run-state` が生成・更新する run-level pause /
 resume / blocked state artifact です。`command-events.jsonl` は target
 research、gapfill、report validation の実行時間・終了コード・関連 artifact
-を記録する structured observability artifact です。
+を記録する structured observability artifact です。The run root also contains
+`run-manifest.json`, which is the bounded, run-relative artifact inventory for
+handoff and support diagnostics. It records each manifest artifact's retention
+category and, for files, size plus SHA-256 digest.
 
 ```text
+run-manifest.json
 reports/
   AUDIT_SUMMARY.md
   THREAT_MODEL.md
@@ -97,9 +101,9 @@ findings[].labels
 `gra-validate-report` validates `findings.json`, optional `targets.json`,
 optional chain synthesis output, optional proof artifacts, optional adversarial
 validation output, optional cross-repo trace output, optional metrics output,
-optional issue ledger output, optional command event output, optional scanner
-index artifacts, and optional dependency/posture artifacts
-against the bundled JSON schemas using the Python standard library. It also
+optional issue ledger output, optional command event output, optional run
+manifest output, optional scanner index artifacts, and optional dependency/posture
+artifacts against the bundled JSON schemas using the Python standard library. It also
 applies local safety rules before downstream tools can use report-controlled
 paths.
 
@@ -183,6 +187,26 @@ object with `target_id`, `command`, `phase`, `started_at`, `ended_at`,
 `gra-metrics` uses these events to report per-execution durations, failures,
 reruns, validation retries, and target-level normalization counts.
 
+`run-manifest.json` is a run-root support artifact produced by `gra-audit`.
+Its `artifacts[]` entries use run-relative paths and include `kind`,
+`retention`, and file `size_bytes` / `sha256` metadata when applicable. The
+retention categories are:
+
+- `latest`: canonical handoff artifacts needed to understand the latest run
+  status, such as `run-summary.txt`, `report-validation.txt`, `findings.json`,
+  `targets.json`, `metrics.json`, `issue-ledger.json`, `run-state.json`, and
+  `dashboard.html` when present.
+- `supporting`: bounded schemas and state files that support validation and
+  troubleshooting but are not the primary status handoff.
+- `archive`: prompts, transcripts, raw Codex event logs, target research,
+  variant analysis, and scanner-result subtrees retained for reproducibility.
+  Archive artifacts are retained and digest-tracked, but they are not treated as
+  active report validation targets by themselves.
+
+The `artifact_retention` summary lists latest, supporting, and archive artifact
+paths in one place so operators can distinguish canonical current status from
+reproducibility archives.
+
 Important constraints:
 
 - `generated_at` must be parseable ISO-8601.
@@ -215,6 +239,14 @@ Important constraints:
   Each line must match `templates/reports/command-event.schema.json`, use a
   known command/phase, keep artifact paths relative to the run directory, and
   use non-negative durations with `ended_at` not earlier than `started_at`.
+- Optional `run-manifest.json` is validated when present. Artifact paths must be
+  relative to the run directory, must not traverse through `..` or symlink
+  components, and must exist with the declared `kind`. File artifacts must have
+  matching `size_bytes` and lowercase SHA-256 digest values. Completed
+  manifests must have a non-empty latest-status artifact list. Latest/archive
+  summary paths must be present in `artifacts[]`, must use the corresponding
+  retention category, must not overlap, and `by_retention` counts must match the
+  artifact list.
 - Optional `reports/duplicate-decisions/*.json` records are validated when
   present. If `reports/issue-ledger.json` has `published` or `duplicate`
   entries, a matching duplicate decision record is required for each
@@ -297,7 +329,9 @@ Important constraints:
   output must stay aggregate-only and avoid raw evidence fields. Its
   `observability` section may include sanitized command names, phases, target
   IDs, durations, exit codes, retry counts, failure counts, and taxonomy
-  normalization counts, but must not copy raw evidence or command transcripts.
+  normalization counts, and its `artifacts` section may include manifest
+  retention counts and hygiene warning counts, but it must not copy raw evidence
+  or command transcripts.
 
 `issue_body_file`, when present, must point to a regular `.md` file under
 `reports/issue-drafts/`, for example:

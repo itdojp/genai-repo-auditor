@@ -42,6 +42,9 @@ def main() -> int:
     print(f"Command events: {metrics['observability']['total_events']}")
     print(f"Validation retries: {metrics['observability']['validation_retry_count']}")
     print(f"Taxonomy normalizations: {metrics['observability']['taxonomy_normalization_count']}")
+    print(f"Latest status artifacts: {metrics['artifacts']['latest_status_artifact_count']}")
+    print(f"Archive artifacts: {metrics['artifacts']['archive_artifact_count']}")
+    print(f"Manifest hygiene warnings: {metrics['artifacts']['manifest_hygiene_warnings']}")
     return 0
 
 

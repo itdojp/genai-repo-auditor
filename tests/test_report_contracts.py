@@ -57,6 +57,48 @@ class ReportContractTests(unittest.TestCase):
     def write_json(self, path: Path, data: dict[str, Any]) -> None:
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
+    def write_run_manifest(self, run_dir: Path) -> dict[str, Any]:
+        subprocess.run(
+            [
+                sys.executable,
+                REPO_ROOT / "lib" / "run_manifest.py",
+                "--lab-root",
+                REPO_ROOT,
+                "--run-dir",
+                run_dir,
+                "--command-name",
+                "gra-audit",
+                "--mode",
+                "exec",
+                "--model",
+                "fixture-model",
+                "--effort",
+                "medium",
+                "--depth",
+                "1",
+                "--network-allowed",
+                "false",
+                "--codex-json",
+                "false",
+                "--allow-invalid-report",
+                "false",
+                "--execution-phase",
+                "completed",
+                "--codex-status",
+                "0",
+                "--validation-status",
+                "0",
+                "--final-status",
+                "0",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        return self.load_json(run_dir / "run-manifest.json")
+
     def write_scanner_index(
         self,
         run_dir: Path,
@@ -135,6 +177,16 @@ class ReportContractTests(unittest.TestCase):
         finding_required = findings_schema["properties"]["findings"]["items"]["required"]
         self.assertTrue(set(VALIDATOR.REQUIRED_FINDING).issubset(finding_required))
         finding_properties = findings_schema["properties"]["findings"]["items"]["properties"]
+        self.assertIn("artifact_retention", manifest_schema["required"])
+        artifact_item = manifest_schema["properties"]["artifacts"]["items"]
+        self.assertIn("retention", artifact_item["required"])
+        self.assertEqual(["latest", "supporting", "archive"], artifact_item["properties"]["retention"]["enum"])
+        self.assertEqual("^[a-f0-9]{64}$", artifact_item["properties"]["sha256"]["pattern"])
+        retention_schema = manifest_schema["properties"]["artifact_retention"]
+        self.assertEqual(
+            {"latest_status_artifacts", "supporting_artifacts", "archive_artifacts", "by_retention", "notes"},
+            set(retention_schema["required"]),
+        )
         self.assertIn("taxonomies", finding_properties)
         self.assertEqual({"name", "id", "label"}, set(finding_properties["taxonomies"]["items"]["required"]))
         for field in ["bug_existence", "attacker_reachability", "boundary_crossing", "impact_assessment"]:
@@ -206,6 +258,7 @@ class ReportContractTests(unittest.TestCase):
                 "paths",
                 "schemas",
                 "artifacts",
+                "artifact_retention",
                 "execution",
             },
             set(manifest_schema["required"]),
@@ -365,6 +418,12 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual("boolean", metrics_safety["properties"]["local_artifacts_only"]["type"])
         self.assertEqual("boolean", metrics_safety["properties"]["raw_evidence_copied"]["type"])
         self.assertEqual("boolean", metrics_safety["properties"]["secrets_copied"]["type"])
+        artifacts_schema = metrics_schema["properties"]["artifacts"]
+        self.assertTrue(
+            {"manifest_by_retention", "latest_status_artifact_count", "archive_artifact_count", "manifest_hygiene_warnings"}.issubset(
+                artifacts_schema["required"]
+            )
+        )
         gapfill_schema = metrics_schema["properties"]["gapfill"]
         self.assertTrue({"current_run", "cumulative"}.issubset(gapfill_schema["required"]))
         self.assertEqual(
@@ -625,6 +684,10 @@ class ReportContractTests(unittest.TestCase):
                 "manifest_present": False,
                 "manifest_artifact_total": 0,
                 "manifest_by_kind": {},
+                "manifest_by_retention": {},
+                "latest_status_artifact_count": 0,
+                "archive_artifact_count": 0,
+                "manifest_hygiene_warnings": 0,
                 "reports_file_count": 2,
                 "reports_dir_count": 0,
             },
@@ -787,6 +850,54 @@ class ReportContractTests(unittest.TestCase):
         self.assertNotEqual(cp.returncode, 0)
         self.assertIn("affected_locations[0].file", cp.stderr)
         self.assertIn("issue_body_file must not contain", cp.stderr)
+
+    def test_run_manifest_retention_hygiene_validates_latest_and_archive_artifacts(self) -> None:
+        run_dir = self.copy_run()
+        (run_dir / "run-summary.txt").write_text("final_status=0\n", encoding="utf-8")
+        (run_dir / "report-validation.txt").write_text("OK\n", encoding="utf-8")
+        (run_dir / "codex-transcript.txt").write_text("intermediate transcript\n", encoding="utf-8")
+        target_research = run_dir / "reports" / "target-research"
+        target_research.mkdir(parents=True, exist_ok=True)
+        (target_research / "TGT-001.md").write_text("not json, retained for reproducibility\n", encoding="utf-8")
+
+        manifest = self.write_run_manifest(run_dir)
+        latest = manifest["artifact_retention"]["latest_status_artifacts"]
+        archive = manifest["artifact_retention"]["archive_artifacts"]
+        self.assertIn("reports/findings.json", latest)
+        self.assertIn("reports/targets.json", latest)
+        self.assertIn("run-summary.txt", latest)
+        self.assertIn("report-validation.txt", latest)
+        self.assertIn("codex-transcript.txt", archive)
+        self.assertIn("reports/target-research", archive)
+        findings_entry = next(item for item in manifest["artifacts"] if item["path"] == "reports/findings.json")
+        self.assertEqual("latest", findings_entry["retention"])
+        self.assertRegex(findings_entry["sha256"], r"^[a-f0-9]{64}$")
+        transcript_entry = next(item for item in manifest["artifacts"] if item["path"] == "codex-transcript.txt")
+        self.assertEqual("archive", transcript_entry["retention"])
+
+        cp = self.run_validator(run_dir)
+        self.assertEqual(cp.returncode, 0, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
+        self.assertIn("Run manifest: validated", cp.stdout)
+
+    def test_run_manifest_hygiene_rejects_stale_retention_and_digest(self) -> None:
+        run_dir = self.copy_run()
+        (run_dir / "run-summary.txt").write_text("final_status=0\n", encoding="utf-8")
+        (run_dir / "report-validation.txt").write_text("OK\n", encoding="utf-8")
+        manifest = self.write_run_manifest(run_dir)
+        for artifact in manifest["artifacts"]:
+            if artifact.get("path") == "reports/findings.json":
+                artifact["retention"] = "archive"
+                artifact["sha256"] = "0" * 64
+                break
+        manifest["artifact_retention"]["by_retention"]["latest"] = 999
+        self.write_json(run_dir / "run-manifest.json", manifest)
+
+        cp = self.run_validator(run_dir)
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("run_manifest.artifacts", cp.stderr)
+        self.assertIn("sha256: value does not match file digest", cp.stderr)
+        self.assertIn("reports/findings.json must have retention 'latest'", cp.stderr)
+        self.assertIn("artifact_retention.by_retention.latest", cp.stderr)
 
     def test_scanner_index_schema_accepts_normalized_artifact_fields(self) -> None:
         scanner_index = {
