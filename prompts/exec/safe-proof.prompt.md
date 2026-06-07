@@ -91,7 +91,7 @@ Rules:
 - `commands_run` must be an array of structured command records, not shell strings.
 - Each command record must include `argv`, `read_only`, `writes`, `network`, `requires_credentials`, and `cwd_scope`.
 - Use `commands_run: []` unless a command was actually executed.
-- Allowed executed proof commands are limited to read-only local inspection such as `rg`, non-in-place `sed`, and `python -m json.tool FILE` JSON reads. Do not record free-form shell commands.
+- Allowed executed proof commands are limited to read-only local inspection such as `rg`, bounded `sed -n START,ENDp FILE` excerpts, and exactly `python -m json.tool FILE` JSON reads. Do not record free-form shell commands.
 - Every recorded command must use `read_only: true`, `writes: []`, `network: false`, and `requires_credentials: false`.
 - Prefer `not-run` plus a regression test plan when running a test would require dependency installation, a live service, credentials, or target repository modification.
 - Keep proof descriptions disclosure-conscious and safe for internal validation.

@@ -3136,7 +3136,39 @@ class CliWorkflowTests(unittest.TestCase):
                 "cwd_scope": "external",
             },
             {
+                "argv": ["python3", "-m", "json.tool", "reports/findings.json", "reports/proofs/out.json"],
+                "read_only": True,
+                "writes": [],
+                "network": False,
+                "requires_credentials": False,
+                "cwd_scope": "run",
+            },
+            {
+                "argv": ["python3", "-m", "json.tool", "--help"],
+                "read_only": True,
+                "writes": [],
+                "network": False,
+                "requires_credentials": False,
+                "cwd_scope": "run",
+            },
+            {
                 "argv": ["sed", "-i", "s/a/b/", "repo/app.py"],
+                "read_only": True,
+                "writes": [],
+                "network": False,
+                "requires_credentials": False,
+                "cwd_scope": "target_repo",
+            },
+            {
+                "argv": ["sed", "-n", "1w /tmp/proof", "repo/app.py"],
+                "read_only": True,
+                "writes": [],
+                "network": False,
+                "requires_credentials": False,
+                "cwd_scope": "target_repo",
+            },
+            {
+                "argv": ["sed", "-n", "1,20p", "--expression", "1w /tmp/proof", "repo/app.py"],
                 "read_only": True,
                 "writes": [],
                 "network": False,
@@ -3168,7 +3200,10 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("cwd_scope: must be one of", cp_unsafe_structured.stderr)
         self.assertIn("python proof commands are limited to read-only JSON inspection", cp_unsafe_structured.stderr)
         self.assertIn("python -c is not allowed", cp_unsafe_structured.stderr)
+        self.assertIn("python json.tool input file must not be an option", cp_unsafe_structured.stderr)
         self.assertIn("sed in-place editing is not allowed", cp_unsafe_structured.stderr)
+        self.assertIn("sed proof commands are limited to read-only", cp_unsafe_structured.stderr)
+        self.assertIn("sed proof command file arguments must not include additional options", cp_unsafe_structured.stderr)
         self.assertIn("rg --pre/--pre-glob is not allowed", cp_unsafe_structured.stderr)
 
         wrong_type_run = self.copy_fixture_run("minimal-run")

@@ -278,7 +278,7 @@ Important constraints:
   `reports/proofs/`, and command records must be structured objects with
   `argv`, `read_only`, `writes`, `network`, `requires_credentials`, and
   `cwd_scope`. Free-form shell strings are rejected. Safe proof commands are
-  limited to read-only `rg`, non-in-place `sed`, and `python -m json.tool`
+  limited to read-only `rg`, bounded `sed -n START,ENDp FILE` excerpts, and exactly `python -m json.tool FILE`
   JSON reads with `read_only: true`, `writes: []`, `network: false`, and
   `requires_credentials: false`.
 - If `reports/traces.json` exists, it must match
@@ -363,7 +363,7 @@ installation、target repository modification を含めてはいけません。
 `commands_run` は shell string ではなく `argv` と safety metadata
 （`read_only`、`writes`、`network`、`requires_credentials`、`cwd_scope`）
 を持つ structured command object として記録します。validator は read-only
-`rg`、in-place ではない `sed`、`python -m json.tool` JSON read 以外を拒否し、
+`rg`、bounded `sed -n START,ENDp FILE`、exact `python -m json.tool FILE` JSON read 以外を拒否し、
 network/credential/write metadata が safe proof と矛盾する場合も拒否します。
 
 ## cross-repo trace reachability output

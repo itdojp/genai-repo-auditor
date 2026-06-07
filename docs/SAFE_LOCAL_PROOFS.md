@@ -101,8 +101,8 @@ Use `commands_run: []` when no command was executed. The validator accepts only
 read-only local inspection records for safe proof commands:
 
 - `rg` without `--pre` / `--pre-glob`
-- `sed` without in-place editing
-- `python` / `python3 -m json.tool FILE` for read-only JSON inspection
+- bounded `sed -n START,ENDp FILE` excerpts only
+- exactly `python` / `python3 -m json.tool FILE` for read-only JSON inspection
 
 Free-form shell command strings are rejected, and command metadata must be
 consistent: `read_only: true`, `writes: []`, `network: false`, and

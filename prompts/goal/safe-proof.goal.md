@@ -42,7 +42,7 @@ Work method:
 - Record executed commands as structured `commands_run` objects, not shell strings.
 - Use `commands_run: []` when no command was executed.
 - If a command was executed, record `argv`, `read_only`, `writes`, `network`, `requires_credentials`, and `cwd_scope`.
-- Only record read-only local inspection commands such as `rg`, non-in-place `sed`, or `python -m json.tool FILE`; do not use free-form shell commands.
+- Only record read-only local inspection commands such as `rg`, bounded `sed -n START,ENDp FILE` excerpts, or exactly `python -m json.tool FILE`; do not use free-form shell commands.
 - Every recorded proof command must use `read_only: true`, `writes: []`, `network: false`, and `requires_credentials: false`.
 - Mark proof artifacts local/private by default.
 
