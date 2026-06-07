@@ -185,20 +185,57 @@ def gapfill_metrics(
         coverage = target.get("coverage") if isinstance(target.get("coverage"), dict) else {}
         if coverage.get("gapfill_recommended") is True:
             recommended += 1
-    generated_from_artifact = 0
+    current_candidate_count = 0
+    current_generated_count = 0
+    current_new_count = 0
+    current_reused_count = 0
     if isinstance(gapfill_data, dict):
+        current_run = gapfill_data.get("current_run") if isinstance(gapfill_data.get("current_run"), dict) else {}
+        candidate_count = current_run.get("candidate_count", gapfill_data.get("candidate_count"))
+        if isinstance(candidate_count, int) and not isinstance(candidate_count, bool):
+            current_candidate_count = max(0, int(candidate_count))
+        generated_count = current_run.get("generated_target_count", gapfill_data.get("generated_target_count"))
+        if isinstance(generated_count, int) and not isinstance(generated_count, bool):
+            current_generated_count = max(0, int(generated_count))
         generated = gapfill_data.get("generated_targets")
-        if isinstance(generated, list):
-            generated_from_artifact = len([item for item in generated if isinstance(item, dict)])
-        elif isinstance(gapfill_data.get("generated_target_count"), int):
-            generated_from_artifact = int(gapfill_data["generated_target_count"])
+        if current_generated_count == 0 and isinstance(generated, list):
+            current_generated_count = len([item for item in generated if isinstance(item, dict)])
+        new_count = current_run.get("new_target_count")
+        if isinstance(new_count, int) and not isinstance(new_count, bool):
+            current_new_count = max(0, int(new_count))
+        reused_count = current_run.get("reused_target_count")
+        if isinstance(reused_count, int) and not isinstance(reused_count, bool):
+            current_reused_count = max(0, int(reused_count))
+    cumulative_generated = len(gapfill_targets)
+    cumulative_reviewed = sum(1 for t in gapfill_targets if t.get("status") == "reviewed")
+    if isinstance(gapfill_data, dict):
+        cumulative_data = gapfill_data.get("cumulative") if isinstance(gapfill_data.get("cumulative"), dict) else {}
+        generated_total = cumulative_data.get("generated_target_count")
+        if isinstance(generated_total, int) and not isinstance(generated_total, bool):
+            cumulative_generated = max(cumulative_generated, int(generated_total))
+        reviewed_total = cumulative_data.get("reviewed_target_count")
+        if isinstance(reviewed_total, int) and not isinstance(reviewed_total, bool):
+            cumulative_reviewed = max(cumulative_reviewed, int(reviewed_total))
+    cumulative_by_status = count_known(gapfill_targets, "status", TARGET_STATUSES, "unknown")
     return {
         "coverage_artifact_present": coverage_present,
         "gapfill_artifact_present": gapfill_present,
         "source_targets_recommended": recommended,
-        "targets_generated": max(len(gapfill_targets), generated_from_artifact),
-        "targets_reviewed": sum(1 for t in gapfill_targets if t.get("status") == "reviewed"),
-        "targets_by_status": count_known(gapfill_targets, "status", TARGET_STATUSES, "unknown"),
+        "current_run": {
+            "candidate_count": current_candidate_count,
+            "generated_target_count": current_generated_count,
+            "new_target_count": current_new_count,
+            "reused_target_count": current_reused_count,
+        },
+        "cumulative": {
+            "generated_target_count": cumulative_generated,
+            "reviewed_target_count": cumulative_reviewed,
+            "targets_by_status": cumulative_by_status,
+        },
+        # Backward-compatible cumulative aliases.
+        "targets_generated": cumulative_generated,
+        "targets_reviewed": cumulative_reviewed,
+        "targets_by_status": cumulative_by_status,
     }
 
 
@@ -525,7 +562,9 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
         f"| Downgrade / invalidate rate | {metrics['adversarial_validation']['downgrade_or_invalidate_rate']:.4f} |",
         f"| Chains | {metrics['chains']['total']} |",
         f"| Proofs | {metrics['proofs']['total']} |",
-        f"| Gapfill targets generated | {metrics['gapfill']['targets_generated']} |",
+        f"| Gapfill current candidates | {metrics['gapfill']['current_run']['candidate_count']} |",
+        f"| Gapfill current generated/reused targets | {metrics['gapfill']['current_run']['generated_target_count']} |",
+        f"| Gapfill cumulative generated targets | {metrics['gapfill']['cumulative']['generated_target_count']} |",
         f"| Traces | {metrics['traces']['total']} |",
         f"| Issue plan warnings | {metrics['issue_publication_plan']['warning_count']} |",
         f"| Issue ledger published findings | {metrics['issue_ledger']['published_findings']} |",
@@ -550,9 +589,14 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
     lines.extend(markdown_counts("Proof status", metrics["proofs"]["by_status"]))
     lines.extend(["## Gapfill", "", "| Metric | Count |", "|---|---:|"])
     lines.append(f"| Source targets recommended | {metrics['gapfill']['source_targets_recommended']} |")
-    lines.append(f"| Targets generated | {metrics['gapfill']['targets_generated']} |")
-    lines.append(f"| Targets reviewed | {metrics['gapfill']['targets_reviewed']} |")
+    lines.append(f"| Current candidate count | {metrics['gapfill']['current_run']['candidate_count']} |")
+    lines.append(f"| Current generated/reused targets | {metrics['gapfill']['current_run']['generated_target_count']} |")
+    lines.append(f"| Current new targets | {metrics['gapfill']['current_run']['new_target_count']} |")
+    lines.append(f"| Current reused targets | {metrics['gapfill']['current_run']['reused_target_count']} |")
+    lines.append(f"| Cumulative generated targets | {metrics['gapfill']['cumulative']['generated_target_count']} |")
+    lines.append(f"| Cumulative reviewed targets | {metrics['gapfill']['cumulative']['reviewed_target_count']} |")
     lines.append("")
+    lines.extend(markdown_counts("Cumulative gapfill target status", metrics["gapfill"]["cumulative"]["targets_by_status"]))
     lines.extend(["## Traces", ""])
     lines.extend(markdown_counts("Trace reachable", metrics["traces"]["by_reachable"]))
     lines.extend(markdown_counts("Trace attacker control", metrics["traces"]["by_attacker_control"]))

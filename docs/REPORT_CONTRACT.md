@@ -203,6 +203,10 @@ Important constraints:
   `gra-gapfill --generate` uses this metadata to write `reports/COVERAGE.md`,
   `reports/gapfill-targets.json`, and bounded `TGT-GAPFILL-NNN` follow-up
   targets without treating coverage gaps as findings.
+  `reports/gapfill-targets.json` separates `current_run` counts from
+  `cumulative` queue counts, records each candidate's source target, reason,
+  generated/reused gapfill target status, duplicate/variant relationship marker
+  when present, and prioritized `next_targets` for final reconcile.
 - Optional `run-state.json` is validated when present. `status` must be
   `active`, `paused`, or `blocked`; `pause_reason` is required for `paused`;
   `block_reason` is required for `blocked`; and `paused_at`, `blocked_at`, and

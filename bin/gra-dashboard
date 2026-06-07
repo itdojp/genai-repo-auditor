@@ -50,6 +50,8 @@ def main() -> int:
     dependency_vulnerabilities = [v for v in dependencies_data.get('vulnerabilities') or [] if isinstance(v, dict)]
     metrics_data = load_json(reports / 'metrics.json', {}) or {}
     metrics_present = isinstance(metrics_data, dict) and bool(metrics_data)
+    gapfill_data = load_json(reports / 'gapfill-targets.json', {}) or {}
+    gapfill_present = isinstance(gapfill_data, dict) and bool(gapfill_data)
 
     sev_counts = Counter(f.get('severity', 'Unknown') for f in findings)
     status_counts = Counter(f.get('status', 'Unknown') for f in findings)
@@ -81,6 +83,63 @@ def main() -> int:
     target_rows = []
     for t in sorted(targets, key=lambda x: (-int(x.get('priority') or 0), str(x.get('id')))):
         target_rows.append(f"<tr><td>{h(t.get('id'))}</td><td>{h(t.get('risk'))}</td><td>{h(t.get('priority'))}</td><td>{h(t.get('status'))}</td><td>{h(t.get('category'))}</td><td>{h(t.get('title'))}</td></tr>")
+
+    gapfill_section = (
+        "<h2>Gapfill current and cumulative queue</h2>"
+        "<p>No gapfill artifact found. Run <code>gra-gapfill --run RUN_DIR --generate</code> "
+        "to produce <code>gapfill-targets.json</code>.</p>"
+    )
+    if gapfill_present:
+        current_run = gapfill_data.get('current_run') if isinstance(gapfill_data.get('current_run'), dict) else {}
+        cumulative = gapfill_data.get('cumulative') if isinstance(gapfill_data.get('cumulative'), dict) else {}
+        gapfill_cards = [
+            ('Current candidates', current_run.get('candidate_count', gapfill_data.get('candidate_count', 0))),
+            ('Current generated/reused', current_run.get('generated_target_count', gapfill_data.get('generated_target_count', 0))),
+            ('Current new targets', current_run.get('new_target_count', 0)),
+            ('Current reused targets', current_run.get('reused_target_count', 0)),
+            ('Cumulative generated', cumulative.get('generated_target_count', 0)),
+            ('Cumulative reviewed', cumulative.get('reviewed_target_count', 0)),
+        ]
+        candidate_rows = []
+        for item in gapfill_data.get('candidates') or []:
+            if isinstance(item, dict):
+                candidate_rows.append(
+                    "<tr>"
+                    f"<td>{h(item.get('source_target_id'))}</td>"
+                    f"<td>{h(item.get('gapfill_target_id'))}</td>"
+                    f"<td>{h(item.get('gapfill_target_status'))}</td>"
+                    f"<td>{h(item.get('priority'))}</td>"
+                    f"<td>{h(item.get('relationship'))}</td>"
+                    f"<td>{h(item.get('gapfill_reason'))}</td>"
+                    "</tr>"
+                )
+        next_rows = []
+        for item in gapfill_data.get('next_targets') or []:
+            if isinstance(item, dict):
+                next_rows.append(
+                    "<tr>"
+                    f"<td>{h(item.get('priority'))}</td>"
+                    f"<td>{h(item.get('target_id'))}</td>"
+                    f"<td>{h(item.get('source_target_id'))}</td>"
+                    f"<td>{h(item.get('status'))}</td>"
+                    f"<td>{h(item.get('relationship'))}</td>"
+                    f"<td>{h(item.get('gapfill_reason'))}</td>"
+                    "</tr>"
+                )
+        candidate_body = ''.join(candidate_rows) or '<tr><td colspan="6">No current gapfill candidates.</td></tr>'
+        next_body = ''.join(next_rows) or '<tr><td colspan="6">No queued gapfill targets.</td></tr>'
+        gapfill_section = (
+            "<h2>Gapfill current and cumulative queue</h2>"
+            "<div class='cards'>"
+            + ''.join(f"<div class='card'><strong>{h(label)}</strong><br>{h(value)}</div>" for label, value in gapfill_cards)
+            + "</div>"
+            "<h3>Current source-to-gapfill relationships</h3>"
+            "<table><thead><tr><th>Source target</th><th>Gapfill target</th><th>Gapfill status</th><th>Priority</th><th>Relationship</th><th>Reason</th></tr></thead>"
+            f"<tbody>{candidate_body}</tbody></table>"
+            "<h3>Next gapfill targets</h3>"
+            "<table><thead><tr><th>Priority</th><th>Gapfill target</th><th>Source target</th><th>Status</th><th>Relationship</th><th>Reason</th></tr></thead>"
+            f"<tbody>{next_body}</tbody></table>"
+        )
 
     scanner_rows = []
     for r in scanner_results:
@@ -234,6 +293,7 @@ def main() -> int:
 <h2>Finding assessment dimensions</h2>
 {''.join(f"<h3>{h(label)}</h3><div class='cards'>{counts_table(assessment_counts[field], ['Confirmed', 'Probable', 'Potential', 'Invalid', 'Not assessed'])}</div>" for field, label in ASSESSMENT_FIELDS)}
 <h2>Target status</h2><div class='cards'>{''.join(f"<div class='card'><strong>{h(k)}</strong><br>{v}</div>" for k, v in sorted(target_status_counts.items()))}</div>
+{gapfill_section}
 <h2>Taxonomies</h2>
 <table><thead><tr><th>Taxonomy</th><th>ID</th><th>Count</th></tr></thead><tbody>{''.join(taxonomy_rows) or '<tr><td colspan="3">No taxonomy mappings.</td></tr>'}</tbody></table>
 <h2>Findings</h2>

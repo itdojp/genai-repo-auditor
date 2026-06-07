@@ -84,6 +84,10 @@ gra-run-state --run runs/OWNER__REPO/RUN_ID --status
 gra-run-state --run runs/OWNER__REPO/RUN_ID --resume
 ```
 
+When `reports/gapfill-targets.json` is present, `--status` and `--resume` also
+print prioritized next gapfill targets so final reconcile handoffs can resume
+bounded coverage work in order.
+
 While paused, use only read-only status checks. Deep-review starts and target
 queue mutations are guarded: `gra-research`, `gra-gapfill --generate`,
 `gra-gapfill --target`, `gra-targets --generate`, and `gra-targets --mark`

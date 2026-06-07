@@ -30,7 +30,7 @@ Metrics are computed from local report artifacts only:
 - adversarial validation decisions and downgrade/invalidate rate
 - chain counts by status and severity
 - proof counts by type and status
-- gapfill targets recommended, generated, and reviewed
+- gapfill current-run candidates/generated/reused counts and cumulative generated/reviewed queue counts
 - trace reachability counts
 - issue publication plan selected findings and warning counts
 - issue ledger tracked, published, status, and drift-warning counts
@@ -66,6 +66,27 @@ those events into an `observability` section with:
 
 `gra-dashboard` renders the longest target executions and the highest retry /
 rerun targets from the same metrics artifact.
+
+## Gapfill current versus cumulative metrics
+
+Gapfill metrics intentionally separate the most recent `gra-gapfill --generate`
+artifact from the cumulative target queue:
+
+- `gapfill.current_run.candidate_count`: source targets selected in the current
+  `gapfill-targets.json`
+- `gapfill.current_run.generated_target_count`: generated or reused gapfill
+  targets for those current candidates
+- `gapfill.current_run.new_target_count` and `reused_target_count`: whether
+  the current generate pass created new target IDs or reused existing
+  source-target requeues
+- `gapfill.cumulative.generated_target_count`: all `TGT-GAPFILL-*` / gapfill
+  category targets currently present in `reports/targets.json`
+- `gapfill.cumulative.reviewed_target_count` and `targets_by_status`: cumulative
+  queue progress
+
+The legacy `gapfill.targets_generated`, `gapfill.targets_reviewed`, and
+`gapfill.targets_by_status` fields remain as cumulative aliases for older
+consumers.
 
 ## Safety boundary
 

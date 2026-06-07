@@ -15,6 +15,7 @@ FIXTURES = REPO_ROOT / "tests" / "fixtures"
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 from gralib import write_targets  # noqa: E402
+from target_coverage import next_gapfill_targets  # noqa: E402
 from target_coverage_guardrails import (  # noqa: E402
     CoverageSerializationError,
     normalize_review_depth,
@@ -153,6 +154,49 @@ class TargetCoverageGuardrailTests(unittest.TestCase):
         self.assertEqual("deep", normalized[0]["coverage"]["review_depth"])
         self.assertEqual("targets.targets[0].coverage.review_depth", changes[0]["field_path"])
         self.assertEqual("TGT-001", changes[0]["target_id"])
+
+    def test_next_gapfill_targets_are_prioritized_with_relationship_context(self) -> None:
+        targets = [
+            {
+                "id": "TGT-001",
+                "priority": 50,
+                "coverage": {"gapfill_reason": "source one needs more review"},
+            },
+            {
+                "id": "TGT-002",
+                "priority": 95,
+                "coverage": {"gapfill_reason": "source two needs more review"},
+            },
+            {
+                "id": "TGT-GAPFILL-001",
+                "category": "gapfill",
+                "source_target_id": "TGT-001",
+                "priority": 50,
+                "status": "in_progress",
+            },
+            {
+                "id": "TGT-GAPFILL-002",
+                "category": "gapfill",
+                "source_target_id": "TGT-002",
+                "priority": 95,
+                "status": "queued",
+                "variant_target_id": "TGT-GAPFILL-OLD",
+            },
+            {
+                "id": "TGT-GAPFILL-003",
+                "category": "gapfill",
+                "source_target_id": "TGT-003",
+                "priority": 100,
+                "status": "reviewed",
+            },
+        ]
+
+        next_targets = next_gapfill_targets(targets)
+
+        self.assertEqual(["TGT-GAPFILL-002", "TGT-GAPFILL-001"], [item["target_id"] for item in next_targets])
+        self.assertEqual("TGT-002", next_targets[0]["source_target_id"])
+        self.assertEqual("variant", next_targets[0]["relationship"])
+        self.assertEqual("source two needs more review", next_targets[0]["gapfill_reason"])
 
 
 if __name__ == "__main__":

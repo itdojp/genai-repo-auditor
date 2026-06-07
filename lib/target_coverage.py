@@ -9,6 +9,7 @@ GAPFILL_RISKS = {"critical", "high"}
 TARGET_RISKS = {"critical", "high", "medium", "low", "informational"}
 TARGET_MODES = {"exec", "goal"}
 CHAIN_RELEVANCE = {"none", "possible-link", "candidate-chain-step"}
+GAPFILL_TARGET_STATUSES = {"queued", "in_progress", "reviewed", "skipped", "needs_human_review"}
 
 
 def coverage_for(target: dict[str, Any]) -> dict[str, Any]:
@@ -86,6 +87,10 @@ def existing_gapfill_target(targets: list[dict[str, Any]], source_id: str) -> di
     return None
 
 
+def is_gapfill_target(target: dict[str, Any]) -> bool:
+    return str(target.get("id") or "").startswith("TGT-GAPFILL-") or target.get("category") == "gapfill"
+
+
 def bounded_max_files(target: dict[str, Any]) -> int:
     value = target.get("max_files")
     if isinstance(value, int) and not isinstance(value, bool):
@@ -153,11 +158,74 @@ def build_gapfill_target(source: dict[str, Any], target_id: str) -> dict[str, An
     return target
 
 
-def target_summary(target: dict[str, Any], gapfill_target_id: str | None = None) -> dict[str, Any]:
+def gapfill_relationship(gapfill_target: dict[str, Any] | None, *, newly_created: bool = False) -> str:
+    if not isinstance(gapfill_target, dict):
+        return "not-generated"
+    if gapfill_target.get("duplicate_of") or gapfill_target.get("duplicate_target_id"):
+        return "duplicate"
+    if gapfill_target.get("variant_of") or gapfill_target.get("variant_target_id"):
+        return "variant"
+    return "new" if newly_created else "reused"
+
+
+def gapfill_summary(
+    gapfill_target: dict[str, Any],
+    *,
+    source: dict[str, Any] | None = None,
+    relationship: str | None = None,
+) -> dict[str, Any]:
+    source = source if isinstance(source, dict) else {}
+    reason = str(gapfill_target.get("gapfill_reason") or "").strip()
+    if not reason and source:
+        reason = gapfill_reason(source)
+    return {
+        "target_id": str(gapfill_target.get("id") or ""),
+        "source_target_id": str(gapfill_target.get("source_target_id") or source.get("id") or ""),
+        "priority": gapfill_target.get("priority"),
+        "status": str(gapfill_target.get("status") or ""),
+        "gapfill_reason": reason,
+        "relationship": relationship or gapfill_relationship(gapfill_target),
+        "variant_of": gapfill_target.get("variant_of") or gapfill_target.get("variant_target_id"),
+        "duplicate_of": gapfill_target.get("duplicate_of") or gapfill_target.get("duplicate_target_id"),
+    }
+
+
+def next_gapfill_targets(targets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    source_by_id = {str(target.get("id") or ""): target for target in targets if isinstance(target, dict)}
+    queued = [
+        target
+        for target in targets
+        if isinstance(target, dict)
+        and is_gapfill_target(target)
+        and str(target.get("status") or "") in {"queued", "in_progress", "needs_human_review"}
+    ]
+    ordered = sorted(
+        queued,
+        key=lambda target: (
+            -bounded_priority(target),
+            0 if str(target.get("status") or "") == "in_progress" else 1,
+            str(target.get("id") or ""),
+        ),
+    )
+    return [
+        gapfill_summary(target, source=source_by_id.get(str(target.get("source_target_id") or "")))
+        for target in ordered
+    ]
+
+
+def target_summary(
+    target: dict[str, Any],
+    gapfill_target: dict[str, Any] | None = None,
+    *,
+    relationship: str | None = None,
+) -> dict[str, Any]:
     coverage = coverage_for(target)
+    gapfill_target_id = str(gapfill_target.get("id") or "") if isinstance(gapfill_target, dict) else None
+    gapfill_target_status = str(gapfill_target.get("status") or "") if isinstance(gapfill_target, dict) else ""
     return {
         "source_target_id": str(target.get("id") or ""),
         "gapfill_target_id": gapfill_target_id,
+        "gapfill_target_status": gapfill_target_status,
         "title": str(target.get("title") or ""),
         "risk": str(target.get("risk") or ""),
         "priority": target.get("priority"),
@@ -165,11 +233,25 @@ def target_summary(target: dict[str, Any], gapfill_target_id: str | None = None)
         "review_depth": review_depth(target),
         "gapfill_recommended": coverage.get("gapfill_recommended") is True,
         "gapfill_reason": gapfill_reason(target),
+        "relationship": relationship or gapfill_relationship(gapfill_target),
+        "variant_of": gapfill_target.get("variant_of") if isinstance(gapfill_target, dict) else None,
+        "duplicate_of": gapfill_target.get("duplicate_of") if isinstance(gapfill_target, dict) else None,
         "files_reviewed": string_list(coverage.get("files_reviewed")),
         "files_skipped": string_list(coverage.get("files_skipped")),
         "commands_run": string_list(coverage.get("commands_run")),
         "unresolved_questions": string_list(coverage.get("unresolved_questions")),
     }
+
+
+def count_by_status(targets: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {status: 0 for status in sorted(GAPFILL_TARGET_STATUSES)}
+    counts["unknown"] = 0
+    for target in targets:
+        status = str(target.get("status") or "")
+        if status not in counts:
+            status = "unknown"
+        counts[status] += 1
+    return counts
 
 
 def write_coverage_markdown(
@@ -181,16 +263,45 @@ def write_coverage_markdown(
 ) -> Path:
     reports = reports_dir(run_dir)
     generated_by_source = {str(t.get("source_target_id") or ""): str(t.get("id") or "") for t in generated}
+    all_gapfill_targets = [target for target in targets if is_gapfill_target(target)]
+    next_targets = next_gapfill_targets(targets)
     lines = [
         "# Target Coverage Ledger",
         "",
         "This local artifact summarizes target review depth and bounded gapfill requeue candidates.",
         "",
-        "## Targets",
+        "## Current run",
         "",
-        "| Target | Risk | Status | Depth | Gapfill | Reason |",
-        "|---|---|---|---|---|---|",
+        f"- Current candidate count: {len(candidates)}",
+        f"- Current generated/reused target count: {len(generated)}",
+        "",
+        "## Cumulative gapfill queue",
+        "",
+        f"- Cumulative generated gapfill targets: {len(all_gapfill_targets)}",
+        f"- Cumulative reviewed gapfill targets: {sum(1 for target in all_gapfill_targets if target.get('status') == 'reviewed')}",
+        "",
+        "## Next gapfill targets",
+        "",
     ]
+    if not next_targets:
+        lines.append("No queued gapfill targets.")
+    else:
+        lines.extend(["| Priority | Gapfill target | Source target | Status | Relationship | Reason |", "|---:|---|---|---|---|---|"])
+        for target in next_targets:
+            lines.append(
+                f"| {target.get('priority', '')} | {target.get('target_id', '')} | "
+                f"{target.get('source_target_id', '')} | {target.get('status', '')} | "
+                f"{target.get('relationship', '')} | {target.get('gapfill_reason', '')} |"
+            )
+    lines.extend(
+        [
+            "",
+            "## Targets",
+            "",
+            "| Target | Risk | Status | Depth | Gapfill | Reason |",
+            "|---|---|---|---|---|---|",
+        ]
+    )
     candidate_ids = {str(target.get("id") or "") for target in candidates}
     for target in sorted(targets, key=lambda t: str(t.get("id") or "")):
         tid = str(target.get("id") or "")
@@ -277,18 +388,28 @@ def generate_gapfill_artifacts(run_dir: Path) -> dict[str, Any]:
     candidates = gapfill_candidates(targets)
     existing_ids = {str(target.get("id") or "") for target in targets}
     generated: list[dict[str, Any]] = []
+    candidate_records: list[dict[str, Any]] = []
+    newly_created_count = 0
+    reused_count = 0
     changed = False
 
     for source in candidates:
         source_id = str(source.get("id") or "")
         gapfill = existing_gapfill_target(targets, source_id)
+        newly_created = False
         if gapfill is None:
             gapfill_id = next_gapfill_id(existing_ids)
             gapfill = build_gapfill_target(source, gapfill_id)
             targets.append(gapfill)
             existing_ids.add(gapfill_id)
             changed = True
+            newly_created = True
+            newly_created_count += 1
+        else:
+            reused_count += 1
         generated.append(gapfill)
+        relationship = gapfill_relationship(gapfill, newly_created=newly_created)
+        candidate_records.append(target_summary(source, gapfill, relationship=relationship))
         write_gapfill_plan(run_dir, source, gapfill)
 
     if changed:
@@ -297,6 +418,8 @@ def generate_gapfill_artifacts(run_dir: Path) -> dict[str, Any]:
     reports = reports_dir(run_dir)
     reports.mkdir(parents=True, exist_ok=True)
     coverage_path = write_coverage_markdown(run_dir, targets=targets, candidates=candidates, generated=generated)
+    all_gapfill_targets = [target for target in targets if is_gapfill_target(target)]
+    next_targets = next_gapfill_targets(targets)
     payload = {
         "run_id": ctx.get("run_id", run_dir.name),
         "repo": ctx.get("repo", ""),
@@ -304,11 +427,20 @@ def generate_gapfill_artifacts(run_dir: Path) -> dict[str, Any]:
         "generated_at": utc_now(),
         "candidate_count": len(candidates),
         "generated_target_count": len(generated),
+        "current_run": {
+            "candidate_count": len(candidates),
+            "generated_target_count": len(generated),
+            "new_target_count": newly_created_count,
+            "reused_target_count": reused_count,
+        },
+        "cumulative": {
+            "generated_target_count": len(all_gapfill_targets),
+            "reviewed_target_count": sum(1 for target in all_gapfill_targets if target.get("status") == "reviewed"),
+            "targets_by_status": count_by_status(all_gapfill_targets),
+        },
+        "next_targets": next_targets,
         "coverage_report": coverage_path.relative_to(run_dir).as_posix(),
-        "candidates": [
-            target_summary(source, str(generated[index].get("id") or "") if index < len(generated) else None)
-            for index, source in enumerate(candidates)
-        ],
+        "candidates": candidate_records,
         "generated_targets": generated,
     }
     write_json(reports / "gapfill-targets.json", payload)

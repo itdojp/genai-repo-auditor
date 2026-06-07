@@ -37,6 +37,8 @@ def main() -> int:
     print(f"Chains: {metrics['chains']['total']}")
     print(f"Proofs: {metrics['proofs']['total']}")
     print(f"Traces: {metrics['traces']['total']}")
+    print(f"Gapfill current candidates: {metrics['gapfill']['current_run']['candidate_count']}")
+    print(f"Gapfill cumulative targets: {metrics['gapfill']['cumulative']['generated_target_count']}")
     print(f"Command events: {metrics['observability']['total_events']}")
     print(f"Validation retries: {metrics['observability']['validation_retry_count']}")
     print(f"Taxonomy normalizations: {metrics['observability']['taxonomy_normalization_count']}")

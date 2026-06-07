@@ -1674,8 +1674,23 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertTrue((run_dir / "reports" / "target-research" / "TGT-001-gapfill.md").exists())
         gapfill_data = json.loads((run_dir / "reports" / "gapfill-targets.json").read_text(encoding="utf-8"))
         self.assertEqual(1, gapfill_data["candidate_count"])
+        self.assertEqual(1, gapfill_data["current_run"]["candidate_count"])
+        self.assertEqual(1, gapfill_data["current_run"]["generated_target_count"])
+        self.assertEqual(1, gapfill_data["current_run"]["new_target_count"])
+        self.assertEqual(0, gapfill_data["current_run"]["reused_target_count"])
+        self.assertEqual(1, gapfill_data["cumulative"]["generated_target_count"])
+        self.assertEqual(0, gapfill_data["cumulative"]["reviewed_target_count"])
         self.assertEqual("TGT-001", gapfill_data["candidates"][0]["source_target_id"])
         self.assertEqual("TGT-GAPFILL-001", gapfill_data["candidates"][0]["gapfill_target_id"])
+        self.assertEqual("queued", gapfill_data["candidates"][0]["gapfill_target_status"])
+        self.assertEqual("new", gapfill_data["candidates"][0]["relationship"])
+        self.assertEqual("TGT-GAPFILL-001", gapfill_data["next_targets"][0]["target_id"])
+        coverage_md = (run_dir / "reports" / "COVERAGE.md").read_text(encoding="utf-8")
+        self.assertIn("## Current run", coverage_md)
+        self.assertIn("Current candidate count: 1", coverage_md)
+        self.assertIn("## Cumulative gapfill queue", coverage_md)
+        self.assertIn("## Next gapfill targets", coverage_md)
+        self.assertIn("TGT-GAPFILL-001", coverage_md)
         gapfill_target = self.target_by_id(run_dir, "TGT-GAPFILL-001")
         self.assertEqual("queued", gapfill_target["status"])
         self.assertEqual("TGT-001", gapfill_target["source_target_id"])
@@ -1685,6 +1700,10 @@ class CliWorkflowTests(unittest.TestCase):
 
         cp_generate_again = self.run_cmd([REPO_ROOT / "bin" / "gra-gapfill", "--run", run_dir, "--generate"], check=True)
         self.assertIn("Generated or reused 1 gapfill target", cp_generate_again.stdout)
+        gapfill_again = json.loads((run_dir / "reports" / "gapfill-targets.json").read_text(encoding="utf-8"))
+        self.assertEqual(0, gapfill_again["current_run"]["new_target_count"])
+        self.assertEqual(1, gapfill_again["current_run"]["reused_target_count"])
+        self.assertEqual("reused", gapfill_again["candidates"][0]["relationship"])
         targets = json.loads(targets_path.read_text(encoding="utf-8"))["targets"]
         self.assertEqual(1, len([target for target in targets if target.get("id") == "TGT-GAPFILL-001"]))
 
@@ -1706,6 +1725,24 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(["list", "generate", "generate", "goal"], [event["phase"] for event in events])
         self.assertTrue(all(event["command"] == "gra-gapfill" for event in events))
         self.assertEqual("TGT-001", events[-1]["target_id"])
+
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-run-state",
+                "--run",
+                run_dir,
+                "--pause",
+                "--reason",
+                "handoff checkpoint",
+                "--final-reconcile",
+                "gapfill current candidates: 1; cumulative generated: 1",
+            ],
+            check=True,
+        )
+        cp_resume = self.run_cmd([REPO_ROOT / "bin" / "gra-run-state", "--run", run_dir, "--resume"], check=True)
+        self.assertIn("Previous final reconcile: gapfill current candidates: 1; cumulative generated: 1", cp_resume.stdout)
+        self.assertIn("Next gapfill targets:", cp_resume.stdout)
+        self.assertIn("TGT-GAPFILL-001", cp_resume.stdout)
 
     def test_gra_gapfill_exec_renders_seed_and_writes_codex_artifacts(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -2415,6 +2452,8 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("Chains: 1", cp_metrics.stdout)
         self.assertIn("Proofs: 2", cp_metrics.stdout)
         self.assertIn("Traces: 1", cp_metrics.stdout)
+        self.assertIn("Gapfill current candidates: 3", cp_metrics.stdout)
+        self.assertIn("Gapfill cumulative targets: 3", cp_metrics.stdout)
         self.assertIn("Command events: 5", cp_metrics.stdout)
         self.assertIn("Validation retries: 1", cp_metrics.stdout)
         self.assertIn("Taxonomy normalizations: 1", cp_metrics.stdout)
@@ -2445,6 +2484,9 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(1, metrics["chains"]["total"])
         self.assertEqual(2, metrics["proofs"]["total"])
         self.assertEqual(2, metrics["gapfill"]["source_targets_recommended"])
+        self.assertEqual(3, metrics["gapfill"]["current_run"]["candidate_count"])
+        self.assertEqual(3, metrics["gapfill"]["current_run"]["generated_target_count"])
+        self.assertEqual(3, metrics["gapfill"]["cumulative"]["generated_target_count"])
         self.assertEqual(3, metrics["gapfill"]["targets_generated"])
         self.assertEqual(1, metrics["traces"]["total"])
         self.assertEqual(2, metrics["issue_publication_plan"]["warning_count"])
@@ -2475,6 +2517,9 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("High retry / rerun targets", dashboard)
         self.assertIn("Taxonomy normalizations", dashboard)
         self.assertIn("TGT-101", dashboard)
+        self.assertIn("Gapfill current and cumulative queue", dashboard)
+        self.assertIn("Current source-to-gapfill relationships", dashboard)
+        self.assertIn("Next gapfill targets", dashboard)
 
     def test_gra_metrics_handles_missing_optional_artifacts(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
