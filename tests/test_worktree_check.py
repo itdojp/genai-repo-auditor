@@ -107,6 +107,75 @@ class WorktreeCheckTests(unittest.TestCase):
         report = json.loads(cp.stdout)
         self.assertEqual([], report["unrelated_changes"])
 
+    def test_worktree_check_flags_rename_that_leaves_allowed_prefix(self) -> None:
+        repo = self.make_repo()
+        (repo / "docs").mkdir()
+        (repo / "docs" / "guide.md").write_text("tracked\n", encoding="utf-8")
+        self.git(repo, "add", "docs/guide.md")
+        self.git(repo, "commit", "-m", "add docs guide")
+        (repo / "reports").mkdir()
+        self.git(repo, "mv", "docs/guide.md", "reports/guide.md")
+        (repo / "reports" / "guide.md").write_text("tracked\nmodified\n", encoding="utf-8")
+        (repo / "docs" / "new.md").write_text("new\n", encoding="utf-8")
+
+        cp = subprocess.run(
+            [
+                sys.executable,
+                str(REPO_ROOT / "bin" / "gra-worktree-check"),
+                "--repo",
+                str(repo),
+                "--purpose",
+                "auditor-maintenance",
+                "--allowed-prefix",
+                "docs",
+                "--json",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+        self.assertEqual(1, cp.returncode, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
+        report = json.loads(cp.stdout)
+        self.assertEqual(["docs/new.md"], [item["path"] for item in report["in_scope_changes"]])
+        rename_records = [item for item in report["unrelated_changes"] if item["path"] == "reports/guide.md"]
+        self.assertEqual(1, len(rename_records), report)
+        self.assertEqual("docs/guide.md", rename_records[0]["original_path"])
+        self.assertEqual("RM", rename_records[0]["status"])
+
+    def test_worktree_check_accepts_rename_within_allowed_prefix(self) -> None:
+        repo = self.make_repo()
+        (repo / "docs").mkdir()
+        (repo / "docs" / "old.md").write_text("tracked\n", encoding="utf-8")
+        self.git(repo, "add", "docs/old.md")
+        self.git(repo, "commit", "-m", "add docs old")
+        self.git(repo, "mv", "docs/old.md", "docs/new.md")
+
+        cp = subprocess.run(
+            [
+                sys.executable,
+                str(REPO_ROOT / "bin" / "gra-worktree-check"),
+                "--repo",
+                str(repo),
+                "--purpose",
+                "auditor-maintenance",
+                "--allowed-prefix",
+                "docs",
+                "--json",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+        self.assertEqual(0, cp.returncode, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
+        report = json.loads(cp.stdout)
+        self.assertEqual([], report["unrelated_changes"])
+        self.assertEqual(["docs/new.md"], [item["path"] for item in report["in_scope_changes"]])
+        self.assertEqual(["docs/old.md"], [item["original_path"] for item in report["in_scope_changes"]])
+
     def test_worktree_check_reports_rename_path_and_original_path(self) -> None:
         repo = self.make_repo()
         (repo / "docs").mkdir()
@@ -140,7 +209,6 @@ class WorktreeCheckTests(unittest.TestCase):
         self.assertEqual("docs/guide-renamed.md", rename["path"])
         self.assertEqual("docs/guide.md", rename["original_path"])
         self.assertEqual(["scratch.txt"], [item["path"] for item in report["unrelated_changes"]])
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

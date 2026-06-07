@@ -79,6 +79,11 @@ The report contains:
 - unrelated changes
 - a task-ledger snippet for evidence tracking
 
+For rename/copy records, both the current path and original path must remain
+within the allowed prefixes. A move from `docs/` to `reports/`, or from
+`reports/` to `docs/`, is classified as unrelated unless both prefixes are
+explicitly allowed.
+
 `gra-worktree-check` exits with status `1` when unrelated changes are present so
 maintainers can decide whether to move them to the correct worktree, leave them
 uncommitted, or explicitly expand the allowed-prefix list.

@@ -70,7 +70,7 @@ def classify(records: list[dict[str, str]], allowed_prefixes: list[str]) -> tupl
         paths = [record.get("path", "")]
         if record.get("original_path"):
             paths.append(record["original_path"])
-        if any(path_matches_prefix(path, allowed_prefixes) for path in paths):
+        if paths and all(path_matches_prefix(path, allowed_prefixes) for path in paths):
             in_scope.append(record)
         else:
             unrelated.append(record)
