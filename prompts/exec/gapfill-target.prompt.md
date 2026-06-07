@@ -73,6 +73,8 @@ Required outputs:
    - `coverage.unresolved_questions`
    - `coverage.gapfill_recommended`
    - `coverage.gapfill_reason`
+   `coverage.review_depth` must be one of `none`, `shallow`, `medium`, or
+   `deep`; use `deep` instead of ad hoc values such as `bounded-deep`.
 
 4. Update {{REPORTS_DIR}}/AUDIT_LOG.md with the gapfill target ID, commands, files inspected, and outcome.
 

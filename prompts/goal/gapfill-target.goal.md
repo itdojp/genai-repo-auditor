@@ -56,6 +56,8 @@ Required outputs:
 - Controlled taxonomy references must use templates/taxonomies/ IDs and labels
   and be preflighted against templates/taxonomy-aliases.json before central
   report artifacts are finalized.
+- `coverage.review_depth` must be `none`, `shallow`, `medium`, or `deep`; use
+  `deep` instead of ad hoc values such as `bounded-deep`.
 
 Stop condition:
 - gapfill report exists

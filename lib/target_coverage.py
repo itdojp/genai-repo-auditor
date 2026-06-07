@@ -4,8 +4,6 @@ from pathlib import Path
 from typing import Any
 
 from gralib import load_context, load_targets, utc_now, write_json, write_targets
-
-
 GAPFILL_DEPTHS = {"none", "shallow"}
 GAPFILL_RISKS = {"critical", "high"}
 TARGET_RISKS = {"critical", "high", "medium", "low", "informational"}

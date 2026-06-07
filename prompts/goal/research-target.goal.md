@@ -49,6 +49,8 @@ Work method:
 - Maintain the target's `coverage` ledger in `reports/targets.json` when
   possible: `review_depth`, `files_reviewed`, `files_skipped`, `commands_run`,
   `unresolved_questions`, `gapfill_recommended`, and `gapfill_reason`.
+  `review_depth` must be one of `none`, `shallow`, `medium`, or `deep`; use
+  `deep` rather than ad hoc values such as `bounded-deep`.
 - Identify entry points, trust boundaries, invariants, and sensitive sinks.
 - Trace source-to-sink paths.
 - Check existing mitigations before reporting.
