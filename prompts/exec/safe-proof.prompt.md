@@ -66,7 +66,17 @@ Create or update {{PROOFS_OUTPUT_JSON}} using strict JSON:
       "status": "confirmed|failed|not-run|needs-human-review",
       "safe_by_design": true,
       "files_created": ["reports/proofs/SEC-001-test-plan.md"],
-      "commands_run": [],
+      "commands_run": [
+        {
+          "argv": ["rg", "--line-number", "safeFunction", "repo/app.py"],
+          "read_only": true,
+          "writes": [],
+          "network": false,
+          "requires_credentials": false,
+          "cwd_scope": "target_repo",
+          "description": "Read-only local source inspection"
+        }
+      ],
       "evidence": "defensive evidence summary without exploit instructions",
       "limitations": ["No dependency installation performed"]
     }
@@ -78,7 +88,11 @@ Mark all proof artifacts local/private by default.
 
 Rules:
 - `safe_by_design` must be true for every proof.
-- `commands_run` should be empty unless the command is a benign local inspection or test command that does not modify the target repository, install dependencies, or use the network.
+- `commands_run` must be an array of structured command records, not shell strings.
+- Each command record must include `argv`, `read_only`, `writes`, `network`, `requires_credentials`, and `cwd_scope`.
+- Use `commands_run: []` unless a command was actually executed.
+- Allowed executed proof commands are limited to read-only local inspection such as `rg`, bounded `sed -n START,ENDp FILE` excerpts, and exactly `python -m json.tool FILE` JSON reads. Do not record free-form shell commands.
+- Every recorded command must use `read_only: true`, `writes: []`, `network: false`, and `requires_credentials: false`.
 - Prefer `not-run` plus a regression test plan when running a test would require dependency installation, a live service, credentials, or target repository modification.
 - Keep proof descriptions disclosure-conscious and safe for internal validation.
 - Recommendations belong in proof artifacts only; do not modify findings in this stage.

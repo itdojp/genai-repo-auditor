@@ -80,8 +80,33 @@ reports/proofs/
 ```
 
 `proofs.json` records `proof_type`, `status`, `safe_by_design`, referenced proof
-files, commands run, evidence, and limitations. Every proof must set
+files, structured commands run, evidence, and limitations. Every proof must set
 `safe_by_design` to `true`.
+
+`commands_run` is an array of structured command objects, not shell strings:
+
+```json
+{
+  "argv": ["rg", "--line-number", "SEC-001", "repo/app.py"],
+  "read_only": true,
+  "writes": [],
+  "network": false,
+  "requires_credentials": false,
+  "cwd_scope": "target_repo",
+  "description": "Read-only local source inspection"
+}
+```
+
+Use `commands_run: []` when no command was executed. The validator accepts only
+read-only local inspection records for safe proof commands:
+
+- `rg` without `--pre` / `--pre-glob`
+- bounded `sed -n START,ENDp FILE` excerpts only
+- exactly `python` / `python3 -m json.tool FILE` for read-only JSON inspection
+
+Free-form shell command strings are rejected, and command metadata must be
+consistent: `read_only: true`, `writes: []`, `network: false`, and
+`requires_credentials: false`.
 
 Allowed proof status values:
 
@@ -104,7 +129,8 @@ gra-validate-report --run runs/OWNER__REPO/RUN_ID
 When `reports/proofs.json` exists, the validator checks its schema, timestamp,
 proof IDs, finding references, allowed proof types, allowed status values,
 `safe_by_design: true`, proof file paths under `reports/proofs/`, string-list
-fields, and unsafe command patterns. A valid result prints `Proofs: validated`.
+fields, structured proof command allowlists, and command safety metadata. A
+valid result prints `Proofs: validated`.
 
 ## Issue publication
 

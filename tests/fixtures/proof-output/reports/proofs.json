@@ -11,10 +11,58 @@
       "proof_type": "unit-test-plan",
       "status": "not-run",
       "safe_by_design": true,
-      "files_created": ["reports/proofs/SEC-001-test-plan.md"],
-      "commands_run": [],
+      "files_created": [
+        "reports/proofs/SEC-001-test-plan.md"
+      ],
+      "commands_run": [
+        {
+          "argv": [
+            "rg",
+            "--line-number",
+            "SEC-001",
+            "repo/app.py"
+          ],
+          "read_only": true,
+          "writes": [],
+          "network": false,
+          "requires_credentials": false,
+          "cwd_scope": "target_repo",
+          "description": "Read-only source search for the finding identifier"
+        },
+        {
+          "argv": [
+            "sed",
+            "-n",
+            "1,80p",
+            "repo/app.py"
+          ],
+          "read_only": true,
+          "writes": [],
+          "network": false,
+          "requires_credentials": false,
+          "cwd_scope": "target_repo",
+          "description": "Read-only bounded source excerpt"
+        },
+        {
+          "argv": [
+            "python3",
+            "-m",
+            "json.tool",
+            "reports/findings.json"
+          ],
+          "read_only": true,
+          "writes": [],
+          "network": false,
+          "requires_credentials": false,
+          "cwd_scope": "run",
+          "description": "Read-only JSON parse check for findings"
+        }
+      ],
       "evidence": "Benign regression test plan demonstrates how to validate the finding locally without exploit payloads.",
-      "limitations": ["No dependency installation performed", "No live service was contacted"]
+      "limitations": [
+        "No dependency installation performed",
+        "No live service was contacted"
+      ]
     }
   ]
 }
