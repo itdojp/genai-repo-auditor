@@ -296,6 +296,18 @@ class ReportContractTests(unittest.TestCase):
         )
         self.assertEqual(["confirmed", "failed", "not-run", "needs-human-review"], proof_properties["status"]["enum"])
         self.assertEqual("boolean", proof_properties["safe_by_design"]["type"])
+        command_item = proof_properties["commands_run"]["items"]
+        self.assertEqual("object", command_item["type"])
+        self.assertEqual(
+            {"argv", "read_only", "writes", "network", "requires_credentials", "cwd_scope"},
+            set(command_item["required"]),
+        )
+        self.assertEqual("array", command_item["properties"]["argv"]["type"])
+        self.assertEqual("boolean", command_item["properties"]["read_only"]["type"])
+        self.assertEqual("array", command_item["properties"]["writes"]["type"])
+        self.assertEqual("boolean", command_item["properties"]["network"]["type"])
+        self.assertEqual("boolean", command_item["properties"]["requires_credentials"]["type"])
+        self.assertEqual(["run", "reports", "target_repo"], command_item["properties"]["cwd_scope"]["enum"])
 
         self.assertEqual({"run_id", "repo", "generated_at", "traces"}, set(traces_schema["required"]))
         trace_item = traces_schema["properties"]["traces"]["items"]

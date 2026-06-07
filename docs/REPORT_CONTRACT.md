@@ -275,8 +275,12 @@ Important constraints:
   `proof_type` must be an approved safe local proof type, `status` must be
   `confirmed`, `failed`, `not-run`, or `needs-human-review`,
   `safe_by_design` must be `true`, proof file references must stay under
-  `reports/proofs/`, and command records must not contain obvious network,
-  dependency-installation, public-disclosure, or live-service operations.
+  `reports/proofs/`, and command records must be structured objects with
+  `argv`, `read_only`, `writes`, `network`, `requires_credentials`, and
+  `cwd_scope`. Free-form shell strings are rejected. Safe proof commands are
+  limited to read-only `rg`, non-in-place `sed`, and `python -m json.tool`
+  JSON reads with `read_only: true`, `writes: []`, `network: false`, and
+  `requires_credentials: false`.
 - If `reports/traces.json` exists, it must match
   `templates/reports/traces.schema.json`. Each trace ID must match `TRACE-NNN`,
   `finding_id` must reference an existing producer finding, producer/consumer
@@ -356,6 +360,11 @@ Safe proof は exploit generation ではありません。working exploit script
 exploit code、weaponized payload、credential extraction、live service への
 auth bypass 実行、network scanning、production/staging probing、dependency
 installation、target repository modification を含めてはいけません。
+`commands_run` は shell string ではなく `argv` と safety metadata
+（`read_only`、`writes`、`network`、`requires_credentials`、`cwd_scope`）
+を持つ structured command object として記録します。validator は read-only
+`rg`、in-place ではない `sed`、`python -m json.tool` JSON read 以外を拒否し、
+network/credential/write metadata が safe proof と矛盾する場合も拒否します。
 
 ## cross-repo trace reachability output
 

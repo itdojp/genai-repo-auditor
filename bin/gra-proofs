@@ -53,6 +53,26 @@ def render_proofs_markdown(run_dir: Path, proofs_data: dict[str, Any]) -> None:
             return []
         return [f'- {item}' for item in value]
 
+    def command_bullets(value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        bullets: list[str] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            argv = item.get('argv')
+            if not isinstance(argv, list):
+                continue
+            argv_text = ' '.join(str(arg) for arg in argv if isinstance(arg, str))
+            if not argv_text:
+                continue
+            metadata = (
+                f"read_only={item.get('read_only')}, network={item.get('network')}, "
+                f"requires_credentials={item.get('requires_credentials')}, cwd_scope={item.get('cwd_scope')}"
+            )
+            bullets.append(f'- `{argv_text}` ({metadata})')
+        return bullets
+
     lines = [
         '# Safe Local Proofs',
         '',
@@ -78,6 +98,9 @@ def render_proofs_markdown(run_dir: Path, proofs_data: dict[str, Any]) -> None:
         files_created = proof.get('files_created')
         if isinstance(files_created, list) and files_created:
             lines.extend(['', f"Files for {proof.get('id', '')}:", *bullet_list(files_created)])
+        command_lines = command_bullets(proof.get('commands_run'))
+        if command_lines:
+            lines.extend(['', f"Commands for {proof.get('id', '')}:", *command_lines])
         limitations = proof.get('limitations')
         if isinstance(limitations, list) and limitations:
             lines.extend(['', f"Limitations for {proof.get('id', '')}:", *bullet_list(limitations)])

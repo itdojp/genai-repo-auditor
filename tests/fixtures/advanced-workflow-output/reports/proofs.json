@@ -14,7 +14,22 @@
       "files_created": [
         "reports/proofs/SEC-101-test-plan.md"
       ],
-      "commands_run": [],
+      "commands_run": [
+        {
+          "argv": [
+            "rg",
+            "--line-number",
+            "upload",
+            "repo/src/routes.ts"
+          ],
+          "read_only": true,
+          "writes": [],
+          "network": false,
+          "requires_credentials": false,
+          "cwd_scope": "target_repo",
+          "description": "Read-only upload route search"
+        }
+      ],
       "evidence": "Benign local mocked-request test plan for validating upload-to-renderer data flow without exploit payloads.",
       "limitations": [
         "No external service contacted",
@@ -31,7 +46,22 @@
       "files_created": [
         "reports/proofs/SEC-102-static-trace.md"
       ],
-      "commands_run": [],
+      "commands_run": [
+        {
+          "argv": [
+            "python3",
+            "-m",
+            "json.tool",
+            "reports/chains.json"
+          ],
+          "read_only": true,
+          "writes": [],
+          "network": false,
+          "requires_credentials": false,
+          "cwd_scope": "run",
+          "description": "Read-only chain JSON parse check"
+        }
+      ],
       "evidence": "Static local trace shows token forwarding path and records missing renderer authorization semantics.",
       "limitations": [
         "Renderer policy is not implemented in the synthetic fixture"

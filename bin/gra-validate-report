@@ -62,6 +62,9 @@ PROOF_TYPES = {
     "mocked-local-service",
 }
 PROOF_STATUSES = {"confirmed", "failed", "not-run", "needs-human-review"}
+PROOF_COMMAND_CWD_SCOPES = {"run", "reports", "target_repo"}
+PROOF_READ_ONLY_COMMANDS = {"rg", "sed", "python", "python3"}
+PROOF_SHELL_METACHARS_RE = re.compile(r"[;&|`$<>\n\r]")
 TRACE_STATUSES = {"Confirmed", "Probable", "Potential", "Invalid", "Needs human review"}
 COMMAND_EVENT_COMMANDS = {"gra-research", "gra-gapfill", "gra-validate-report"}
 COMMAND_EVENT_PHASES = {"exec", "goal", "generate", "validate", "list"}
@@ -74,11 +77,6 @@ METRICS_FORBIDDEN_KEYS = {
     "issue_body",
     "issue_body_text",
 }
-UNSAFE_PROOF_COMMAND_RE = re.compile(
-    r"\b(?:curl|wget|nmap|nc|netcat|ssh|scp|ftp|telnet|kubectl|docker|pip|npm|yarn|pnpm|bundle|gem|cargo|go\s+get|gh)\b|"
-    r"https?://|--network|--allow-public",
-    re.IGNORECASE,
-)
 REQUIRED_TOP = ["run_id", "repo", "commit", "generated_at", "findings"]
 REQUIRED_FINDING = [
     "id", "fingerprint", "title", "severity", "confidence", "status", "category",
@@ -761,6 +759,90 @@ def validate_proof_artifact_path(run_dir: Path, value: Any, *, field_path: str) 
         raise ReportSafetyError(f"{field_path}: proof artifact must be a regular file: {rel.as_posix()}")
 
 
+def proof_command_name(argv: list[str]) -> str:
+    if not argv:
+        return ""
+    return Path(argv[0]).name
+
+
+def validate_structured_proof_command(command: Any, *, field_path: str, errors: List[str]) -> None:
+    if isinstance(command, str):
+        errors.append(
+            f"{field_path}: proof command must be a structured object with argv and safety metadata; "
+            "free-form shell strings are not accepted"
+        )
+        if PROOF_SHELL_METACHARS_RE.search(command):
+            errors.append(f"{field_path}: free-form proof command contains shell metacharacters")
+        return
+    if not isinstance(command, dict):
+        errors.append(f"{field_path}: proof command must be an object, got {json_type_name(command)}")
+        return
+
+    argv = command.get("argv")
+    if not isinstance(argv, list) or not argv:
+        errors.append(f"{field_path}.argv: must be a non-empty array of strings")
+        argv_strings: list[str] = []
+    else:
+        argv_strings = []
+        for arg_index, arg in enumerate(argv):
+            if not isinstance(arg, str) or not arg:
+                errors.append(f"{field_path}.argv[{arg_index}]: must be a non-empty string")
+            else:
+                argv_strings.append(arg)
+
+    command_name = proof_command_name(argv_strings)
+    if command_name and command_name not in PROOF_READ_ONLY_COMMANDS:
+        errors.append(
+            f"{field_path}.argv[0]: command {command_name!r} is not in the safe proof command allowlist "
+            f"{sorted(PROOF_READ_ONLY_COMMANDS)}"
+        )
+
+    read_only = command.get("read_only")
+    writes = command.get("writes")
+    network = command.get("network")
+    requires_credentials = command.get("requires_credentials")
+    cwd_scope = command.get("cwd_scope")
+
+    if read_only is not True:
+        errors.append(f"{field_path}.read_only: must be true for safe proof commands")
+    if not isinstance(writes, list):
+        errors.append(f"{field_path}.writes: must be an array")
+        writes_list: list[Any] = []
+    else:
+        writes_list = writes
+        for write_index, write_ref in enumerate(writes_list):
+            if not isinstance(write_ref, str) or not write_ref.strip():
+                errors.append(f"{field_path}.writes[{write_index}]: must be a non-empty string")
+    if writes_list:
+        errors.append(f"{field_path}.writes: read-only proof commands must declare no writes")
+    if network is not False:
+        errors.append(f"{field_path}.network: must be false for safe proof commands")
+    if requires_credentials is not False:
+        errors.append(f"{field_path}.requires_credentials: must be false for safe proof commands")
+    if cwd_scope not in PROOF_COMMAND_CWD_SCOPES:
+        errors.append(f"{field_path}.cwd_scope: must be one of {sorted(PROOF_COMMAND_CWD_SCOPES)}")
+
+    if not argv_strings:
+        return
+
+    if command_name == "rg":
+        for arg in argv_strings[1:]:
+            if arg == "--pre" or arg.startswith("--pre=") or arg == "--pre-glob" or arg.startswith("--pre-glob="):
+                errors.append(f"{field_path}.argv: rg --pre/--pre-glob is not allowed for safe proof commands")
+    elif command_name == "sed":
+        for arg in argv_strings[1:]:
+            if arg == "-i" or arg.startswith("-i") or arg == "--in-place" or arg.startswith("--in-place="):
+                errors.append(f"{field_path}.argv: sed in-place editing is not allowed for safe proof commands")
+    elif command_name in {"python", "python3"}:
+        if len(argv_strings) < 4 or argv_strings[1:3] != ["-m", "json.tool"]:
+            errors.append(
+                f"{field_path}.argv: python proof commands are limited to read-only JSON inspection "
+                "using `python -m json.tool FILE`"
+            )
+        if any(arg == "-c" for arg in argv_strings[1:]):
+            errors.append(f"{field_path}.argv: python -c is not allowed for safe proof commands")
+
+
 def validate_proofs(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
     proofs_path = run_dir / PROOFS_PATH
     if not proofs_path.exists():
@@ -808,8 +890,11 @@ def validate_proofs(run_dir: Path, findings: list[dict[str, Any]], errors: List[
         if not isinstance(proof.get("evidence"), str):
             errors.append(f"{path}.evidence: expected type string, got {json_type_name(proof.get('evidence'))}")
 
-        for key in ["files_created", "commands_run", "limitations"]:
+        for key in ["files_created", "limitations"]:
             validate_string_list(proof.get(key), f"{path}.{key}", errors)
+
+        if not isinstance(proof.get("commands_run"), list):
+            errors.append(f"{path}.commands_run: must be list")
 
         files_created = proof.get("files_created") if isinstance(proof.get("files_created"), list) else []
         for file_index, file_ref in enumerate(files_created):
@@ -820,10 +905,7 @@ def validate_proofs(run_dir: Path, findings: list[dict[str, Any]], errors: List[
 
         commands_run = proof.get("commands_run") if isinstance(proof.get("commands_run"), list) else []
         for command_index, command in enumerate(commands_run):
-            if isinstance(command, str) and UNSAFE_PROOF_COMMAND_RE.search(command):
-                errors.append(
-                    f"{path}.commands_run[{command_index}]: command appears unsafe for local proof artifacts: {command!r}"
-                )
+            validate_structured_proof_command(command, field_path=f"{path}.commands_run[{command_index}]", errors=errors)
 
     return True
 

