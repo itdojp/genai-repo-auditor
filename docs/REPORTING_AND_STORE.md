@@ -25,7 +25,7 @@ open runs/OWNER__REPO/RUN_ID/reports/dashboard.html
 
 The metrics report summarizes findings, validation decisions,
 downgrade/invalidate rate, chains, proofs, gapfill, traces, Issue plan warnings,
-artifact counts, and run duration when local metadata is available. It
+Issue ledger publication states, artifact counts, and run duration when local metadata is available. It
 intentionally omits raw finding evidence, issue body text, proof evidence, trace
 evidence, scanner lead bodies, and secret values.
 
@@ -54,7 +54,8 @@ The SQLite store is intended for local tracking across many runs. It records:
 - targets
 - findings
 - scanner results
-- created issues
+- created issues from `reports/issue-ledger.json` when present, otherwise the
+  legacy `issues-created.json` result
 - optional posture artifacts
 
 `gra-store` creates a backwards-compatible `posture_artifacts` table when it is

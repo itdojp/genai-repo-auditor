@@ -1,12 +1,14 @@
 # Issue workflow
 
-## 原則
+## Principles
 
-Issue作成は監査runの一部ではありません。`findings.json` と `issue-drafts/*.md` を人間が確認した後に、`gra-issues` で作成します。
+Issue creation is not part of an audit run. Create GitHub Issues with
+`gra-issues` only after a human has reviewed `findings.json` and
+`issue-drafts/*.md`.
 
 ## default selection
 
-既定では以下だけをIssue化します。
+By default, only the following findings are selected for Issue publication:
 
 ```text
 severity: Critical / High
@@ -68,6 +70,10 @@ output is produced.
 Dry-run output includes the default immutable publication plan path and the
 SHA-256 hash of each issue body. Use those hashes to confirm exactly which
 content is being reviewed.
+It also writes `reports/issue-ledger.json`, a canonical local ledger that tracks
+each finding's publication state (`not-selected`, `pending`, `dry-run`,
+`published`, or `duplicate`), fingerprint, title, labels, body hash, source plan,
+and GitHub Issue URL/number when available.
 
 ## immutable publication plan
 
@@ -83,6 +89,7 @@ This writes:
 
 ```text
 runs/OWNER__REPO/RUN_ID/reports/issue-publication-plan.json
+runs/OWNER__REPO/RUN_ID/reports/issue-ledger.json
 ```
 
 The plan records the selected finding IDs, fingerprints, titles, labels, issue
@@ -123,7 +130,9 @@ rejects changed titles, labels, issue bodies, public disclosure risk, chain
 membership, or advanced evidence state before it calls `gh issue create`.
 When the plan is stale, rerun `--plan` and review the refreshed file before
 applying. `--apply-plan ... --replan` refreshes the plan and exits without
-publishing.
+publishing. The ledger is refreshed during `--plan` and `--replan` so operators
+can distinguish pending, not-selected, and already-published findings from one
+JSON artifact.
 
 ## apply
 
@@ -137,14 +146,34 @@ content.
 
 ## labels
 
-`--create-labels` を指定すると、共通ラベルを作成または更新します。
+Use `--create-labels` to create or update the common labels before publication.
 
 ## duplicate prevention
 
-Issue本文には hidden marker を入れます。
+Issue bodies include a hidden marker:
 
 ```markdown
 <!-- genai-repo-auditor:fingerprint=<fingerprint> -->
 ```
 
-既存open Issueに同じ fingerprint がある場合は新規作成を避けます。
+If an existing open Issue has the same fingerprint, `gra-issues` avoids creating
+a duplicate.
+`reports/issue-ledger.json` is checked before the GitHub fingerprint search.
+When the ledger already records a published Issue for the same finding ID and
+fingerprint, `gra-issues --apply` / `--apply-plan` skips creation even if the
+current `gh issue list` search cannot find the marker. This makes re-running the
+same publication command idempotent.
+If a ledger has exactly one published entry for the same finding ID but the
+current fingerprint has changed, `gra-issues` also skips creation and records
+fingerprint drift in the ledger instead of opening a second Issue for the same
+finding.
+
+To compare the ledger with the current open GitHub Issue inventory, run:
+
+```bash
+gra-issues --run runs/OWNER__REPO/RUN_ID --verify-ledger
+```
+
+This command does not publish. It exits non-zero when a published ledger entry no
+longer has a matching open Issue by fingerprint marker or when GitHub returns a
+different Issue URL, allowing final reconciliation to detect ledger drift.

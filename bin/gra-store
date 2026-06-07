@@ -127,13 +127,21 @@ def main() -> int:
                 run_id, r.get('tool'), r.get('path'), r.get('format'), r.get('imported_at'), json.dumps(r, ensure_ascii=False)
             ))
 
-        issues = load_json(run_dir / 'issues-created.json', {}) or {}
-        for item in (issues.get('created') or []):
-            if not isinstance(item, dict) or not item.get('url'):
-                continue
-            conn.execute('replace into issues(run_id, finding_id, fingerprint, url, data_json) values (?, ?, ?, ?, ?)', (
-                run_id, item.get('id'), item.get('fingerprint'), item.get('url'), json.dumps(item, ensure_ascii=False)
-            ))
+        issue_ledger = load_json(reports_dir / 'issue-ledger.json', {}) or {}
+        ledger_items = [item for item in issue_ledger.get('findings') or [] if isinstance(item, dict) and item.get('url')]
+        if ledger_items:
+            for item in ledger_items:
+                conn.execute('replace into issues(run_id, finding_id, fingerprint, url, data_json) values (?, ?, ?, ?, ?)', (
+                    run_id, item.get('finding_id'), item.get('fingerprint'), item.get('url'), json.dumps(item, ensure_ascii=False)
+                ))
+        else:
+            issues = load_json(run_dir / 'issues-created.json', {}) or {}
+            for item in (issues.get('created') or []):
+                if not isinstance(item, dict) or not item.get('url'):
+                    continue
+                conn.execute('replace into issues(run_id, finding_id, fingerprint, url, data_json) values (?, ?, ?, ?, ?)', (
+                    run_id, item.get('id'), item.get('fingerprint'), item.get('url'), json.dumps(item, ensure_ascii=False)
+                ))
 
         conn.execute('delete from posture_artifacts where run_id = ?', (run_id,))
         for artifact in load_posture_artifacts(run_dir):

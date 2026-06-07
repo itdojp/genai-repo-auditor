@@ -126,6 +126,7 @@ class ReportContractTests(unittest.TestCase):
         proofs_schema = self.load_json(SCHEMAS / "proofs.schema.json")
         traces_schema = self.load_json(SCHEMAS / "traces.schema.json")
         metrics_schema = self.load_json(SCHEMAS / "metrics.schema.json")
+        issue_ledger_schema = self.load_json(SCHEMAS / "issue-ledger.schema.json")
 
         self.assertTrue(set(VALIDATOR.REQUIRED_TOP).issubset(findings_schema["required"]))
         finding_required = findings_schema["properties"]["findings"]["items"]["required"]
@@ -332,6 +333,7 @@ class ReportContractTests(unittest.TestCase):
                 "gapfill",
                 "traces",
                 "issue_publication_plan",
+                "issue_ledger",
                 "artifacts",
                 "run_duration",
             },
@@ -346,6 +348,39 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual("boolean", metrics_safety["properties"]["local_artifacts_only"]["type"])
         self.assertEqual("boolean", metrics_safety["properties"]["raw_evidence_copied"]["type"])
         self.assertEqual("boolean", metrics_safety["properties"]["secrets_copied"]["type"])
+        self.assertEqual(
+            {
+                "schema_version",
+                "run_id",
+                "repo",
+                "commit",
+                "generated_at",
+                "source",
+                "findings",
+                "warnings",
+            },
+            set(issue_ledger_schema["required"]),
+        )
+        ledger_item = issue_ledger_schema["properties"]["findings"]["items"]
+        self.assertEqual(
+            {
+                "finding_id",
+                "fingerprint",
+                "publication_status",
+                "issue_number",
+                "state",
+                "url",
+                "title",
+                "labels",
+                "body_hash",
+                "published_at",
+                "source_plan",
+                "plan_sha256",
+                "drift",
+            },
+            set(ledger_item["required"]),
+        )
+        self.assertEqual(["not-selected", "pending", "dry-run", "published", "duplicate"], ledger_item["properties"]["publication_status"]["enum"])
 
     def test_valid_minimal_fixture_passes_validator(self) -> None:
         run_dir = self.copy_run()
@@ -410,6 +445,13 @@ class ReportContractTests(unittest.TestCase):
                 "by_status": {},
             },
             "issue_publication_plan": {"artifact_present": False, "selected_findings": 0, "warning_count": 0},
+            "issue_ledger": {
+                "artifact_present": False,
+                "tracked_findings": 0,
+                "published_findings": 0,
+                "by_publication_status": {},
+                "drift_warning_count": 0,
+            },
             "artifacts": {
                 "manifest_present": False,
                 "manifest_artifact_total": 0,

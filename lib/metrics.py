@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from gralib import load_context, utc_now, write_json
+from issue_ledger import ledger_metrics
 
 COUNT_STATUSES = [
     "Confirmed",
@@ -287,6 +288,7 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
     traces_data = load_json(reports / "traces.json", None)
     gapfill_data = load_json(reports / "gapfill-targets.json", None)
     issue_plan = load_json(reports / "issue-publication-plan.json", None)
+    issue_ledger = load_json(reports / "issue-ledger.json", None)
     manifest = load_json(run_dir / "run-manifest.json", None)
 
     findings = list_of_dicts(findings_data, "findings")
@@ -322,6 +324,7 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
         ),
         "traces": trace_metrics(traces, traces_data is not None),
         "issue_publication_plan": issue_plan_metrics(issue_plan, issue_plan is not None),
+        "issue_ledger": ledger_metrics(issue_ledger, issue_ledger is not None),
         "artifacts": artifact_metrics(run_dir, reports, manifest),
         "run_duration": run_duration_metrics(manifest),
     }
@@ -365,6 +368,7 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
         f"| Gapfill targets generated | {metrics['gapfill']['targets_generated']} |",
         f"| Traces | {metrics['traces']['total']} |",
         f"| Issue plan warnings | {metrics['issue_publication_plan']['warning_count']} |",
+        f"| Issue ledger published findings | {metrics['issue_ledger']['published_findings']} |",
         f"| Report files | {metrics['artifacts']['reports_file_count']} |",
         "",
         "## Findings",
@@ -393,6 +397,12 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
     lines.append(f"| Selected findings | {metrics['issue_publication_plan']['selected_findings']} |")
     lines.append(f"| Warnings | {metrics['issue_publication_plan']['warning_count']} |")
     lines.append("")
+    lines.extend(["## Issue ledger", "", "| Metric | Count |", "|---|---:|"])
+    lines.append(f"| Tracked findings | {metrics['issue_ledger']['tracked_findings']} |")
+    lines.append(f"| Published findings | {metrics['issue_ledger']['published_findings']} |")
+    lines.append(f"| Drift warnings | {metrics['issue_ledger']['drift_warning_count']} |")
+    lines.append("")
+    lines.extend(markdown_counts("Publication status", metrics["issue_ledger"]["by_publication_status"]))
     lines.extend(["## Artifacts", "", "| Metric | Count |", "|---|---:|"])
     lines.append(f"| Manifest artifacts | {metrics['artifacts']['manifest_artifact_total']} |")
     lines.append(f"| Report files | {metrics['artifacts']['reports_file_count']} |")

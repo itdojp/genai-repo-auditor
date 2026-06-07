@@ -80,11 +80,16 @@ gra-issues --run runs/OWNER__REPO/RUN_ID --plan
 
 ```text
 runs/OWNER__REPO/RUN_ID/reports/issue-publication-plan.json
+runs/OWNER__REPO/RUN_ID/reports/issue-ledger.json
 ```
 
 plan には selected finding ID、fingerprint、title、label、issue body
 file、issue body SHA-256 hash、public disclosure risk、run ID、repo、
 commit、`chain_membership`、`advanced_validation` summary が記録されます。
+`issue-ledger.json` は、選択されなかった finding も含めて公開状態を
+追跡する canonical ledger です。各 finding の fingerprint、Issue URL、
+Issue number、state、title、label、body hash、published timestamp、
+source plan を保持します。
 advanced summary には、関連する `reports/chains.json` record の有無、
 関連 adversarial validation record の有無、safe local proof artifact の有無
 または明示的な not applicable 判定、公開前に確認すべき warning が含まれます。
@@ -119,7 +124,8 @@ fingerprint、selected finding の存在、title、label、public disclosure ris
 chain membership を再計算・検証し、plan 作成後に変更された内容の公開を
 拒否します。plan が古くなった場合は `--plan` で作り直し、再レビューしてから
 apply してください。`--apply-plan ... --replan` は plan を更新して終了し、
-Issue は作成しません。
+Issue は作成しません。replan 時も ledger は現在の findings と既存の公開状態を
+照合して更新されます。
 
 ## apply
 
@@ -149,6 +155,24 @@ Issue 本文には hidden marker を入れます。
 
 既存 open Issue に同じ fingerprint がある場合は新規作成を避けます。fingerprint が placeholder、短すぎる値、重複値の場合は、Issue 化前に finding を修正してください。
 
+`reports/issue-ledger.json` が存在する場合、`gra-issues` は GitHub 検索より前に
+ledger を確認します。ledger 上で同じ finding ID / fingerprint が
+`published` または `duplicate` として記録されている場合、再実行しても
+新規 Issue は作成しません。同じ finding ID の published entry が ledger に
+1 件だけあり、現在の fingerprint が変わっている場合も、新規 Issue は作成せず
+ledger に fingerprint drift を記録します。apply 後の `issues-created.json` は
+互換性のため残りますが、継続的な公開状態確認では `issue-ledger.json` を優先します。
+
+GitHub 側の状態と ledger の不整合を確認する場合は、次を実行します。
+
+```bash
+gra-issues --run runs/OWNER__REPO/RUN_ID --verify-ledger
+```
+
+この確認は `reports/issue-ledger.json` の published / duplicate entry を
+open GitHub Issue の fingerprint marker と照合し、見つからない場合や URL が
+異なる場合に non-zero で終了します。
+
 ## 作成前チェックリスト
 
 - `gra-validate-report --run RUN_DIR` が成功している。
@@ -156,6 +180,7 @@ Issue 本文には hidden marker を入れます。
 - `reports/ATTACK_CHAINS.md` は non-public by default として扱い、Issue 本文にそのまま含めない。
 - `reports/PROOFS.md` と `reports/proofs/` は local/private by default として扱い、Issue 本文にそのまま含めない。
 - `reports/VALIDATION.md` の downgrade / invalidate / needs-human-review を確認し、必要な修正または明示承認が済んでいる。
+- `reports/issue-ledger.json` がある場合、既存の published / duplicate entry と GitHub 側の状態に drift がない。
 - `reports/issue-drafts/*.md` に secret の全文、token、credential、実 exploit 手順が含まれていない。
 - scanner 由来の情報は repository context で到達可能性と影響を確認済みである。
 - public repository の場合、`--allow-public` を使う根拠と承認が明確である。

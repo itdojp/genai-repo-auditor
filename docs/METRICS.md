@@ -12,8 +12,8 @@ reports/METRICS.md
 ```
 
 Generate metrics after validation, chain synthesis, safe proofs, gapfill,
-optional trace reachability, adversarial validation, and optional Issue plan
-creation:
+optional trace reachability, adversarial validation, and optional Issue plan or
+Issue ledger creation:
 
 ```bash
 gra-metrics --run runs/OWNER__REPO/RUN_ID
@@ -33,6 +33,7 @@ Metrics are computed from local report artifacts only:
 - gapfill targets recommended, generated, and reviewed
 - trace reachability counts
 - issue publication plan selected findings and warning counts
+- issue ledger tracked, published, status, and drift-warning counts
 - run artifact counts
 - run duration when present in local manifest metadata
 
