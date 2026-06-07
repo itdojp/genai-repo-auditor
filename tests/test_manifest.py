@@ -65,7 +65,9 @@ class ManifestTests(unittest.TestCase):
 
     def test_manifest_lists_report_templates_and_taxonomies(self) -> None:
         self.assert_manifest_section("Report schemas and templates", relative_files("templates", "reports"))
-        self.assert_manifest_section("Taxonomies", relative_files("templates", "taxonomies"))
+        expected_taxonomies = relative_files("templates", "taxonomies")
+        expected_taxonomies.add("templates/taxonomy-aliases.json")
+        self.assert_manifest_section("Taxonomies", expected_taxonomies)
 
     def test_manifest_lists_public_documentation(self) -> None:
         expected = {

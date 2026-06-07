@@ -14,6 +14,11 @@ Machine-readable profiles live under `templates/taxonomies/`:
 | `supply-chain.json` | `Supply Chain Posture` | CI/CD, dependency, release, and governance posture categories. |
 | `cwe-subset.json` | `CWE Subset` | A bounded CWE subset useful for SARIF and common source-code findings. |
 
+Deterministic aliases and replacement suggestions live in
+`templates/taxonomy-aliases.json`. The alias file is intentionally separate
+from profile files so the controlled profile list remains bounded while known
+operator normalizations can evolve.
+
 ## Finding and target shape
 
 Use the optional `taxonomies` array on findings or targets:
@@ -39,13 +44,48 @@ Use the optional `taxonomies` array on findings or targets:
 is present. Existing `cwe` and `owasp` arrays remain backward compatible and are
 not treated as controlled fields.
 
+## Preflight and normalization
+
+Run `gra-taxonomy-preflight` before validating or publishing audit artifacts:
+
+```bash
+gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID
+gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID --fix
+```
+
+Without `--fix`, the command reports validation errors and deterministic
+normalizations that would be applied. With `--fix`, it updates
+`reports/findings.json` and `reports/targets.json` in place for configured
+`mode: "auto"` mappings and canonical label corrections. Applied changes are
+logged to `reports/taxonomy-normalizations.jsonl` with the before/after
+reference, artifact path, field path, and reason.
+
+Current automatic normalizations include:
+
+- taxonomy name alias `CWE` -> `CWE Subset` when the ID is present in the
+  bundled CWE profile
+- configured broad access-control mapping `CWE-284` -> `CWE-862`
+- canonical label corrections, for example `CWE-94` -> `Code Injection`
+
+Context-sensitive mappings such as `CWE-73`, `CWE-116`, `CWE-266`, `CWE-345`,
+and `CWE-639` are suggestion-only by default. The operator or reviewing agent
+must choose the controlled taxonomy ID that matches the source-to-sink evidence.
+
+`gra-audit`, `gra-targets --generate`, and `gra-research --mode exec` run
+taxonomy preflight with `--fix` after Codex output and before validation or
+status finalization. Supervised goal-mode runs should execute the command before
+copying draft findings into central report artifacts.
+
 ## Adding or changing profiles
 
 1. Add or update a JSON file under `templates/taxonomies/`.
 2. Keep `schema_version`, `name`, `version`, `source_url`, and `entries` present.
 3. Use stable IDs and labels. Do not rename IDs without a compatibility reason.
 4. Add tests for valid and invalid IDs.
-5. Update prompts or docs only when new taxonomy families should be suggested to agents.
+5. Add alias or replacement behavior to `templates/taxonomy-aliases.json` only
+   when the mapping is deterministic enough to automate or useful enough to
+   present as a suggestion.
+6. Update prompts or docs only when new taxonomy families should be suggested to agents.
 
 ## Outputs
 

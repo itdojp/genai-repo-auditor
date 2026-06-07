@@ -185,6 +185,14 @@ fi
 if [[ -f "$LAB_ROOT/templates/reports/traces.schema.json" ]]; then
   cp "$LAB_ROOT/templates/reports/traces.schema.json" "$RUN_DIR/traces.schema.json"
 fi
+if [[ -d "$LAB_ROOT/templates/taxonomies" ]]; then
+  mkdir -p "$RUN_DIR/templates/taxonomies"
+  cp "$LAB_ROOT"/templates/taxonomies/*.json "$RUN_DIR/templates/taxonomies/"
+fi
+if [[ -f "$LAB_ROOT/templates/taxonomy-aliases.json" ]]; then
+  mkdir -p "$RUN_DIR/templates"
+  cp "$LAB_ROOT/templates/taxonomy-aliases.json" "$RUN_DIR/templates/taxonomy-aliases.json"
+fi
 mkdir -p "$REPORT_DIR/issue-drafts" "$REPORT_DIR/scanner-results" "$REPORT_DIR/target-research" "$REPORT_DIR/variant-analysis" "$REPORT_DIR/proofs" "$REPORT_DIR/traces"
 
 python3 - <<PYCODE
@@ -339,6 +347,14 @@ else
 fi
 set -e
 
+TAXONOMY_PREFLIGHT_STATUS="not-run"
+if [[ -f "$REPORT_DIR/findings.json" || -f "$REPORT_DIR/targets.json" ]]; then
+  set +e
+  "$LAB_ROOT/bin/gra-taxonomy-preflight" --run "$RUN_DIR" --fix > "$RUN_DIR/taxonomy-preflight.txt" 2>&1
+  TAXONOMY_PREFLIGHT_STATUS=$?
+  set -e
+fi
+
 VALIDATION_STATUS="not-run"
 if [[ -f "$REPORT_DIR/findings.json" ]]; then
   set +e
@@ -350,6 +366,15 @@ else
 fi
 
 FINAL_STATUS="$CODEX_STATUS"
+if [[ "$CODEX_STATUS" -eq 0 && "$TAXONOMY_PREFLIGHT_STATUS" != "0" && "$TAXONOMY_PREFLIGHT_STATUS" != "not-run" ]]; then
+  if [[ "$ALLOW_INVALID_REPORT" == "1" ]]; then
+    FINAL_STATUS="0"
+  elif [[ "$TAXONOMY_PREFLIGHT_STATUS" =~ ^[0-9]+$ ]]; then
+    FINAL_STATUS="$TAXONOMY_PREFLIGHT_STATUS"
+  else
+    FINAL_STATUS="1"
+  fi
+fi
 if [[ "$CODEX_STATUS" -eq 0 && "$VALIDATION_STATUS" != "0" ]]; then
   if [[ "$ALLOW_INVALID_REPORT" == "1" ]]; then
     FINAL_STATUS="0"
@@ -371,6 +396,7 @@ model=$MODEL
 effort=$EFFORT
 codex_status=$CODEX_STATUS
 validation_status=$VALIDATION_STATUS
+taxonomy_preflight_status=$TAXONOMY_PREFLIGHT_STATUS
 allow_invalid_report=$ALLOW_INVALID_REPORT
 final_status=$FINAL_STATUS
 repo_dir=$REPO_DIR
@@ -381,7 +407,11 @@ write_run_manifest "completed" "$CODEX_STATUS" "$VALIDATION_STATUS" "$FINAL_STAT
 
 printf '\nRun complete. Codex status: %s\n' "$CODEX_STATUS"
 printf 'Reports: %s\n' "$REPORT_DIR"
+printf 'Taxonomy preflight: %s\n' "$TAXONOMY_PREFLIGHT_STATUS"
 printf 'Validation: %s\n' "$VALIDATION_STATUS"
+if [[ "$TAXONOMY_PREFLIGHT_STATUS" != "0" && "$TAXONOMY_PREFLIGHT_STATUS" != "not-run" ]]; then
+  printf 'Taxonomy preflight failed. See: %s\n' "$RUN_DIR/taxonomy-preflight.txt" >&2
+fi
 if [[ ! -f "$REPORT_DIR/findings.json" ]]; then
   printf 'Warning: findings.json was not produced. Inspect codex output and rerun if needed.\n' >&2
   printf 'Missing report path: %s\n' "$REPORT_DIR/findings.json" >&2
@@ -393,6 +423,12 @@ if [[ "$CODEX_STATUS" -eq 0 && "$VALIDATION_STATUS" != "0" ]]; then
     printf 'Continuing despite invalid or missing report because --allow-invalid-report was set.\n' >&2
   else
     printf 'Failing audit because Codex succeeded but report validation did not pass. Use --allow-invalid-report only when this is intentional.\n' >&2
+  fi
+elif [[ "$CODEX_STATUS" -eq 0 && "$TAXONOMY_PREFLIGHT_STATUS" != "0" && "$TAXONOMY_PREFLIGHT_STATUS" != "not-run" ]]; then
+  if [[ "$ALLOW_INVALID_REPORT" == "1" ]]; then
+    printf 'Continuing despite taxonomy preflight errors because --allow-invalid-report was set.\n' >&2
+  else
+    printf 'Failing audit because Codex succeeded but taxonomy preflight did not pass.\n' >&2
   fi
 fi
 printf 'Final status: %s\n' "$FINAL_STATUS"

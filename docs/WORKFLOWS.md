@@ -21,7 +21,7 @@
   ↓
 gra-audit --mode exec
   ↓
-findings.json を検証
+taxonomy preflight と findings.json を検証
   ↓
 Critical / High が十分に裏付けられている?
   ├─ Yes → dry-run後にIssue化

@@ -9,7 +9,15 @@ from pathlib import Path
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
-from gralib import env_from_context, find_target, load_context, load_targets, render_template, run_codex_exec
+from gralib import (
+    ensure_taxonomy_templates,
+    env_from_context,
+    find_target,
+    load_context,
+    load_targets,
+    render_template,
+    run_codex_exec,
+)
 from target_coverage import (
     gapfill_candidates,
     gapfill_reason,
@@ -68,6 +76,7 @@ def main() -> int:
         print(f"context.json not found under {run_dir}", file=sys.stderr)
         return 2
     ctx = load_context(run_dir)
+    ensure_taxonomy_templates(LAB_ROOT, run_dir)
 
     if args.list:
         print_candidates(gapfill_candidates(load_targets(run_dir)))

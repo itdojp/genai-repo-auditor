@@ -30,6 +30,7 @@ gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 # shared-library / producer finding の consumer 到達可能性を確認する場合だけ:
 # gra-trace --producer-run runs/OWNER__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode exec
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
+gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID --fix
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
 

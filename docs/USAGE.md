@@ -26,9 +26,10 @@ gra-audit --repo OWNER/REPO --mode exec --model gpt-5.5 --effort xhigh
                            CI / batch automation では通常使わない
 ```
 
-`--mode exec` は、Codex が成功しても `reports/findings.json` が不在、または
-`gra-validate-report` が失敗した場合は既定で non-zero exit します。
-`run-summary.txt` には `codex_status`、`validation_status`、`final_status` が記録されます。
+`--mode exec` は、Codex が成功しても `reports/findings.json` が不在、taxonomy
+preflight、または `gra-validate-report` が失敗した場合は既定で non-zero exit
+します。`run-summary.txt` には `codex_status`、`taxonomy_preflight_status`、
+`validation_status`、`final_status` が記録されます。
 
 ## 通常使用の成果物
 
@@ -42,6 +43,8 @@ runs/OWNER__REPO/RUN_ID/
   chains.schema.json
   proofs.schema.json
   traces.schema.json
+  templates/taxonomies/
+  templates/taxonomy-aliases.json
   repo/
   reports/
   prompt.exec.md
@@ -49,6 +52,7 @@ runs/OWNER__REPO/RUN_ID/
   prompts/
   codex-events.jsonl
   codex-final.md
+  taxonomy-preflight.txt
   report-validation.txt
 ```
 
@@ -112,6 +116,7 @@ gra-proofs --run runs/ORG__repo-a/RUN_ID --all-critical-high
 # Optional for shared-library / producer findings:
 # gra-trace --producer-run runs/ORG__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/ORG__repo-a/RUN_ID --mode exec
 gra-adversarial-validate --run runs/ORG__repo-a/RUN_ID --all-critical-high
+gra-taxonomy-preflight --run runs/ORG__repo-a/RUN_ID --fix
 gra-validate-report --run runs/ORG__repo-a/RUN_ID
 gra-issues --run runs/ORG__repo-a/RUN_ID --dry-run
 gra-issues --run runs/ORG__repo-a/RUN_ID --apply --create-labels

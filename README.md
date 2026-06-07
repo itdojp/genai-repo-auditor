@@ -91,6 +91,7 @@ runs/OWNER__REPO/RUN_ID/
   repo/                # target repository; untrusted input
   reports/             # local audit reports
   prompts/             # rendered prompts
+  templates/           # copied taxonomy profiles and aliases for the run
   prompt.exec.md
   prompt.goal.md
   codex-events.jsonl
@@ -100,6 +101,7 @@ runs/OWNER__REPO/RUN_ID/
 Validate, synthesize defensive chain context, and render reports:
 
 ```bash
+gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID --fix
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
 gra-chains --run runs/OWNER__REPO/RUN_ID
@@ -122,6 +124,7 @@ gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 # Optional for shared-library / producer findings:
 # gra-trace --producer-run runs/OWNER__REPO/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode exec
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
+gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID --fix
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 gra-issues --run runs/OWNER__REPO/RUN_ID --dry-run
 gra-issues --run runs/OWNER__REPO/RUN_ID --apply --create-labels
@@ -178,6 +181,7 @@ gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high --model gpt-5.5 --e
 # Optional for shared-library / producer findings:
 # gra-trace --producer-run runs/OWNER__REPO/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode exec --model gpt-5.5 --effort xhigh
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high --model gpt-5.5 --effort xhigh
+gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID --fix
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
 
@@ -250,6 +254,7 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-metrics` | Generate local advanced workflow metrics without raw evidence |
 | `gra-ingest` | Ingest scanner outputs |
 | `gra-scanner-triage` | Triage scanner leads in repository context |
+| `gra-taxonomy-preflight` | Preflight and normalize controlled taxonomy references |
 | `gra-validate-report` | Validate `findings.json`, `targets.json`, chain, proof, trace, validation output, and report contract |
 | `gra-dashboard` | Generate local HTML dashboard with metrics links when present |
 | `gra-sarif` | Generate SARIF output |

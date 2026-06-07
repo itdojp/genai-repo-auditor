@@ -24,6 +24,7 @@ bin/gra-sarif
 bin/gra-scanner-triage
 bin/gra-store
 bin/gra-targets
+bin/gra-taxonomy-preflight
 bin/gra-trace
 bin/gra-validate-report
 bin/gra-variant
@@ -82,6 +83,7 @@ templates/reports/validation.schema.json
 ## Taxonomies
 
 ```text
+templates/taxonomy-aliases.json
 templates/taxonomies/cwe-subset.json
 templates/taxonomies/mcp-security.json
 templates/taxonomies/owasp-ai-agent.json
