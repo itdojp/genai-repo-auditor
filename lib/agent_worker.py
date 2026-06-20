@@ -204,18 +204,19 @@ def load_profile_file(path: Path) -> AgentWorkerProfile:
 
 def load_profiles(lab_root: Path, profiles_dir: Path | None = None) -> list[AgentWorkerProfile]:
     profiles: list[AgentWorkerProfile] = []
-    seen: dict[str, AgentWorkerProfile] = {}
+    seen: dict[str, tuple[int, AgentWorkerProfile]] = {}
     duplicates: set[str] = set()
     for path in profile_files(lab_root, profiles_dir):
         profile = load_profile_file(path)
-        existing = seen.get(profile.id)
-        if existing is None:
-            seen[profile.id] = profile
+        existing_entry = seen.get(profile.id)
+        if existing_entry is None:
+            seen[profile.id] = (len(profiles), profile)
             profiles.append(profile)
             continue
+        index, existing = existing_entry
         if _is_example_path(existing.source) and not _is_example_path(profile.source):
-            seen[profile.id] = profile
-            profiles[profiles.index(existing)] = profile
+            seen[profile.id] = (index, profile)
+            profiles[index] = profile
             continue
         if not _is_example_path(existing.source) and _is_example_path(profile.source):
             continue
@@ -227,13 +228,12 @@ def load_profiles(lab_root: Path, profiles_dir: Path | None = None) -> list[Agen
 
 def load_profile(lab_root: Path, profile_id: str, profiles_dir: Path | None = None) -> AgentWorkerProfile:
     directory = profile_directory(lab_root, profiles_dir)
+    if not directory.exists():
+        raise AgentWorkerProfileError(f"agent worker profile directory does not exist: {directory}")
     for suffix in (".json", ".json.example"):
         path = directory / f"{profile_id}{suffix}"
         if path.exists() and path.is_file():
             return load_profile_file(path)
-    for profile in load_profiles(lab_root, profiles_dir):
-        if profile.id == profile_id:
-            return profile
     raise AgentWorkerProfileError(f"unknown agent worker profile: {profile_id}")
 
 
