@@ -173,6 +173,65 @@ class AgentWorkerProfileTests(unittest.TestCase):
         self.assertIn("missing-agent-binary", combined)
         self.assertIn("was not found on PATH", combined)
 
+    def test_load_profiles_prefers_real_profile_over_example_with_same_id(self) -> None:
+        with tempfile.TemporaryDirectory(dir=REPO_ROOT / ".test-tmp") as temp_dir:
+            profiles_dir = Path(temp_dir) / "profiles"
+            profiles_dir.mkdir()
+            example = {
+                "id": "claude-code",
+                "display_name": "Claude Code Example",
+                "profile_status": "experimental",
+                "executable": "claude-example",
+                "supports_exec": True,
+                "supports_goal": False,
+                "supports_json_events": False,
+                "default_model": "operator-selected",
+                "default_effort": "operator-selected",
+                "sandbox_modes": ["operator-managed"],
+                "network_default": False,
+                "command_templates": {"exec": "claude-example --print"},
+            }
+            real = dict(example)
+            real["display_name"] = "Claude Code Local"
+            real["executable"] = "claude"
+            (profiles_dir / "claude-code.json.example").write_text(json.dumps(example), encoding="utf-8")
+            (profiles_dir / "claude-code.json").write_text(json.dumps(real), encoding="utf-8")
+
+            profiles = load_profiles(REPO_ROOT, profiles_dir)
+
+        self.assertEqual(1, len(profiles))
+        self.assertEqual("claude", profiles[0].executable)
+        self.assertEqual("Claude Code Local", profiles[0].display_name)
+
+    def test_load_profile_ignores_unrelated_invalid_example_when_target_exists(self) -> None:
+        with tempfile.TemporaryDirectory(dir=REPO_ROOT / ".test-tmp") as temp_dir:
+            profiles_dir = Path(temp_dir) / "profiles"
+            profiles_dir.mkdir()
+            (profiles_dir / "codex-cli.json").write_text(
+                json.dumps(
+                    {
+                        "id": "codex-cli",
+                        "display_name": "Codex CLI",
+                        "profile_status": "builtin",
+                        "executable": "codex",
+                        "supports_exec": True,
+                        "supports_goal": True,
+                        "supports_json_events": True,
+                        "default_model": "gpt-5.5",
+                        "default_effort": "xhigh",
+                        "sandbox_modes": ["workspace-write"],
+                        "network_default": False,
+                        "command_templates": {"exec": "codex exec", "goal": "codex"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (profiles_dir / "broken.json.example").write_text("{not json}\n", encoding="utf-8")
+
+            profile = load_profile(REPO_ROOT, "codex-cli", profiles_dir)
+
+        self.assertEqual("codex-cli", profile.id)
+
     def test_gra_agent_check_codex_profile_reports_missing_codex(self) -> None:
         with tempfile.TemporaryDirectory(dir=REPO_ROOT / ".test-tmp") as temp_dir:
             empty_bin = Path(temp_dir) / "empty-bin"

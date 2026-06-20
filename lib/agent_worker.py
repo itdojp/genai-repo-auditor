@@ -94,6 +94,10 @@ def _source_stem(source: Path | None) -> str | None:
     return source.stem
 
 
+def _is_example_path(path: Path | None) -> bool:
+    return bool(path and path.name.endswith(".json.example"))
+
+
 def _require_string(data: dict[str, Any], field: str, source: Path | None) -> str:
     value = data.get(field)
     if not isinstance(value, str) or not value.strip():
@@ -199,19 +203,34 @@ def load_profile_file(path: Path) -> AgentWorkerProfile:
 
 
 def load_profiles(lab_root: Path, profiles_dir: Path | None = None) -> list[AgentWorkerProfile]:
-    profiles = [load_profile_file(path) for path in profile_files(lab_root, profiles_dir)]
-    seen: set[str] = set()
+    profiles: list[AgentWorkerProfile] = []
+    seen: dict[str, AgentWorkerProfile] = {}
     duplicates: set[str] = set()
-    for profile in profiles:
-        if profile.id in seen:
-            duplicates.add(profile.id)
-        seen.add(profile.id)
+    for path in profile_files(lab_root, profiles_dir):
+        profile = load_profile_file(path)
+        existing = seen.get(profile.id)
+        if existing is None:
+            seen[profile.id] = profile
+            profiles.append(profile)
+            continue
+        if _is_example_path(existing.source) and not _is_example_path(profile.source):
+            seen[profile.id] = profile
+            profiles[profiles.index(existing)] = profile
+            continue
+        if not _is_example_path(existing.source) and _is_example_path(profile.source):
+            continue
+        duplicates.add(profile.id)
     if duplicates:
         raise AgentWorkerProfileError(f"duplicate agent worker profile ids: {', '.join(sorted(duplicates))}")
     return profiles
 
 
 def load_profile(lab_root: Path, profile_id: str, profiles_dir: Path | None = None) -> AgentWorkerProfile:
+    directory = profile_directory(lab_root, profiles_dir)
+    for suffix in (".json", ".json.example"):
+        path = directory / f"{profile_id}{suffix}"
+        if path.exists() and path.is_file():
+            return load_profile_file(path)
     for profile in load_profiles(lab_root, profiles_dir):
         if profile.id == profile_id:
             return profile
