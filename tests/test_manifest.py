@@ -69,6 +69,9 @@ class ManifestTests(unittest.TestCase):
         expected_taxonomies.add("templates/taxonomy-aliases.json")
         self.assert_manifest_section("Taxonomies", expected_taxonomies)
 
+    def test_manifest_lists_agent_worker_profiles(self) -> None:
+        self.assert_manifest_section("Agent worker profiles", relative_files("templates", "agent-workers"))
+
     def test_manifest_lists_public_documentation(self) -> None:
         expected = {
             path.relative_to(REPO_ROOT).as_posix()

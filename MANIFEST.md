@@ -1,13 +1,14 @@
 # GenAI Repo Auditor Manifest
 
 This manifest lists the repository-owned command, prompt, schema/template,
-taxonomy, and public documentation surface that should be kept in sync with
-workflow changes.
+agent worker profile, taxonomy, and public documentation surface that should be
+kept in sync with workflow changes.
 
 ## Commands
 
 ```text
 bin/gra-adversarial-validate
+bin/gra-agent-check
 bin/gra-audit
 bin/gra-batch
 bin/gra-chains
@@ -86,6 +87,14 @@ templates/reports/traces.schema.json
 templates/reports/validation.schema.json
 ```
 
+## Agent worker profiles
+
+```text
+templates/agent-workers/claude-code.json.example
+templates/agent-workers/codex-cli.json
+templates/agent-workers/generic-cli.json.example
+```
+
 ## Taxonomies
 
 ```text
@@ -110,6 +119,7 @@ SECURITY.md
 TRADEMARKS.md
 docs/ADVERSARIAL_FIXTURES.md
 docs/ADVERSARIAL_VALIDATION.md
+docs/AGENT_WORKERS.md
 docs/AGENT_SURFACE_DISCOVERY.md
 docs/ARCHITECTURE.md
 docs/ATTACK_CHAINS.md

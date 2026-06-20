@@ -13,6 +13,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 - `--network` enables network access inside the Codex sandbox for commands that call Codex. It is disabled by default and should remain disabled unless an approved workflow requires it.
 - `--model` defaults to `gpt-5.5` and `--effort` defaults to `xhigh` for Codex-driven commands. Command-line `--model` / `--effort` options are the portable override mechanism across Codex-driven commands.
 - Non-interactive `codex exec` invocations set approval behavior through `-c 'approval_policy="never"'` rather than the interactive-only `--ask-for-approval` flag, preserving compatibility with `codex-cli 0.135.0`.
+- Codex-driven commands are described by the built-in `codex-cli` worker profile. `gra-agent-check` can list profiles and check whether the required local worker executable is available without running the worker.
 - Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-trace`, `gra-metrics`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
 - Python commands use `argparse`; missing required arguments or invalid choices normally exit with status `2`.
 - Generated audit artifacts, cloned target repositories, scanner raw outputs, issue drafts, and local stores should remain local and should not be committed.
@@ -21,6 +22,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 
 | Phase | Commands | Typical output |
 |---|---|---|
+| Worker profile diagnostics | `gra-agent-check` | Built-in and example worker profile list, executable availability diagnostics |
 | Prepare / full audit | `gra-audit` | Run directory, cloned target, rendered prompts, Codex output, reports |
 | Batch operation | `gra-batch` | Batch metadata, per-repository logs, `batch-results.json` |
 | Target queue | `gra-targets` | `reports/targets.json`, target queue updates |
@@ -36,6 +38,27 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Validation | `gra-taxonomy-preflight`, `gra-validate-report` | Controlled taxonomy preflight, report contract validation result |
 | Reporting / persistence | `gra-metrics`, `gra-dashboard`, `gra-sarif`, `gra-store`, `gra-index` | Local metrics, HTML dashboard, SARIF, SQLite store, run index |
 | Issue workflow | `gra-issues` | Dry-run previews, canonical issue ledger, duplicate decision records, ledger verification, or GitHub Issues after human review |
+
+## `gra-agent-check`
+
+| Field | Details |
+|---|---|
+| Purpose | List local AI worker adapter profiles and verify that a selected profile's required executable is present on `PATH` without executing the worker. |
+| Workflow category | Worker profile diagnostics. |
+| Required inputs | One action: `--list` or `--profile PROFILE_ID`. Built-in profiles are loaded from `templates/agent-workers/`. |
+| Key options | `--list`, `--profile PROFILE_ID`, `--json`, and `--profiles-dir DIR` for tests or local profile experiments. |
+| Generated outputs | Text table or JSON profile summaries for `--list`; text or JSON availability diagnostics for `--profile`. No audit run artifacts are written. |
+| Exit status behavior | `0` for successful listing or for a selected profile whose required executable is present; `1` when the selected profile is valid but its executable is missing; `2` for unknown profile IDs, invalid profile files, or usage errors. |
+| Security / disclosure cautions | The command performs local profile validation and `PATH` resolution only. It does not execute worker CLIs, call vendor SDKs, contact managed services, or enable network access. Non-Codex profiles are experimental examples until separately tested. |
+| Related docs | [`docs/AGENT_WORKERS.md`](AGENT_WORKERS.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
+
+Examples:
+
+```bash
+gra-agent-check --list
+gra-agent-check --profile codex-cli
+gra-agent-check --profile codex-cli --json
+```
 
 ## `gra-audit`
 

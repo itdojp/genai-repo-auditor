@@ -1,0 +1,17 @@
+{
+  "id": "generic-cli",
+  "display_name": "Generic CLI agent",
+  "description": "Experimental placeholder for a local CLI worker that can read a prompt from stdin and write a final response to stdout.",
+  "profile_status": "experimental",
+  "executable": "agent-cli",
+  "supports_exec": true,
+  "supports_goal": false,
+  "supports_json_events": false,
+  "default_model": "operator-selected",
+  "default_effort": "operator-selected",
+  "sandbox_modes": ["operator-managed"],
+  "network_default": false,
+  "command_templates": {
+    "exec": "agent-cli --model {model} --input -"
+  }
+}
