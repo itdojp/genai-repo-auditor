@@ -44,6 +44,10 @@ class AgentWorkerProfileTests(unittest.TestCase):
         self.assertFalse(codex.network_default)
         self.assertIn("exec", codex.command_templates)
         self.assertIn("goal", codex.command_templates)
+        self.assertIn('approval_policy="{approval}"', codex.command_templates["exec"])
+        self.assertIn('model_reasoning_effort="{effort}"', codex.command_templates["exec"])
+        self.assertIn('web_search="disabled"', codex.command_templates["exec"])
+        self.assertIn("sandbox_workspace_write.network_access={network}", codex.command_templates["exec"])
 
         self.assertEqual("experimental", by_id["claude-code"].profile_status)
         self.assertEqual("experimental", by_id["generic-cli"].profile_status)

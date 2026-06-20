@@ -1,8 +1,8 @@
 # GenAI Repo Auditor Manifest
 
-This manifest lists the repository-owned command, prompt, schema/template,
-agent worker profile, taxonomy, and public documentation surface that should be
-kept in sync with workflow changes.
+This manifest lists repository-owned commands, prompts, schemas/templates,
+agent worker profiles, taxonomies, and public documentation surfaces that should
+be kept in sync with workflow changes.
 
 ## Commands
 
