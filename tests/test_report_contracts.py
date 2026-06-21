@@ -166,6 +166,7 @@ class ReportContractTests(unittest.TestCase):
         validation_schema = self.load_json(SCHEMAS / "validation.schema.json")
         chains_schema = self.load_json(SCHEMAS / "chains.schema.json")
         proofs_schema = self.load_json(SCHEMAS / "proofs.schema.json")
+        remediation_schema = self.load_json(SCHEMAS / "remediation-candidates.schema.json")
         traces_schema = self.load_json(SCHEMAS / "traces.schema.json")
         metrics_schema = self.load_json(SCHEMAS / "metrics.schema.json")
         issue_ledger_schema = self.load_json(SCHEMAS / "issue-ledger.schema.json")
@@ -361,6 +362,29 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual("boolean", command_item["properties"]["network"]["type"])
         self.assertEqual("boolean", command_item["properties"]["requires_credentials"]["type"])
         self.assertEqual(["run", "reports", "target_repo"], command_item["properties"]["cwd_scope"]["enum"])
+
+        self.assertEqual({"schema_version", "run_id", "repo", "generated_at", "candidates"}, set(remediation_schema["required"]))
+        remediation_item = remediation_schema["properties"]["candidates"]["items"]
+        self.assertEqual(
+            {
+                "id",
+                "finding_id",
+                "status",
+                "safe_by_design",
+                "patch_file",
+                "summary",
+                "files_touched",
+                "expected_validation",
+                "limitations",
+                "requires_human_review",
+            },
+            set(remediation_item["required"]),
+        )
+        remediation_properties = remediation_item["properties"]
+        self.assertEqual("^PATCH-[0-9]{3,}$", remediation_properties["id"]["pattern"])
+        self.assertEqual(["draft"], remediation_properties["status"]["enum"])
+        self.assertEqual("boolean", remediation_properties["safe_by_design"]["type"])
+        self.assertEqual("boolean", remediation_properties["requires_human_review"]["type"])
 
         self.assertEqual({"run_id", "repo", "generated_at", "traces"}, set(traces_schema["required"]))
         trace_item = traces_schema["properties"]["traces"]["items"]

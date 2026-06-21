@@ -35,6 +35,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Adversarial validation | `gra-adversarial-validate` | Bounded validation prompt, subject seed JSON, `reports/validation.json`, `reports/VALIDATION.md` |
 | Chain synthesis | `gra-chains` | Defensive chain prompt, `reports/chains.json`, `reports/ATTACK_CHAINS.md` |
 | Safe local proofs | `gra-proofs` | Benign proof prompt, subject seed JSON, `reports/proofs.json`, `reports/PROOFS.md`, `reports/proofs/` |
+| Remediation candidates | `gra-remediate` | Draft-only remediation prompt, subject seed JSON, `reports/remediation/remediation-candidates.json`, local patch drafts |
 | Cross-repo trace reachability | `gra-trace` | Experimental/P3 trace prompt, subject seed JSON, `reports/traces.json`, `reports/TRACE.md` |
 | Scanner triage | `gra-ingest`, `gra-scanner-triage` | Raw scanner copies, redacted normalized leads, scanner index, Scorecard posture artifacts, dependency posture artifacts, triage output |
 | Validation | `gra-taxonomy-preflight`, `gra-validate-report` | Controlled taxonomy preflight, report contract validation result |
@@ -344,6 +345,27 @@ Examples:
 gra-proofs --run runs/OWNER__REPO/RUN_ID --finding SEC-001
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-proofs --run runs/OWNER__REPO/RUN_ID --finding SEC-001 --mode goal
+```
+
+## `gra-remediate`
+
+| Field | Details |
+|---|---|
+| Purpose | Generate local/private, draft-only remediation candidate artifacts for existing findings without applying patches or publishing changes. |
+| Workflow category | Remediation candidate workflow. |
+| Required inputs | `--run RUN_DIR` and exactly one selector: `--finding SEC-ID` or `--all-critical-high`. Selectors require `reports/findings.json`. |
+| Key options | `--mode exec\|goal`, `--model MODEL`, and `--effort EFFORT`. Network access is intentionally not exposed for this command. `--all-critical-high` selects Critical / High findings whose status is `Confirmed`, `Probable`, or `Potential`. |
+| Generated outputs | Subject seed JSON under `reports/remediation/`, rendered remediation prompt, Codex event/output files in exec mode, `reports/remediation/remediation-candidates.json`, `reports/remediation/REMEDIATION_CANDIDATES.md`, and draft patch/notes files under `reports/remediation/<FINDING-ID>/`. |
+| Exit status behavior | `0` for successful goal preparation, successful Codex exec, or no matching `--all-critical-high` subjects; `2` when a requested finding or `findings.json` is missing; exec mode returns Codex execution status. |
+| Security / disclosure cautions | Draft-only and local/private by default. The command must not apply patches, modify the target checkout, push branches, create pull requests, create GitHub Issues, install dependencies, access the network, execute target code, or include exploit payloads. Public Issue plans may mention whether a candidate exists but must not embed full diffs. |
+| Related docs | [`docs/REMEDIATION_CANDIDATES.md`](REMEDIATION_CANDIDATES.md), [`docs/ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SANDBOX_PROFILES.md`](SANDBOX_PROFILES.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
+
+Examples:
+
+```bash
+gra-remediate --run runs/OWNER__REPO/RUN_ID --finding SEC-001 --mode goal
+gra-remediate --run runs/OWNER__REPO/RUN_ID --finding SEC-001 --mode exec
+gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --mode goal
 ```
 
 ## `gra-trace`

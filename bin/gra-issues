@@ -295,6 +295,11 @@ def load_advanced_artifacts(run_dir: Path) -> Dict[str, Any]:
     chains_present, chains, chain_errors = optional_report(run_dir, "reports/chains.json", "chains")
     proofs_present, proofs, proof_errors = optional_report(run_dir, "reports/proofs.json", "proofs")
     validations_present, validations, validation_errors = optional_report(run_dir, "reports/validation.json", "validations")
+    remediation_present, remediation_candidates, remediation_errors = optional_report(
+        run_dir,
+        "reports/remediation/remediation-candidates.json",
+        "candidates",
+    )
     return {
         "chains_present": chains_present,
         "chains": chains,
@@ -305,6 +310,9 @@ def load_advanced_artifacts(run_dir: Path) -> Dict[str, Any]:
         "validations_present": validations_present,
         "validations": validations,
         "validation_errors": validation_errors,
+        "remediation_present": remediation_present,
+        "remediation_candidates": remediation_candidates,
+        "remediation_errors": remediation_errors,
     }
 
 
@@ -447,6 +455,30 @@ def advanced_validation_summary(finding: Dict[str, Any], artifacts: Dict[str, An
     }
 
 
+def remediation_candidate_summary(finding: Dict[str, Any], artifacts: Dict[str, Any]) -> Dict[str, Any]:
+    finding_id = str(finding.get("id") or "SEC-UNKNOWN")
+    candidates = []
+    for item in artifacts.get("remediation_candidates", []):
+        if not isinstance(item, dict) or str(item.get("finding_id") or "") != finding_id:
+            continue
+        candidates.append(
+            {
+                "id": str(item.get("id") or ""),
+                "status": str(item.get("status") or ""),
+                "patch_file": str(item.get("patch_file") or ""),
+                "requires_human_review": bool(item.get("requires_human_review")),
+            }
+        )
+    candidates.sort(key=lambda item: item["id"])
+    warnings = [str(error) for error in artifacts.get("remediation_errors", [])]
+    return {
+        "artifact_present": bool(artifacts.get("remediation_present")),
+        "exists": bool(candidates),
+        "candidates": candidates,
+        "warnings": warnings,
+    }
+
+
 def advanced_validation_errors(entries: Iterable[Dict[str, Any]]) -> List[str]:
     errors: List[str] = []
     for entry in entries:
@@ -468,7 +500,9 @@ def plan_finding_entry(
     fingerprint = stable_fingerprint(repo, finding)
     body = render_body(repo, run_id, commit, finding, fingerprint, run_dir)
     issue_body_file = str(finding.get("issue_body_file") or "")
-    advanced = advanced_validation_summary(finding, advanced_artifacts or load_advanced_artifacts(run_dir))
+    artifacts = advanced_artifacts or load_advanced_artifacts(run_dir)
+    advanced = advanced_validation_summary(finding, artifacts)
+    remediation = remediation_candidate_summary(finding, artifacts)
     entry: Dict[str, Any] = {
         "id": str(finding.get("id", "SEC-UNKNOWN")),
         "fingerprint": fingerprint,
@@ -479,6 +513,7 @@ def plan_finding_entry(
         "public_disclosure_risk": str(finding.get("public_disclosure_risk") or "Unknown"),
         "chain_membership": advanced["chain_membership"],
         "advanced_validation": advanced,
+        "remediation_candidate": remediation,
     }
     return entry, body
 
@@ -548,6 +583,7 @@ def print_plan_summary(plan_path: Path, plan: Dict[str, Any], *, prefix: str = "
         chains = advanced.get("chains") if isinstance(advanced.get("chains"), dict) else {}
         validation = advanced.get("adversarial_validation") if isinstance(advanced.get("adversarial_validation"), dict) else {}
         proof = advanced.get("safe_local_proof") if isinstance(advanced.get("safe_local_proof"), dict) else {}
+        remediation = entry.get("remediation_candidate") if isinstance(entry.get("remediation_candidate"), dict) else {}
         chain_membership = entry.get("chain_membership") or []
         print(
             "  advanced_validation: "
@@ -557,7 +593,15 @@ def print_plan_summary(plan_path: Path, plan: Dict[str, Any], *, prefix: str = "
             f"safe_local_proof_exists={bool(proof.get('exists'))}, "
             f"proof_not_applicable={bool(proof.get('not_applicable'))}"
         )
+        print(
+            "  remediation_candidate: "
+            f"artifact_present={bool(remediation.get('artifact_present'))}, "
+            f"exists={bool(remediation.get('exists'))}, "
+            f"candidates={[item.get('id') for item in remediation.get('candidates') or [] if isinstance(item, dict)]}"
+        )
         for warning in advanced.get("warnings") or []:
+            print(f"  WARNING: {warning}")
+        for warning in remediation.get("warnings") or []:
             print(f"  WARNING: {warning}")
 
 
@@ -783,8 +827,9 @@ def verify_plan_against_findings(
             "public_disclosure_risk",
             "chain_membership",
             "advanced_validation",
+            "remediation_candidate",
         ]:
-            if field not in planned and field in {"chain_membership", "advanced_validation"}:
+            if field not in planned and field in {"chain_membership", "advanced_validation", "remediation_candidate"}:
                 continue
             if planned.get(field) != current_entry.get(field):
                 errors.append(f"{finding_id}: {field} changed after plan creation")

@@ -43,6 +43,8 @@ VALIDATION_PATH = Path("reports/validation.json")
 CHAINS_PATH = Path("reports/chains.json")
 PROOFS_PATH = Path("reports/proofs.json")
 PROOFS_DIR = Path("reports/proofs")
+REMEDIATION_PATH = Path("reports/remediation/remediation-candidates.json")
+REMEDIATION_DIR = Path("reports/remediation")
 TRACES_PATH = Path("reports/traces.json")
 METRICS_PATH = Path("reports/metrics.json")
 ISSUE_LEDGER_PATH = Path("reports/issue-ledger.json")
@@ -69,6 +71,7 @@ PROOF_COMMAND_CWD_SCOPES = {"run", "reports", "target_repo"}
 PROOF_READ_ONLY_COMMANDS = {"rg", "sed", "python", "python3"}
 PROOF_SHELL_METACHARS_RE = re.compile(r"[;&|`$<>\n\r]")
 PROOF_SAFE_SED_SCRIPT_RE = re.compile(r"^(?:p|(?:\$|[0-9]+)(?:,(?:\$|[0-9]+))?p)$")
+REMEDIATION_STATUSES = {"draft"}
 TRACE_STATUSES = {"Confirmed", "Probable", "Potential", "Invalid", "Needs human review"}
 COMMAND_EVENT_COMMANDS = {"gra-research", "gra-gapfill", "gra-validate-report"}
 COMMAND_EVENT_PHASES = {"exec", "goal", "generate", "validate", "list"}
@@ -923,6 +926,117 @@ def validate_proofs(run_dir: Path, findings: list[dict[str, Any]], errors: List[
     return True
 
 
+def validate_remediation_artifact_path(
+    run_dir: Path,
+    value: Any,
+    *,
+    field_path: str,
+    expected_suffix: str | None = None,
+) -> None:
+    if not isinstance(value, str) or not value.strip():
+        raise ReportSafetyError(f"{field_path}: path must be a non-empty string")
+    rel = Path(value)
+    if rel.is_absolute():
+        raise ReportSafetyError(f"{field_path}: remediation artifact path must be relative to the run directory")
+    if ".." in rel.parts:
+        raise ReportSafetyError(f"{field_path}: remediation artifact path must not contain '..'")
+    if rel == REMEDIATION_DIR or REMEDIATION_DIR not in (rel, *rel.parents):
+        raise ReportSafetyError(f"{field_path}: remediation artifact path must stay under {REMEDIATION_DIR.as_posix()}")
+    if expected_suffix and rel.suffix.lower() != expected_suffix:
+        raise ReportSafetyError(f"{field_path}: remediation artifact path must end with {expected_suffix}")
+    validate_no_symlink_components(run_dir, rel, field_path=field_path)
+    expected_root = (run_dir / REMEDIATION_DIR).resolve(strict=False)
+    resolved_target = (run_dir / rel).resolve(strict=False)
+    try:
+        resolved_target.relative_to(expected_root)
+    except ValueError as exc:
+        raise ReportSafetyError(f"{field_path}: remediation artifact path must not escape {REMEDIATION_DIR.as_posix()}") from exc
+    if not (run_dir / rel).exists():
+        raise ReportSafetyError(f"{field_path}: remediation artifact not found: {rel.as_posix()}")
+    if not (run_dir / rel).is_file():
+        raise ReportSafetyError(f"{field_path}: remediation artifact must be a regular file: {rel.as_posix()}")
+
+
+def validate_remediation_candidates(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
+    remediation_path = run_dir / REMEDIATION_PATH
+    if not remediation_path.exists():
+        return False
+    try:
+        remediation_data = json.loads(remediation_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"remediation-candidates.json invalid JSON: {exc}")
+        return True
+
+    validate_schema(remediation_data, load_schema("remediation-candidates.schema.json"), "remediation_candidates", errors)
+    secret_like_count = sum(1 for _ in iter_secret_findings(remediation_data, field_path="remediation_candidates"))
+    if secret_like_count:
+        errors.append(
+            "remediation_candidates: contains obvious unredacted secret-like value(s); "
+            "remove or redact them before validation"
+        )
+    if not isinstance(remediation_data, dict):
+        return True
+    validate_generated_at(remediation_data.get("generated_at"), "remediation_candidates.generated_at", errors)
+
+    candidates = remediation_data.get("candidates")
+    if not isinstance(candidates, list):
+        errors.append("remediation_candidates.candidates: candidates must be a list")
+        return True
+
+    finding_ids = {str(finding.get("id")) for finding in findings if isinstance(finding, dict) and finding.get("id")}
+    seen_ids: set[str] = set()
+    for index, candidate in enumerate(candidates):
+        path = f"remediation_candidates.candidates[{index}]"
+        if not isinstance(candidate, dict):
+            errors.append(f"{path}: candidate must be an object")
+            continue
+
+        candidate_id = str(candidate.get("id") or "").strip()
+        if not re.fullmatch(r"PATCH-[0-9]{3,}", candidate_id):
+            errors.append(f"{path}.id: candidate id must match ^PATCH-[0-9]{{3,}}$")
+        elif candidate_id in seen_ids:
+            errors.append(f"{path}.id: duplicate remediation candidate id {candidate_id}")
+        seen_ids.add(candidate_id)
+
+        finding_id = str(candidate.get("finding_id") or "").strip()
+        if finding_id not in finding_ids:
+            errors.append(f"{path}.finding_id: finding {finding_id!r} is not present in reports/findings.json")
+        if candidate.get("status") not in REMEDIATION_STATUSES:
+            errors.append(f"{path}.status: remediation candidates must remain draft")
+        if candidate.get("safe_by_design") is not True:
+            errors.append(f"{path}.safe_by_design: must be true for draft remediation candidates")
+        if candidate.get("requires_human_review") is not True:
+            errors.append(f"{path}.requires_human_review: must be true for draft remediation candidates")
+        if not isinstance(candidate.get("summary"), str) or not str(candidate.get("summary")).strip():
+            errors.append(f"{path}.summary: expected non-empty string, got {json_type_name(candidate.get('summary'))}")
+
+        for key in ["files_touched", "expected_validation", "limitations"]:
+            validate_string_list(candidate.get(key), f"{path}.{key}", errors)
+        files_touched = candidate.get("files_touched") if isinstance(candidate.get("files_touched"), list) else []
+        for file_index, file_ref in enumerate(files_touched):
+            try:
+                validate_relative_repo_path(file_ref, field_path=f"{path}.files_touched[{file_index}]")
+            except ReportSafetyError as exc:
+                errors.append(str(exc))
+
+        for field, expected_suffix in [("patch_file", ".diff"), ("notes_file", ".md"), ("subject_file", ".json")]:
+            if field not in candidate:
+                if field == "patch_file":
+                    errors.append(f"{path}.{field}: missing required remediation artifact path")
+                continue
+            try:
+                validate_remediation_artifact_path(
+                    run_dir,
+                    candidate.get(field),
+                    field_path=f"{path}.{field}",
+                    expected_suffix=expected_suffix,
+                )
+            except ReportSafetyError as exc:
+                errors.append(str(exc))
+
+    return True
+
+
 def validate_traces(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
     traces_path = run_dir / TRACES_PATH
     if not traces_path.exists():
@@ -1519,6 +1633,7 @@ def main() -> int:
     chains_validated = validate_chains(run_dir, findings, errors)
     adversarial_validation_validated = validate_adversarial_validation(run_dir, findings, errors)
     proofs_validated = validate_proofs(run_dir, findings, errors)
+    remediation_candidates_validated = validate_remediation_candidates(run_dir, findings, errors)
     traces_validated = validate_traces(run_dir, findings, errors)
     metrics_validated = validate_metrics(run_dir, errors)
     issue_ledger_validated = validate_issue_ledger(run_dir, errors)
@@ -1547,6 +1662,8 @@ def main() -> int:
         print("Adversarial validations: validated")
     if proofs_validated:
         print("Proofs: validated")
+    if remediation_candidates_validated:
+        print("Remediation candidates: validated")
     if traces_validated:
         print("Traces: validated")
     if metrics_validated:

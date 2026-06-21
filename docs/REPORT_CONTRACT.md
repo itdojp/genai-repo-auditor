@@ -48,6 +48,13 @@ reports/
   proofs.json
   proofs/
     SEC-001-test-plan.md
+  remediation/
+    remediation-candidates.json
+    REMEDIATION_CANDIDATES.md
+    SEC-001/
+      subject.json
+      patch.diff
+      notes.md
   TRACE.md
   traces.json
   traces/
@@ -399,6 +406,26 @@ installation、target repository modification を含めてはいけません。
 を持つ structured command object として記録します。validator は read-only
 `rg`、bounded `sed -n START,ENDp FILE`、exact `python -m json.tool FILE` JSON read 以外を拒否し、
 network/credential/write metadata が safe proof と矛盾する場合も拒否します。
+
+## remediation candidate output
+
+`reports/remediation/remediation-candidates.json`,
+`reports/remediation/REMEDIATION_CANDIDATES.md`, and files under
+`reports/remediation/<FINDING-ID>/` are local/private, draft-only remediation
+handoff artifacts. They describe candidate patch directions for existing
+findings, but the auditor does not apply those patches, push branches, open
+pull requests, create GitHub Issues, install dependencies, access the network,
+or execute target code in this stage.
+
+Every candidate must reference an existing finding, use an ID such as
+`PATCH-001`, keep `status` set to `draft`, set `safe_by_design: true`, and set
+`requires_human_review: true`. `patch_file`, optional `notes_file`, and
+optional `subject_file` must stay under `reports/remediation/`; patch files use
+`.diff`. `files_touched` are repository-relative paths such as `repo/app.py`.
+
+Issue publication plans may record whether a remediation candidate exists and
+may include bounded candidate metadata such as ID, status, patch path, and
+human-review requirement. They must not embed the full patch diff.
 
 ## cross-repo trace reachability output
 
