@@ -792,8 +792,15 @@ class CliWorkflowTests(unittest.TestCase):
                 run_dir = Path(arg_value(args, "--cd") or os.getcwd())
                 output_last = Path(arg_value(args, "--output-last-message") or (run_dir / "codex-final.md"))
                 vote_match = re.search(r"vote-(\d{3})", str(output_last))
-                fixture_env_name = f"GRA_MOCK_FIXTURE_DIR_VOTE_{vote_match.group(1)}" if vote_match else ""
-                fixture_dir = Path(os.environ.get(fixture_env_name, os.environ.get("GRA_MOCK_FIXTURE_DIR", "")))
+                if vote_match:
+                    fixture_dir = Path(
+                        os.environ.get(
+                            f"GRA_MOCK_FIXTURE_DIR_VOTE_{vote_match.group(1)}",
+                            os.environ.get("GRA_MOCK_FIXTURE_DIR", ""),
+                        )
+                    )
+                else:
+                    fixture_dir = Path(os.environ.get("GRA_MOCK_FIXTURE_DIR", ""))
                 mode = os.environ.get("GRA_MOCK_CODEX_MODE", "success")
 
                 output_last.parent.mkdir(parents=True, exist_ok=True)
