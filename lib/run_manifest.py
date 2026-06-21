@@ -218,6 +218,7 @@ def collect_schemas(run_dir: Path) -> list[dict[str, str]]:
         "validation.schema.json",
         "chains.schema.json",
         "proofs.schema.json",
+        "remediation-candidates.schema.json",
         "traces.schema.json",
         "metrics.schema.json",
         "issue-ledger.schema.json",

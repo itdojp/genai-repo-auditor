@@ -116,6 +116,7 @@ class CliHelpTests(unittest.TestCase):
             ("gra-batch", [], 2, "--repo-list FILE is required"),
             ("gra-dashboard", [], 2, "the following arguments are required: --run"),
             ("gra-issues", [], 2, "the following arguments are required: --run"),
+            ("gra-remediate", [], 2, "the following arguments are required: --run"),
             ("gra-run-state", [], 2, "the following arguments are required: --run"),
             ("gra-sandbox-check", [], 2, "the following arguments are required: --run, --profile"),
             ("gra-targets", [], 2, "the following arguments are required: --run"),

@@ -52,6 +52,8 @@ def main() -> int:
     metrics_present = isinstance(metrics_data, dict) and bool(metrics_data)
     gapfill_data = load_json(reports / 'gapfill-targets.json', {}) or {}
     gapfill_present = isinstance(gapfill_data, dict) and bool(gapfill_data)
+    remediation_data = load_json(reports / 'remediation' / 'remediation-candidates.json', {}) or {}
+    remediation_present = isinstance(remediation_data, dict) and bool(remediation_data)
 
     sev_counts = Counter(f.get('severity', 'Unknown') for f in findings)
     status_counts = Counter(f.get('status', 'Unknown') for f in findings)
@@ -139,6 +141,36 @@ def main() -> int:
             "<h3>Next gapfill targets</h3>"
             "<table><thead><tr><th>Priority</th><th>Gapfill target</th><th>Source target</th><th>Status</th><th>Relationship</th><th>Reason</th></tr></thead>"
             f"<tbody>{next_body}</tbody></table>"
+        )
+
+    remediation_section = (
+        "<h2>Remediation candidates</h2>"
+        "<p>No remediation candidate artifact found. Run "
+        "<code>gra-remediate --run RUN_DIR --finding SEC-001 --mode goal</code> "
+        "to prepare draft-only candidate patches for human review.</p>"
+    )
+    if remediation_present:
+        candidate_rows = []
+        for item in remediation_data.get('candidates') or []:
+            if isinstance(item, dict):
+                candidate_rows.append(
+                    "<tr>"
+                    f"<td>{h(item.get('id'))}</td>"
+                    f"<td>{h(item.get('finding_id'))}</td>"
+                    f"<td>{h(item.get('status'))}</td>"
+                    f"<td>{h(item.get('requires_human_review'))}</td>"
+                    f"<td>{h(item.get('patch_file'))}</td>"
+                    f"<td>{h(item.get('summary'))}</td>"
+                    "</tr>"
+                )
+        candidate_body = ''.join(candidate_rows) or '<tr><td colspan="6">No remediation candidates.</td></tr>'
+        remediation_section = (
+            "<h2>Remediation candidates</h2>"
+            "<p>Draft-only local remediation artifacts. Full diffs stay under "
+            "<code>reports/remediation/</code>; review "
+            "<a href='remediation/REMEDIATION_CANDIDATES.md'>REMEDIATION_CANDIDATES.md</a> locally before applying anything.</p>"
+            "<table><thead><tr><th>ID</th><th>Finding</th><th>Status</th><th>Human review</th><th>Patch file</th><th>Summary</th></tr></thead>"
+            f"<tbody>{candidate_body}</tbody></table>"
         )
 
     scanner_rows = []
@@ -304,6 +336,7 @@ def main() -> int:
 {''.join(f"<h3>{h(label)}</h3><div class='cards'>{counts_table(assessment_counts[field], ['Confirmed', 'Probable', 'Potential', 'Invalid', 'Not assessed'])}</div>" for field, label in ASSESSMENT_FIELDS)}
 <h2>Target status</h2><div class='cards'>{''.join(f"<div class='card'><strong>{h(k)}</strong><br>{v}</div>" for k, v in sorted(target_status_counts.items()))}</div>
 {gapfill_section}
+{remediation_section}
 <h2>Taxonomies</h2>
 <table><thead><tr><th>Taxonomy</th><th>ID</th><th>Count</th></tr></thead><tbody>{''.join(taxonomy_rows) or '<tr><td colspan="3">No taxonomy mappings.</td></tr>'}</tbody></table>
 <h2>Findings</h2>

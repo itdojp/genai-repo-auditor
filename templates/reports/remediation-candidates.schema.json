@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor Remediation Candidates",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "repo",
+    "generated_at",
+    "candidates"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1"]
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "repo": {
+      "type": "string"
+    },
+    "branch": {
+      "type": ["string", "null"]
+    },
+    "commit": {
+      "type": ["string", "null"]
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "finding_id",
+          "status",
+          "safe_by_design",
+          "patch_file",
+          "summary",
+          "files_touched",
+          "expected_validation",
+          "limitations",
+          "requires_human_review"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^PATCH-[0-9]{3,}$"
+          },
+          "finding_id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": ["draft"]
+          },
+          "safe_by_design": {
+            "type": "boolean"
+          },
+          "patch_file": {
+            "type": "string"
+          },
+          "notes_file": {
+            "type": "string"
+          },
+          "subject_file": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "files_touched": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expected_validation": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requires_human_review": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

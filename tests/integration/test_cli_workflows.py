@@ -630,6 +630,29 @@ class CliWorkflowTests(unittest.TestCase):
                     for src in proofs_dir_src.iterdir():
                         if src.is_file():
                             shutil.copy2(src, proofs_dest / src.name)
+                remediation_src = fixture_dir / "reports" / "remediation"
+                if remediation_src.exists():
+                    remediation_dest = reports / "remediation"
+                    remediation_dest.mkdir(parents=True, exist_ok=True)
+                    for src in remediation_src.rglob("*"):
+                        if not src.is_file():
+                            continue
+                        rel = src.relative_to(remediation_src)
+                        target = remediation_dest / rel
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        if rel.as_posix() == "remediation-candidates.json":
+                            remediation = load_json(src, {})
+                            remediation.update(
+                                {
+                                    "run_id": ctx.get("run_id", run_dir.name),
+                                    "repo": ctx.get("repo", remediation.get("repo", "")),
+                                    "branch": ctx.get("branch", remediation.get("branch", "")),
+                                    "commit": ctx.get("commit", remediation.get("commit", "")),
+                                }
+                            )
+                            write_json(target, remediation)
+                        else:
+                            shutil.copy2(src, target)
                 traces_src = fixture_dir / "reports" / "traces.json"
                 if traces_src.exists():
                     traces = load_json(traces_src, {})
@@ -739,7 +762,12 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn({"name": "duplicate-decision.schema.json", "path": "duplicate-decision.schema.json"}, manifest["schemas"])
         self.assertIn({"name": "run-state.schema.json", "path": "run-state.schema.json"}, manifest["schemas"])
         self.assertIn({"name": "command-event.schema.json", "path": "command-event.schema.json"}, manifest["schemas"])
+        self.assertIn(
+            {"name": "remediation-candidates.schema.json", "path": "remediation-candidates.schema.json"},
+            manifest["schemas"],
+        )
         self.assertTrue((run_dir / "command-event.schema.json").exists())
+        self.assertTrue((run_dir / "remediation-candidates.schema.json").exists())
         self.assertNotIn("run-manifest.json", self.manifest_artifact_paths(run_dir))
         self.assertIn("prompts/exec/full-audit.prompt.md", self.manifest_artifact_paths(run_dir))
         artifacts_by_path = self.manifest_artifacts_by_path(run_dir)
@@ -2141,6 +2169,199 @@ class CliWorkflowTests(unittest.TestCase):
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
         self.assertIn("Proofs: validated", cp_validate.stdout)
+
+    def test_gra_remediate_finding_exec_writes_draft_candidate_artifacts(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        env, codex_log = self.env_with_codex_log(GRA_MOCK_FIXTURE_DIR=str(FIXTURES / "remediation-output"))
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-remediate",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--model",
+                "gpt-fixture",
+                "--effort",
+                "medium",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Running Codex remediation candidate generation for SEC-001", cp.stdout)
+        self.assertIn("Codex status: 0", cp.stdout)
+
+        subjects = json.loads((run_dir / "reports" / "remediation" / "sec-001.subjects.json").read_text(encoding="utf-8"))
+        self.assertEqual(["SEC-001"], [item["finding_id"] for item in subjects["subjects"]])
+        subject = json.loads((run_dir / "reports" / "remediation" / "SEC-001" / "subject.json").read_text(encoding="utf-8"))
+        self.assertEqual("PATCH-001", subject["candidate_id"])
+        self.assertEqual("reports/remediation/SEC-001/patch.diff", subject["patch_file"])
+
+        prompt = run_dir / "prompts" / "exec" / "remediate-sec-001.prompt.md"
+        prompt_text = prompt.read_text(encoding="utf-8")
+        self.assertIn("draft-only remediation candidate", prompt_text)
+        self.assertIn("Do not apply any patch to repo/.", prompt_text)
+        self.assertIn("Do not push, create branches, create pull requests, create GitHub Issues", prompt_text)
+        self.assertIn("reports/remediation/remediation-candidates.json", prompt_text)
+        self.assertIn("reports/remediation/sec-001.subjects.json", prompt_text)
+        self.assertNotIn("{{", prompt_text)
+
+        candidates = json.loads((run_dir / "reports" / "remediation" / "remediation-candidates.json").read_text(encoding="utf-8"))
+        candidate = candidates["candidates"][0]
+        self.assertEqual("PATCH-001", candidate["id"])
+        self.assertEqual("SEC-001", candidate["finding_id"])
+        self.assertEqual("draft", candidate["status"])
+        self.assertIs(candidate["safe_by_design"], True)
+        self.assertIs(candidate["requires_human_review"], True)
+        self.assertEqual("reports/remediation/SEC-001/patch.diff", candidate["patch_file"])
+        self.assertTrue((run_dir / "reports" / "remediation" / "SEC-001" / "patch.diff").exists())
+        self.assertIn("Local/private by default", (run_dir / "reports" / "remediation" / "REMEDIATION_CANDIDATES.md").read_text(encoding="utf-8"))
+
+        final_path = run_dir / "codex-remediate-sec-001-final.md"
+        events_path = run_dir / "codex-remediate-sec-001-events.jsonl"
+        stderr_path = run_dir / "codex-remediate-sec-001-stderr.txt"
+        self.assertEqual(final_path.read_text(encoding="utf-8"), "mock codex mode=success\n")
+        self.assertIn('"status": "ok"', events_path.read_text(encoding="utf-8"))
+        self.assertTrue(stderr_path.exists())
+        calls = self.read_codex_calls(codex_log)
+        self.assertEqual(len(calls), 1, calls)
+        self.assertIn(str(final_path), calls[0])
+        self.assertIn('model_reasoning_effort="medium"', calls[0])
+        self.assertIn('sandbox_workspace_write.network_access=false', calls[0])
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Remediation candidates: validated", cp_validate.stdout)
+
+        cp_dashboard = self.run_cmd([REPO_ROOT / "bin" / "gra-dashboard", "--run", run_dir], check=True)
+        self.assertIn("dashboard.html", cp_dashboard.stdout)
+        dashboard = (run_dir / "reports" / "dashboard.html").read_text(encoding="utf-8")
+        self.assertIn("Remediation candidates", dashboard)
+        self.assertIn("REMEDIATION_CANDIDATES.md", dashboard)
+        self.assertIn("PATCH-001", dashboard)
+
+        cp_plan = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--plan",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            check=True,
+        )
+        self.assertIn("remediation_candidate:", cp_plan.stdout)
+        self.assertIn("exists=True", cp_plan.stdout)
+        self.assertNotIn("diff --git", cp_plan.stdout)
+        plan = json.loads((run_dir / "reports" / "issue-publication-plan.json").read_text(encoding="utf-8"))
+        remediation = plan["selected_findings"][0]["remediation_candidate"]
+        self.assertTrue(remediation["exists"])
+        self.assertEqual(["PATCH-001"], [item["id"] for item in remediation["candidates"]])
+        self.assertNotIn("diff --git", json.dumps(plan))
+
+    def test_gra_remediate_goal_prepares_prompt_without_codex_exec(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        env, codex_log = self.env_with_codex_log()
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-remediate",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--mode",
+                "goal",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Prepared supervised /goal remediation candidate run.", cp.stdout)
+        prompt = run_dir / "prompts" / "goal" / "remediate-sec-001.goal.md"
+        self.assertTrue(prompt.exists())
+        self.assertTrue(prompt.read_text(encoding="utf-8").startswith("/goal "))
+        self.assertIn("Do not apply any patch", prompt.read_text(encoding="utf-8"))
+        self.assertTrue((run_dir / "reports" / "remediation" / "SEC-001" / "subject.json").exists())
+        self.assertEqual(self.read_codex_calls(codex_log), [])
+        self.assertFalse((run_dir / "codex-remediate-sec-001-final.md").exists())
+
+    def test_gra_remediate_all_critical_high_goal_selects_relevant_findings(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        findings_path = run_dir / "reports" / "findings.json"
+        findings = json.loads(findings_path.read_text(encoding="utf-8"))
+        base = findings["findings"][0]
+        findings["findings"].extend(
+            [
+                {**base, "id": "SEC-002", "fingerprint": "fixture-fingerprint-0002", "severity": "Low", "status": "Confirmed"},
+                {**base, "id": "SEC-003", "fingerprint": "fixture-fingerprint-0003", "severity": "High", "status": "Invalid"},
+                {**base, "id": "SEC-004", "fingerprint": "fixture-fingerprint-0004", "severity": "Critical", "status": "Potential"},
+            ]
+        )
+        findings_path.write_text(json.dumps(findings, indent=2) + "\n", encoding="utf-8")
+
+        env, codex_log = self.env_with_codex_log()
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-remediate",
+                "--run",
+                run_dir,
+                "--all-critical-high",
+                "--mode",
+                "goal",
+            ],
+            env=env,
+            check=True,
+        )
+
+        self.assertIn("Prepared supervised /goal remediation candidate run.", cp.stdout)
+        subjects = json.loads((run_dir / "reports" / "remediation" / "critical-high.subjects.json").read_text(encoding="utf-8"))
+        self.assertEqual(["SEC-001", "SEC-004"], [item["finding_id"] for item in subjects["subjects"]])
+        self.assertTrue((run_dir / "reports" / "remediation" / "SEC-004" / "subject.json").exists())
+        prompt = run_dir / "prompts" / "goal" / "remediate-critical-high.goal.md"
+        self.assertTrue(prompt.read_text(encoding="utf-8").startswith("/goal "))
+        self.assertEqual(self.read_codex_calls(codex_log), [])
+
+    def test_validate_report_rejects_invalid_remediation_candidate_contract(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        remediation_dir = run_dir / "reports" / "remediation" / "SEC-001"
+        remediation_dir.mkdir(parents=True)
+        (remediation_dir / "patch.txt").write_text("not a diff\n", encoding="utf-8")
+        invalid = {
+            "schema_version": "1",
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "generated_at": "2026-06-21T00:00:00Z",
+            "candidates": [
+                {
+                    "id": "PATCH-001",
+                    "finding_id": "SEC-404",
+                    "status": "applied",
+                    "safe_by_design": False,
+                    "patch_file": "reports/remediation/SEC-001/patch.txt",
+                    "summary": "",
+                    "files_touched": ["../repo/app.py"],
+                    "expected_validation": [123],
+                    "limitations": [],
+                    "requires_human_review": False,
+                }
+            ],
+        }
+        (run_dir / "reports" / "remediation" / "remediation-candidates.json").write_text(
+            json.dumps(invalid, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir])
+
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("finding 'SEC-404' is not present", cp.stderr)
+        self.assertIn("status: remediation candidates must remain draft", cp.stderr)
+        self.assertIn("safe_by_design: must be true", cp.stderr)
+        self.assertIn("requires_human_review: must be true", cp.stderr)
+        self.assertIn("files_touched[0]", cp.stderr)
+        self.assertIn("expected_validation[0]", cp.stderr)
+        self.assertIn("patch_file: remediation artifact path must end with .diff", cp.stderr)
 
     def test_gra_proofs_all_critical_high_goal_selects_relevant_findings(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

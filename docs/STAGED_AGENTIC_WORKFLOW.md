@@ -253,6 +253,21 @@ reports/proofs/
 Use them to refine validation status and Issue wording; do not copy them
 wholesale into public Issues.
 
+## Remediation candidates
+
+Use `gra-remediate` to create local/private, draft-only candidate patches for
+human review. This stage does not apply patches, modify the target checkout,
+push branches, open PRs, create issues, install dependencies, access the
+network, or execute target code.
+
+```bash
+gra-remediate --run runs/OWNER__REPO/RUN_ID --finding SEC-001 --mode goal
+gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --mode goal
+```
+
+Outputs stay under `reports/remediation/` and are validated by
+`gra-validate-report`.
+
 ## Cross-repo trace reachability
 
 Use `gra-trace` when a producer finding, such as a shared-library flaw, may be

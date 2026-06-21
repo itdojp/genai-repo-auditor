@@ -19,6 +19,7 @@ bin/gra-ingest
 bin/gra-issues
 bin/gra-metrics
 bin/gra-proofs
+bin/gra-remediate
 bin/gra-recon
 bin/gra-research
 bin/gra-run-state
@@ -45,6 +46,7 @@ prompts/exec/full-audit.prompt.md
 prompts/exec/gapfill-target.prompt.md
 prompts/exec/generate-targets.prompt.md
 prompts/exec/recon.prompt.md
+prompts/exec/remediate.prompt.md
 prompts/exec/research-target.prompt.md
 prompts/exec/safe-proof.prompt.md
 prompts/exec/scanner-triage.prompt.md
@@ -58,6 +60,7 @@ prompts/goal/deep-dive-finding.goal.md
 prompts/goal/full-audit.goal.md
 prompts/goal/gapfill-target.goal.md
 prompts/goal/research-target.goal.md
+prompts/goal/remediate.goal.md
 prompts/goal/safe-proof.goal.md
 prompts/goal/synthesize-chains.goal.md
 prompts/goal/trace-reachability.goal.md
@@ -80,6 +83,7 @@ templates/reports/findings.schema.json
 templates/reports/issue-ledger.schema.json
 templates/reports/metrics.schema.json
 templates/reports/proofs.schema.json
+templates/reports/remediation-candidates.schema.json
 templates/reports/run-manifest.schema.json
 templates/reports/run-state.schema.json
 templates/reports/scanner-index.schema.json
@@ -139,6 +143,7 @@ docs/MULTI_REPO.md
 docs/NORMAL_OPERATION.md
 docs/NORMAL_WORKFLOW.md
 docs/PROVENANCE_POSTURE.md
+docs/REMEDIATION_CANDIDATES.md
 docs/RELEASE_PROCESS.md
 docs/REPORTING_AND_STORE.md
 docs/REPORT_CONTRACT.md

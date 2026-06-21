@@ -1,0 +1,24 @@
+{
+  "schema_version": "1",
+  "run_id": "fixture-run",
+  "repo": "example/demo",
+  "branch": "main",
+  "commit": "0000000000000000000000000000000000000000",
+  "generated_at": "2026-06-21T00:00:00Z",
+  "candidates": [
+    {
+      "id": "PATCH-001",
+      "finding_id": "SEC-001",
+      "status": "draft",
+      "safe_by_design": true,
+      "patch_file": "reports/remediation/SEC-001/patch.diff",
+      "notes_file": "reports/remediation/SEC-001/notes.md",
+      "subject_file": "reports/remediation/SEC-001/subject.json",
+      "summary": "Draft-only allowlist guard before processing untrusted fixture input.",
+      "files_touched": ["repo/app.py"],
+      "expected_validation": ["targeted tests", "safe proof replay"],
+      "limitations": ["Patch was not applied or executed", "Human review is required before use"],
+      "requires_human_review": true
+    }
+  ]
+}
