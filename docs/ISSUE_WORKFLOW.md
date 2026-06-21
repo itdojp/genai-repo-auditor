@@ -183,6 +183,15 @@ root-cause text, impact text, or issue bodies. Accepted-risk reasons are also
 local-only, but operators must still avoid secrets or sensitive evidence in the
 reason text.
 
+## evidence graph review
+
+Run `gra-evidence-graph --run runs/OWNER__REPO/RUN_ID` after advanced
+validation and issue planning artifacts exist when reviewers need a single local
+view of supporting/challenging evidence. The graph links findings to targets,
+chains, proofs, validation, traces, remediation candidates, patch validation,
+Issue plan entries, and metrics using bounded artifact references only; it does
+not replace human review before publication.
+
 ## duplicate prevention
 
 Issue bodies include a hidden marker:

@@ -23,11 +23,12 @@ prompts, transcripts, target research, variant analysis, scanner-result trees,
 and similar logs discoverable with digests even when they are not active
 validation targets.
 
-Generate local novelty classification, metrics, and dashboard:
+Generate local novelty classification, metrics, evidence graph, and dashboard:
 
 ```bash
 gra-novelty --run runs/OWNER__REPO/RUN_ID
 gra-metrics --run runs/OWNER__REPO/RUN_ID
+gra-evidence-graph --run runs/OWNER__REPO/RUN_ID
 gra-dashboard --run runs/OWNER__REPO/RUN_ID
 open runs/OWNER__REPO/RUN_ID/reports/dashboard.html
 ```
@@ -39,9 +40,16 @@ manifest hygiene warning counts, and run duration when local metadata is
 available. It intentionally omits raw finding evidence, issue body text, proof
 evidence, trace evidence, scanner lead bodies, and secret values.
 
+The evidence graph links findings to supporting and challenging local artifacts
+such as targets, chains, proofs, validation, traces, remediation candidates,
+patch validation, Issue plans, and metrics. It records bounded metadata and
+run-relative artifact references only; it does not copy raw evidence,
+remediation text, proof payloads, Issue bodies, or secrets.
+
 The dashboard summarizes findings, target status, taxonomy mappings, known-finding
-novelty status when `reports/known-findings.json` exists, advanced
-workflow metrics when `reports/metrics.json` exists, artifact retention status,
+novelty status when `reports/known-findings.json` exists, evidence graph
+coverage when `reports/evidence-graph.json` exists, advanced workflow metrics
+when `reports/metrics.json` exists, artifact retention status,
 OpenSSF Scorecard supply-chain posture when `reports/supply-chain-posture.json`
 exists, dependency risk posture when `reports/dependencies.json` exists, and the
 scanner result index.

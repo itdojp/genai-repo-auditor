@@ -29,7 +29,7 @@ prepare
   -> variant analysis
   -> scanner triage
   -> chain synthesis / safe local proofs / adversarial validation
-  -> dashboard / SARIF / SQLite store
+  -> evidence graph / dashboard / SARIF / SQLite store
   -> human review
   -> GitHub Issue
 ```
@@ -115,6 +115,7 @@ gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --validate --san
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high --votes 3 --policy human-review-on-split
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 gra-metrics --run runs/OWNER__REPO/RUN_ID
+gra-evidence-graph --run runs/OWNER__REPO/RUN_ID
 gra-dashboard --run runs/OWNER__REPO/RUN_ID
 gra-sarif --run runs/OWNER__REPO/RUN_ID
 gra-store --run runs/OWNER__REPO/RUN_ID
@@ -133,6 +134,7 @@ gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --validate --san
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high --votes 3 --policy human-review-on-split
 gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID --fix
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
+gra-evidence-graph --run runs/OWNER__REPO/RUN_ID
 gra-issues --run runs/OWNER__REPO/RUN_ID --dry-run
 gra-issues --run runs/OWNER__REPO/RUN_ID --apply --create-labels
 ```
@@ -276,11 +278,12 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-novelty` | Classify current findings against a local known-finding novelty ledger |
 | `gra-trace` | Trace experimental/P3 cross-repo reachability for shared-library findings |
 | `gra-metrics` | Generate local advanced workflow metrics without raw evidence |
+| `gra-evidence-graph` | Generate a local bounded evidence graph across report artifacts |
 | `gra-ingest` | Ingest scanner outputs |
 | `gra-scanner-triage` | Triage scanner leads in repository context |
 | `gra-taxonomy-preflight` | Preflight and normalize controlled taxonomy references |
-| `gra-validate-report` | Validate `findings.json`, `targets.json`, chain, proof, trace, validation output, and report contract |
-| `gra-dashboard` | Generate local HTML dashboard with metrics links when present |
+| `gra-validate-report` | Validate `findings.json`, `targets.json`, chain, proof, trace, validation, evidence graph, and report contract |
+| `gra-dashboard` | Generate local HTML dashboard with metrics and evidence graph links when present |
 | `gra-sarif` | Generate SARIF output |
 | `gra-store` | Import run data into SQLite |
 | `gra-issues` | Create GitHub Issues from reviewed findings with issue ledger and duplicate decision records |
@@ -325,6 +328,7 @@ Do not use this project for:
 - [`docs/SAFE_LOCAL_PROOFS.md`](docs/SAFE_LOCAL_PROOFS.md)
 - [`docs/TRACE_REACHABILITY.md`](docs/TRACE_REACHABILITY.md)
 - [`docs/METRICS.md`](docs/METRICS.md)
+- [`docs/EVIDENCE_GRAPH.md`](docs/EVIDENCE_GRAPH.md)
 - [`docs/SCANNER_INTEGRATION.md`](docs/SCANNER_INTEGRATION.md)
 - [`docs/SCORECARD_INGESTION.md`](docs/SCORECARD_INGESTION.md)
 - [`docs/DEPENDENCY_INGESTION.md`](docs/DEPENDENCY_INGESTION.md)

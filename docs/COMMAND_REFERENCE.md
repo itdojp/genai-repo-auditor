@@ -15,7 +15,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 - Non-interactive `codex exec` invocations set approval behavior through `-c 'approval_policy="never"'` rather than the interactive-only `--ask-for-approval` flag, preserving compatibility with `codex-cli 0.135.0`.
 - Codex-driven commands derive the default executable name from the built-in `codex-cli` worker profile while preserving the tested `codex exec` argument construction in `lib/gralib.py`. `gra-agent-check` can list profiles and check whether the required local worker executable is available without running the worker.
 - Executable target-code validation should be gated by an explicit sandbox profile. `gra-sandbox-check` records readiness for `source-only`, `local-test`, `container`, `gvisor`, and `vm` profiles without executing target code.
-- Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-trace`, `gra-metrics`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
+- Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-trace`, `gra-metrics`, `gra-evidence-graph`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
 - Python commands use `argparse`; missing required arguments or invalid choices normally exit with status `2`.
 - Generated audit artifacts, cloned target repositories, scanner raw outputs, issue drafts, and local stores should remain local and should not be committed.
 
@@ -39,7 +39,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Cross-repo trace reachability | `gra-trace` | Experimental/P3 trace prompt, subject seed JSON, `reports/traces.json`, `reports/TRACE.md` |
 | Scanner triage | `gra-ingest`, `gra-scanner-triage` | Raw scanner copies, redacted normalized leads, scanner index, Scorecard posture artifacts, dependency posture artifacts, triage output |
 | Validation | `gra-taxonomy-preflight`, `gra-validate-report` | Controlled taxonomy preflight, report contract validation result |
-| Reporting / persistence | `gra-metrics`, `gra-dashboard`, `gra-sarif`, `gra-store`, `gra-index` | Local metrics, HTML dashboard, SARIF, SQLite store, run index |
+| Reporting / persistence | `gra-metrics`, `gra-evidence-graph`, `gra-dashboard`, `gra-sarif`, `gra-store`, `gra-index` | Local metrics, evidence graph, HTML dashboard, SARIF, SQLite store, run index |
 | Issue workflow | `gra-issues` | Dry-run previews, canonical issue ledger, duplicate decision records, ledger verification, or GitHub Issues after human review |
 
 ## `gra-agent-check`
@@ -458,7 +458,7 @@ gra-taxonomy-preflight --findings reports/findings.json --targets reports/target
 
 | Field | Details |
 |---|---|
-| Purpose | Validate `findings.json`, optional `targets.json`, optional chain reports, optional proof artifacts, optional remediation and patch-validation artifacts, optional known-finding novelty ledger, optional cross-repo trace artifacts, optional adversarial validation output, optional scanner index artifacts, optional dependency artifacts, optional issue ledger, optional duplicate decision records, optional run state, optional command event records, optional run manifest artifact retention and digest hygiene, controlled taxonomy names/IDs/labels, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
+| Purpose | Validate `findings.json`, optional `targets.json`, optional chain reports, optional proof artifacts, optional remediation and patch-validation artifacts, optional known-finding novelty ledger, optional cross-repo trace artifacts, optional adversarial validation output, optional evidence graph output, optional scanner index artifacts, optional dependency artifacts, optional issue ledger, optional duplicate decision records, optional run state, optional command event records, optional run manifest artifact retention and digest hygiene, controlled taxonomy names/IDs/labels, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
 | Workflow category | Validation workflow. |
 | Required inputs | One of `--run RUN_DIR` or `--findings PATH`. |
 | Key options | `--run RUN_DIR`, `--findings PATH`. |
@@ -493,6 +493,25 @@ Example:
 gra-metrics --run runs/OWNER__REPO/RUN_ID
 ```
 
+## `gra-evidence-graph`
+
+| Field | Details |
+|---|---|
+| Purpose | Generate a local graph that links findings to supporting and challenging artifacts across targets, scanner leads, chains, safe proofs, adversarial validation, traces, remediation candidates, patch validation, Issue publication plans, and metrics. |
+| Workflow category | Reporting / evidence handoff workflow. |
+| Required inputs | `--run RUN_DIR` with `reports/findings.json`; all other artifacts are optional and missing optional artifacts are recorded in the graph summary instead of causing failure. |
+| Key options | `--run RUN_DIR`. |
+| Generated outputs | `reports/evidence-graph.json` and `reports/EVIDENCE_GRAPH.md` with bounded node/edge summaries, artifact references, high/Critical issue-recommended coverage counts, and missing optional artifact metadata. |
+| Exit status behavior | `0` when the graph is written; parser status `2` for usage errors. |
+| Security / disclosure cautions | The graph is local-only and intentionally avoids raw finding evidence, root cause text, remediation text, proof payloads, issue bodies, and secret values. Keep it local unless repository-risk metadata sharing is approved. |
+| Related docs | [`docs/EVIDENCE_GRAPH.md`](EVIDENCE_GRAPH.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
+
+Example:
+
+```bash
+gra-evidence-graph --run runs/OWNER__REPO/RUN_ID
+```
+
 ## `gra-novelty`
 
 | Field | Details |
@@ -518,11 +537,11 @@ gra-novelty --run runs/OWNER__REPO/RUN_ID --accepted-risk SEC-001 --accepted-ris
 
 | Field | Details |
 |---|---|
-| Purpose | Generate a local HTML dashboard summarizing a run's findings, structured finding assessment dimensions, target queue, gapfill current/cumulative queue state, remediation candidates, known-finding novelty status, advanced workflow metrics, artifact retention, and observability when present, Scorecard supply-chain posture, dependency risk posture, and scanner result index. |
+| Purpose | Generate a local HTML dashboard summarizing a run's findings, structured finding assessment dimensions, target queue, gapfill current/cumulative queue state, remediation candidates, known-finding novelty status, evidence graph, advanced workflow metrics, artifact retention, and observability when present, Scorecard supply-chain posture, dependency risk posture, and scanner result index. |
 | Workflow category | Reporting workflow. |
 | Required inputs | `--run RUN_DIR`. |
 | Key options | `--out OUT` to override the default `reports/dashboard.html`. |
-| Generated outputs | HTML dashboard file with links to `metrics.json` / `METRICS.md` and `known-findings.json` / `NOVELTY.md` when those artifacts exist, including current source-to-gapfill relationships, prioritized next gapfill targets, remediation candidate summary, novelty status counts, latest/archive artifact retention counts, manifest hygiene warnings, longest command durations, and high retry / rerun targets from observability metrics. |
+| Generated outputs | HTML dashboard file with links to `metrics.json` / `METRICS.md`, `evidence-graph.json` / `EVIDENCE_GRAPH.md`, and `known-findings.json` / `NOVELTY.md` when those artifacts exist, including current source-to-gapfill relationships, prioritized next gapfill targets, remediation candidate summary, evidence graph node/edge counts, novelty status counts, latest/archive artifact retention counts, manifest hygiene warnings, longest command durations, and high retry / rerun targets from observability metrics. |
 | Exit status behavior | `0` when the dashboard is written; parser status `2` for usage errors. Unexpected unreadable input or write failures surface as non-zero Python errors. |
 | Security / disclosure cautions | The dashboard can contain finding titles, locations, and evidence. Keep it local unless disclosure has been approved. |
 | Related docs | [`docs/REPORTING_AND_STORE.md`](REPORTING_AND_STORE.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
