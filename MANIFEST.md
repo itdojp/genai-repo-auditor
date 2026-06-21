@@ -101,6 +101,14 @@ templates/reports/traces.schema.json
 templates/reports/validation.schema.json
 ```
 
+## Dogfood templates
+
+```text
+templates/dogfood/campaign-ledger.example.json
+templates/dogfood/public-safe-report-template.md
+templates/dogfood/run-record.example.json
+```
+
 ## Agent worker profiles
 
 ```text
@@ -144,6 +152,9 @@ docs/COMMAND_REFERENCE.md
 docs/CUSTOMER_AUDIT_RUNBOOK.md
 docs/DEPENDENCY_INGESTION.md
 docs/DISCLOSURE_AND_PUBLICATION_POLICY.md
+docs/DOGFOOD_CAMPAIGN.md
+docs/DOGFOOD_REPORTING.md
+docs/DOGFOOD_RUNBOOK.md
 docs/EVIDENCE_GRAPH.md
 docs/EXTERNAL_FINDING_IMPORT.md
 docs/GITHUB_BOOTSTRAP.md
