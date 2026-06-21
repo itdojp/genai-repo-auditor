@@ -23,18 +23,21 @@ ADVERSARIAL_STATUSES = {"passed", "failed", "needs-human-review", "not-run"}
 DIFF_SCOPE_STATUSES = {"bounded", "too-broad", "needs-human-review"}
 FINAL_STATUSES = {"validated", "failed", "needs-human-review"}
 SHELL_METACHARS_RE = re.compile(r"[;&|`$<>\n\r]")
+NETWORK_ACTIVITY_PATTERNS = (
+    r"https?://",
+    r"__import__\s*\(\s*['\"](?:urllib(?:\.[^'\"]+)?|requests|websocket|http\.server|ftplib|telnetlib)['\"]\s*\)",
+    r"\burllib(?:\.[A-Za-z_][A-Za-z0-9_]*)*\b",
+    r"\brequests\.[A-Za-z_][A-Za-z0-9_]*\b",
+    r"\burlopen\s*\(",
+    r"\bwebsocket\.[A-Za-z_][A-Za-z0-9_]*\b",
+    r"\bfetch\s*\(",
+    r"\baxios(?:\.[A-Za-z_][A-Za-z0-9_]*)?\b",
+    r"\bhttp\.server\b",
+    r"\bftplib\b",
+    r"\btelnetlib\b",
+)
 NETWORK_ACTIVITY_RE = re.compile(
-    r"(https?://|"
-    r"__import__\s*\(\s*['\"](?:urllib(?:\.[^'\"]+)?|requests|websocket|http\.server|ftplib|telnetlib)['\"]\s*\)|"
-    r"\b(?:urllib(?:\.[A-Za-z_][A-Za-z0-9_]*)*|"
-    r"requests\.[A-Za-z_][A-Za-z0-9_]*|"
-    r"urlopen\s*\(|"
-    r"websocket\.[A-Za-z_][A-Za-z0-9_]*|"
-    r"fetch\s*\(|"
-    r"axios(?:\.[A-Za-z_][A-Za-z0-9_]*)?|"
-    r"http\.server|"
-    r"ftplib|"
-    r"telnetlib)\b)",
+    "|".join(f"(?:{pattern})" for pattern in NETWORK_ACTIVITY_PATTERNS),
     re.IGNORECASE,
 )
 DENIED_EXECUTABLES = {
