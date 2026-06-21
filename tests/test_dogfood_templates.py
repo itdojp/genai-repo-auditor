@@ -178,7 +178,8 @@ class DogfoodTemplateTests(unittest.TestCase):
             "ghp_",
             "xoxb-",
         ]
-        leaked = [term for term in forbidden if term in template]
+        template_lower = template.lower()
+        leaked = [term for term in forbidden if term.lower() in template_lower]
         self.assertEqual([], leaked)
         self.assertIsNone(re.search(r"\b[0-9a-f]{40}\b", template))
         self.assertIsNone(re.search(r"\b20\d{6}T\d{6}[+-]\d{4}\b", template))
