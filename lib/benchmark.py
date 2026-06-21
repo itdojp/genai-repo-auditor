@@ -25,7 +25,7 @@ FIXTURE_RUNS = {
 
 ADVANCED_OUTPUT_FIXTURE = "advanced-workflow-output"
 DEFAULT_MAX_CHAINS = 25
-MAX_SECRET_PATHS = 20
+MAX_PATTERN_MATCH_PATHS = 20
 MAX_SCAN_FILE_BYTES = 2 * 1024 * 1024
 BENCHMARK_FORBIDDEN_KEYS = {
     "evidence",
@@ -160,8 +160,14 @@ def run_validation(lab_root: Path, run_dir: Path) -> dict[str, Any]:
     }
 
 
-def scan_report_secrets(run_dir: Path, reports: Path) -> dict[str, Any]:
-    secret_paths: list[str] = []
+def summarize_pattern_matches(run_dir: Path, reports: Path) -> dict[str, Any]:
+    """Return bounded counts and paths for obvious disclosure patterns.
+
+    The report intentionally excludes matched values and diagnostic strings from
+    ``iter_secret_findings``. Only counts and run-relative artifact paths are
+    carried forward into benchmark output.
+    """
+    matched_paths: list[str] = []
     match_count = 0
     skipped_large = 0
     for path in sorted(reports.rglob("*")):
@@ -201,11 +207,11 @@ def scan_report_secrets(run_dir: Path, reports: Path) -> dict[str, Any]:
             findings = list(iter_secret_findings(text, field_path="$"))
         if findings:
             match_count += len(findings)
-            if len(secret_paths) < MAX_SECRET_PATHS:
-                secret_paths.append(rel)
+            if len(matched_paths) < MAX_PATTERN_MATCH_PATHS:
+                matched_paths.append(rel)
     return {
         "match_count": int(match_count),
-        "paths": secret_paths,
+        "paths": matched_paths,
         "skipped_large_files": int(skipped_large),
     }
 
@@ -390,7 +396,7 @@ def build_benchmark(
     reports.mkdir(parents=True, exist_ok=True)
     metrics, metrics_meta = load_or_build_metrics(run_dir, reports)
     validation = run_validation(lab_root, run_dir) if validate_reports else {"exit_code": 0, "error_count": 0, "validated": True}
-    secret_scan = scan_report_secrets(run_dir, reports)
+    pattern_matches = summarize_pattern_matches(run_dir, reports)
 
     adv = metrics.get("adversarial_validation") if isinstance(metrics.get("adversarial_validation"), dict) else {}
     chains = metrics.get("chains") if isinstance(metrics.get("chains"), dict) else {}
@@ -419,13 +425,13 @@ def build_benchmark(
         gate(
             "secret-scan",
             "No generated report artifact contains obvious full secrets",
-            "pass" if secret_scan["match_count"] == 0 else "fail",
-            secret_scan["match_count"],
+            "pass" if pattern_matches["match_count"] == 0 else "fail",
+            pattern_matches["match_count"],
             0,
             "No obvious unredacted full secret patterns were found in local report artifacts."
-            if secret_scan["match_count"] == 0
+            if pattern_matches["match_count"] == 0
             else "Obvious full secret patterns were detected; paths are listed without copying secret values.",
-            list(secret_scan["paths"]),
+            list(pattern_matches["paths"]),
         ),
         gate(
             "adversarial-downgrade-rate",
