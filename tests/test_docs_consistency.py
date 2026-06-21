@@ -108,6 +108,11 @@ class DocsConsistencyTests(unittest.TestCase):
         required = {
             "docs/COMMAND_REFERENCE.md",
             "docs/LOCAL_INSTALL_AND_AUDIT.md",
+            "docs/OPERATING_MODEL.md",
+            "docs/CUSTOMER_AUDIT_RUNBOOK.md",
+            "docs/DISCLOSURE_AND_PUBLICATION_POLICY.md",
+            "docs/REMEDIATION_WORKFLOW.md",
+            "docs/ADVANCED_WORKFLOW_DECISION_TABLE.md",
             "docs/SECURITY_MODEL.md",
             "docs/SCANNER_INTEGRATION.md",
             "docs/ISSUE_WORKFLOW.md",
