@@ -2550,6 +2550,80 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual("rejected", report["commands_run"][0]["status"])
         self.assertTrue(any("network-capable arguments" in check["message"] for check in report["checks"]))
 
+    def test_gra_remediate_validate_blocks_python_network_at_runtime(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.prepare_patch_validation_run(run_dir)
+        network_check = run_dir / "repo" / "network_check.py"
+        network_check.write_text(
+            "import socket\n"
+            "socket.socket()\n",
+            encoding="utf-8",
+        )
+        subprocess.run(["git", "-C", str(run_dir / "repo"), "add", "network_check.py"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(run_dir / "repo"),
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-m",
+                "add network check",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-remediate",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--validate",
+                "--sandbox-profile",
+                "local-test",
+                "--build-command",
+                "python3 repo/network_check.py",
+            ],
+            env=self.env_without_credentials(),
+        )
+        self.assertEqual(1, cp.returncode, cp.stdout + cp.stderr)
+        report = json.loads((run_dir / "reports" / "remediation" / "SEC-001" / "patch-validation.json").read_text(encoding="utf-8"))
+        self.assertEqual("failed", report["build_status"])
+        self.assertEqual("failed", report["final_status"])
+        self.assertEqual(["python3", "repo/network_check.py"], report["commands_run"][0]["argv"])
+
+    def test_gra_remediate_validate_without_commands_needs_human_review(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.prepare_patch_validation_run(run_dir)
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-remediate",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--validate",
+                "--sandbox-profile",
+                "local-test",
+            ],
+            env=self.env_without_credentials(),
+            check=True,
+        )
+        self.assertIn("final_status=needs-human-review", cp.stdout)
+        report = json.loads((run_dir / "reports" / "remediation" / "SEC-001" / "patch-validation.json").read_text(encoding="utf-8"))
+        self.assertEqual("not-run", report["build_status"])
+        self.assertEqual("not-run", report["test_status"])
+        self.assertEqual("needs-human-review", report["final_status"])
+
     def test_gra_remediate_validate_fails_closed_when_sandbox_not_ready(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         self.prepare_patch_validation_run(run_dir)

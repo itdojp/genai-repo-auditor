@@ -99,8 +99,8 @@ Validation checks that:
 2. copies the target checkout to a disposable workspace under the run directory;
 3. reviews the patch diff paths against the target repository prefix and the candidate `files_touched` list;
 4. applies the patch to the disposable copy only;
-5. runs explicitly supplied build and targeted test commands with network disabled by default;
-6. records safe proof replay and adversarial review status when available or as not applicable / not run;
+5. runs explicitly supplied Python build and targeted test commands with an injected Python no-network guard;
+6. records safe proof replay and adversarial review status as not applicable / not run unless an explicit replay stage is added in a later workflow;
 7. removes the disposable workspace and writes `patch-validation.json` plus `patch-validation.md`.
 
 The patch validation report includes:
@@ -120,7 +120,7 @@ The patch validation report includes:
 }
 ```
 
-Validation returns exit status `1` when a candidate fails the ladder and still writes a local report with the failure reason. `gra-issues --plan --require-advanced-validation` accounts for patch validation status when present, including failed or needs-human-review validation as a blocking warning.
+Validation returns exit status `1` when a candidate fails the ladder and still writes a local report with the failure reason. If either a build command or a test command is not configured, the patch can apply successfully but the final status remains `needs-human-review` rather than `validated`. `gra-issues --plan --require-advanced-validation` accounts for patch validation status when present, including failed or needs-human-review validation as a blocking warning.
 
 ## Safety boundaries
 
@@ -129,7 +129,7 @@ Validation returns exit status `1` when a candidate fails the ladder and still w
 - Do not push, open pull requests, create issues, releases, or tags.
 - Do not install dependencies or access the network.
 - Do not execute target code, tests, proof helpers, or the candidate patch during candidate generation.
-- Execute build/test commands only in the `--validate` stage, only in the disposable workspace, and only when the operator supplies bounded commands.
+- Execute build/test commands only in the `--validate` stage, only in the disposable workspace, and only when the operator supplies bounded Python commands.
 - Do not include exploit payloads, weaponized instructions, credential extraction, or live-service probing.
 - Prefer minimal diffs and explicit limitations.
 

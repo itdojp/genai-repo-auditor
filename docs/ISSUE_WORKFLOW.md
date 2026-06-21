@@ -32,7 +32,8 @@ gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
 gra-chains --run runs/OWNER__REPO/RUN_ID
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --mode goal
-gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --validate --sandbox-profile local-test
+# Add project-specific Python build/test commands; otherwise final_status remains needs-human-review.
+gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --validate --sandbox-profile local-test --build-command "python3 -m py_compile repo/app.py" --test-command "python3 -m py_compile repo/app.py"
 # Optional for shared-library / producer findings:
 # gra-trace --producer-run runs/OWNER__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode exec
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high

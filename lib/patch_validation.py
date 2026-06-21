@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import re
 import shlex
@@ -72,6 +71,7 @@ DENIED_EXECUTABLES = {
     "zsh",
 }
 DENIED_TOKENS = {"install", "publish", "push", "upload", "deploy"}
+PYTHON_EXECUTABLE_RE = re.compile(r"^python(?:[0-9]+(?:\.[0-9]+)?)?$")
 CREDENTIAL_ENV_NAMES = {
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
@@ -228,6 +228,10 @@ def parse_operator_command(raw: str) -> list[str]:
     exe = Path(argv[0]).name.lower()
     if exe in DENIED_EXECUTABLES:
         raise PatchValidationError(f"validation command executable is not allowed by default: {argv[0]}")
+    if not PYTHON_EXECUTABLE_RE.fullmatch(exe):
+        raise PatchValidationError(
+            "local patch validation only runs Python commands with an injected no-network guard by default"
+        )
     lowered = {token.lower() for token in argv[1:]}
     if lowered & DENIED_TOKENS:
         raise PatchValidationError("validation command includes an unsafe install/publish/deploy token")
@@ -237,12 +241,31 @@ def parse_operator_command(raw: str) -> list[str]:
     return argv
 
 
+def write_python_network_guard(workspace: Path) -> Path:
+    guard_dir = workspace / ".gra-network-disabled"
+    guard_dir.mkdir(parents=True, exist_ok=True)
+    (guard_dir / "sitecustomize.py").write_text(
+        "import socket\n"
+        "\n"
+        "def _gra_network_disabled(*args, **kwargs):\n"
+        "    raise OSError('network access disabled by GenAI Repo Auditor patch validation')\n"
+        "\n"
+        "socket.socket = _gra_network_disabled\n"
+        "socket.create_connection = _gra_network_disabled\n"
+        "socket.create_server = _gra_network_disabled\n",
+        encoding="utf-8",
+    )
+    return guard_dir
+
+
 def validation_environment(workspace: Path) -> dict[str, str]:
+    guard_dir = write_python_network_guard(workspace)
     env = {
         "PATH": os.environ.get("PATH", ""),
         "PYTHONUNBUFFERED": "1",
         "NO_COLOR": "1",
         "HOME": str(workspace / ".home"),
+        "PYTHONPATH": str(guard_dir),
     }
     (workspace / ".home").mkdir(parents=True, exist_ok=True)
     for name in CREDENTIAL_ENV_NAMES:
@@ -303,10 +326,9 @@ def load_proof_status(run_dir: Path, finding_id: str) -> str:
     matching = [item for item in proofs if isinstance(item, dict) and str(item.get("finding_id") or "") == finding_id]
     if not matching:
         return "not-applicable"
-    if any(item.get("status") == "failed" for item in matching):
-        return "failed"
-    if all(item.get("status") == "confirmed" for item in matching):
-        return "passed"
+    # Existing safe-proof artifacts were generated against the pre-patch
+    # checkout. They are useful context, but they are not proof replay against
+    # the disposable patched workspace.
     return "not-run"
 
 
@@ -321,6 +343,8 @@ def final_status(report: dict[str, Any]) -> str:
             return "failed"
         if value == "needs-human-review":
             return "needs-human-review"
+    if report.get("build_status") == "not-run" or report.get("test_status") == "not-run":
+        return "needs-human-review"
     return "validated"
 
 

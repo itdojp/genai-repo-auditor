@@ -448,9 +448,12 @@ and finding, keep `network_allowed: false`, record the selected executable
 - `final_status`
 
 `final_status: validated` means the mechanical local ladder passed; it does not
-remove the draft-only, human-review requirement. Failed or needs-human-review
-validation results are included in `gra-issues --plan` metadata and are treated
-as blocking warnings when `--require-advanced-validation` is used.
+remove the draft-only, human-review requirement. Reports must not treat
+pre-patch proof artifacts as proof replay against patched code; replay remains
+`not-run` unless a later workflow explicitly executes it in the disposable
+workspace. Failed or needs-human-review validation results are included in
+`gra-issues --plan` metadata and are treated as blocking warnings when
+`--require-advanced-validation` is used.
 
 ## cross-repo trace reachability output
 
