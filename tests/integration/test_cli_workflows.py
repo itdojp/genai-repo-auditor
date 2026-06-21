@@ -173,6 +173,44 @@ class CliWorkflowTests(unittest.TestCase):
             env.pop(name, None)
         return env
 
+    def write_adversarial_vote_fixture(
+        self,
+        *,
+        name: str,
+        decision: str,
+        recommended_severity: str = "High",
+        recommended_confidence: str = "High",
+        summary: str | None = None,
+    ) -> Path:
+        fixture_dir = self.work_dir / name
+        reports = fixture_dir / "reports"
+        reports.mkdir(parents=True, exist_ok=True)
+        validation = {
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "branch": "main",
+            "commit": "0000000000000000000000000000000000000000",
+            "generated_at": "2026-05-26T00:00:00Z",
+            "validations": [
+                {
+                    "id": "VAL-001",
+                    "subject_type": "finding",
+                    "subject_id": "SEC-001",
+                    "decision": decision,
+                    "original_severity": "High",
+                    "recommended_severity": recommended_severity,
+                    "original_confidence": "High",
+                    "recommended_confidence": recommended_confidence,
+                    "reasoning_summary": summary or f"Fixture vote summary for {decision}.",
+                    "evidence_checked": ["reports/findings.json", "repo/auth/login.py"],
+                    "missing_evidence": ["production middleware order"],
+                    "safe_validation_steps": ["static call-path review"],
+                }
+            ],
+        }
+        (reports / "validation.json").write_text(json.dumps(validation, indent=2) + "\n", encoding="utf-8")
+        return fixture_dir
+
     def prepare_patch_validation_run(self, run_dir: Path) -> None:
         repo = run_dir / "repo"
         repo.mkdir()
@@ -588,6 +626,7 @@ class CliWorkflowTests(unittest.TestCase):
 
             import json
             import os
+            import re
             import shutil
             import sys
             from pathlib import Path
@@ -752,7 +791,9 @@ class CliWorkflowTests(unittest.TestCase):
                     return 2
                 run_dir = Path(arg_value(args, "--cd") or os.getcwd())
                 output_last = Path(arg_value(args, "--output-last-message") or (run_dir / "codex-final.md"))
-                fixture_dir = Path(os.environ.get("GRA_MOCK_FIXTURE_DIR", ""))
+                vote_match = re.search(r"vote-(\d{3})", str(output_last))
+                fixture_env_name = f"GRA_MOCK_FIXTURE_DIR_VOTE_{vote_match.group(1)}" if vote_match else ""
+                fixture_dir = Path(os.environ.get(fixture_env_name, os.environ.get("GRA_MOCK_FIXTURE_DIR", "")))
                 mode = os.environ.get("GRA_MOCK_CODEX_MODE", "success")
 
                 output_last.parent.mkdir(parents=True, exist_ok=True)
@@ -2080,6 +2121,148 @@ class CliWorkflowTests(unittest.TestCase):
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
         self.assertIn("Adversarial validations: validated", cp_validate.stdout)
+
+    def test_gra_adversarial_validate_votes_split_human_review_and_owner_route(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        repo = run_dir / "repo"
+        (repo / ".github").mkdir(parents=True)
+        (repo / ".github" / "CODEOWNERS").write_text("/auth/ @team/appsec\n", encoding="utf-8")
+        (repo / "auth").mkdir()
+        (repo / "auth" / "login.py").write_text("def login():\n    pass\n", encoding="utf-8")
+        findings_path = run_dir / "reports" / "findings.json"
+        findings = json.loads(findings_path.read_text(encoding="utf-8"))
+        findings["findings"][0]["affected_locations"] = [{"file": "auth/login.py", "line": 1}]
+        findings_path.write_text(json.dumps(findings, indent=2) + "\n", encoding="utf-8")
+
+        vote1 = self.write_adversarial_vote_fixture(name="vote-confirm-1", decision="confirm", summary="Confirming vote.")
+        vote2 = self.write_adversarial_vote_fixture(
+            name="vote-invalidate",
+            decision="invalidate",
+            recommended_severity="Informational",
+            recommended_confidence="Low",
+            summary="Invalidating vote.",
+        )
+        vote3 = self.write_adversarial_vote_fixture(name="vote-confirm-2", decision="confirm", summary="Second confirming vote.")
+        env, codex_log = self.env_with_codex_log(
+            GRA_MOCK_FIXTURE_DIR_VOTE_001=str(vote1),
+            GRA_MOCK_FIXTURE_DIR_VOTE_002=str(vote2),
+            GRA_MOCK_FIXTURE_DIR_VOTE_003=str(vote3),
+        )
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-adversarial-validate",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--votes",
+                "3",
+                "--policy",
+                "human-review-on-split",
+                "--model",
+                "gpt-fixture",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("with 3 independent votes", cp.stdout)
+        calls = self.read_codex_calls(codex_log)
+        self.assertEqual(3, len(calls), calls)
+        self.assertTrue(any("vote-001-final.md" in arg for arg in calls[0]))
+        self.assertTrue(any("vote-002-final.md" in arg for arg in calls[1]))
+        self.assertTrue(any("vote-003-final.md" in arg for arg in calls[2]))
+
+        validation = json.loads((run_dir / "reports" / "validation.json").read_text(encoding="utf-8"))
+        self.assertEqual(3, validation["requested_votes"])
+        self.assertEqual("human-review-on-split", validation["vote_policy"])
+        item = validation["validations"][0]
+        self.assertEqual("needs-human-review", item["decision"])
+        self.assertEqual(3, item["vote_count"])
+        self.assertEqual(["confirm", "invalidate", "confirm"], [vote["decision"] for vote in item["votes"]])
+        self.assertEqual("auth", item["component"])
+        self.assertEqual("@team/appsec", item["owner_hint"])
+        self.assertEqual("CODEOWNERS", item["owner_source"])
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Adversarial validations: validated", cp_validate.stdout)
+        cp_plan = self.run_cmd([REPO_ROOT / "bin" / "gra-issues", "--run", run_dir, "--plan"], check=True)
+        self.assertIn("owner_routing: component=auth, owner_hint=@team/appsec, owner_source=CODEOWNERS", cp_plan.stdout)
+        plan = json.loads((run_dir / "reports" / "issue-publication-plan.json").read_text(encoding="utf-8"))
+        owner_routing = plan["selected_findings"][0]["owner_routing"]
+        self.assertEqual({"component": "auth", "owner_hint": "@team/appsec", "owner_source": "CODEOWNERS"}, owner_routing)
+
+    def test_gra_adversarial_validate_votes_majority_confirm(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        vote1 = self.write_adversarial_vote_fixture(name="majority-confirm-1", decision="confirm")
+        vote2 = self.write_adversarial_vote_fixture(name="majority-confirm-2", decision="confirm")
+        vote3 = self.write_adversarial_vote_fixture(
+            name="majority-confirm-dissent",
+            decision="invalidate",
+            recommended_severity="Informational",
+            recommended_confidence="Low",
+        )
+        env, _codex_log = self.env_with_codex_log(
+            GRA_MOCK_FIXTURE_DIR_VOTE_001=str(vote1),
+            GRA_MOCK_FIXTURE_DIR_VOTE_002=str(vote2),
+            GRA_MOCK_FIXTURE_DIR_VOTE_003=str(vote3),
+        )
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-adversarial-validate",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--votes",
+                "3",
+                "--policy",
+                "recall-biased",
+            ],
+            env=env,
+            check=True,
+        )
+        validation = json.loads((run_dir / "reports" / "validation.json").read_text(encoding="utf-8"))
+        self.assertEqual("confirm", validation["validations"][0]["decision"])
+        self.assertEqual(3, len(validation["validations"][0]["votes"]))
+
+    def test_gra_adversarial_validate_votes_majority_invalidate(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        vote1 = self.write_adversarial_vote_fixture(
+            name="majority-invalidate-1",
+            decision="invalidate",
+            recommended_severity="Informational",
+            recommended_confidence="Low",
+        )
+        vote2 = self.write_adversarial_vote_fixture(
+            name="majority-invalidate-2",
+            decision="invalidate",
+            recommended_severity="Informational",
+            recommended_confidence="Low",
+        )
+        vote3 = self.write_adversarial_vote_fixture(name="majority-invalidate-dissent", decision="confirm")
+        env, _codex_log = self.env_with_codex_log(
+            GRA_MOCK_FIXTURE_DIR_VOTE_001=str(vote1),
+            GRA_MOCK_FIXTURE_DIR_VOTE_002=str(vote2),
+            GRA_MOCK_FIXTURE_DIR_VOTE_003=str(vote3),
+        )
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-adversarial-validate",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--votes",
+                "3",
+                "--policy",
+                "precision-biased",
+            ],
+            env=env,
+            check=True,
+        )
+        validation = json.loads((run_dir / "reports" / "validation.json").read_text(encoding="utf-8"))
+        self.assertEqual("invalidate", validation["validations"][0]["decision"])
+        self.assertEqual(3, len(validation["validations"][0]["votes"]))
 
     def test_gra_adversarial_validate_all_critical_high_selects_relevant_findings(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

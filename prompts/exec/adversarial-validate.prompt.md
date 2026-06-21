@@ -9,12 +9,17 @@ Run context:
 - Reports directory: {{REPORTS_DIR}}/
 - Validation selection: {{VALIDATION_SELECTION}}
 - Validation subjects file: {{VALIDATION_SUBJECTS_FILE}}
+- Requested independent votes: {{VALIDATION_VOTES}}
+- Vote aggregation policy: {{VALIDATION_POLICY}}
+- Current vote ID: {{VALIDATION_VOTE_ID}}
 - Validation JSON output: {{VALIDATION_OUTPUT_JSON}}
 - Validation Markdown output: {{VALIDATION_OUTPUT_MD}}
 
 Primary objective:
 Independently challenge existing findings or chains. You must not create new findings.
 Your job is to disprove, downgrade, confirm, or mark needs-human-review.
+When multiple votes are requested, treat this prompt as the independent pass named
+`{{VALIDATION_VOTE_ID}}`; do not reuse conclusions from other votes.
 
 Read first:
 - AGENTS.md
@@ -41,6 +46,8 @@ Forbidden actions:
 - No credential or GitHub Secrets operations.
 - No weaponized exploit code or operational exploit steps.
 - No full secret output.
+- No chain-of-thought, hidden reasoning, raw private reasoning, scratchpads, or
+  internal deliberation. Store short vote / validation summaries only.
 
 Check:
 - attacker control
@@ -88,6 +95,10 @@ Rules:
 - If a subject is downgraded or invalidated, recommend metadata changes in the validation record only. Do not directly edit reports/findings.json in this stage.
 - If evidence is inconclusive, use `needs-human-review`.
 - Keep evidence summaries defensive and disclosure-conscious.
+- For `{{VALIDATION_VOTE_ID}}`, write only concise vote/validation summaries.
+  Do not include chain-of-thought or raw private reasoning. If `{{VALIDATION_VOTES}}`
+  is greater than `1`, the orchestrating command will aggregate the independent
+  vote outputs into `reports/validation.json`.
 
 Stop condition:
 - {{VALIDATION_OUTPUT_JSON}} exists and records one validation per selected subject.

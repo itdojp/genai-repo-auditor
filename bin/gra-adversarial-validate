@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
+from collections import Counter
 import sys
 from pathlib import Path
 from typing import Any
@@ -13,6 +15,10 @@ from gralib import env_from_context, find_finding, load_context, load_findings, 
 
 HIGH_SEVERITIES = {'Critical', 'High'}
 VALIDATION_STATUSES = {'Confirmed', 'Probable', 'Potential'}
+VALIDATION_DECISIONS = {'confirm', 'downgrade', 'invalidate', 'needs-human-review'}
+VALIDATION_POLICIES = {'precision-biased', 'recall-biased', 'human-review-on-split'}
+UNKNOWN_SEVERITY = 'Unknown'
+UNKNOWN_CONFIDENCE = 'Unknown'
 
 
 def require_findings_file(run_dir: Path) -> None:
@@ -45,6 +51,286 @@ def subject_record(subject_type: str, subject_id: str, data: dict[str, Any]) -> 
     }
 
 
+def string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if isinstance(item, str) and str(item).strip()]
+
+
+def finding_files(data: dict[str, Any]) -> list[str]:
+    locations = data.get('affected_locations')
+    files: list[str] = []
+    if isinstance(locations, list):
+        for location in locations:
+            if isinstance(location, dict) and isinstance(location.get('file'), str):
+                value = location['file'].strip()
+                if value:
+                    files.append(value)
+    for key in ['file', 'path']:
+        if isinstance(data.get(key), str) and data[key].strip():
+            files.append(data[key].strip())
+    return files
+
+
+def component_from_path(path: str) -> str:
+    rel = path.strip().strip('/')
+    if not rel:
+        return ''
+    parts = [part for part in rel.split('/') if part and part != '.']
+    if len(parts) > 1:
+        return parts[0]
+    stem = Path(parts[0]).stem if parts else ''
+    return stem or 'root'
+
+
+def codeowners_candidates(repo_dir: Path) -> list[Path]:
+    return [
+        repo_dir / '.github' / 'CODEOWNERS',
+        repo_dir / 'CODEOWNERS',
+        repo_dir / 'docs' / 'CODEOWNERS',
+    ]
+
+
+def codeowners_pattern_matches(pattern: str, rel_path: str) -> bool:
+    normalized = rel_path.strip().lstrip('/')
+    pattern = pattern.strip()
+    if not pattern:
+        return False
+    anchored = pattern.startswith('/')
+    pattern = pattern.lstrip('/')
+    if pattern.endswith('/'):
+        return normalized.startswith(pattern)
+    if '/' not in pattern and not anchored:
+        return fnmatch.fnmatch(Path(normalized).name, pattern) or fnmatch.fnmatch(normalized, pattern)
+    return fnmatch.fnmatch(normalized, pattern) or fnmatch.fnmatch('/' + normalized, '/' + pattern)
+
+
+def codeowners_owner_hint(repo_dir: Path, rel_path: str) -> str:
+    owner_hint = ''
+    for candidate in codeowners_candidates(repo_dir):
+        if not candidate.exists() or not candidate.is_file():
+            continue
+        for raw_line in candidate.read_text(encoding='utf-8', errors='replace').splitlines():
+            line = raw_line.split('#', 1)[0].strip()
+            if not line:
+                continue
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            pattern = parts[0]
+            owners = [part for part in parts[1:] if part.startswith('@')]
+            if owners and codeowners_pattern_matches(pattern, rel_path):
+                owner_hint = ' '.join(owners)
+    return owner_hint
+
+
+def owner_route_for_subject(run_dir: Path, subject: dict[str, Any]) -> dict[str, str]:
+    source = subject.get('source') if isinstance(subject.get('source'), dict) else {}
+    manual_component = str(source.get('component') or '').strip()
+    manual_owner = str(source.get('owner_hint') or '').strip()
+    manual_source = str(source.get('owner_source') or '').strip()
+    if manual_component or manual_owner:
+        return {
+            'component': manual_component,
+            'owner_hint': manual_owner,
+            'owner_source': manual_source or 'manual',
+        }
+
+    files = finding_files(source)
+    if not files:
+        return {}
+    first_file = files[0]
+    component = component_from_path(first_file)
+    owner_hint = codeowners_owner_hint(run_dir / 'repo', first_file)
+    return {
+        'component': component,
+        'owner_hint': owner_hint,
+        'owner_source': 'CODEOWNERS' if owner_hint else 'path heuristic',
+    }
+
+
+def subject_routes(run_dir: Path, subjects: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, str]]:
+    routes: dict[tuple[str, str], dict[str, str]] = {}
+    for subject in subjects:
+        subject_type = str(subject.get('subject_type') or '')
+        subject_id = str(subject.get('subject_id') or '')
+        if subject_type and subject_id:
+            route = owner_route_for_subject(run_dir, subject)
+            if route:
+                routes[(subject_type, subject_id)] = route
+    return routes
+
+
+def apply_owner_routes(validation_data: dict[str, Any], routes: dict[tuple[str, str], dict[str, str]]) -> None:
+    validations = validation_data.get('validations')
+    if not isinstance(validations, list):
+        return
+    for item in validations:
+        if not isinstance(item, dict):
+            continue
+        route = routes.get((str(item.get('subject_type') or ''), str(item.get('subject_id') or '')))
+        if not route:
+            continue
+        for key in ['component', 'owner_hint', 'owner_source']:
+            if key not in item or item.get(key) in (None, ''):
+                item[key] = route.get(key, '')
+
+
+def validation_subject_defaults(subject: dict[str, Any]) -> tuple[str, str]:
+    source = subject.get('source') if isinstance(subject.get('source'), dict) else {}
+    severity = str(source.get('severity') or UNKNOWN_SEVERITY)
+    confidence = str(source.get('confidence') or UNKNOWN_CONFIDENCE)
+    return severity, confidence
+
+
+def as_validation_vote(vote_id: str, item: dict[str, Any], subject: dict[str, Any]) -> dict[str, Any]:
+    original_severity, original_confidence = validation_subject_defaults(subject)
+    decision = str(item.get('decision') or 'needs-human-review')
+    if decision not in VALIDATION_DECISIONS:
+        decision = 'needs-human-review'
+    return {
+        'vote_id': vote_id,
+        'decision': decision,
+        'recommended_severity': str(item.get('recommended_severity') or original_severity),
+        'recommended_confidence': str(item.get('recommended_confidence') or original_confidence),
+        'reasoning_summary': str(item.get('reasoning_summary') or 'Vote did not provide a summary.'),
+        'evidence_checked': string_list(item.get('evidence_checked')),
+        'missing_evidence': string_list(item.get('missing_evidence')),
+        'safe_validation_steps': string_list(item.get('safe_validation_steps')),
+    }
+
+
+def missing_vote(vote_id: str, subject: dict[str, Any]) -> dict[str, Any]:
+    original_severity, original_confidence = validation_subject_defaults(subject)
+    return {
+        'vote_id': vote_id,
+        'decision': 'needs-human-review',
+        'recommended_severity': original_severity,
+        'recommended_confidence': original_confidence,
+        'reasoning_summary': 'This vote did not produce a validation record for the selected subject.',
+        'evidence_checked': [],
+        'missing_evidence': ['vote output missing selected subject'],
+        'safe_validation_steps': [],
+    }
+
+
+def matching_validation(report: dict[str, Any], subject: dict[str, Any]) -> dict[str, Any] | None:
+    validations = report.get('validations')
+    if not isinstance(validations, list):
+        return None
+    subject_type = str(subject.get('subject_type') or '')
+    subject_id = str(subject.get('subject_id') or '')
+    for item in validations:
+        if (
+            isinstance(item, dict)
+            and str(item.get('subject_type') or '') == subject_type
+            and str(item.get('subject_id') or '') == subject_id
+        ):
+            return item
+    return None
+
+
+def first_vote_value(votes: list[dict[str, Any]], decision: str, field: str, fallback: str) -> str:
+    values = [str(vote.get(field) or '') for vote in votes if vote.get('decision') == decision and vote.get(field)]
+    if values:
+        return Counter(values).most_common(1)[0][0]
+    values = [str(vote.get(field) or '') for vote in votes if vote.get(field)]
+    if values:
+        return Counter(values).most_common(1)[0][0]
+    return fallback
+
+
+def aggregate_decision(votes: list[dict[str, Any]], policy: str) -> str:
+    decisions = [str(vote.get('decision') or 'needs-human-review') for vote in votes]
+    decisions = [decision if decision in VALIDATION_DECISIONS else 'needs-human-review' for decision in decisions]
+    counts = Counter(decisions)
+    unique = {decision for decision in decisions if counts[decision] > 0}
+    if not decisions:
+        return 'needs-human-review'
+    if policy == 'human-review-on-split' and len(unique) > 1:
+        return 'needs-human-review'
+    decision, count = counts.most_common(1)[0]
+    if count > len(decisions) / 2:
+        return decision
+    if policy == 'precision-biased':
+        for candidate in ['invalidate', 'downgrade', 'needs-human-review', 'confirm']:
+            if counts[candidate]:
+                return candidate
+    if policy == 'recall-biased':
+        for candidate in ['confirm', 'downgrade', 'needs-human-review', 'invalidate']:
+            if counts[candidate]:
+                return candidate
+    return 'needs-human-review'
+
+
+def merged_string_list(votes: list[dict[str, Any]], field: str) -> list[str]:
+    seen: set[str] = set()
+    merged: list[str] = []
+    for vote in votes:
+        for value in string_list(vote.get(field)):
+            if value not in seen:
+                seen.add(value)
+                merged.append(value)
+    return merged
+
+
+def vote_summary(votes: list[dict[str, Any]]) -> str:
+    counts = Counter(str(vote.get('decision') or 'needs-human-review') for vote in votes)
+    return ', '.join(f'{decision}={counts[decision]}' for decision in sorted(counts))
+
+
+def compose_multivote_validation(
+    *,
+    run_dir: Path,
+    ctx: dict[str, Any],
+    subjects: list[dict[str, Any]],
+    vote_reports: list[dict[str, Any]],
+    policy: str,
+) -> dict[str, Any]:
+    validations: list[dict[str, Any]] = []
+    routes = subject_routes(run_dir, subjects)
+    for subject_index, subject in enumerate(subjects, start=1):
+        original_severity, original_confidence = validation_subject_defaults(subject)
+        votes: list[dict[str, Any]] = []
+        for vote_index, report in enumerate(vote_reports, start=1):
+            vote_id = f'VOTE-{vote_index:03d}'
+            item = matching_validation(report, subject)
+            votes.append(as_validation_vote(vote_id, item, subject) if item else missing_vote(vote_id, subject))
+        decision = aggregate_decision(votes, policy)
+        summary = f'Vote policy {policy} aggregated {len(votes)} independent vote summaries: {vote_summary(votes)}.'
+        validation = {
+            'id': f'VAL-{subject_index:03d}',
+            'subject_type': str(subject.get('subject_type') or ''),
+            'subject_id': str(subject.get('subject_id') or ''),
+            'decision': decision,
+            'original_severity': original_severity,
+            'recommended_severity': first_vote_value(votes, decision, 'recommended_severity', original_severity),
+            'original_confidence': original_confidence,
+            'recommended_confidence': first_vote_value(votes, decision, 'recommended_confidence', original_confidence),
+            'reasoning_summary': summary,
+            'evidence_checked': merged_string_list(votes, 'evidence_checked'),
+            'missing_evidence': merged_string_list(votes, 'missing_evidence'),
+            'safe_validation_steps': merged_string_list(votes, 'safe_validation_steps'),
+            'vote_count': len(votes),
+            'vote_policy': policy,
+            'votes': votes,
+        }
+        route = routes.get((validation['subject_type'], validation['subject_id']))
+        if route:
+            validation.update(route)
+        validations.append(validation)
+    return {
+        'run_id': ctx.get('run_id', run_dir.name),
+        'repo': ctx.get('repo', ''),
+        'branch': ctx.get('branch', ''),
+        'commit': ctx.get('commit', ''),
+        'generated_at': utc_now(),
+        'requested_votes': len(vote_reports),
+        'vote_policy': policy,
+        'validations': validations,
+    }
+
+
 def select_subjects(run_dir: Path, args: argparse.Namespace) -> tuple[str, list[dict[str, Any]]]:
     if args.finding:
         require_findings_file(run_dir)
@@ -67,6 +353,8 @@ def select_subjects(run_dir: Path, args: argparse.Namespace) -> tuple[str, list[
 
 def render_validation_markdown(run_dir: Path, validation_data: dict[str, Any]) -> None:
     reports = run_dir / 'reports'
+    requested_votes = validation_data.get('requested_votes')
+    vote_policy = str(validation_data.get('vote_policy') or '')
     lines = [
         '# Adversarial Validation',
         '',
@@ -75,27 +363,54 @@ def render_validation_markdown(run_dir: Path, validation_data: dict[str, Any]) -
         f"Run ID: `{validation_data.get('run_id', '')}`",
         f"Repository: `{validation_data.get('repo', '')}`",
         f"Generated at: `{validation_data.get('generated_at', '')}`",
-        '',
-        '| ID | Subject | Decision | Severity | Confidence | Summary |',
-        '|---|---|---|---|---|---|',
     ]
+    if requested_votes:
+        lines.extend([
+            f"Requested votes: `{requested_votes}`",
+            f"Vote policy: `{vote_policy}`",
+        ])
+    lines.extend([
+        '',
+        '| ID | Subject | Decision | Votes | Owner | Severity | Confidence | Summary |',
+        '|---|---|---|---|---|---|---|---|',
+    ])
     for item in validation_data.get('validations') or []:
         if not isinstance(item, dict):
             continue
         subject = f"{item.get('subject_type', '')}:{item.get('subject_id', '')}"
         severity = f"{item.get('original_severity', '')} -> {item.get('recommended_severity', '')}"
         confidence = f"{item.get('original_confidence', '')} -> {item.get('recommended_confidence', '')}"
+        votes = str(item.get('vote_count') or len(item.get('votes') or []) or '')
+        owner = str(item.get('owner_hint') or item.get('component') or '').replace('|', '\\|').replace('\n', ' ')
         summary = str(item.get('reasoning_summary') or '').replace('|', '\\|').replace('\n', ' ')
         lines.append(
             '| '
             f"{item.get('id', '')} | {subject} | {item.get('decision', '')} | "
-            f"{severity} | {confidence} | {summary} |"
+            f"{votes} | {owner} | {severity} | {confidence} | {summary} |"
         )
+        vote_rows = item.get('votes') if isinstance(item.get('votes'), list) else []
+        for vote in vote_rows:
+            if not isinstance(vote, dict):
+                continue
+            vote_summary_text = str(vote.get('reasoning_summary') or '').replace('|', '\\|').replace('\n', ' ')
+            lines.append(
+                '| '
+                f"{item.get('id', '')}/{vote.get('vote_id', '')} | {subject} | {vote.get('decision', '')} | "
+                f"1 |  | -> {vote.get('recommended_severity', '')} | -> {vote.get('recommended_confidence', '')} | "
+                f"{vote_summary_text} |"
+            )
     lines.append('')
     (reports / 'VALIDATION.md').write_text('\n'.join(lines), encoding='utf-8')
 
 
-def ensure_validation_artifacts(run_dir: Path, ctx: dict[str, Any]) -> None:
+def ensure_validation_artifacts(
+    run_dir: Path,
+    ctx: dict[str, Any],
+    selected_subjects: list[dict[str, Any]] | None = None,
+    *,
+    votes: int = 1,
+    policy: str = 'human-review-on-split',
+) -> None:
     validation_path = run_dir / 'reports' / 'validation.json'
     if not validation_path.exists():
         return
@@ -108,8 +423,23 @@ def ensure_validation_artifacts(run_dir: Path, ctx: dict[str, Any]) -> None:
     data.setdefault('commit', ctx.get('commit', ''))
     data.setdefault('generated_at', utc_now())
     data.setdefault('validations', [])
+    if votes > 1:
+        data.setdefault('requested_votes', votes)
+        data.setdefault('vote_policy', policy)
+    if selected_subjects:
+        apply_owner_routes(data, subject_routes(run_dir, selected_subjects))
     write_json(validation_path, data)
     render_validation_markdown(run_dir, data)
+
+
+def read_vote_report(run_dir: Path, vote_path: Path) -> dict[str, Any]:
+    if vote_path.exists():
+        data = load_json(vote_path, {}) or {}
+    else:
+        data = load_json(run_dir / 'reports' / 'validation.json', {}) or {}
+        if isinstance(data, dict):
+            write_json(vote_path, data)
+    return data if isinstance(data, dict) else {}
 
 
 def main() -> int:
@@ -123,8 +453,12 @@ def main() -> int:
     p.add_argument('--mode', choices=['exec', 'goal'], default='exec')
     p.add_argument('--model', default='gpt-5.5')
     p.add_argument('--effort', default='xhigh')
+    p.add_argument('--votes', type=int, default=1, help='Number of independent validation votes to request. Default: 1')
+    p.add_argument('--policy', choices=sorted(VALIDATION_POLICIES), default='human-review-on-split', help='Vote aggregation policy for --votes > 1')
     p.add_argument('--network', action='store_true', help='Allow Codex sandbox network access. Not recommended.')
     args = p.parse_args()
+    if args.votes < 1:
+        p.error('--votes must be 1 or greater')
 
     run_dir = Path(args.run).resolve()
     ctx = load_context(run_dir)
@@ -147,6 +481,8 @@ def main() -> int:
         'commit': ctx.get('commit', ''),
         'generated_at': utc_now(),
         'selection': selection_id,
+        'requested_votes': args.votes,
+        'vote_policy': args.policy,
         'subjects': selected_subjects,
     }
     write_json(subject_path, subject_payload)
@@ -156,6 +492,10 @@ def main() -> int:
         'VALIDATION_SUBJECTS_FILE': str(subject_path.relative_to(run_dir)),
         'VALIDATION_OUTPUT_JSON': 'reports/validation.json',
         'VALIDATION_OUTPUT_MD': 'reports/VALIDATION.md',
+        'VALIDATION_VOTES': str(args.votes),
+        'VALIDATION_POLICY': args.policy,
+        'VALIDATION_VOTE_ID': 'VOTE-001',
+        'VALIDATION_VOTE_INDEX': '1',
     })
 
     if args.mode == 'goal':
@@ -171,20 +511,67 @@ def main() -> int:
         print('\nThen paste the contents of the goal prompt.')
         return 0
 
-    prompt = run_dir / 'prompts' / 'exec' / f'adversarial-validate-{selection_slug}.prompt.md'
-    render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'adversarial-validate.prompt.md', prompt, env)
-    print(f'Running Codex adversarial validation for {selection_id}')
-    status = run_codex_exec(
-        run_dir=run_dir,
-        prompt_file=prompt,
-        model=args.model,
-        effort=args.effort,
-        network=args.network,
-        output_last=run_dir / f'codex-adversarial-validate-{selection_slug}-final.md',
-        events_file=run_dir / f'codex-adversarial-validate-{selection_slug}-events.jsonl',
-        stderr_file=run_dir / f'codex-adversarial-validate-{selection_slug}-stderr.txt',
-    )
-    ensure_validation_artifacts(run_dir, ctx)
+    if args.votes == 1:
+        prompt = run_dir / 'prompts' / 'exec' / f'adversarial-validate-{selection_slug}.prompt.md'
+        render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'adversarial-validate.prompt.md', prompt, env)
+        print(f'Running Codex adversarial validation for {selection_id}')
+        status = run_codex_exec(
+            run_dir=run_dir,
+            prompt_file=prompt,
+            model=args.model,
+            effort=args.effort,
+            network=args.network,
+            output_last=run_dir / f'codex-adversarial-validate-{selection_slug}-final.md',
+            events_file=run_dir / f'codex-adversarial-validate-{selection_slug}-events.jsonl',
+            stderr_file=run_dir / f'codex-adversarial-validate-{selection_slug}-stderr.txt',
+        )
+        ensure_validation_artifacts(run_dir, ctx, selected_subjects, votes=args.votes, policy=args.policy)
+    else:
+        print(f'Running Codex adversarial validation for {selection_id} with {args.votes} independent votes')
+        statuses: list[int] = []
+        vote_reports: list[dict[str, Any]] = []
+        for vote_index in range(1, args.votes + 1):
+            vote_id = f'VOTE-{vote_index:03d}'
+            vote_json_rel = f'reports/adversarial-validation/{selection_slug}-vote-{vote_index:03d}.validation.json'
+            vote_env = env_from_context(run_dir, {
+                'VALIDATION_SELECTION': selection_id,
+                'VALIDATION_SUBJECTS_FILE': str(subject_path.relative_to(run_dir)),
+                'VALIDATION_OUTPUT_JSON': vote_json_rel,
+                'VALIDATION_OUTPUT_MD': f'reports/adversarial-validation/{selection_slug}-vote-{vote_index:03d}.validation.md',
+                'VALIDATION_VOTES': str(args.votes),
+                'VALIDATION_POLICY': args.policy,
+                'VALIDATION_VOTE_ID': vote_id,
+                'VALIDATION_VOTE_INDEX': str(vote_index),
+            })
+            prompt = run_dir / 'prompts' / 'exec' / f'adversarial-validate-{selection_slug}-vote-{vote_index:03d}.prompt.md'
+            render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'adversarial-validate.prompt.md', prompt, vote_env)
+            fallback_validation = run_dir / 'reports' / 'validation.json'
+            if fallback_validation.exists():
+                fallback_validation.unlink()
+            status = run_codex_exec(
+                run_dir=run_dir,
+                prompt_file=prompt,
+                model=args.model,
+                effort=args.effort,
+                network=args.network,
+                output_last=run_dir / f'codex-adversarial-validate-{selection_slug}-vote-{vote_index:03d}-final.md',
+                events_file=run_dir / f'codex-adversarial-validate-{selection_slug}-vote-{vote_index:03d}-events.jsonl',
+                stderr_file=run_dir / f'codex-adversarial-validate-{selection_slug}-vote-{vote_index:03d}-stderr.txt',
+            )
+            statuses.append(status)
+            vote_path = run_dir / vote_json_rel
+            vote_reports.append(read_vote_report(run_dir, vote_path))
+            print(f'{vote_id} Codex status: {status}')
+        aggregate = compose_multivote_validation(
+            run_dir=run_dir,
+            ctx=ctx,
+            subjects=selected_subjects,
+            vote_reports=vote_reports,
+            policy=args.policy,
+        )
+        write_json(run_dir / 'reports' / 'validation.json', aggregate)
+        render_validation_markdown(run_dir, aggregate)
+        status = max(statuses) if statuses else 0
     print(f'Codex status: {status}')
     print(f'Validation subjects: {subject_path}')
     print(f'Validation report: {run_dir / "reports" / "VALIDATION.md"}')

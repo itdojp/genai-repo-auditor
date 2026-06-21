@@ -141,7 +141,10 @@ for dependency risk review and is not treated as a finding contract.
 `validation.json` is a local adversarial validation artifact produced by
 `gra-adversarial-validate`. It records decisions about existing findings or
 chains only; it must not introduce new findings and is not an Issue publication
-source by itself.
+source by itself. When `--votes` is greater than `1`, it records an aggregate
+decision plus bounded per-vote summaries. It may include advisory owner routing
+fields (`component`, `owner_hint`, `owner_source`) derived from manual finding
+metadata, CODEOWNERS, or path heuristics.
 
 `chains.json` is a local defensive chain synthesis artifact produced by
 `gra-chains`. It records how existing findings, targets, or scanner refs may
@@ -304,7 +307,12 @@ Important constraints:
   `confirm`, `downgrade`, `invalidate`, or `needs-human-review`, finding
   subjects must reference existing `reports/findings.json` IDs, and chain
   subjects must reference existing `reports/chains.json` IDs. Evidence,
-  missing-evidence, and safe-step fields must be string lists.
+  missing-evidence, and safe-step fields must be string lists. If
+  `requested_votes` is greater than `1`, each validation must include exactly
+  that many `votes`, `vote_count` must match the votes array length, and the
+  aggregate `decision` must match the selected policy. Validation artifacts must
+  not contain chain-of-thought, hidden reasoning, raw private reasoning, or
+  scratchpad fields.
 - If `reports/chains.json` exists, it must match
   `templates/reports/chains.schema.json`. Each chain ID must match `CHAIN-NNN`,
   severity/confidence/status values must be approved, chain IDs must be unique,
@@ -378,6 +386,15 @@ Critical / High finding は以下を満たす必要があります。
 trust boundary、mitigation、framework guarantee、middleware ordering、
 configuration assumption、test fixture と production behavior の差分、impact
 過大評価の有無を確認することです。
+
+`--votes` が `1` より大きい場合、artifact は集約 decision と vote ごとの短い
+summary を保持します。`human-review-on-split` では vote が割れた subject は
+`needs-human-review` になります。chain-of-thought、hidden reasoning、raw
+private reasoning、scratchpad は保存してはいけません。
+
+`component`、`owner_hint`、`owner_source` は advisory な owner routing metadata
+です。manual metadata、CODEOWNERS、または path heuristic から導出され、
+`gra-issues --plan` にも引き継がれます。
 
 `downgrade`、`invalidate`、`needs-human-review` が記録された subject は、
 Issue 公開前に `findings.json` と issue draft を人間が見直してください。

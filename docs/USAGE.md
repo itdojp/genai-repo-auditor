@@ -115,7 +115,7 @@ gra-gapfill --run runs/ORG__repo-a/RUN_ID --generate
 gra-proofs --run runs/ORG__repo-a/RUN_ID --all-critical-high
 # Optional for shared-library / producer findings:
 # gra-trace --producer-run runs/ORG__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/ORG__repo-a/RUN_ID --mode exec
-gra-adversarial-validate --run runs/ORG__repo-a/RUN_ID --all-critical-high
+gra-adversarial-validate --run runs/ORG__repo-a/RUN_ID --all-critical-high --votes 3 --policy human-review-on-split
 gra-taxonomy-preflight --run runs/ORG__repo-a/RUN_ID --fix
 gra-validate-report --run runs/ORG__repo-a/RUN_ID
 gra-issues --run runs/ORG__repo-a/RUN_ID --dry-run

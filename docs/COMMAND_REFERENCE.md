@@ -292,7 +292,7 @@ gra-variant --run runs/OWNER__REPO/RUN_ID --source-file notes/root-cause.md --mo
 | Purpose | Run an independent validation pass that attempts to disprove, downgrade, confirm, or mark existing findings or chains as `needs-human-review` without creating new findings. |
 | Workflow category | Adversarial validation workflow. |
 | Required inputs | `--run RUN_DIR` and exactly one selector: `--finding SEC-ID`, `--all-critical-high`, or `--chain CHAIN-ID`. Finding selectors require `reports/findings.json`; chain selectors require `reports/chains.json`. |
-| Key options | `--mode exec\|goal`, `--model MODEL`, `--effort EFFORT`, `--network`. `--all-critical-high` selects Critical / High findings whose status is `Confirmed`, `Probable`, or `Potential`. |
+| Key options | `--mode exec\|goal`, `--model MODEL`, `--effort EFFORT`, `--votes N`, `--policy human-review-on-split\|precision-biased\|recall-biased`, `--network`. `--votes 1` preserves the single-pass behavior. `--all-critical-high` selects Critical / High findings whose status is `Confirmed`, `Probable`, or `Potential`. |
 | Generated outputs | Subject seed JSON under `reports/adversarial-validation/`, rendered adversarial validation prompt, Codex event/output files in exec mode, and expected validation outputs `reports/validation.json` and `reports/VALIDATION.md`. |
 | Exit status behavior | `0` for successful goal preparation, successful Codex exec, or no matching `--all-critical-high` subjects; `2` when a requested finding or chain is missing; exec mode returns Codex execution status. |
 | Security / disclosure cautions | This stage must not create new findings, broaden into a full audit, modify the target repository, or run live exploitation. Use it to challenge attacker control, reachability, trust-boundary crossing, mitigations, framework guarantees, middleware ordering, configuration assumptions, test-fixture versus production behavior, and overstated impact before issue publication. |
@@ -302,7 +302,7 @@ Examples:
 
 ```bash
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --finding SEC-001
-gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
+gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high --votes 3 --policy human-review-on-split
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --chain CHAIN-001 --mode goal
 ```
 

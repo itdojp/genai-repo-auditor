@@ -370,12 +370,35 @@ def proof_not_applicable(finding: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
 
 
 def validation_detail(item: Dict[str, Any]) -> Dict[str, Any]:
-    return {
+    detail = {
         "id": str(item.get("id") or ""),
         "decision": str(item.get("decision") or ""),
         "recommended_severity": str(item.get("recommended_severity") or ""),
         "recommended_confidence": str(item.get("recommended_confidence") or ""),
     }
+    if item.get("vote_count") is not None or item.get("vote_policy"):
+        detail["vote_count"] = item.get("vote_count")
+        detail["vote_policy"] = str(item.get("vote_policy") or "")
+    owner_routing = {
+        "component": str(item.get("component") or ""),
+        "owner_hint": str(item.get("owner_hint") or ""),
+        "owner_source": str(item.get("owner_source") or ""),
+    }
+    if any(owner_routing.values()):
+        detail["owner_routing"] = owner_routing
+    return detail
+
+
+def first_owner_routing(details: List[Dict[str, Any]]) -> Dict[str, str]:
+    for detail in details:
+        owner_routing = detail.get("owner_routing") if isinstance(detail.get("owner_routing"), dict) else {}
+        if any(owner_routing.get(key) for key in ["component", "owner_hint", "owner_source"]):
+            return {
+                "component": str(owner_routing.get("component") or ""),
+                "owner_hint": str(owner_routing.get("owner_hint") or ""),
+                "owner_source": str(owner_routing.get("owner_source") or ""),
+            }
+    return {}
 
 
 def advanced_validation_summary(finding: Dict[str, Any], artifacts: Dict[str, Any]) -> Dict[str, Any]:
@@ -429,6 +452,7 @@ def advanced_validation_summary(finding: Dict[str, Any], artifacts: Dict[str, An
         for item in finding_validation_details + chain_validation_details
         if item.get("decision") in BLOCKING_VALIDATION_DECISIONS
     ]
+    owner_routing = first_owner_routing(finding_validation_details + chain_validation_details)
 
     proofs = artifacts.get("proofs", [])
     finding_proofs = sorted(
@@ -474,6 +498,7 @@ def advanced_validation_summary(finding: Dict[str, Any], artifacts: Dict[str, An
             "chain_validations": chain_validations,
             "chain_validation_details": chain_validation_details,
             "blocking_decisions": blocking_validations,
+            "owner_routing": owner_routing,
             "exists": validation_exists,
         },
         "safe_local_proof": {
@@ -616,6 +641,7 @@ def plan_finding_entry(
         "public_disclosure_risk": str(finding.get("public_disclosure_risk") or "Unknown"),
         "chain_membership": advanced["chain_membership"],
         "advanced_validation": advanced,
+        "owner_routing": advanced["adversarial_validation"].get("owner_routing") or {},
         "remediation_candidate": remediation,
         "novelty": novelty,
     }
@@ -699,6 +725,14 @@ def print_plan_summary(plan_path: Path, plan: Dict[str, Any], *, prefix: str = "
             f"safe_local_proof_exists={bool(proof.get('exists'))}, "
             f"proof_not_applicable={bool(proof.get('not_applicable'))}"
         )
+        owner_routing = entry.get("owner_routing") if isinstance(entry.get("owner_routing"), dict) else {}
+        if owner_routing:
+            print(
+                "  owner_routing: "
+                f"component={owner_routing.get('component') or ''}, "
+                f"owner_hint={owner_routing.get('owner_hint') or ''}, "
+                f"owner_source={owner_routing.get('owner_source') or ''}"
+            )
         print(
             "  remediation_candidate: "
             f"artifact_present={bool(remediation.get('artifact_present'))}, "
@@ -945,10 +979,11 @@ def verify_plan_against_findings(
             "public_disclosure_risk",
             "chain_membership",
             "advanced_validation",
+            "owner_routing",
             "remediation_candidate",
             "novelty",
         ]:
-            if field not in planned and field in {"chain_membership", "advanced_validation", "remediation_candidate", "novelty"}:
+            if field not in planned and field in {"chain_membership", "advanced_validation", "owner_routing", "remediation_candidate", "novelty"}:
                 continue
             if planned.get(field) != current_entry.get(field):
                 errors.append(f"{finding_id}: {field} changed after plan creation")

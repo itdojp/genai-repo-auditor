@@ -59,6 +59,17 @@ VALIDATION_DECISIONS = {"confirm", "downgrade", "invalidate", "needs-human-revie
 VALIDATION_SUBJECT_TYPES = {"finding", "chain"}
 VALIDATION_SEVERITIES = SEVERITIES | {"Unknown"}
 VALIDATION_CONFIDENCES = CONFIDENCES | {"Unknown"}
+VALIDATION_POLICIES = {"human-review-on-split", "precision-biased", "recall-biased"}
+VALIDATION_OWNER_SOURCES = {"CODEOWNERS", "path heuristic", "manual", "unknown"}
+VALIDATION_PRIVATE_REASONING_KEYS = {
+    "chain_of_thought",
+    "chain-of-thought",
+    "private_reasoning",
+    "hidden_reasoning",
+    "raw_reasoning",
+    "scratchpad",
+    "internal_deliberation",
+}
 CHAIN_STATUSES = {"Confirmed", "Probable", "Potential", "Invalid", "Needs human review"}
 PROOF_TYPES = {
     "static-trace",
@@ -227,6 +238,39 @@ def validate_string_list(value: Any, path: str, errors: List[str]) -> None:
     for index, item in enumerate(value):
         if not isinstance(item, str):
             errors.append(f"{path}[{index}]: expected type string, got {json_type_name(item)}")
+
+
+def validate_no_private_reasoning_keys(value: Any, field_path: str, errors: List[str]) -> None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            normalized = str(key).strip().lower().replace(" ", "_")
+            if normalized in VALIDATION_PRIVATE_REASONING_KEYS:
+                errors.append(f"{field_path}.{key}: private reasoning / chain-of-thought fields are not allowed")
+            validate_no_private_reasoning_keys(child, f"{field_path}.{key}", errors)
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            validate_no_private_reasoning_keys(child, f"{field_path}[{index}]", errors)
+
+
+def expected_vote_decision(vote_decisions: list[str], policy: str) -> str:
+    counts = {decision: vote_decisions.count(decision) for decision in VALIDATION_DECISIONS}
+    unique = {decision for decision in vote_decisions if counts.get(decision, 0) > 0}
+    if not vote_decisions:
+        return "needs-human-review"
+    if policy == "human-review-on-split" and len(unique) > 1:
+        return "needs-human-review"
+    winner = max(VALIDATION_DECISIONS, key=lambda decision: counts.get(decision, 0))
+    if counts.get(winner, 0) > len(vote_decisions) / 2:
+        return winner
+    if policy == "precision-biased":
+        for candidate in ["invalidate", "downgrade", "needs-human-review", "confirm"]:
+            if counts.get(candidate, 0):
+                return candidate
+    if policy == "recall-biased":
+        for candidate in ["confirm", "downgrade", "needs-human-review", "invalidate"]:
+            if counts.get(candidate, 0):
+                return candidate
+    return "needs-human-review"
 
 
 def validate_targets(
@@ -704,6 +748,17 @@ def validate_adversarial_validation(run_dir: Path, findings: list[dict[str, Any]
 
     validate_schema(validation_data, load_schema("validation.schema.json"), "validation", errors)
     validate_generated_at(validation_data.get("generated_at"), "validation.generated_at", errors)
+    validate_no_private_reasoning_keys(validation_data, "validation", errors)
+
+    requested_votes_raw = validation_data.get("requested_votes", 1)
+    if not isinstance(requested_votes_raw, int) or isinstance(requested_votes_raw, bool) or requested_votes_raw < 1:
+        errors.append("validation.requested_votes: must be an integer >= 1 when present")
+        requested_votes = 1
+    else:
+        requested_votes = requested_votes_raw
+    vote_policy = str(validation_data.get("vote_policy") or "human-review-on-split")
+    if "vote_policy" in validation_data and vote_policy not in VALIDATION_POLICIES:
+        errors.append(f"validation.vote_policy: invalid policy {validation_data.get('vote_policy')}")
 
     validations = validation_data.get("validations")
     if not isinstance(validations, list):
@@ -756,6 +811,58 @@ def validate_adversarial_validation(run_dir: Path, findings: list[dict[str, Any]
             errors.append(f"{path}.recommended_confidence: invalid confidence {item.get('recommended_confidence')}")
         for key in ["evidence_checked", "missing_evidence", "safe_validation_steps"]:
             validate_string_list(item.get(key), f"{path}.{key}", errors)
+
+        if "owner_source" in item and item.get("owner_source") not in VALIDATION_OWNER_SOURCES:
+            errors.append(f"{path}.owner_source: invalid owner source {item.get('owner_source')}")
+        for key in ["component", "owner_hint"]:
+            if key in item and not isinstance(item.get(key), str):
+                errors.append(f"{path}.{key}: expected type string, got {json_type_name(item.get(key))}")
+
+        item_policy = str(item.get("vote_policy") or vote_policy)
+        if "vote_policy" in item and item_policy not in VALIDATION_POLICIES:
+            errors.append(f"{path}.vote_policy: invalid policy {item.get('vote_policy')}")
+        votes = item.get("votes")
+        if votes is not None and not isinstance(votes, list):
+            errors.append(f"{path}.votes: must be list")
+            continue
+        vote_decisions: list[str] = []
+        if isinstance(votes, list):
+            seen_vote_ids: set[str] = set()
+            for vote_index, vote in enumerate(votes):
+                vote_path = f"{path}.votes[{vote_index}]"
+                if not isinstance(vote, dict):
+                    errors.append(f"{vote_path}: vote must be an object")
+                    continue
+                vote_id = str(vote.get("vote_id") or "").strip()
+                if not re.fullmatch(r"VOTE-[0-9]{3,}", vote_id):
+                    errors.append(f"{vote_path}.vote_id: vote id must match ^VOTE-[0-9]{{3,}}$")
+                elif vote_id in seen_vote_ids:
+                    errors.append(f"{vote_path}.vote_id: duplicate vote id {vote_id}")
+                seen_vote_ids.add(vote_id)
+                if vote.get("decision") not in VALIDATION_DECISIONS:
+                    errors.append(f"{vote_path}.decision: invalid decision {vote.get('decision')}")
+                else:
+                    vote_decisions.append(str(vote.get("decision")))
+                if vote.get("recommended_severity") not in VALIDATION_SEVERITIES:
+                    errors.append(f"{vote_path}.recommended_severity: invalid severity {vote.get('recommended_severity')}")
+                if vote.get("recommended_confidence") not in VALIDATION_CONFIDENCES:
+                    errors.append(f"{vote_path}.recommended_confidence: invalid confidence {vote.get('recommended_confidence')}")
+                if not isinstance(vote.get("reasoning_summary"), str):
+                    errors.append(f"{vote_path}.reasoning_summary: expected type string, got {json_type_name(vote.get('reasoning_summary'))}")
+                for key in ["evidence_checked", "missing_evidence", "safe_validation_steps"]:
+                    validate_string_list(vote.get(key), f"{vote_path}.{key}", errors)
+            if item.get("vote_count") != len(votes):
+                errors.append(f"{path}.vote_count: value must match votes length")
+            if requested_votes > 1 and len(votes) != requested_votes:
+                errors.append(f"{path}.votes: expected {requested_votes} votes, got {len(votes)}")
+            expected_decision = expected_vote_decision(vote_decisions, item_policy)
+            if vote_decisions and item.get("decision") != expected_decision:
+                errors.append(
+                    f"{path}.decision: expected {expected_decision} from {item_policy} vote policy, "
+                    f"got {item.get('decision')}"
+                )
+        elif requested_votes > 1:
+            errors.append(f"{path}.votes: required when validation.requested_votes is greater than 1")
 
     return True
 

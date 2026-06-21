@@ -292,6 +292,11 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual(["finding", "chain"], validation_properties["subject_type"]["enum"])
         self.assertEqual(["confirm", "downgrade", "invalidate", "needs-human-review"], validation_properties["decision"]["enum"])
         self.assertEqual(["High", "Medium", "Low", "Unknown"], validation_properties["recommended_confidence"]["enum"])
+        self.assertEqual(["human-review-on-split", "precision-biased", "recall-biased"], validation_schema["properties"]["vote_policy"]["enum"])
+        self.assertEqual(["CODEOWNERS", "path heuristic", "manual", "unknown"], validation_properties["owner_source"]["enum"])
+        vote_properties = validation_properties["votes"]["items"]["properties"]
+        self.assertEqual("^VOTE-[0-9]{3,}$", vote_properties["vote_id"]["pattern"])
+        self.assertEqual(["confirm", "downgrade", "invalidate", "needs-human-review"], vote_properties["decision"]["enum"])
 
         self.assertEqual({"run_id", "repo", "commit", "generated_at", "chains"}, set(chains_schema["required"]))
         chain_item = chains_schema["properties"]["chains"]["items"]
@@ -907,6 +912,75 @@ class ReportContractTests(unittest.TestCase):
         self.assertIn("public_disclosure_risk", cp.stderr)
         self.assertIn("targets.targets[0].risk", cp.stderr)
         self.assertIn("targets.targets[0].recommended_mode", cp.stderr)
+
+    def test_adversarial_validation_rejects_private_reasoning_and_vote_policy_drift(self) -> None:
+        run_dir = self.copy_run()
+        validation = {
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "branch": "main",
+            "commit": "0000000000000000000000000000000000000000",
+            "generated_at": "2026-05-26T00:00:00Z",
+            "requested_votes": 3,
+            "vote_policy": "human-review-on-split",
+            "validations": [
+                {
+                    "id": "VAL-001",
+                    "subject_type": "finding",
+                    "subject_id": "SEC-001",
+                    "decision": "confirm",
+                    "original_severity": "High",
+                    "recommended_severity": "High",
+                    "original_confidence": "High",
+                    "recommended_confidence": "High",
+                    "reasoning_summary": "Aggregate summary only.",
+                    "evidence_checked": ["reports/findings.json"],
+                    "missing_evidence": [],
+                    "safe_validation_steps": ["static review"],
+                    "vote_count": 3,
+                    "vote_policy": "human-review-on-split",
+                    "private_reasoning": "do not store this",
+                    "votes": [
+                        {
+                            "vote_id": "VOTE-001",
+                            "decision": "confirm",
+                            "recommended_severity": "High",
+                            "recommended_confidence": "High",
+                            "reasoning_summary": "First summary.",
+                            "evidence_checked": ["reports/findings.json"],
+                            "missing_evidence": [],
+                            "safe_validation_steps": ["static review"],
+                        },
+                        {
+                            "vote_id": "VOTE-002",
+                            "decision": "invalidate",
+                            "recommended_severity": "Informational",
+                            "recommended_confidence": "Low",
+                            "reasoning_summary": "Second summary.",
+                            "evidence_checked": ["reports/findings.json"],
+                            "missing_evidence": [],
+                            "safe_validation_steps": ["static review"],
+                        },
+                        {
+                            "vote_id": "VOTE-003",
+                            "decision": "confirm",
+                            "recommended_severity": "High",
+                            "recommended_confidence": "High",
+                            "reasoning_summary": "Third summary.",
+                            "evidence_checked": ["reports/findings.json"],
+                            "missing_evidence": [],
+                            "safe_validation_steps": ["static review"],
+                        },
+                    ],
+                }
+            ],
+        }
+        self.write_json(run_dir / "reports" / "validation.json", validation)
+
+        cp = self.run_validator(run_dir)
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("private reasoning / chain-of-thought fields are not allowed", cp.stderr)
+        self.assertIn("expected needs-human-review from human-review-on-split vote policy", cp.stderr)
 
     def test_unsafe_paths_and_issue_body_references_fail_validation(self) -> None:
         run_dir = self.copy_run()
