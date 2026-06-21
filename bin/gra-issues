@@ -645,6 +645,8 @@ def plan_finding_entry(
         "remediation_candidate": remediation,
         "novelty": novelty,
     }
+    if isinstance(finding.get("external_source"), dict):
+        entry["external_source"] = finding["external_source"]
     return entry, body
 
 
@@ -982,8 +984,9 @@ def verify_plan_against_findings(
             "owner_routing",
             "remediation_candidate",
             "novelty",
+            "external_source",
         ]:
-            if field not in planned and field in {"chain_membership", "advanced_validation", "owner_routing", "remediation_candidate", "novelty"}:
+            if field not in planned and field in {"chain_membership", "advanced_validation", "owner_routing", "remediation_candidate", "novelty", "external_source"}:
                 continue
             if planned.get(field) != current_entry.get(field):
                 errors.append(f"{finding_id}: {field} changed after plan creation")

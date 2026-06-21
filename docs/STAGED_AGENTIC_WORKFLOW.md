@@ -357,6 +357,7 @@ Ingest scanner output:
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool semgrep --file semgrep.json --format json
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool gitleaks --file gitleaks.json --format json
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool trivy --file trivy.json --format json
+gra-import-findings --run runs/OWNER__REPO/RUN_ID --file external-findings.json
 ```
 
 Ask Codex to triage scanner leads:
@@ -365,7 +366,10 @@ Ask Codex to triage scanner leads:
 gra-scanner-triage --run runs/OWNER__REPO/RUN_ID --model gpt-5.5 --effort xhigh
 ```
 
-Scanner results are leads. They are not automatically treated as findings.
+Scanner results and imported external finding records are leads. They are not
+automatically treated as publishable findings. `gra-import-findings` is
+review-only by default; append mode is explicit and imported findings remain
+`issue_recommended=false` until human review updates the finding metadata.
 
 ## Reporting
 
@@ -386,6 +390,8 @@ reports/metrics.json
 reports/METRICS.md
 reports/evidence-graph.json
 reports/EVIDENCE_GRAPH.md
+reports/imported-findings.json
+reports/IMPORTED_FINDINGS.md
 reports/dashboard.html
 reports/findings.sarif
 runs/security-audit.sqlite

@@ -49,7 +49,8 @@ remediation text, proof payloads, Issue bodies, or secrets.
 The dashboard summarizes findings, target status, taxonomy mappings, known-finding
 novelty status when `reports/known-findings.json` exists, evidence graph
 coverage when `reports/evidence-graph.json` exists, advanced workflow metrics
-when `reports/metrics.json` exists, artifact retention status,
+when `reports/metrics.json` exists, imported external finding status when
+`reports/imported-findings.json` exists, artifact retention status,
 OpenSSF Scorecard supply-chain posture when `reports/supply-chain-posture.json`
 exists, dependency risk posture when `reports/dependencies.json` exists, and the
 scanner result index.

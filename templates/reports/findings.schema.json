@@ -317,6 +317,34 @@
                 }
               }
             }
+          },
+          "external_source": {
+            "type": "object",
+            "required": [
+              "source",
+              "external_id",
+              "input_index",
+              "imported_at"
+            ],
+            "properties": {
+              "source": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+              },
+              "source_version": {
+                "type": "string"
+              },
+              "external_id": {
+                "type": "string"
+              },
+              "input_index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "imported_at": {
+                "type": "string"
+              }
+            }
           }
         }
       }

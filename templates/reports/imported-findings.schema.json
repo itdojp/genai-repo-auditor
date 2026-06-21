@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor Imported Findings",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "repo",
+    "commit",
+    "generated_at",
+    "source",
+    "append_findings",
+    "summary",
+    "findings",
+    "rejected_findings"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1"]
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "repo": {
+      "type": "string"
+    },
+    "commit": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+    },
+    "source_version": {
+      "type": "string"
+    },
+    "source_file": {
+      "type": "object",
+      "required": ["name", "sha256", "bytes"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "append_findings": {
+      "type": "boolean"
+    },
+    "summary": {
+      "type": "object",
+      "required": ["input_count", "valid_count", "rejected_count", "appended_count", "duplicate_skipped_count"],
+      "properties": {
+        "input_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "valid_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rejected_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "appended_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duplicate_skipped_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "import_id",
+          "external_id",
+          "source",
+          "input_index",
+          "fingerprint",
+          "title",
+          "severity",
+          "confidence",
+          "status",
+          "category",
+          "affected_locations",
+          "evidence",
+          "minimal_remediation",
+          "append_status",
+          "normalized_finding"
+        ],
+        "properties": {
+          "import_id": {
+            "type": "string",
+            "pattern": "^IMP-[A-F0-9]{12}$"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "source_version": {
+            "type": "string"
+          },
+          "input_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "fingerprint": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": ["Critical", "High", "Medium", "Low", "Informational"]
+          },
+          "confidence": {
+            "enum": ["High", "Medium", "Low"]
+          },
+          "status": {
+            "enum": ["Confirmed", "Probable", "Potential", "Informational", "Invalid", "Needs human review"]
+          },
+          "category": {
+            "type": "string"
+          },
+          "affected_locations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["file"],
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": ["integer", "null"]
+                },
+                "end_line": {
+                  "type": ["integer", "null"]
+                }
+              }
+            }
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "minimal_remediation": {
+            "type": "string"
+          },
+          "append_status": {
+            "enum": ["review-only", "appended", "duplicate-skipped"]
+          },
+          "duplicate_reason": {
+            "type": "string"
+          },
+          "normalized_finding": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "rejected_findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["index", "external_id", "title", "reasons"],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "redacted_evidence": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

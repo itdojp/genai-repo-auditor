@@ -15,7 +15,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 - Non-interactive `codex exec` invocations set approval behavior through `-c 'approval_policy="never"'` rather than the interactive-only `--ask-for-approval` flag, preserving compatibility with `codex-cli 0.135.0`.
 - Codex-driven commands derive the default executable name from the built-in `codex-cli` worker profile while preserving the tested `codex exec` argument construction in `lib/gralib.py`. `gra-agent-check` can list profiles and check whether the required local worker executable is available without running the worker.
 - Executable target-code validation should be gated by an explicit sandbox profile. `gra-sandbox-check` records readiness for `source-only`, `local-test`, `container`, `gvisor`, and `vm` profiles without executing target code.
-- Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-trace`, `gra-metrics`, `gra-evidence-graph`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
+- Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-trace`, `gra-metrics`, `gra-evidence-graph`, `gra-import-findings`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
 - Python commands use `argparse`; missing required arguments or invalid choices normally exit with status `2`.
 - Generated audit artifacts, cloned target repositories, scanner raw outputs, issue drafts, and local stores should remain local and should not be committed.
 
@@ -37,7 +37,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Safe local proofs | `gra-proofs` | Benign proof prompt, subject seed JSON, `reports/proofs.json`, `reports/PROOFS.md`, `reports/proofs/` |
 | Remediation candidates | `gra-remediate` | Draft-only remediation prompt, subject seed JSON, `reports/remediation/remediation-candidates.json`, local patch drafts |
 | Cross-repo trace reachability | `gra-trace` | Experimental/P3 trace prompt, subject seed JSON, `reports/traces.json`, `reports/TRACE.md` |
-| Scanner triage | `gra-ingest`, `gra-scanner-triage` | Raw scanner copies, redacted normalized leads, scanner index, Scorecard posture artifacts, dependency posture artifacts, triage output |
+| Scanner / external finding import | `gra-ingest`, `gra-import-findings`, `gra-scanner-triage` | Raw scanner copies, redacted normalized leads, scanner index, review-only imported finding artifacts, Scorecard posture artifacts, dependency posture artifacts, triage output |
 | Validation | `gra-taxonomy-preflight`, `gra-validate-report` | Controlled taxonomy preflight, report contract validation result |
 | Reporting / persistence | `gra-metrics`, `gra-evidence-graph`, `gra-dashboard`, `gra-sarif`, `gra-store`, `gra-index` | Local metrics, evidence graph, HTML dashboard, SARIF, SQLite store, run index |
 | Issue workflow | `gra-issues` | Dry-run previews, canonical issue ledger, duplicate decision records, ledger verification, or GitHub Issues after human review |
@@ -414,6 +414,26 @@ gra-ingest --run runs/OWNER__REPO/RUN_ID --tool trivy --file trivy.json --format
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool grype --file grype.json --format json
 ```
 
+## `gra-import-findings`
+
+| Field | Details |
+|---|---|
+| Purpose | Normalize a conservative vendor-neutral external finding JSON contract from managed AI tools, deterministic scanners, or internal review systems into local review artifacts. |
+| Workflow category | External finding import. |
+| Required inputs | `--run RUN_DIR --file FILE`. The file must contain a JSON object with `source` and a `findings` array. |
+| Key options | `--append-findings` explicitly appends valid normalized records to `reports/findings.json`; default mode is review-only and does not mutate findings. |
+| Generated outputs | `reports/imported-findings.json` and `reports/IMPORTED_FINDINGS.md`. With `--append-findings`, valid non-duplicate records are also appended to `reports/findings.json` with `external_source` metadata and `issue_recommended=false`. |
+| Exit status behavior | `0` for successful parsing and artifact generation, even when some per-record leads are rejected and retained with reasons; `2` for missing files, malformed top-level JSON, unsupported `source`, unsafe `reports_dir`, or invalid append preconditions. |
+| Security / disclosure cautions | The command does not call vendor APIs and does not support proprietary exports without fixtures/tests. Evidence and remediation strings are bounded and redacted. Source file absolute paths are not stored. Appended findings remain review-gated and do not bypass `gra-issues` publication rules. |
+| Related docs | [`docs/EXTERNAL_FINDING_IMPORT.md`](EXTERNAL_FINDING_IMPORT.md), [`docs/SCANNER_INTEGRATION.md`](SCANNER_INTEGRATION.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
+
+Examples:
+
+```bash
+gra-import-findings --run runs/OWNER__REPO/RUN_ID --file external-findings.json
+gra-import-findings --run runs/OWNER__REPO/RUN_ID --file external-findings.json --append-findings
+```
+
 ## `gra-scanner-triage`
 
 | Field | Details |
@@ -541,7 +561,7 @@ gra-novelty --run runs/OWNER__REPO/RUN_ID --accepted-risk SEC-001 --accepted-ris
 | Workflow category | Reporting workflow. |
 | Required inputs | `--run RUN_DIR`. |
 | Key options | `--out OUT` to override the default `reports/dashboard.html`. |
-| Generated outputs | HTML dashboard file with links to `metrics.json` / `METRICS.md`, `evidence-graph.json` / `EVIDENCE_GRAPH.md`, and `known-findings.json` / `NOVELTY.md` when those artifacts exist, including current source-to-gapfill relationships, prioritized next gapfill targets, remediation candidate summary, evidence graph node/edge counts, novelty status counts, latest/archive artifact retention counts, manifest hygiene warnings, longest command durations, and high retry / rerun targets from observability metrics. |
+| Generated outputs | HTML dashboard file with links to `metrics.json` / `METRICS.md`, `evidence-graph.json` / `EVIDENCE_GRAPH.md`, `imported-findings.json` / `IMPORTED_FINDINGS.md`, and `known-findings.json` / `NOVELTY.md` when those artifacts exist, including current source-to-gapfill relationships, prioritized next gapfill targets, remediation candidate summary, imported finding counts, evidence graph node/edge counts, novelty status counts, latest/archive artifact retention counts, manifest hygiene warnings, longest command durations, and high retry / rerun targets from observability metrics. |
 | Exit status behavior | `0` when the dashboard is written; parser status `2` for usage errors. Unexpected unreadable input or write failures surface as non-zero Python errors. |
 | Security / disclosure cautions | The dashboard can contain finding titles, locations, and evidence. Keep it local unless disclosure has been approved. |
 | Related docs | [`docs/REPORTING_AND_STORE.md`](REPORTING_AND_STORE.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |

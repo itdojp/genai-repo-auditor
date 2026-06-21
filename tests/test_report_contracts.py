@@ -172,6 +172,7 @@ class ReportContractTests(unittest.TestCase):
         traces_schema = self.load_json(SCHEMAS / "traces.schema.json")
         metrics_schema = self.load_json(SCHEMAS / "metrics.schema.json")
         evidence_graph_schema = self.load_json(SCHEMAS / "evidence-graph.schema.json")
+        imported_findings_schema = self.load_json(SCHEMAS / "imported-findings.schema.json")
         issue_ledger_schema = self.load_json(SCHEMAS / "issue-ledger.schema.json")
         duplicate_decision_schema = self.load_json(SCHEMAS / "duplicate-decision.schema.json")
         run_state_schema = self.load_json(SCHEMAS / "run-state.schema.json")
@@ -200,6 +201,11 @@ class ReportContractTests(unittest.TestCase):
             )
         self.assertEqual("^CHAIN-[0-9]{3,}$", finding_properties["chain_membership"]["items"]["pattern"])
         self.assertEqual("object", finding_properties["assessment_notes"]["type"])
+        self.assertIn("external_source", finding_properties)
+        self.assertEqual(
+            {"source", "external_id", "input_index", "imported_at"},
+            set(finding_properties["external_source"]["required"]),
+        )
         target_required = target_schema["properties"]["targets"]["items"]["required"]
         self.assertTrue(set(VALIDATOR.REQUIRED_TARGET).issubset(target_required))
         target_properties = target_schema["properties"]["targets"]["items"]["properties"]
@@ -550,6 +556,46 @@ class ReportContractTests(unittest.TestCase):
                 "not_applicable",
             ],
             evidence_graph_schema["properties"]["edges"]["items"]["properties"]["type"]["enum"],
+        )
+        self.assertEqual(
+            {
+                "schema_version",
+                "run_id",
+                "repo",
+                "commit",
+                "generated_at",
+                "source",
+                "append_findings",
+                "summary",
+                "findings",
+                "rejected_findings",
+            },
+            set(imported_findings_schema["required"]),
+        )
+        imported_item = imported_findings_schema["properties"]["findings"]["items"]
+        self.assertEqual(
+            {
+                "import_id",
+                "external_id",
+                "source",
+                "input_index",
+                "fingerprint",
+                "title",
+                "severity",
+                "confidence",
+                "status",
+                "category",
+                "affected_locations",
+                "evidence",
+                "minimal_remediation",
+                "append_status",
+                "normalized_finding",
+            },
+            set(imported_item["required"]),
+        )
+        self.assertEqual(
+            sorted(VALIDATOR.IMPORTED_FINDING_APPEND_STATUSES),
+            sorted(imported_item["properties"]["append_status"]["enum"]),
         )
         self.assertEqual(
             {

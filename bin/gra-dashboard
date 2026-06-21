@@ -56,6 +56,8 @@ def main() -> int:
     gapfill_present = isinstance(gapfill_data, dict) and bool(gapfill_data)
     remediation_data = load_json(reports / 'remediation' / 'remediation-candidates.json', {}) or {}
     remediation_present = isinstance(remediation_data, dict) and bool(remediation_data)
+    imported_findings_data = load_json(reports / 'imported-findings.json', {}) or {}
+    imported_findings_present = isinstance(imported_findings_data, dict) and bool(imported_findings_data)
     novelty_data = load_json(reports / 'known-findings.json', {}) or {}
     novelty_present = isinstance(novelty_data, dict) and bool(novelty_data)
 
@@ -175,6 +177,64 @@ def main() -> int:
             "<a href='remediation/REMEDIATION_CANDIDATES.md'>REMEDIATION_CANDIDATES.md</a> locally before applying anything.</p>"
             "<table><thead><tr><th>ID</th><th>Finding</th><th>Status</th><th>Human review</th><th>Patch file</th><th>Summary</th></tr></thead>"
             f"<tbody>{candidate_body}</tbody></table>"
+        )
+
+    imported_findings_section = (
+        "<h2>External finding imports</h2>"
+        "<p>No imported finding artifact found. Run "
+        "<code>gra-import-findings --run RUN_DIR --file external-findings.json</code> "
+        "to normalize vendor-neutral external findings into review-only local artifacts.</p>"
+    )
+    if imported_findings_present:
+        import_summary = imported_findings_data.get('summary') if isinstance(imported_findings_data.get('summary'), dict) else {}
+        import_cards = [
+            ('Source', imported_findings_data.get('source', '')),
+            ('Valid findings', import_summary.get('valid_count', 0)),
+            ('Rejected leads', import_summary.get('rejected_count', 0)),
+            ('Appended', import_summary.get('appended_count', 0)),
+            ('Duplicate skipped', import_summary.get('duplicate_skipped_count', 0)),
+        ]
+        import_rows = []
+        for item in imported_findings_data.get('findings') or []:
+            if isinstance(item, dict):
+                import_rows.append(
+                    "<tr>"
+                    f"<td>{h(item.get('import_id'))}</td>"
+                    f"<td>{h(item.get('external_id'))}</td>"
+                    f"<td>{h(item.get('severity'))}</td>"
+                    f"<td>{h(item.get('confidence'))}</td>"
+                    f"<td>{h(item.get('status'))}</td>"
+                    f"<td>{h(item.get('append_status'))}</td>"
+                    f"<td>{h(item.get('title'))}</td>"
+                    "</tr>"
+                )
+        rejected_rows = []
+        for item in imported_findings_data.get('rejected_findings') or []:
+            if isinstance(item, dict):
+                rejected_rows.append(
+                    "<tr>"
+                    f"<td>{h(item.get('index'))}</td>"
+                    f"<td>{h(item.get('external_id'))}</td>"
+                    f"<td>{h(item.get('title'))}</td>"
+                    f"<td>{h('; '.join(str(reason) for reason in item.get('reasons') or []))}</td>"
+                    "</tr>"
+                )
+        import_body = ''.join(import_rows) or '<tr><td colspan="7">No normalized imported findings.</td></tr>'
+        rejected_body = ''.join(rejected_rows) or '<tr><td colspan="4">No rejected imported leads.</td></tr>'
+        imported_findings_section = (
+            "<h2>External finding imports</h2>"
+            "<p>Vendor-neutral local import artifact. Imported findings are review-only by default and appended findings "
+            "use <code>issue_recommended=false</code> until explicitly reviewed. "
+            "<a href='imported-findings.json'>imported-findings.json</a> / <a href='IMPORTED_FINDINGS.md'>IMPORTED_FINDINGS.md</a></p>"
+            "<div class='cards'>"
+            + ''.join(f"<div class='card'><strong>{h(label)}</strong><br>{h(value)}</div>" for label, value in import_cards)
+            + "</div>"
+            "<h3>Normalized imports</h3>"
+            "<table><thead><tr><th>Import ID</th><th>External ID</th><th>Severity</th><th>Confidence</th><th>Status</th><th>Append status</th><th>Title</th></tr></thead>"
+            f"<tbody>{import_body}</tbody></table>"
+            "<h3>Rejected leads</h3>"
+            "<table><thead><tr><th>Index</th><th>External ID</th><th>Title</th><th>Reasons</th></tr></thead>"
+            f"<tbody>{rejected_body}</tbody></table>"
         )
 
     novelty_section = (
@@ -424,6 +484,7 @@ def main() -> int:
 <h2>Target status</h2><div class='cards'>{''.join(f"<div class='card'><strong>{h(k)}</strong><br>{v}</div>" for k, v in sorted(target_status_counts.items()))}</div>
 {gapfill_section}
 {remediation_section}
+{imported_findings_section}
 {novelty_section}
 <h2>Taxonomies</h2>
 <table><thead><tr><th>Taxonomy</th><th>ID</th><th>Count</th></tr></thead><tbody>{''.join(taxonomy_rows) or '<tr><td colspan="3">No taxonomy mappings.</td></tr>'}</tbody></table>

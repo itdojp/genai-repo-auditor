@@ -16,6 +16,7 @@ bin/gra-dashboard
 bin/gra-evidence-graph
 bin/gra-gapfill
 bin/gra-index
+bin/gra-import-findings
 bin/gra-ingest
 bin/gra-issues
 bin/gra-metrics
@@ -82,6 +83,7 @@ templates/reports/command-event.schema.json
 templates/reports/dependencies.schema.json
 templates/reports/duplicate-decision.schema.json
 templates/reports/evidence-graph.schema.json
+templates/reports/imported-findings.schema.json
 templates/reports/findings.schema.json
 templates/reports/issue-ledger.schema.json
 templates/reports/metrics.schema.json
@@ -137,6 +139,7 @@ docs/CODEX_WORK_INSTRUCTIONS.md
 docs/COMMAND_REFERENCE.md
 docs/DEPENDENCY_INGESTION.md
 docs/EVIDENCE_GRAPH.md
+docs/EXTERNAL_FINDING_IMPORT.md
 docs/GITHUB_BOOTSTRAP.md
 docs/GOAL_DEEP_DIVE.md
 docs/GOAL_DEEP_DIVE_WORKFLOW.md

@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / "lib"))
+from version import auditor_version  # noqa: E402
+from external_findings import ExternalFindingImportError, import_external_findings  # noqa: E402
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Import vendor-neutral external finding JSON into a GenAI Repo Auditor run")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {auditor_version(LAB_ROOT)}")
+    parser.add_argument("--run", required=True, help="Run directory")
+    parser.add_argument("--file", required=True, help="External finding JSON file")
+    parser.add_argument(
+        "--append-findings",
+        action="store_true",
+        help="Explicitly append normalized findings to reports/findings.json; default is review-only",
+    )
+    args = parser.parse_args()
+
+    try:
+        report = import_external_findings(Path(args.run), Path(args.file), append_findings=args.append_findings)
+    except ExternalFindingImportError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+    print("Wrote imported findings -> reports/imported-findings.json")
+    print("Wrote imported findings summary -> reports/IMPORTED_FINDINGS.md")
+    print(
+        "Imported findings: "
+        f"valid={summary.get('valid_count', 0)} "
+        f"rejected={summary.get('rejected_count', 0)} "
+        f"appended={summary.get('appended_count', 0)} "
+        f"duplicate_skipped={summary.get('duplicate_skipped_count', 0)}"
+    )
+    if not args.append_findings:
+        print("Review-only mode: reports/findings.json was not modified. Use --append-findings to append normalized records.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
