@@ -113,11 +113,15 @@ findings until repository context and reachability are reviewed.
 After each major stage, update the local run record with command status and
 artifact references only:
 
-```text
-- command: gra-metrics
-  status: passed | failed | skipped
-  artifact_ref: reports/metrics.json
-  public_safe_summary: counts-only summary or "not reviewed"
+```json
+{
+  "name": "gra-metrics",
+  "status": "passed",
+  "artifact_refs": [
+    "reports/metrics.json"
+  ],
+  "public_safe_summary": "counts-only summary after review"
+}
 ```
 
 Do not paste raw logs, transcripts, scanner records, evidence snippets, attack
