@@ -48,7 +48,7 @@ because they were outside the approved current-run scope.
 | Evidence source | Availability in this pass | Handling decision |
 |---|---|---|
 | CodeQL SARIF | Not available | Acquire from an authorized local or GitHub Actions source before ingest. |
-| npm audit JSON | Not available | Generate or export in an authorized local dependency environment before ingest. |
+| npm audit JSON | Not available | Candidate evidence only; not a native dependency-posture input. Use only after an explicit adapter, safe external-finding import, or custom scanner normalization is approved. |
 | CycloneDX SBOM | Not available | Generate with the target repository's approved SBOM workflow before ingest. |
 | Trivy JSON | Not available | Use only if produced from an approved local filesystem/container context. |
 | Grype JSON | Not available | Use only if produced from an approved local SBOM or filesystem context. |
@@ -121,7 +121,7 @@ counts. Commit only after a human reviewer approves the exact public-safe text.
 | Evidence source | Ingested? | Public-safe count field | Notes |
 |---|---|---:|---|
 | CodeQL SARIF | `yes / no / not available` | `N` | lead count only |
-| npm audit JSON | `yes / no / not available` | `N` | dependency vulnerability count only |
+| npm audit JSON | `yes / no / not available` | `N` | generic lead count only; no dependency-posture count unless native support is added |
 | CycloneDX SBOM | `yes / no / not available` | `N` | component count only |
 | Trivy JSON | `yes / no / not available` | `N` | vulnerability lead count only |
 | Grype JSON | `yes / no / not available` | `N` | vulnerability lead count only |

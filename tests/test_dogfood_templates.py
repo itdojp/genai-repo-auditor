@@ -210,6 +210,7 @@ class DogfoodTemplateTests(unittest.TestCase):
             "No authorized current-run scanner artifacts were available",
             "CodeQL SARIF",
             "npm audit JSON",
+            "not a native dependency-posture input",
             "CycloneDX SBOM",
             "Trivy JSON",
             "Grype JSON",
