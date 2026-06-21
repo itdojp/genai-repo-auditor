@@ -185,6 +185,9 @@ fi
 if [[ -f "$LAB_ROOT/templates/reports/remediation-candidates.schema.json" ]]; then
   cp "$LAB_ROOT/templates/reports/remediation-candidates.schema.json" "$RUN_DIR/remediation-candidates.schema.json"
 fi
+if [[ -f "$LAB_ROOT/templates/reports/patch-validation.schema.json" ]]; then
+  cp "$LAB_ROOT/templates/reports/patch-validation.schema.json" "$RUN_DIR/patch-validation.schema.json"
+fi
 if [[ -f "$LAB_ROOT/templates/reports/traces.schema.json" ]]; then
   cp "$LAB_ROOT/templates/reports/traces.schema.json" "$RUN_DIR/traces.schema.json"
 fi

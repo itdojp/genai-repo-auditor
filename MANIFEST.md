@@ -82,6 +82,7 @@ templates/reports/duplicate-decision.schema.json
 templates/reports/findings.schema.json
 templates/reports/issue-ledger.schema.json
 templates/reports/metrics.schema.json
+templates/reports/patch-validation.schema.json
 templates/reports/proofs.schema.json
 templates/reports/remediation-candidates.schema.json
 templates/reports/run-manifest.schema.json

@@ -427,6 +427,34 @@ Issue publication plans may record whether a remediation candidate exists and
 may include bounded candidate metadata such as ID, status, patch path, and
 human-review requirement. They must not embed the full patch diff.
 
+## patch validation output
+
+`reports/remediation/<FINDING-ID>/patch-validation.json` and
+`reports/remediation/<FINDING-ID>/patch-validation.md` are local/private
+validation results for draft remediation candidates. The validator applies the
+candidate patch only to a disposable copy of the target checkout under the run
+directory and removes that workspace after the ladder finishes.
+
+Every patch validation report must reference an existing remediation candidate
+and finding, keep `network_allowed: false`, record the selected executable
+`sandbox_profile`, and include the ladder fields:
+
+- `patch_applied`
+- `build_status`
+- `test_status`
+- `safe_proof_replay_status`
+- `adversarial_review_status`
+- `diff_scope_status`
+- `final_status`
+
+`final_status: validated` means the mechanical local ladder passed; it does not
+remove the draft-only, human-review requirement. Reports must not treat
+pre-patch proof artifacts as proof replay against patched code; replay remains
+`not-run` unless a later workflow explicitly executes it in the disposable
+workspace. Failed or needs-human-review validation results are included in
+`gra-issues --plan` metadata and are treated as blocking warnings when
+`--require-advanced-validation` is used.
+
 ## cross-repo trace reachability output
 
 `reports/traces.json` と `reports/TRACE.md` は、shared library など producer

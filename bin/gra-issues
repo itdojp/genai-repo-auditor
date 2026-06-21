@@ -291,6 +291,30 @@ def optional_report(run_dir: Path, rel_path: str, array_key: str) -> Tuple[bool,
     return True, [record for record in records if isinstance(record, dict)], []
 
 
+def optional_patch_validations(run_dir: Path) -> Tuple[bool, List[Dict[str, Any]], List[str]]:
+    remediation_root = run_dir / "reports" / "remediation"
+    if not remediation_root.exists():
+        return False, [], []
+    paths = sorted(remediation_root.rglob("patch-validation.json"))
+    if not paths:
+        return False, [], []
+    records: List[Dict[str, Any]] = []
+    errors: List[str] = []
+    for path in paths:
+        try:
+            data = load_json(path)
+        except (OSError, json.JSONDecodeError) as exc:
+            errors.append(f"{path.relative_to(run_dir).as_posix()} could not be read: {exc}")
+            continue
+        if not isinstance(data, dict):
+            errors.append(f"{path.relative_to(run_dir).as_posix()} is not a JSON object")
+            continue
+        data = dict(data)
+        data.setdefault("report_file", path.relative_to(run_dir).as_posix())
+        records.append(data)
+    return True, records, errors
+
+
 def load_advanced_artifacts(run_dir: Path) -> Dict[str, Any]:
     chains_present, chains, chain_errors = optional_report(run_dir, "reports/chains.json", "chains")
     proofs_present, proofs, proof_errors = optional_report(run_dir, "reports/proofs.json", "proofs")
@@ -300,6 +324,7 @@ def load_advanced_artifacts(run_dir: Path) -> Dict[str, Any]:
         "reports/remediation/remediation-candidates.json",
         "candidates",
     )
+    patch_validations_present, patch_validations, patch_validation_errors = optional_patch_validations(run_dir)
     return {
         "chains_present": chains_present,
         "chains": chains,
@@ -313,6 +338,9 @@ def load_advanced_artifacts(run_dir: Path) -> Dict[str, Any]:
         "remediation_present": remediation_present,
         "remediation_candidates": remediation_candidates,
         "remediation_errors": remediation_errors,
+        "patch_validations_present": patch_validations_present,
+        "patch_validations": patch_validations,
+        "patch_validation_errors": patch_validation_errors,
     }
 
 
@@ -458,19 +486,51 @@ def advanced_validation_summary(finding: Dict[str, Any], artifacts: Dict[str, An
 def remediation_candidate_summary(finding: Dict[str, Any], artifacts: Dict[str, Any]) -> Dict[str, Any]:
     finding_id = str(finding.get("id") or "SEC-UNKNOWN")
     candidates = []
+    patch_validations = [
+        item
+        for item in artifacts.get("patch_validations", [])
+        if isinstance(item, dict) and str(item.get("finding_id") or "") == finding_id
+    ]
     for item in artifacts.get("remediation_candidates", []):
         if not isinstance(item, dict) or str(item.get("finding_id") or "") != finding_id:
             continue
+        validation_matches = sorted(
+            (
+                {
+                    "report_file": str(validation.get("report_file") or ""),
+                    "final_status": str(validation.get("final_status") or ""),
+                    "patch_applied": bool(validation.get("patch_applied")),
+                    "diff_scope_status": str(validation.get("diff_scope_status") or ""),
+                    "sandbox_profile": str(validation.get("sandbox_profile") or ""),
+                }
+                for validation in patch_validations
+                if str(validation.get("patch_id") or "") == str(item.get("id") or "")
+            ),
+            key=lambda validation: validation["report_file"],
+        )
         candidates.append(
             {
                 "id": str(item.get("id") or ""),
                 "status": str(item.get("status") or ""),
                 "patch_file": str(item.get("patch_file") or ""),
                 "requires_human_review": bool(item.get("requires_human_review")),
+                "patch_validation": {
+                    "artifact_present": bool(artifacts.get("patch_validations_present")),
+                    "exists": bool(validation_matches),
+                    "results": validation_matches,
+                },
             }
         )
     candidates.sort(key=lambda item: item["id"])
     warnings = [str(error) for error in artifacts.get("remediation_errors", [])]
+    warnings.extend(str(error) for error in artifacts.get("patch_validation_errors", []))
+    for candidate in candidates:
+        validation = candidate.get("patch_validation") if isinstance(candidate.get("patch_validation"), dict) else {}
+        for result in validation.get("results") or []:
+            if isinstance(result, dict) and result.get("final_status") in {"failed", "needs-human-review"}:
+                warnings.append(
+                    f"remediation candidate {candidate.get('id')} patch validation status is {result.get('final_status')}"
+                )
     return {
         "artifact_present": bool(artifacts.get("remediation_present")),
         "exists": bool(candidates),
@@ -485,6 +545,9 @@ def advanced_validation_errors(entries: Iterable[Dict[str, Any]]) -> List[str]:
         finding_id = str(entry.get("id") or "SEC-UNKNOWN")
         advanced = entry.get("advanced_validation") if isinstance(entry.get("advanced_validation"), dict) else {}
         for warning in advanced.get("warnings") or []:
+            errors.append(f"{finding_id}: {warning}")
+        remediation = entry.get("remediation_candidate") if isinstance(entry.get("remediation_candidate"), dict) else {}
+        for warning in remediation.get("warnings") or []:
             errors.append(f"{finding_id}: {warning}")
     return errors
 
@@ -597,7 +660,9 @@ def print_plan_summary(plan_path: Path, plan: Dict[str, Any], *, prefix: str = "
             "  remediation_candidate: "
             f"artifact_present={bool(remediation.get('artifact_present'))}, "
             f"exists={bool(remediation.get('exists'))}, "
-            f"candidates={[item.get('id') for item in remediation.get('candidates') or [] if isinstance(item, dict)]}"
+            f"candidates={[item.get('id') for item in remediation.get('candidates') or [] if isinstance(item, dict)]}, "
+            f"patch_validation_statuses="
+            f"{[result.get('final_status') for item in remediation.get('candidates') or [] if isinstance(item, dict) for result in ((item.get('patch_validation') or {}).get('results') or []) if isinstance(result, dict)]}"
         )
         for warning in advanced.get("warnings") or []:
             print(f"  WARNING: {warning}")

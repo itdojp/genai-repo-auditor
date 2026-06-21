@@ -157,6 +157,73 @@ class CliWorkflowTests(unittest.TestCase):
         manifest = self.load_manifest(run_dir)
         return {str(item["path"]): item for item in manifest["artifacts"]}
 
+    def env_without_credentials(self) -> dict:
+        env = self.env.copy()
+        for name in [
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AZURE_CLIENT_SECRET",
+            "GCP_SERVICE_ACCOUNT_KEY",
+            "GH_TOKEN",
+            "GITHUB_TOKEN",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+        ]:
+            env.pop(name, None)
+        return env
+
+    def prepare_patch_validation_run(self, run_dir: Path) -> None:
+        repo = run_dir / "repo"
+        repo.mkdir()
+        (repo / "app.py").write_text(
+            "def handle(value):\n"
+            "    return value\n",
+            encoding="utf-8",
+        )
+        subprocess.run(["git", "-C", str(repo), "init"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        subprocess.run(["git", "-C", str(repo), "add", "app.py"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo),
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-m",
+                "fixture",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        remediation_src = FIXTURES / "remediation-output" / "reports" / "remediation"
+        remediation_dst = run_dir / "reports" / "remediation"
+        shutil.copytree(remediation_src, remediation_dst, dirs_exist_ok=True)
+        subject = {
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "branch": "main",
+            "commit": "0000000000000000000000000000000000000000",
+            "generated_at": "2026-06-21T00:00:00Z",
+            "candidate_id": "PATCH-001",
+            "finding_id": "SEC-001",
+            "output_dir": "reports/remediation/SEC-001",
+            "patch_file": "reports/remediation/SEC-001/patch.diff",
+            "notes_file": "reports/remediation/SEC-001/notes.md",
+            "subject_file": "reports/remediation/SEC-001/subject.json",
+            "status": "draft",
+            "requires_human_review": True,
+        }
+        (remediation_dst / "SEC-001" / "subject.json").write_text(
+            json.dumps(subject, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
     def write_optional_posture_artifacts(self, run_dir: Path) -> None:
         reports = run_dir / "reports"
         (run_dir / "run-manifest.json").write_text(
@@ -766,8 +833,10 @@ class CliWorkflowTests(unittest.TestCase):
             {"name": "remediation-candidates.schema.json", "path": "remediation-candidates.schema.json"},
             manifest["schemas"],
         )
+        self.assertIn({"name": "patch-validation.schema.json", "path": "patch-validation.schema.json"}, manifest["schemas"])
         self.assertTrue((run_dir / "command-event.schema.json").exists())
         self.assertTrue((run_dir / "remediation-candidates.schema.json").exists())
+        self.assertTrue((run_dir / "patch-validation.schema.json").exists())
         self.assertNotIn("run-manifest.json", self.manifest_artifact_paths(run_dir))
         self.assertIn("prompts/exec/full-audit.prompt.md", self.manifest_artifact_paths(run_dir))
         artifacts_by_path = self.manifest_artifacts_by_path(run_dir)
@@ -2321,6 +2390,265 @@ class CliWorkflowTests(unittest.TestCase):
         prompt = run_dir / "prompts" / "goal" / "remediate-critical-high.goal.md"
         self.assertTrue(prompt.read_text(encoding="utf-8").startswith("/goal "))
         self.assertEqual(self.read_codex_calls(codex_log), [])
+
+    def test_gra_remediate_validate_applies_patch_in_disposable_workspace(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.prepare_patch_validation_run(run_dir)
+        original_app = (run_dir / "repo" / "app.py").read_text(encoding="utf-8")
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-remediate",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--validate",
+                "--sandbox-profile",
+                "local-test",
+                "--build-command",
+                "python3 -m py_compile repo/app.py",
+                "--test-command",
+                "python3 -m py_compile repo/app.py",
+            ],
+            env=self.env_without_credentials(),
+            check=True,
+        )
+        self.assertIn("Patch validation results:", cp.stdout)
+        self.assertIn("final_status=validated", cp.stdout)
+
+        validation_path = run_dir / "reports" / "remediation" / "SEC-001" / "patch-validation.json"
+        report = json.loads(validation_path.read_text(encoding="utf-8"))
+        self.assertEqual("PATCH-001", report["patch_id"])
+        self.assertEqual("SEC-001", report["finding_id"])
+        self.assertEqual("local-test", report["sandbox_profile"])
+        self.assertFalse(report["network_allowed"])
+        self.assertTrue(report["patch_applied"])
+        self.assertEqual("passed", report["build_status"])
+        self.assertEqual("passed", report["test_status"])
+        self.assertEqual("bounded", report["diff_scope_status"])
+        self.assertEqual("validated", report["final_status"])
+        self.assertTrue(report["validation_workspace"]["disposed"])
+        self.assertFalse((run_dir / report["validation_workspace"]["path"]).exists())
+        self.assertEqual(original_app, (run_dir / "repo" / "app.py").read_text(encoding="utf-8"))
+        self.assertNotIn("expected-fixture", (run_dir / "repo" / "app.py").read_text(encoding="utf-8"))
+        self.assertTrue((run_dir / "reports" / "remediation" / "SEC-001" / "patch-validation.md").exists())
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Patch validations: validated", cp_validate.stdout)
+
+        cp_plan = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--plan",
+            ],
+            check=True,
+        )
+        self.assertIn("patch_validation_statuses=['validated']", cp_plan.stdout)
+        plan = json.loads((run_dir / "reports" / "issue-publication-plan.json").read_text(encoding="utf-8"))
+        remediation = plan["selected_findings"][0]["remediation_candidate"]
+        patch_validation = remediation["candidates"][0]["patch_validation"]
+        self.assertTrue(patch_validation["exists"])
+        self.assertEqual("validated", patch_validation["results"][0]["final_status"])
+
+    def test_gra_remediate_validate_failed_patch_records_reason_without_modifying_repo(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.prepare_patch_validation_run(run_dir)
+        original_app = (run_dir / "repo" / "app.py").read_text(encoding="utf-8")
+        (run_dir / "reports" / "remediation" / "SEC-001" / "patch.diff").write_text(
+            "diff --git a/repo/app.py b/repo/app.py\n"
+            "index 969d3b9..0132fa1 100644\n"
+            "--- a/repo/app.py\n"
+            "+++ b/repo/app.py\n"
+            "@@ -1,2 +1,4 @@\n"
+            " def handle(value):\n"
+            "+    if value:\n"
+            "+        return (\n"
+            "     return value\n",
+            encoding="utf-8",
+        )
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-remediate",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--validate",
+                "--sandbox-profile",
+                "local-test",
+                "--build-command",
+                "python3 -m py_compile repo/app.py",
+            ],
+            env=self.env_without_credentials(),
+        )
+        self.assertEqual(1, cp.returncode, cp.stdout + cp.stderr)
+        self.assertIn("final_status=failed", cp.stdout)
+
+        report = json.loads((run_dir / "reports" / "remediation" / "SEC-001" / "patch-validation.json").read_text(encoding="utf-8"))
+        self.assertTrue(report["patch_applied"])
+        self.assertEqual("failed", report["build_status"])
+        self.assertEqual("failed", report["final_status"])
+        self.assertTrue(any("build command failed" in check["message"] for check in report["checks"]))
+        self.assertEqual(original_app, (run_dir / "repo" / "app.py").read_text(encoding="utf-8"))
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Patch validations: validated", cp_validate.stdout)
+
+    def test_gra_remediate_validate_rejects_unsafe_operator_command(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.prepare_patch_validation_run(run_dir)
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-remediate",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--validate",
+                "--sandbox-profile",
+                "local-test",
+                "--build-command",
+                "pip install unsafe-package",
+            ],
+            env=self.env_without_credentials(),
+        )
+        self.assertEqual(1, cp.returncode, cp.stdout + cp.stderr)
+        report = json.loads((run_dir / "reports" / "remediation" / "SEC-001" / "patch-validation.json").read_text(encoding="utf-8"))
+        self.assertEqual("failed", report["build_status"])
+        self.assertEqual("failed", report["final_status"])
+        self.assertEqual("rejected", report["commands_run"][0]["status"])
+        self.assertTrue(any("not allowed by default" in check["message"] for check in report["checks"]))
+
+    def test_gra_remediate_validate_rejects_network_operator_command(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.prepare_patch_validation_run(run_dir)
+        dynamic_import_network_command = 'python3 -c "__import__(\'urllib.request\').request.urlopen(\'https://example.invalid\')"'
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-remediate",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--validate",
+                "--sandbox-profile",
+                "local-test",
+                "--build-command",
+                dynamic_import_network_command,
+            ],
+            env=self.env_without_credentials(),
+        )
+        self.assertEqual(1, cp.returncode, cp.stdout + cp.stderr)
+        report = json.loads((run_dir / "reports" / "remediation" / "SEC-001" / "patch-validation.json").read_text(encoding="utf-8"))
+        self.assertEqual("failed", report["build_status"])
+        self.assertEqual("failed", report["final_status"])
+        self.assertEqual("rejected", report["commands_run"][0]["status"])
+        self.assertTrue(any("network-capable arguments" in check["message"] for check in report["checks"]))
+
+    def test_gra_remediate_validate_blocks_python_network_at_runtime(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.prepare_patch_validation_run(run_dir)
+        network_check = run_dir / "repo" / "network_check.py"
+        network_check.write_text(
+            "import socket\n"
+            "socket.socket()\n",
+            encoding="utf-8",
+        )
+        subprocess.run(["git", "-C", str(run_dir / "repo"), "add", "network_check.py"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(run_dir / "repo"),
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-m",
+                "add network check",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-remediate",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--validate",
+                "--sandbox-profile",
+                "local-test",
+                "--build-command",
+                "python3 repo/network_check.py",
+            ],
+            env=self.env_without_credentials(),
+        )
+        self.assertEqual(1, cp.returncode, cp.stdout + cp.stderr)
+        report = json.loads((run_dir / "reports" / "remediation" / "SEC-001" / "patch-validation.json").read_text(encoding="utf-8"))
+        self.assertEqual("failed", report["build_status"])
+        self.assertEqual("failed", report["final_status"])
+        self.assertEqual(["python3", "repo/network_check.py"], report["commands_run"][0]["argv"])
+
+    def test_gra_remediate_validate_without_commands_needs_human_review(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.prepare_patch_validation_run(run_dir)
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-remediate",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--validate",
+                "--sandbox-profile",
+                "local-test",
+            ],
+            env=self.env_without_credentials(),
+            check=True,
+        )
+        self.assertIn("final_status=needs-human-review", cp.stdout)
+        report = json.loads((run_dir / "reports" / "remediation" / "SEC-001" / "patch-validation.json").read_text(encoding="utf-8"))
+        self.assertEqual("not-run", report["build_status"])
+        self.assertEqual("not-run", report["test_status"])
+        self.assertEqual("needs-human-review", report["final_status"])
+
+    def test_gra_remediate_validate_fails_closed_when_sandbox_not_ready(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.prepare_patch_validation_run(run_dir)
+        (run_dir / "repo" / "dirty.txt").write_text("uncommitted change\n", encoding="utf-8")
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-remediate",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--validate",
+                "--sandbox-profile",
+                "local-test",
+                "--build-command",
+                "python3 -m py_compile repo/app.py",
+            ],
+            env=self.env_without_credentials(),
+        )
+        self.assertEqual(1, cp.returncode, cp.stdout + cp.stderr)
+        report = json.loads((run_dir / "reports" / "remediation" / "SEC-001" / "patch-validation.json").read_text(encoding="utf-8"))
+        self.assertFalse(report["patch_applied"])
+        self.assertEqual("failed", report["final_status"])
+        self.assertTrue(any(check["id"] == "sandbox-readiness" and check["status"] == "fail" for check in report["checks"]))
 
     def test_validate_report_rejects_invalid_remediation_candidate_contract(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

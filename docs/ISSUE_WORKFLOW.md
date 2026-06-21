@@ -32,6 +32,8 @@ gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
 gra-chains --run runs/OWNER__REPO/RUN_ID
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --mode goal
+# Add project-specific Python build/test commands; otherwise final_status remains needs-human-review.
+gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --validate --sandbox-profile local-test --build-command "python3 -m py_compile repo/app.py" --test-command "python3 -m py_compile repo/app.py"
 # Optional for shared-library / producer findings:
 # gra-trace --producer-run runs/OWNER__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode exec
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
@@ -42,7 +44,9 @@ gra-validate-report --run runs/OWNER__REPO/RUN_ID
 Then inspect `reports/COVERAGE.md`, `reports/gapfill-targets.json`,
 `reports/ATTACK_CHAINS.md`, `reports/proofs.json`,
 `reports/PROOFS.md`, optional `reports/traces.json`, optional
-`reports/TRACE.md`, `reports/validation.json`, and `reports/VALIDATION.md`.
+`reports/TRACE.md`, optional
+`reports/remediation/<FINDING-ID>/patch-validation.json`,
+`reports/validation.json`, and `reports/VALIDATION.md`.
 High-risk targets with shallow coverage or unresolved gapfill recommendations
 should be reviewed before claiming complete coverage in public Issue wording.
 `downgrade`, `invalidate`, and `needs-human-review` decisions should block direct
@@ -116,8 +120,10 @@ gra-issues --run runs/OWNER__REPO/RUN_ID --plan --require-advanced-validation
 ```
 
 This stricter mode exits non-zero when a selected High/Critical finding lacks
-the expected chain, proof, or adversarial-validation evidence, or when related
-validation decisions are `downgrade`, `invalidate`, or `needs-human-review`.
+the expected chain, proof, or adversarial-validation evidence, when related
+validation decisions are `downgrade`, `invalidate`, or `needs-human-review`, or
+when present remediation patch validation reports are `failed` /
+`needs-human-review`.
 Issue bodies do not include `ATTACK_CHAINS.md` contents; summarize only
 reviewed remediation or disclosure implications in public text.
 

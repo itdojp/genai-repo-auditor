@@ -11,6 +11,8 @@ LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
 from gralib import env_from_context, find_finding, load_context, load_findings, load_json, render_template, run_codex_exec, slug, utc_now, write_json
+from patch_validation import PatchValidationError, validate_selected_patches
+from sandbox_profiles import PROFILE_IDS
 
 HIGH_SEVERITIES = {'Critical', 'High'}
 REMEDIABLE_STATUSES = {'Confirmed', 'Probable', 'Potential'}
@@ -162,11 +164,23 @@ def main() -> int:
     subjects.add_argument('--finding', help='Finding ID to remediate, e.g. SEC-001')
     subjects.add_argument('--all-critical-high', action='store_true', help='Generate draft remediation candidates for all Critical/High findings with Confirmed/Probable/Potential status')
     p.add_argument('--mode', choices=['exec', 'goal'], default='exec')
+    p.add_argument('--validate', action='store_true', help='Validate existing remediation candidate patches in a disposable workspace instead of generating new candidates')
+    p.add_argument('--sandbox-profile', choices=PROFILE_IDS, default='local-test', help='Sandbox profile for patch validation; default: local-test')
+    p.add_argument('--build-command', action='append', default=[], help='Operator-approved build/syntax command to run in the disposable validation workspace; repeatable')
+    p.add_argument('--test-command', action='append', default=[], help='Operator-approved targeted test command to run in the disposable validation workspace; repeatable')
+    p.add_argument('--command-timeout', type=int, default=60, help='Timeout in seconds for each validation command; default: 60')
+    p.add_argument('--max-changed-paths', type=int, default=20, help='Maximum changed files for bounded diff validation; default: 20')
     p.add_argument('--model', default='gpt-5.5')
     p.add_argument('--effort', default='xhigh')
     args = p.parse_args()
 
     run_dir = Path(args.run).resolve()
+    if args.command_timeout <= 0:
+        print('--command-timeout must be greater than zero', file=sys.stderr)
+        return 2
+    if args.max_changed_paths <= 0:
+        print('--max-changed-paths must be greater than zero', file=sys.stderr)
+        return 2
     ctx = load_context(run_dir)
     try:
         selection_id, selected_subjects = select_findings(run_dir, args)
@@ -175,8 +189,35 @@ def main() -> int:
         return 2
 
     if not selected_subjects:
-        print('No matching findings selected for remediation candidate generation.')
+        print('No matching findings selected for remediation candidate workflow.')
         return 0
+
+    if args.validate:
+        try:
+            results = validate_selected_patches(
+                run_dir=run_dir,
+                finding_id=args.finding,
+                all_critical_high=bool(args.all_critical_high),
+                sandbox_profile=args.sandbox_profile,
+                build_commands=args.build_command,
+                test_commands=args.test_command,
+                command_timeout=args.command_timeout,
+                max_changed_paths=args.max_changed_paths,
+            )
+        except PatchValidationError as exc:
+            print(f'Patch validation failed to start: {exc}', file=sys.stderr)
+            return 2
+        failed = False
+        print('Patch validation results:')
+        for report, out_json, out_md in results:
+            if report.get('final_status') == 'failed':
+                failed = True
+            print(
+                f"- {report.get('patch_id')} / {report.get('finding_id')}: "
+                f"final_status={report.get('final_status')}, patch_applied={report.get('patch_applied')}, "
+                f"json={out_json}, markdown={out_md}"
+            )
+        return 1 if failed else 0
 
     selection_slug = slug(selection_id)
     subjects_path = write_subject_artifacts(run_dir, ctx, selection_id, selected_subjects)

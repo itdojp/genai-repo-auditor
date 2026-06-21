@@ -45,6 +45,7 @@ PROOFS_PATH = Path("reports/proofs.json")
 PROOFS_DIR = Path("reports/proofs")
 REMEDIATION_PATH = Path("reports/remediation/remediation-candidates.json")
 REMEDIATION_DIR = Path("reports/remediation")
+PATCH_VALIDATION_FILENAME = "patch-validation.json"
 TRACES_PATH = Path("reports/traces.json")
 METRICS_PATH = Path("reports/metrics.json")
 ISSUE_LEDGER_PATH = Path("reports/issue-ledger.json")
@@ -72,6 +73,11 @@ PROOF_READ_ONLY_COMMANDS = {"rg", "sed", "python", "python3"}
 PROOF_SHELL_METACHARS_RE = re.compile(r"[;&|`$<>\n\r]")
 PROOF_SAFE_SED_SCRIPT_RE = re.compile(r"^(?:p|(?:\$|[0-9]+)(?:,(?:\$|[0-9]+))?p)$")
 REMEDIATION_STATUSES = {"draft"}
+PATCH_VALIDATION_BUILD_TEST_STATUSES = {"passed", "failed", "not-run"}
+PATCH_VALIDATION_SAFE_PROOF_STATUSES = {"passed", "failed", "not-applicable", "not-run"}
+PATCH_VALIDATION_ADVERSARIAL_STATUSES = {"passed", "failed", "needs-human-review", "not-run"}
+PATCH_VALIDATION_DIFF_SCOPE_STATUSES = {"bounded", "too-broad", "needs-human-review"}
+PATCH_VALIDATION_FINAL_STATUSES = {"validated", "failed", "needs-human-review"}
 TRACE_STATUSES = {"Confirmed", "Probable", "Potential", "Invalid", "Needs human review"}
 COMMAND_EVENT_COMMANDS = {"gra-research", "gra-gapfill", "gra-validate-report"}
 COMMAND_EVENT_PHASES = {"exec", "goal", "generate", "validate", "list"}
@@ -1037,6 +1043,131 @@ def validate_remediation_candidates(run_dir: Path, findings: list[dict[str, Any]
     return True
 
 
+def validate_patch_validations(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
+    remediation_root = run_dir / REMEDIATION_DIR
+    if not remediation_root.exists():
+        return False
+    validation_paths = sorted(remediation_root.rglob(PATCH_VALIDATION_FILENAME))
+    if not validation_paths:
+        return False
+
+    finding_ids = {str(finding.get("id")) for finding in findings if isinstance(finding, dict) and finding.get("id")}
+    candidate_records: set[tuple[str, str]] = set()
+    try:
+        remediation_data = json.loads((run_dir / REMEDIATION_PATH).read_text(encoding="utf-8")) if (run_dir / REMEDIATION_PATH).exists() else {}
+    except Exception:
+        remediation_data = {}
+    if isinstance(remediation_data, dict) and isinstance(remediation_data.get("candidates"), list):
+        for candidate in remediation_data["candidates"]:
+            if isinstance(candidate, dict):
+                candidate_records.add((str(candidate.get("id") or ""), str(candidate.get("finding_id") or "")))
+
+    for validation_path in validation_paths:
+        try:
+            rel_path = validation_path.resolve(strict=False).relative_to(run_dir.resolve(strict=False))
+        except ValueError:
+            errors.append(f"{validation_path}: patch validation report must stay under run directory")
+            continue
+        field_root = f"patch_validation[{rel_path.as_posix()}]"
+        try:
+            validate_remediation_artifact_path(
+                run_dir,
+                rel_path.as_posix(),
+                field_path=field_root,
+                expected_suffix=".json",
+            )
+            report = json.loads(validation_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            errors.append(f"{field_root}: invalid patch validation JSON: {exc}")
+            continue
+
+        validate_schema(report, load_schema("patch-validation.schema.json"), field_root, errors)
+        secret_like_count = sum(1 for _ in iter_secret_findings(report, field_path=field_root))
+        if secret_like_count:
+            errors.append(f"{field_root}: contains obvious unredacted secret-like value(s); remove or redact them before validation")
+        if not isinstance(report, dict):
+            continue
+
+        validate_generated_at(report.get("generated_at"), f"{field_root}.generated_at", errors)
+        patch_id = str(report.get("patch_id") or "").strip()
+        finding_id = str(report.get("finding_id") or "").strip()
+        if not re.fullmatch(r"PATCH-[0-9]{3,}", patch_id):
+            errors.append(f"{field_root}.patch_id: patch id must match ^PATCH-[0-9]{{3,}}$")
+        if finding_id not in finding_ids:
+            errors.append(f"{field_root}.finding_id: finding {finding_id!r} is not present in reports/findings.json")
+        if candidate_records and (patch_id, finding_id) not in candidate_records:
+            errors.append(f"{field_root}: patch_id/finding_id pair is not present in remediation-candidates.json")
+
+        if report.get("network_allowed") is not False:
+            errors.append(f"{field_root}.network_allowed: patch validation must not enable network access by default")
+        if report.get("patch_applied") not in {True, False}:
+            errors.append(f"{field_root}.patch_applied: expected boolean, got {json_type_name(report.get('patch_applied'))}")
+        if report.get("build_status") not in PATCH_VALIDATION_BUILD_TEST_STATUSES:
+            errors.append(f"{field_root}.build_status: invalid status {report.get('build_status')}")
+        if report.get("test_status") not in PATCH_VALIDATION_BUILD_TEST_STATUSES:
+            errors.append(f"{field_root}.test_status: invalid status {report.get('test_status')}")
+        if report.get("safe_proof_replay_status") not in PATCH_VALIDATION_SAFE_PROOF_STATUSES:
+            errors.append(f"{field_root}.safe_proof_replay_status: invalid status {report.get('safe_proof_replay_status')}")
+        if report.get("adversarial_review_status") not in PATCH_VALIDATION_ADVERSARIAL_STATUSES:
+            errors.append(f"{field_root}.adversarial_review_status: invalid status {report.get('adversarial_review_status')}")
+        if report.get("diff_scope_status") not in PATCH_VALIDATION_DIFF_SCOPE_STATUSES:
+            errors.append(f"{field_root}.diff_scope_status: invalid status {report.get('diff_scope_status')}")
+        if report.get("final_status") not in PATCH_VALIDATION_FINAL_STATUSES:
+            errors.append(f"{field_root}.final_status: invalid status {report.get('final_status')}")
+
+        try:
+            validate_remediation_artifact_path(
+                run_dir,
+                report.get("patch_file"),
+                field_path=f"{field_root}.patch_file",
+                expected_suffix=".diff",
+            )
+        except ReportSafetyError as exc:
+            errors.append(str(exc))
+
+        workspace = report.get("validation_workspace")
+        if isinstance(workspace, dict):
+            workspace_path = workspace.get("path")
+            if not isinstance(workspace_path, str) or not workspace_path.strip():
+                errors.append(f"{field_root}.validation_workspace.path: expected non-empty string")
+            else:
+                rel_workspace = Path(workspace_path)
+                if rel_workspace.is_absolute() or ".." in rel_workspace.parts:
+                    errors.append(f"{field_root}.validation_workspace.path: must be relative and must not contain '..'")
+            if workspace.get("disposed") is not True:
+                errors.append(f"{field_root}.validation_workspace.disposed: must be true")
+
+        if not isinstance(report.get("checks"), list):
+            errors.append(f"{field_root}.checks: must be list")
+        if not isinstance(report.get("commands_run"), list):
+            errors.append(f"{field_root}.commands_run: must be list")
+        commands = report.get("commands_run") if isinstance(report.get("commands_run"), list) else []
+        for command_index, command in enumerate(commands):
+            command_path = f"{field_root}.commands_run[{command_index}]"
+            if not isinstance(command, dict):
+                errors.append(f"{command_path}: command must be an object")
+                continue
+            if command.get("kind") not in {"build", "test"}:
+                errors.append(f"{command_path}.kind: invalid command kind {command.get('kind')}")
+            if not isinstance(command.get("argv"), list) or not all(isinstance(item, str) for item in command.get("argv", [])):
+                errors.append(f"{command_path}.argv: must be list of strings")
+            if command.get("status") not in {"passed", "failed", "rejected"}:
+                errors.append(f"{command_path}.status: invalid command status {command.get('status')}")
+            if command.get("cwd") != "validation_workspace":
+                errors.append(f"{command_path}.cwd: must be validation_workspace")
+
+        if report.get("final_status") == "validated":
+            if report.get("patch_applied") is not True:
+                errors.append(f"{field_root}.final_status: validated requires patch_applied=true")
+            if report.get("diff_scope_status") != "bounded":
+                errors.append(f"{field_root}.final_status: validated requires diff_scope_status=bounded")
+            for key in ["build_status", "test_status", "safe_proof_replay_status", "adversarial_review_status"]:
+                if report.get(key) == "failed":
+                    errors.append(f"{field_root}.final_status: validated cannot include failed {key}")
+
+    return True
+
+
 def validate_traces(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
     traces_path = run_dir / TRACES_PATH
     if not traces_path.exists():
@@ -1634,6 +1765,7 @@ def main() -> int:
     adversarial_validation_validated = validate_adversarial_validation(run_dir, findings, errors)
     proofs_validated = validate_proofs(run_dir, findings, errors)
     remediation_candidates_validated = validate_remediation_candidates(run_dir, findings, errors)
+    patch_validations_validated = validate_patch_validations(run_dir, findings, errors)
     traces_validated = validate_traces(run_dir, findings, errors)
     metrics_validated = validate_metrics(run_dir, errors)
     issue_ledger_validated = validate_issue_ledger(run_dir, errors)
@@ -1664,6 +1796,8 @@ def main() -> int:
         print("Proofs: validated")
     if remediation_candidates_validated:
         print("Remediation candidates: validated")
+    if patch_validations_validated:
+        print("Patch validations: validated")
     if traces_validated:
         print("Traces: validated")
     if metrics_validated:

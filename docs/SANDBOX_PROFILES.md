@@ -1,6 +1,6 @@
 # Sandbox Profiles
 
-Sandbox profiles describe the runtime boundary expected before any workflow executes target repository code, candidate patches, generated proof helpers, or future remediation validation commands.
+Sandbox profiles describe the runtime boundary expected before any workflow executes target repository code, candidate patches, generated proof helpers, or remediation validation commands.
 
 Source review and report generation remain local-first and source-only. They do not require Docker, Podman, gVisor, or a VM. Executable validation is different: it must be tied to an explicit profile and fail closed when the profile is not ready.
 
@@ -9,7 +9,7 @@ Source review and report generation remain local-first and source-only. They do 
 | Profile | Executes target code | Current status | Intended use |
 |---|---:|---|---|
 | `source-only` | No | Supported | Recon, target planning, report validation, issue planning, and other read-only/source-only workflows. |
-| `local-test` | Yes | Diagnostic contract | Future local disposable workspace test runs. Does not require Docker/Podman, but reports readiness warnings. |
+| `local-test` | Yes | Diagnostic contract | Local disposable workspace patch validation and test runs. Does not require Docker/Podman, but reports readiness warnings. |
 | `container` | Yes | Diagnostic contract | Future containerized build/test validation. Requires Docker or Podman. |
 | `gvisor` | Yes | Diagnostic contract | Future hardened container profile. Requires Docker/Podman plus `runsc`. |
 | `vm` | Yes | Contract only | Future VM isolation. VM orchestration is not implemented in this release. |
@@ -32,7 +32,7 @@ Check source-only readiness for report-only workflows:
 gra-sandbox-check --run runs/OWNER__REPO/RUN_ID --profile source-only
 ```
 
-Check a future local executable profile:
+Check a local executable profile:
 
 ```bash
 gra-sandbox-check --run runs/OWNER__REPO/RUN_ID --profile local-test
@@ -61,7 +61,7 @@ The JSON report records bounded metadata only: profile id, run id, repository na
 
 ## Shared helper
 
-Future executable workflows can call `lib/sandbox_profiles.py`:
+Executable workflows, including patch validation, can call `lib/sandbox_profiles.py`:
 
 ```python
 from sandbox_profiles import enforce_sandbox_profile
@@ -74,7 +74,7 @@ enforce_sandbox_profile(
 )
 ```
 
-`enforce_sandbox_profile` raises `SandboxProfileError` when required checks fail. This gives future remediation candidate or validation-ladder commands a single fail-closed gate without executing target code in this release.
+`enforce_sandbox_profile` raises `SandboxProfileError` when required checks fail. Patch validation uses the same readiness contract before applying candidate patches in a disposable workspace.
 
 ## Safety boundaries
 
