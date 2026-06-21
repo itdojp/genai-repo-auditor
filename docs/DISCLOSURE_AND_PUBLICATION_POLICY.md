@@ -143,9 +143,13 @@ For customer audits:
 Use novelty and issue ledger artifacts to avoid repeated publication:
 
 ```bash
-gra-novelty --run runs/OWNER__REPO/RUN_ID --ledger runs/known-findings.json
+gra-novelty --run runs/OWNER__REPO/RUN_ID --prior-ledger runs/known-findings.json
 gra-issues --run runs/OWNER__REPO/RUN_ID --plan
 ```
+
+`--prior-ledger` may be repeated when comparing against multiple previous local
+known-finding ledgers. If omitted, `gra-novelty` uses the current run ledger
+when it exists.
 
 A duplicate or accepted-risk classification is not a publication approval. It is
 an input to human review.
