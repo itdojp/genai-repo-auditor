@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / "lib"))
+from sandbox_profiles import (  # noqa: E402
+    NETWORK_POLICIES,
+    PROFILE_IDS,
+    SandboxProfileError,
+    evaluate_sandbox_readiness,
+    write_readiness_report,
+)
+from version import auditor_version  # noqa: E402
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Check sandbox profile readiness for executable validation workflows")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {auditor_version(LAB_ROOT)}")
+    parser.add_argument("--run", required=True, type=Path, help="Run directory")
+    parser.add_argument("--profile", required=True, choices=PROFILE_IDS, help="Sandbox profile to evaluate")
+    parser.add_argument("--network-policy", choices=NETWORK_POLICIES, default="disabled", help="Explicit network policy for executable validation")
+    parser.add_argument("--executable-workflow", action="store_true", help="Fail if the selected profile is not approved for target-code execution")
+    parser.add_argument("--out-json", type=Path, help="Override sandbox readiness JSON output path")
+    parser.add_argument("--out-md", type=Path, help="Override sandbox readiness Markdown output path")
+    parser.add_argument("--json", action="store_true", help="Print the readiness report as JSON")
+    args = parser.parse_args()
+
+    try:
+        report = evaluate_sandbox_readiness(
+            run_dir=args.run,
+            profile_id=args.profile,
+            executable_workflow=True if args.executable_workflow else None,
+            network_policy=args.network_policy,
+            path_env=os.environ.get("PATH"),
+            env=os.environ,
+        )
+        out_json, out_md = write_readiness_report(args.run, report, args.out_json, args.out_md)
+    except (OSError, ValueError, json.JSONDecodeError, SandboxProfileError) as exc:
+        print(f"gra-sandbox-check: {exc}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+    else:
+        print(f"Sandbox profile: {report['profile']['id']}")
+        print(f"Status: {report['status']}")
+        print(f"Report JSON: {out_json}")
+        print(f"Report Markdown: {out_md}")
+        for check in report["checks"]:
+            print(f"- {check['id']}: {check['status']} - {check['message']}")
+    return 1 if report["status"] == "blocked" else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

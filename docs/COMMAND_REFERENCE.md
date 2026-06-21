@@ -14,6 +14,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 - `--model` defaults to `gpt-5.5` and `--effort` defaults to `xhigh` for Codex-driven commands. Command-line `--model` / `--effort` options are the portable override mechanism across Codex-driven commands.
 - Non-interactive `codex exec` invocations set approval behavior through `-c 'approval_policy="never"'` rather than the interactive-only `--ask-for-approval` flag, preserving compatibility with `codex-cli 0.135.0`.
 - Codex-driven commands derive the default executable name from the built-in `codex-cli` worker profile while preserving the tested `codex exec` argument construction in `lib/gralib.py`. `gra-agent-check` can list profiles and check whether the required local worker executable is available without running the worker.
+- Executable target-code validation should be gated by an explicit sandbox profile. `gra-sandbox-check` records readiness for `source-only`, `local-test`, `container`, `gvisor`, and `vm` profiles without executing target code.
 - Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-trace`, `gra-metrics`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
 - Python commands use `argparse`; missing required arguments or invalid choices normally exit with status `2`.
 - Generated audit artifacts, cloned target repositories, scanner raw outputs, issue drafts, and local stores should remain local and should not be committed.
@@ -27,6 +28,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Batch operation | `gra-batch` | Batch metadata, per-repository logs, `batch-results.json` |
 | Target queue | `gra-targets` | `reports/targets.json`, target queue updates |
 | Run state / pause guard | `gra-run-state` | `reports/run-state.json`, pause/resume/block status |
+| Sandbox readiness | `gra-sandbox-check` | `reports/sandbox-readiness.json`, `reports/SANDBOX_READINESS.md` |
 | Worktree separation check | `gra-worktree-check` | Final worktree report classifying in-scope and unrelated changes |
 | Target coverage gapfill | `gra-gapfill` | `reports/COVERAGE.md`, `reports/gapfill-targets.json`, bounded gapfill target research |
 | Research / recon / variant analysis | `gra-recon`, `gra-research`, `gra-variant` | Recon notes, target research, findings updates, variant reports |
@@ -58,6 +60,27 @@ Examples:
 gra-agent-check --list
 gra-agent-check --profile codex-cli
 gra-agent-check --profile codex-cli --json
+```
+
+## `gra-sandbox-check`
+
+| Field | Details |
+|---|---|
+| Purpose | Evaluate sandbox profile readiness before future workflows execute target repository code, candidate patches, proof helpers, or remediation validation commands. |
+| Workflow category | Sandbox readiness. |
+| Required inputs | `--run RUN_DIR --profile PROFILE`, where `PROFILE` is one of `source-only`, `local-test`, `container`, `gvisor`, or `vm`. |
+| Key options | `--network-policy disabled\|explicit-allow`, `--executable-workflow`, `--json`, `--out-json PATH`, and `--out-md PATH`. |
+| Generated outputs | `reports/sandbox-readiness.json` and `reports/SANDBOX_READINESS.md` by default. The reports include bounded readiness metadata and never secret values. |
+| Exit status behavior | `0` when the selected profile is ready or warning-only; `1` when required readiness checks block executable validation; `2` for invalid profile, missing run/context problems, unsafe report paths, or usage errors. |
+| Security / disclosure cautions | This command does not execute target code, run Docker/Podman, contact external services, or read secret values. It records only common credential path names and environment variable names when they appear visible. Missing Docker/Podman does not block `source-only` workflows, but `container`/`gvisor` profiles fail closed when required runtimes are unavailable. |
+| Related docs | [`docs/SANDBOX_PROFILES.md`](SANDBOX_PROFILES.md), [`docs/SAFE_LOCAL_PROOFS.md`](SAFE_LOCAL_PROOFS.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
+
+Examples:
+
+```bash
+gra-sandbox-check --run runs/OWNER__REPO/RUN_ID --profile source-only
+gra-sandbox-check --run runs/OWNER__REPO/RUN_ID --profile local-test --json
+gra-sandbox-check --run runs/OWNER__REPO/RUN_ID --profile container --executable-workflow
 ```
 
 ## `gra-audit`
