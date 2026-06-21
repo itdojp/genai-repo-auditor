@@ -137,6 +137,95 @@ class DogfoodTemplateTests(unittest.TestCase):
         leaked = [term for term in forbidden if term in backlog]
         self.assertEqual([], leaked)
 
+    def test_public_recognition_materials_are_complete_and_public_safe(self) -> None:
+        docs = {
+            "launch": REPO_ROOT / "docs" / "dogfood" / "PUBLIC_LAUNCH_CHECKLIST.md",
+            "blog": REPO_ROOT / "docs" / "dogfood" / "BLOG_OUTLINE_AI_APPSEC_HARNESS.md",
+            "demo": REPO_ROOT / "docs" / "dogfood" / "DEMO_SCRIPT.md",
+            "positioning": REPO_ROOT / "docs" / "dogfood" / "README_POSITIONING_NOTES.md",
+        }
+        for path in docs.values():
+            self.assertTrue(path.exists(), f"missing {path.relative_to(REPO_ROOT)}")
+
+        contents = {name: path.read_text(encoding="utf-8") for name, path in docs.items()}
+        combined = "\n".join(contents.values())
+        combined_lower = combined.lower()
+
+        required_by_doc = {
+            "launch": [
+                "Public launch checklist",
+                "Launch readiness gates",
+                "Claim review checklist",
+                "Disclosure boundary",
+                "local-first",
+                "vendor-neutral AppSec audit harness",
+                "controlled GitHub Issue publication",
+                "Stop conditions",
+            ],
+            "blog": [
+                "Blog outline",
+                "local-first AI AppSec audit harness",
+                "Thesis",
+                "Self-dogfood evidence",
+                "ITDO_ERP4 business-application evidence",
+                "Safety and disclosure model",
+                "Claims table",
+                "Editorial guardrails",
+            ],
+            "demo": [
+                "Public demo script",
+                "Demo goal",
+                "Recommended safe path",
+                "Optional live workflow narration",
+                "Five-minute demo agenda",
+                "Redaction and display rules",
+                "Stop conditions",
+            ],
+            "positioning": [
+                "README positioning notes",
+                "Recommended conservative claim",
+                "Proof points from dogfood",
+                "Wording to prefer",
+                "Wording to avoid",
+                "Claim-to-evidence mapping",
+                "Editorial approval checklist",
+            ],
+        }
+        for name, required_terms in required_by_doc.items():
+            doc_lower = contents[name].lower()
+            missing = [term for term in required_terms if term.lower() not in doc_lower]
+            self.assertEqual([], missing, name)
+
+        required_links = [
+            "PUBLIC_SELF_DOGFOOD_CASE_STUDY.md",
+            "PUBLIC_ITDO_ERP4_CASE_STUDY.md",
+            "DISCLOSURE_AND_PUBLICATION_POLICY.md",
+            "DOGFOOD_REPORTING.md",
+        ]
+        missing_links = [term for term in required_links if term not in combined]
+        self.assertEqual([], missing_links)
+
+        forbidden_markers = [
+            "ATTACK_CHAINS.md",
+            "PROOFS.md",
+            "TRACE.md",
+            "raw scanner output",
+            "remediation diffs",
+            "exact exploitability steps",
+            "mythos replacement",
+            "zero-day finder",
+            "fully autonomous security auditor",
+            "automatic exploit generator",
+            "automatic patcher",
+            "-----BEGIN",
+            "ghp_",
+            "xoxb-",
+        ]
+        leaked = [term for term in forbidden_markers if term.lower() in combined_lower]
+        self.assertEqual([], leaked)
+        self.assertIsNone(re.search(r"\b[0-9a-f]{40}\b", combined, re.IGNORECASE))
+        self.assertIsNone(re.search(r"\b20\d{6}T\d{6}[+-]\d{4}\b", combined))
+
     def test_public_itdo_erp4_case_study_is_public_safe(self) -> None:
         case_study = (REPO_ROOT / "docs" / "dogfood" / "PUBLIC_ITDO_ERP4_CASE_STUDY.md").read_text(encoding="utf-8")
         required_terms = [
