@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+from agent_worker import codex_worker_executable
 from template_env import validate_template_env_key
 
 
@@ -103,9 +104,10 @@ def build_codex_exec_args(
     network: bool = False,
     output_last: Path,
     approval: str = 'never',
+    executable: Optional[str] = None,
 ) -> List[str]:
     return [
-        'codex', 'exec',
+        executable or codex_worker_executable(), 'exec',
         '--cd', str(run_dir),
         '--skip-git-repo-check',
         '--model', model,

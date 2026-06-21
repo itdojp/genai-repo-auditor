@@ -1,0 +1,20 @@
+{
+  "id": "codex-cli",
+  "display_name": "Codex CLI",
+  "description": "Built-in worker profile for the existing local Codex CLI execution path.",
+  "profile_status": "builtin",
+  "executable": "codex",
+  "supports_exec": true,
+  "supports_goal": true,
+  "supports_json_events": true,
+  "default_model": "gpt-5.5",
+  "default_effort": "xhigh",
+  "sandbox_modes": [
+    "workspace-write"
+  ],
+  "network_default": false,
+  "command_templates": {
+    "exec": "codex exec --cd {run_dir} --skip-git-repo-check --model {model} --sandbox workspace-write --color never --output-last-message {output_last} -c 'approval_policy=\"{approval}\"' -c 'model_reasoning_effort=\"{effort}\"' -c 'web_search=\"disabled\"' -c 'sandbox_workspace_write.network_access={network}' --json -",
+    "goal": "codex --cd {run_dir} --skip-git-repo-check --model {model} --sandbox workspace-write"
+  }
+}

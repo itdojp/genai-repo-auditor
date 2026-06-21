@@ -66,6 +66,7 @@ gh auth status
 codex --help >/dev/null
 python3 --version
 gra-audit --version
+gra-agent-check --list
 ```
 
 For a fresh local install and first `OWNER/REPO` audit, see:
@@ -251,6 +252,7 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | Command | Purpose |
 |---|---|
 | `gra-audit` | Clone a repo, create a run, execute full audit, prepare goal mode |
+| `gra-agent-check` | List and verify local AI worker adapter profiles |
 | `gra-recon` | Generate inventory, threat model, and attack surface |
 | `gra-targets` | Generate, list, show, and update target queue |
 | `gra-run-state` | Record paused/resume/blocked run state and guard deep-review starts |
@@ -291,6 +293,7 @@ Do not use this project for:
 
 - [`docs/LOCAL_INSTALL_AND_AUDIT.md`](docs/LOCAL_INSTALL_AND_AUDIT.md)
 - [`docs/COMMAND_REFERENCE.md`](docs/COMMAND_REFERENCE.md)
+- [`docs/AGENT_WORKERS.md`](docs/AGENT_WORKERS.md)
 - Japanese docs index: [`docs/ja/README.md`](docs/ja/README.md)
   - [`docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md`](docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md)
   - [`docs/ja/USAGE.ja.md`](docs/ja/USAGE.ja.md)

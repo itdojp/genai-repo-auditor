@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / "lib"))
+from agent_worker import (  # noqa: E402
+    AgentWorkerProfileError,
+    check_profile_executable,
+    load_profile,
+    load_profiles,
+    profiles_as_jsonable,
+)
+from version import auditor_version  # noqa: E402
+
+
+def yes_no(value: bool) -> str:
+    return "yes" if value else "no"
+
+
+def print_profile_table(profiles: list) -> None:
+    rows = [
+        [
+            "Profile",
+            "Status",
+            "Executable",
+            "Exec",
+            "Goal",
+            "JSON",
+            "Default model",
+            "Default effort",
+        ]
+    ]
+    for profile in profiles:
+        rows.append(
+            [
+                profile.id,
+                profile.profile_status,
+                profile.executable,
+                yes_no(profile.supports_exec),
+                yes_no(profile.supports_goal),
+                yes_no(profile.supports_json_events),
+                profile.default_model,
+                profile.default_effort,
+            ]
+        )
+    widths = [max(len(str(row[index])) for row in rows) for index in range(len(rows[0]))]
+    for index, row in enumerate(rows):
+        print("  ".join(str(cell).ljust(widths[col]) for col, cell in enumerate(row)).rstrip())
+        if index == 0:
+            print("  ".join("-" * width for width in widths))
+
+
+def print_profile_check(profile, check: dict) -> None:
+    print(f"Profile: {profile.id} ({profile.display_name})")
+    print(f"Status: {profile.profile_status}")
+    print(f"Executable: {profile.executable}")
+    print(f"Supports exec: {yes_no(profile.supports_exec)}")
+    print(f"Supports goal: {yes_no(profile.supports_goal)}")
+    print(f"Supports JSON events: {yes_no(profile.supports_json_events)}")
+    print(f"Default model: {profile.default_model}")
+    print(f"Default effort: {profile.default_effort}")
+    print(f"Sandbox modes: {', '.join(profile.sandbox_modes)}")
+    print(f"Network default: {yes_no(profile.network_default)}")
+    print(f"Available: {yes_no(bool(check['available']))}")
+    if check.get("resolved_path"):
+        print(f"Resolved path: {check['resolved_path']}")
+    for diagnostic in check.get("diagnostics", []):
+        print(f"Diagnostic: {diagnostic}")
+    if profile.profile_status != "builtin":
+        print("Diagnostic: Experimental profiles are listed for adapter planning and require separate local validation before execution.")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="List and verify local AI worker adapter profiles")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {auditor_version(LAB_ROOT)}")
+    parser.add_argument("--profiles-dir", type=Path, help="Override the agent worker profile directory for tests or local experiments")
+    parser.add_argument("--json", action="store_true", help="Emit JSON instead of a text table/report")
+    action = parser.add_mutually_exclusive_group(required=True)
+    action.add_argument("--list", action="store_true", help="List built-in and example worker profiles")
+    action.add_argument("--profile", help="Validate one profile and check for its required local executable")
+    args = parser.parse_args()
+
+    try:
+        if args.list:
+            profiles = load_profiles(LAB_ROOT, args.profiles_dir)
+            if args.json:
+                print(json.dumps({"profiles": profiles_as_jsonable(profiles)}, indent=2, ensure_ascii=False))
+            else:
+                print_profile_table(profiles)
+            return 0
+
+        profile = load_profile(LAB_ROOT, args.profile, args.profiles_dir)
+        check = check_profile_executable(profile, path_env=os.environ.get("PATH"))
+        if args.json:
+            print(json.dumps({"profile": profile.to_summary(), "check": check}, indent=2, ensure_ascii=False))
+        else:
+            print_profile_check(profile, check)
+        if check["available"]:
+            return 0
+        print(check["diagnostics"][0], file=sys.stderr)
+        return 1
+    except AgentWorkerProfileError as exc:
+        print(f"gra-agent-check: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
