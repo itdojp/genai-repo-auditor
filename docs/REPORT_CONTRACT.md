@@ -18,7 +18,9 @@ safe local proof artifact です。`TRACE.md` / `traces.json` は `gra-trace`
 が producer finding と consumer repository の reachability を整理する
 experimental/P3 cross-repo trace artifact です。`METRICS.md` /
 `metrics.json` は `gra-metrics` が local report artifacts だけから生成する
-advanced workflow metrics artifact です。`issue-ledger.json` は
+advanced workflow metrics artifact です。`known-findings.json` / `NOVELTY.md`
+は `gra-novelty` が recurring audit の重複・accepted-risk・regression
+分類をローカルに記録する novelty artifact です。`issue-ledger.json` は
 `gra-issues` が生成・更新する canonical finding-to-Issue publication ledger
 です。`run-state.json` は `gra-run-state` が生成・更新する run-level pause /
 resume / blocked state artifact です。`command-events.jsonl` は target
@@ -61,6 +63,8 @@ reports/
     sec-001-org-consumer.subjects.json
   METRICS.md
   metrics.json
+  NOVELTY.md
+  known-findings.json
   issue-publication-plan.json
   issue-ledger.json
   duplicate-decisions/
@@ -108,7 +112,7 @@ findings[].labels
 `gra-validate-report` validates `findings.json`, optional `targets.json`,
 optional chain synthesis output, optional proof artifacts, optional adversarial
 validation output, optional cross-repo trace output, optional metrics output,
-optional issue ledger output, optional command event output, optional run
+optional known-finding novelty ledger output, optional issue ledger output, optional command event output, optional run
 manifest output, optional scanner index artifacts, and optional dependency/posture
 artifacts against the bundled JSON schemas using the Python standard library. It also
 applies local safety rules before downstream tools can use report-controlled
@@ -467,3 +471,25 @@ experimental/P3 として扱い、reachability evidence であって exploit pro
 producer finding、consumer call path、limitations、proof / validation
 artifact を人間が確認してください。`Potential` や `Needs human review` は
 追加調査や maintainer confirmation が必要であることを意味します。
+
+
+## known-findings.json / NOVELTY.md
+
+`gra-novelty` writes `reports/known-findings.json` and `reports/NOVELTY.md`.
+The JSON artifact is validated when present. It must use `source` =
+`local-report-artifacts`, set safety flags to indicate no raw evidence or secrets
+were copied, and keep one record per current finding. Each record stores the
+current finding ID/fingerprint, novelty status, publication recommendation,
+match reasons, accepted-risk state, and 24-character hash summaries for root
+cause, source-to-sink, evidence, impact, affected locations, entry point, trust
+boundary, and chain membership.
+
+Allowed novelty statuses are `new`, `duplicate`, `better-example`,
+`accepted-risk`, `regression`, `invalid-known`, and `needs-human-review`.
+`duplicate`, `accepted-risk`, and `invalid-known` records must set
+`issue_recommended=false`; `accepted-risk` records must also set
+`accepted_risk.active=true`.
+
+The validator rejects obvious secret-like values and raw finding payload fields
+such as `evidence`, `root_cause`, `impact`, remediation text, regression-test
+ideas, and issue body text outside the bounded hash map.

@@ -168,6 +168,7 @@ class ReportContractTests(unittest.TestCase):
         proofs_schema = self.load_json(SCHEMAS / "proofs.schema.json")
         remediation_schema = self.load_json(SCHEMAS / "remediation-candidates.schema.json")
         patch_validation_schema = self.load_json(SCHEMAS / "patch-validation.schema.json")
+        novelty_schema = self.load_json(SCHEMAS / "novelty.schema.json")
         traces_schema = self.load_json(SCHEMAS / "traces.schema.json")
         metrics_schema = self.load_json(SCHEMAS / "metrics.schema.json")
         issue_ledger_schema = self.load_json(SCHEMAS / "issue-ledger.schema.json")
@@ -417,6 +418,20 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual(["passed", "failed", "not-run"], patch_validation_properties["build_status"]["enum"])
         self.assertEqual(["passed", "failed", "not-run"], patch_validation_properties["test_status"]["enum"])
         self.assertEqual(["validated", "failed", "needs-human-review"], patch_validation_properties["final_status"]["enum"])
+
+        self.assertEqual(
+            {"schema_version", "run_id", "repo", "commit", "generated_at", "source", "safety", "summary", "findings"},
+            set(novelty_schema["required"]),
+        )
+        novelty_item = novelty_schema["properties"]["findings"]["items"]
+        self.assertEqual(
+            ["new", "duplicate", "better-example", "accepted-risk", "regression", "invalid-known", "needs-human-review"],
+            novelty_item["properties"]["novelty_status"]["enum"],
+        )
+        novelty_safety = novelty_schema["properties"]["safety"]["properties"]
+        self.assertEqual(True, novelty_safety["local_artifacts_only"]["const"])
+        self.assertEqual(False, novelty_safety["raw_evidence_copied"]["const"])
+        self.assertEqual(False, novelty_safety["secrets_copied"]["const"])
 
         self.assertEqual({"run_id", "repo", "generated_at", "traces"}, set(traces_schema["required"]))
         trace_item = traces_schema["properties"]["traces"]["items"]

@@ -46,6 +46,7 @@ PROOFS_DIR = Path("reports/proofs")
 REMEDIATION_PATH = Path("reports/remediation/remediation-candidates.json")
 REMEDIATION_DIR = Path("reports/remediation")
 PATCH_VALIDATION_FILENAME = "patch-validation.json"
+NOVELTY_PATH = Path("reports/known-findings.json")
 TRACES_PATH = Path("reports/traces.json")
 METRICS_PATH = Path("reports/metrics.json")
 ISSUE_LEDGER_PATH = Path("reports/issue-ledger.json")
@@ -78,6 +79,16 @@ PATCH_VALIDATION_SAFE_PROOF_STATUSES = {"passed", "failed", "not-applicable", "n
 PATCH_VALIDATION_ADVERSARIAL_STATUSES = {"passed", "failed", "needs-human-review", "not-run"}
 PATCH_VALIDATION_DIFF_SCOPE_STATUSES = {"bounded", "too-broad", "needs-human-review"}
 PATCH_VALIDATION_FINAL_STATUSES = {"validated", "failed", "needs-human-review"}
+NOVELTY_STATUSES = {
+    "new",
+    "duplicate",
+    "better-example",
+    "accepted-risk",
+    "regression",
+    "invalid-known",
+    "needs-human-review",
+}
+NOVELTY_SUPPRESSED_PUBLICATION_STATUSES = {"duplicate", "accepted-risk", "invalid-known"}
 TRACE_STATUSES = {"Confirmed", "Probable", "Potential", "Invalid", "Needs human review"}
 COMMAND_EVENT_COMMANDS = {"gra-research", "gra-gapfill", "gra-validate-report"}
 COMMAND_EVENT_PHASES = {"exec", "goal", "generate", "validate", "list"}
@@ -1168,6 +1179,122 @@ def validate_patch_validations(run_dir: Path, findings: list[dict[str, Any]], er
     return True
 
 
+def validate_no_forbidden_novelty_payload(value: Any, path: str, errors: List[str]) -> None:
+    forbidden = {
+        "evidence",
+        "root_cause",
+        "impact",
+        "issue_body",
+        "issue_body_text",
+        "minimal_remediation",
+        "regression_test_idea",
+    }
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in forbidden and not path.endswith(".hashes"):
+                errors.append(f"{path}.{key}: novelty ledger must not copy raw finding evidence or issue body content")
+            validate_no_forbidden_novelty_payload(item, f"{path}.{key}", errors)
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            validate_no_forbidden_novelty_payload(item, f"{path}[{index}]", errors)
+
+
+def validate_novelty_ledger(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
+    novelty_path = run_dir / NOVELTY_PATH
+    if not novelty_path.exists():
+        return False
+    try:
+        validate_no_symlink_components(run_dir, NOVELTY_PATH, field_path="known_findings")
+    except ReportSafetyError as exc:
+        errors.append(str(exc))
+        return True
+    try:
+        novelty_data = json.loads(novelty_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"known_findings invalid JSON: {exc}")
+        return True
+    if not isinstance(novelty_data, dict):
+        errors.append(f"known_findings: expected type object, got {json_type_name(novelty_data)}")
+        return True
+
+    validate_schema(novelty_data, load_schema("novelty.schema.json"), "known_findings", errors)
+    validate_generated_at(novelty_data.get("generated_at"), "known_findings.generated_at", errors)
+    if novelty_data.get("source") != "local-report-artifacts":
+        errors.append("known_findings.source: must be local-report-artifacts")
+    safety = novelty_data.get("safety") if isinstance(novelty_data.get("safety"), dict) else {}
+    if safety.get("local_artifacts_only") is not True:
+        errors.append("known_findings.safety.local_artifacts_only: must be true")
+    if safety.get("raw_evidence_copied") is not False:
+        errors.append("known_findings.safety.raw_evidence_copied: must be false")
+    if safety.get("secrets_copied") is not False:
+        errors.append("known_findings.safety.secrets_copied: must be false")
+    if safety.get("accepted_risk_exported_by_default") is not False:
+        errors.append("known_findings.safety.accepted_risk_exported_by_default: must be false")
+    validate_no_forbidden_novelty_payload(novelty_data, "known_findings", errors)
+    secret_like_count = sum(1 for _ in iter_secret_findings(novelty_data, field_path="known_findings"))
+    if secret_like_count:
+        errors.append("known_findings: contains obvious unredacted secret-like value(s); remove or hash them before validation")
+
+    finding_by_id = {str(finding.get("id") or ""): finding for finding in findings if isinstance(finding, dict)}
+    records = novelty_data.get("findings")
+    if not isinstance(records, list):
+        errors.append("known_findings.findings: findings must be a list")
+        records = []
+    seen_ids: set[str] = set()
+    status_counts: dict[str, int] = {status: 0 for status in NOVELTY_STATUSES}
+    suppressed_count = 0
+    for index, record in enumerate(records):
+        path = f"known_findings.findings[{index}]"
+        if not isinstance(record, dict):
+            errors.append(f"{path}: finding novelty record must be an object")
+            continue
+        finding_id = str(record.get("finding_id") or "")
+        if finding_id in seen_ids:
+            errors.append(f"{path}.finding_id: duplicate novelty record for {finding_id}")
+        seen_ids.add(finding_id)
+        current = finding_by_id.get(finding_id)
+        if current is None:
+            errors.append(f"{path}.finding_id: finding {finding_id!r} is not present in reports/findings.json")
+        elif str(record.get("fingerprint") or "") != str(current.get("fingerprint") or ""):
+            errors.append(f"{path}.fingerprint: value does not match reports/findings.json")
+        status = str(record.get("novelty_status") or "")
+        if status not in NOVELTY_STATUSES:
+            errors.append(f"{path}.novelty_status: invalid status {status!r}")
+        else:
+            status_counts[status] = status_counts.get(status, 0) + 1
+        if status in NOVELTY_SUPPRESSED_PUBLICATION_STATUSES:
+            suppressed_count += 1
+            if record.get("issue_recommended") is not False:
+                errors.append(f"{path}.issue_recommended: {status} must not be recommended for publication by default")
+        accepted = record.get("accepted_risk") if isinstance(record.get("accepted_risk"), dict) else {}
+        if status == "accepted-risk" and accepted.get("active") is not True:
+            errors.append(f"{path}.accepted_risk.active: accepted-risk status requires active=true")
+        hashes = record.get("hashes") if isinstance(record.get("hashes"), dict) else {}
+        for key in [
+            "root_cause",
+            "source_to_sink",
+            "evidence",
+            "impact",
+            "affected_locations",
+            "entry_point",
+            "trust_boundary",
+            "chain_membership",
+        ]:
+            if not re.fullmatch(r"[a-f0-9]{24}", str(hashes.get(key) or "")):
+                errors.append(f"{path}.hashes.{key}: expected 24 lowercase hex characters")
+
+    summary = novelty_data.get("summary") if isinstance(novelty_data.get("summary"), dict) else {}
+    if summary.get("finding_count") != len(records):
+        errors.append("known_findings.summary.finding_count: value does not match findings length")
+    if summary.get("suppressed_publication_count") != suppressed_count:
+        errors.append("known_findings.summary.suppressed_publication_count: value does not match suppressed statuses")
+    summary_counts = summary.get("status_counts") if isinstance(summary.get("status_counts"), dict) else {}
+    for status, count in status_counts.items():
+        if summary_counts.get(status) != count:
+            errors.append(f"known_findings.summary.status_counts.{status}: value does not match findings")
+    return True
+
+
 def validate_traces(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
     traces_path = run_dir / TRACES_PATH
     if not traces_path.exists():
@@ -1766,6 +1893,7 @@ def main() -> int:
     proofs_validated = validate_proofs(run_dir, findings, errors)
     remediation_candidates_validated = validate_remediation_candidates(run_dir, findings, errors)
     patch_validations_validated = validate_patch_validations(run_dir, findings, errors)
+    novelty_validated = validate_novelty_ledger(run_dir, findings, errors)
     traces_validated = validate_traces(run_dir, findings, errors)
     metrics_validated = validate_metrics(run_dir, errors)
     issue_ledger_validated = validate_issue_ledger(run_dir, errors)
@@ -1798,6 +1926,8 @@ def main() -> int:
         print("Remediation candidates: validated")
     if patch_validations_validated:
         print("Patch validations: validated")
+    if novelty_validated:
+        print("Known findings novelty ledger: validated")
     if traces_validated:
         print("Traces: validated")
     if metrics_validated:

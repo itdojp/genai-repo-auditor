@@ -23,9 +23,10 @@ prompts, transcripts, target research, variant analysis, scanner-result trees,
 and similar logs discoverable with digests even when they are not active
 validation targets.
 
-Generate local metrics and dashboard:
+Generate local novelty classification, metrics, and dashboard:
 
 ```bash
+gra-novelty --run runs/OWNER__REPO/RUN_ID
 gra-metrics --run runs/OWNER__REPO/RUN_ID
 gra-dashboard --run runs/OWNER__REPO/RUN_ID
 open runs/OWNER__REPO/RUN_ID/reports/dashboard.html
@@ -38,7 +39,8 @@ manifest hygiene warning counts, and run duration when local metadata is
 available. It intentionally omits raw finding evidence, issue body text, proof
 evidence, trace evidence, scanner lead bodies, and secret values.
 
-The dashboard summarizes findings, target status, taxonomy mappings, advanced
+The dashboard summarizes findings, target status, taxonomy mappings, known-finding
+novelty status when `reports/known-findings.json` exists, advanced
 workflow metrics when `reports/metrics.json` exists, artifact retention status,
 OpenSSF Scorecard supply-chain posture when `reports/supply-chain-posture.json`
 exists, dependency risk posture when `reports/dependencies.json` exists, and the
@@ -100,4 +102,4 @@ and status counts, each indexed run includes posture summary fields such as
 `provenance_workflow_count`, `dependency_component_count`, and
 `dependency_vulnerability_count` when the optional artifacts are present.
 
-GitHub Issue creation remains a separate, explicit step after human review.
+GitHub Issue creation remains a separate, explicit step after human review. Run `gra-novelty` before `gra-issues --plan` when recurring audit dedupe or accepted-risk suppression should affect publication selection.

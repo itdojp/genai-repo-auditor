@@ -188,6 +188,9 @@ fi
 if [[ -f "$LAB_ROOT/templates/reports/patch-validation.schema.json" ]]; then
   cp "$LAB_ROOT/templates/reports/patch-validation.schema.json" "$RUN_DIR/patch-validation.schema.json"
 fi
+if [[ -f "$LAB_ROOT/templates/reports/novelty.schema.json" ]]; then
+  cp "$LAB_ROOT/templates/reports/novelty.schema.json" "$RUN_DIR/novelty.schema.json"
+fi
 if [[ -f "$LAB_ROOT/templates/reports/traces.schema.json" ]]; then
   cp "$LAB_ROOT/templates/reports/traces.schema.json" "$RUN_DIR/traces.schema.json"
 fi

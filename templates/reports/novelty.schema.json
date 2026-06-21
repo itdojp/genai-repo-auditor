@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor Known Findings Novelty Ledger",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "repo",
+    "commit",
+    "generated_at",
+    "source",
+    "safety",
+    "summary",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["1"]},
+    "run_id": {"type": "string"},
+    "repo": {"type": "string"},
+    "branch": {"type": ["string", "null"]},
+    "commit": {"type": "string"},
+    "generated_at": {"type": "string"},
+    "source": {"type": "string", "enum": ["local-report-artifacts"]},
+    "safety": {
+      "type": "object",
+      "required": ["local_artifacts_only", "raw_evidence_copied", "secrets_copied", "accepted_risk_exported_by_default"],
+      "properties": {
+        "local_artifacts_only": {"type": "boolean", "const": true},
+        "raw_evidence_copied": {"type": "boolean", "const": false},
+        "secrets_copied": {"type": "boolean", "const": false},
+        "accepted_risk_exported_by_default": {"type": "boolean", "const": false}
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["finding_count", "status_counts", "suppressed_publication_count"],
+      "properties": {
+        "finding_count": {"type": "integer", "minimum": 0},
+        "status_counts": {"type": "object"},
+        "suppressed_publication_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "finding_id",
+          "fingerprint",
+          "severity",
+          "confidence",
+          "finding_status",
+          "novelty_status",
+          "issue_recommended",
+          "hashes",
+          "strength",
+          "match",
+          "accepted_risk"
+        ],
+        "properties": {
+          "finding_id": {"type": "string"},
+          "fingerprint": {"type": "string"},
+          "severity": {"type": "string"},
+          "confidence": {"type": "string"},
+          "finding_status": {"type": "string"},
+          "novelty_status": {
+            "type": "string",
+            "enum": ["new", "duplicate", "better-example", "accepted-risk", "regression", "invalid-known", "needs-human-review"]
+          },
+          "issue_recommended": {"type": "boolean"},
+          "hashes": {
+            "type": "object",
+            "properties": {
+              "root_cause": {"type": "string", "pattern": "^[a-f0-9]{24}$"},
+              "source_to_sink": {"type": "string", "pattern": "^[a-f0-9]{24}$"},
+              "evidence": {"type": "string", "pattern": "^[a-f0-9]{24}$"},
+              "impact": {"type": "string", "pattern": "^[a-f0-9]{24}$"},
+              "affected_locations": {"type": "string", "pattern": "^[a-f0-9]{24}$"},
+              "entry_point": {"type": "string", "pattern": "^[a-f0-9]{24}$"},
+              "trust_boundary": {"type": "string", "pattern": "^[a-f0-9]{24}$"},
+              "chain_membership": {"type": "string", "pattern": "^[a-f0-9]{24}$"}
+            }
+          },
+          "strength": {"type": "object"},
+          "match": {
+            "type": "object",
+            "required": ["previous_finding_id", "previous_fingerprint", "reasons"],
+            "properties": {
+              "previous_finding_id": {"type": ["string", "null"]},
+              "previous_fingerprint": {"type": ["string", "null"]},
+              "reasons": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "accepted_risk": {
+            "type": "object",
+            "required": ["active", "reason"],
+            "properties": {
+              "active": {"type": "boolean"},
+              "reason": {"type": ["string", "null"]}
+            }
+          }
+        }
+      }
+    }
+  }
+}

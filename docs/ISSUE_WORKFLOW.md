@@ -160,6 +160,20 @@ content.
 
 Use `--create-labels` to create or update the common labels before publication.
 
+## known-finding novelty filtering
+
+Run `gra-novelty --run runs/OWNER__REPO/RUN_ID` before issue planning when the
+run should be compared against local known-finding history. If
+`reports/known-findings.json` exists, `gra-issues` excludes findings classified
+as `duplicate`, `accepted-risk`, or `invalid-known` from default publication
+selection. Findings classified as `better-example` or `regression` remain
+eligible when they satisfy the normal severity/status filters.
+
+The novelty ledger is local-only and stores hashes rather than raw evidence,
+root-cause text, impact text, or issue bodies. Accepted-risk reasons are also
+local-only, but operators must still avoid secrets or sensitive evidence in the
+reason text.
+
 ## duplicate prevention
 
 Issue bodies include a hidden marker:
