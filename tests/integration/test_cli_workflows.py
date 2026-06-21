@@ -2526,7 +2526,7 @@ class CliWorkflowTests(unittest.TestCase):
     def test_gra_remediate_validate_rejects_network_operator_command(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         self.prepare_patch_validation_run(run_dir)
-        network_command = 'python3 -c "__import__(\'urllib.request\').request.urlopen(\'https://example.invalid\')"'
+        dynamic_import_network_command = 'python3 -c "__import__(\'urllib.request\').request.urlopen(\'https://example.invalid\')"'
 
         cp = self.run_cmd(
             [
@@ -2539,7 +2539,7 @@ class CliWorkflowTests(unittest.TestCase):
                 "--sandbox-profile",
                 "local-test",
                 "--build-command",
-                network_command,
+                dynamic_import_network_command,
             ],
             env=self.env_without_credentials(),
         )

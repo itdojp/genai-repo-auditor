@@ -25,6 +25,7 @@ FINAL_STATUSES = {"validated", "failed", "needs-human-review"}
 SHELL_METACHARS_RE = re.compile(r"[;&|`$<>\n\r]")
 NETWORK_ACTIVITY_RE = re.compile(
     r"(https?://|"
+    r"__import__\s*\(\s*['\"](?:urllib(?:\.[^'\"]+)?|requests|websocket|http\.server|ftplib|telnetlib)['\"]\s*\)|"
     r"\b(?:urllib(?:\.[A-Za-z_][A-Za-z0-9_]*)*|"
     r"requests\.[A-Za-z_][A-Za-z0-9_]*|"
     r"urlopen\s*\(|"
