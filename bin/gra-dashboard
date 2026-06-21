@@ -54,6 +54,8 @@ def main() -> int:
     gapfill_present = isinstance(gapfill_data, dict) and bool(gapfill_data)
     remediation_data = load_json(reports / 'remediation' / 'remediation-candidates.json', {}) or {}
     remediation_present = isinstance(remediation_data, dict) and bool(remediation_data)
+    novelty_data = load_json(reports / 'known-findings.json', {}) or {}
+    novelty_present = isinstance(novelty_data, dict) and bool(novelty_data)
 
     sev_counts = Counter(f.get('severity', 'Unknown') for f in findings)
     status_counts = Counter(f.get('status', 'Unknown') for f in findings)
@@ -171,6 +173,47 @@ def main() -> int:
             "<a href='remediation/REMEDIATION_CANDIDATES.md'>REMEDIATION_CANDIDATES.md</a> locally before applying anything.</p>"
             "<table><thead><tr><th>ID</th><th>Finding</th><th>Status</th><th>Human review</th><th>Patch file</th><th>Summary</th></tr></thead>"
             f"<tbody>{candidate_body}</tbody></table>"
+        )
+
+    novelty_section = (
+        "<h2>Known findings / novelty</h2>"
+        "<p>No novelty ledger found. Run <code>gra-novelty --run RUN_DIR</code> "
+        "to classify current findings as new, duplicate, better-example, accepted-risk, regression, invalid-known, or needs-human-review.</p>"
+    )
+    if novelty_present:
+        novelty_summary = novelty_data.get('summary') if isinstance(novelty_data.get('summary'), dict) else {}
+        novelty_counts = novelty_summary.get('status_counts') if isinstance(novelty_summary.get('status_counts'), dict) else {}
+        novelty_cards = [
+            ('Findings classified', novelty_summary.get('finding_count', 0)),
+            ('Suppressed by default', novelty_summary.get('suppressed_publication_count', 0)),
+            ('New', novelty_counts.get('new', 0)),
+            ('Duplicate', novelty_counts.get('duplicate', 0)),
+            ('Better examples', novelty_counts.get('better-example', 0)),
+            ('Accepted risks', novelty_counts.get('accepted-risk', 0)),
+            ('Regressions', novelty_counts.get('regression', 0)),
+        ]
+        novelty_rows = []
+        for item in novelty_data.get('findings') or []:
+            if isinstance(item, dict):
+                match = item.get('match') if isinstance(item.get('match'), dict) else {}
+                novelty_rows.append(
+                    "<tr>"
+                    f"<td>{h(item.get('finding_id'))}</td>"
+                    f"<td>{h(item.get('novelty_status'))}</td>"
+                    f"<td>{h(item.get('issue_recommended'))}</td>"
+                    f"<td>{h(', '.join(str(reason) for reason in match.get('reasons') or []))}</td>"
+                    "</tr>"
+                )
+        novelty_body = ''.join(novelty_rows) or '<tr><td colspan="4">No novelty records.</td></tr>'
+        novelty_section = (
+            "<h2>Known findings / novelty</h2>"
+            "<p>Local-only novelty ledger. It stores hashes and fingerprints, not raw evidence or issue bodies. "
+            "<a href='known-findings.json'>known-findings.json</a> / <a href='NOVELTY.md'>NOVELTY.md</a></p>"
+            "<div class='cards'>"
+            + ''.join(f"<div class='card'><strong>{h(label)}</strong><br>{h(value)}</div>" for label, value in novelty_cards)
+            + "</div>"
+            "<table><thead><tr><th>Finding</th><th>Novelty</th><th>Issue recommended</th><th>Match reasons</th></tr></thead>"
+            f"<tbody>{novelty_body}</tbody></table>"
         )
 
     scanner_rows = []
@@ -337,6 +380,7 @@ def main() -> int:
 <h2>Target status</h2><div class='cards'>{''.join(f"<div class='card'><strong>{h(k)}</strong><br>{v}</div>" for k, v in sorted(target_status_counts.items()))}</div>
 {gapfill_section}
 {remediation_section}
+{novelty_section}
 <h2>Taxonomies</h2>
 <table><thead><tr><th>Taxonomy</th><th>ID</th><th>Count</th></tr></thead><tbody>{''.join(taxonomy_rows) or '<tr><td colspan="3">No taxonomy mappings.</td></tr>'}</tbody></table>
 <h2>Findings</h2>

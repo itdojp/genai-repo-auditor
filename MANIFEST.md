@@ -18,9 +18,10 @@ bin/gra-index
 bin/gra-ingest
 bin/gra-issues
 bin/gra-metrics
+bin/gra-novelty
 bin/gra-proofs
-bin/gra-remediate
 bin/gra-recon
+bin/gra-remediate
 bin/gra-research
 bin/gra-run-state
 bin/gra-sandbox-check
@@ -82,6 +83,7 @@ templates/reports/duplicate-decision.schema.json
 templates/reports/findings.schema.json
 templates/reports/issue-ledger.schema.json
 templates/reports/metrics.schema.json
+templates/reports/novelty.schema.json
 templates/reports/patch-validation.schema.json
 templates/reports/proofs.schema.json
 templates/reports/remediation-candidates.schema.json
@@ -125,8 +127,8 @@ SECURITY.md
 TRADEMARKS.md
 docs/ADVERSARIAL_FIXTURES.md
 docs/ADVERSARIAL_VALIDATION.md
-docs/AGENT_WORKERS.md
 docs/AGENT_SURFACE_DISCOVERY.md
+docs/AGENT_WORKERS.md
 docs/ARCHITECTURE.md
 docs/ATTACK_CHAINS.md
 docs/CODEX_WORK_INSTRUCTIONS.md
@@ -143,9 +145,10 @@ docs/METRICS.md
 docs/MULTI_REPO.md
 docs/NORMAL_OPERATION.md
 docs/NORMAL_WORKFLOW.md
+docs/NOVELTY_LEDGER.md
 docs/PROVENANCE_POSTURE.md
-docs/REMEDIATION_CANDIDATES.md
 docs/RELEASE_PROCESS.md
+docs/REMEDIATION_CANDIDATES.md
 docs/REPORTING_AND_STORE.md
 docs/REPORT_CONTRACT.md
 docs/SAFE_LOCAL_PROOFS.md
@@ -160,8 +163,8 @@ docs/TRACE_REACHABILITY.md
 docs/USAGE.md
 docs/VARIANT_ANALYSIS.md
 docs/WORKFLOWS.md
-docs/WORKTREE_SEPARATION.md
 docs/WORKFLOW_OVERVIEW.md
+docs/WORKTREE_SEPARATION.md
 docs/ja/ADVANCED_POSTURE_WORKFLOWS.ja.md
 docs/ja/CODEX_WORK_INSTRUCTIONS.ja.md
 docs/ja/ISSUE_WORKFLOW.ja.md

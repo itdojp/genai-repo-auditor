@@ -834,9 +834,11 @@ class CliWorkflowTests(unittest.TestCase):
             manifest["schemas"],
         )
         self.assertIn({"name": "patch-validation.schema.json", "path": "patch-validation.schema.json"}, manifest["schemas"])
+        self.assertIn({"name": "novelty.schema.json", "path": "novelty.schema.json"}, manifest["schemas"])
         self.assertTrue((run_dir / "command-event.schema.json").exists())
         self.assertTrue((run_dir / "remediation-candidates.schema.json").exists())
         self.assertTrue((run_dir / "patch-validation.schema.json").exists())
+        self.assertTrue((run_dir / "novelty.schema.json").exists())
         self.assertNotIn("run-manifest.json", self.manifest_artifact_paths(run_dir))
         self.assertIn("prompts/exec/full-audit.prompt.md", self.manifest_artifact_paths(run_dir))
         artifacts_by_path = self.manifest_artifacts_by_path(run_dir)

@@ -34,6 +34,10 @@ from issue_ledger import (  # noqa: E402
     utc_now as ledger_utc_now,
     write_ledger,
 )
+from novelty_ledger import (  # noqa: E402
+    novelty_by_finding_id,
+    suppresses_publication as novelty_suppresses_publication,
+)
 
 SEVERITY_RANK = {"Critical": 5, "High": 4, "Medium": 3, "Low": 2, "Informational": 1}
 DEFAULT_LABELS: Dict[str, Tuple[str, str]] = {
@@ -539,6 +543,40 @@ def remediation_candidate_summary(finding: Dict[str, Any], artifacts: Dict[str, 
     }
 
 
+def matching_novelty_entry(repo: str, finding: Dict[str, Any], novelty_entries: Dict[str, Dict[str, Any]]) -> Dict[str, Any] | None:
+    entry = novelty_entries.get(str(finding.get("id") or ""))
+    if not entry:
+        return None
+    current_fingerprint = stable_fingerprint(repo, finding)
+    if str(entry.get("fingerprint") or "") != current_fingerprint:
+        return None
+    return entry
+
+
+def novelty_summary(repo: str, finding: Dict[str, Any], novelty_entries: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    finding_id = str(finding.get("id") or "")
+    raw_entry = novelty_entries.get(finding_id)
+    entry = matching_novelty_entry(repo, finding, novelty_entries)
+    if not entry:
+        return {
+            "artifact_present": bool(raw_entry),
+            "status": "stale-ignored" if raw_entry else "not-run",
+            "issue_recommended": bool(finding.get("issue_recommended")),
+            "suppresses_publication": False,
+            "match_reasons": [],
+            "warning": "novelty fingerprint did not match current finding" if raw_entry else None,
+        }
+    match = entry.get("match") if isinstance(entry.get("match"), dict) else {}
+    return {
+        "artifact_present": True,
+        "status": str(entry.get("novelty_status") or "needs-human-review"),
+        "issue_recommended": bool(entry.get("issue_recommended")),
+        "suppresses_publication": novelty_suppresses_publication(entry),
+        "previous_fingerprint": match.get("previous_fingerprint"),
+        "match_reasons": [str(item) for item in match.get("reasons") or []],
+    }
+
+
 def advanced_validation_errors(entries: Iterable[Dict[str, Any]]) -> List[str]:
     errors: List[str] = []
     for entry in entries:
@@ -559,6 +597,7 @@ def plan_finding_entry(
     finding: Dict[str, Any],
     run_dir: Path,
     advanced_artifacts: Optional[Dict[str, Any]] = None,
+    novelty_entries: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Tuple[Dict[str, Any], str]:
     fingerprint = stable_fingerprint(repo, finding)
     body = render_body(repo, run_id, commit, finding, fingerprint, run_dir)
@@ -566,6 +605,7 @@ def plan_finding_entry(
     artifacts = advanced_artifacts or load_advanced_artifacts(run_dir)
     advanced = advanced_validation_summary(finding, artifacts)
     remediation = remediation_candidate_summary(finding, artifacts)
+    novelty = novelty_summary(repo, finding, novelty_entries or novelty_by_finding_id(run_dir))
     entry: Dict[str, Any] = {
         "id": str(finding.get("id", "SEC-UNKNOWN")),
         "fingerprint": fingerprint,
@@ -577,6 +617,7 @@ def plan_finding_entry(
         "chain_membership": advanced["chain_membership"],
         "advanced_validation": advanced,
         "remediation_candidate": remediation,
+        "novelty": novelty,
     }
     return entry, body
 
@@ -599,12 +640,14 @@ def build_publication_plan(
     run_dir: Path,
     generated_at: str,
     advanced_artifacts: Optional[Dict[str, Any]] = None,
+    novelty_entries: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, str]]:
     selected_findings: List[Dict[str, Any]] = []
     bodies: Dict[str, str] = {}
     artifacts = advanced_artifacts or load_advanced_artifacts(run_dir)
+    novelty = novelty_entries or novelty_by_finding_id(run_dir)
     for finding in findings:
-        entry, body = plan_finding_entry(repo, run_id, commit, finding, run_dir, artifacts)
+        entry, body = plan_finding_entry(repo, run_id, commit, finding, run_dir, artifacts, novelty)
         selected_findings.append(entry)
         bodies[plan_entry_key(entry)] = body
     plan = {
@@ -663,6 +706,14 @@ def print_plan_summary(plan_path: Path, plan: Dict[str, Any], *, prefix: str = "
             f"candidates={[item.get('id') for item in remediation.get('candidates') or [] if isinstance(item, dict)]}, "
             f"patch_validation_statuses="
             f"{[result.get('final_status') for item in remediation.get('candidates') or [] if isinstance(item, dict) for result in ((item.get('patch_validation') or {}).get('results') or []) if isinstance(result, dict)]}"
+        )
+        novelty = entry.get("novelty") if isinstance(entry.get("novelty"), dict) else {}
+        print(
+            "  novelty: "
+            f"artifact_present={bool(novelty.get('artifact_present'))}, "
+            f"status={novelty.get('status') or 'not-run'}, "
+            f"suppresses_publication={bool(novelty.get('suppresses_publication'))}, "
+            f"match_reasons={novelty.get('match_reasons') or []}"
         )
         for warning in advanced.get("warnings") or []:
             print(f"  WARNING: {warning}")
@@ -853,11 +904,13 @@ def verify_plan_against_findings(
     current_findings: Iterable[Dict[str, Any]],
     run_dir: Path,
     advanced_artifacts: Optional[Dict[str, Any]] = None,
+    novelty_entries: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str], List[str]]:
     candidates_by_id: Dict[str, List[Tuple[Dict[str, Any], str]]] = {}
     artifacts = advanced_artifacts or load_advanced_artifacts(run_dir)
+    novelty_entries = novelty_entries or novelty_by_finding_id(run_dir)
     for finding in current_findings:
-        current_entry, body = plan_finding_entry(repo, run_id, commit, finding, run_dir, artifacts)
+        current_entry, body = plan_finding_entry(repo, run_id, commit, finding, run_dir, artifacts, novelty_entries)
         candidates_by_id.setdefault(str(current_entry["id"]), []).append((current_entry, body))
     selected: List[Dict[str, Any]] = []
     bodies: Dict[str, str] = {}
@@ -893,8 +946,9 @@ def verify_plan_against_findings(
             "chain_membership",
             "advanced_validation",
             "remediation_candidate",
+            "novelty",
         ]:
-            if field not in planned and field in {"chain_membership", "advanced_validation", "remediation_candidate"}:
+            if field not in planned and field in {"chain_membership", "advanced_validation", "remediation_candidate", "novelty"}:
                 continue
             if planned.get(field) != current_entry.get(field):
                 errors.append(f"{finding_id}: {field} changed after plan creation")
@@ -952,7 +1006,13 @@ def main() -> int:
     generated_at = str(data.get("generated_at") or context.get("generated_at") or "")
     findings = data.get("findings") or []
     all_findings = [f for f in findings if isinstance(f, dict)]
-    selected = [f for f in all_findings if should_include(f, args.min_severity, statuses)]
+    novelty_entries = novelty_by_finding_id(run_dir)
+    selected = [
+        f
+        for f in all_findings
+        if should_include(f, args.min_severity, statuses)
+        and not novelty_suppresses_publication(matching_novelty_entry(repo, f, novelty_entries))
+    ]
     if args.verify_ledger:
         ledger_path = default_ledger_path(run_dir)
         if not ledger_path.exists():
@@ -988,6 +1048,7 @@ def main() -> int:
                 run_dir=run_dir,
                 generated_at=generated_at,
                 advanced_artifacts=advanced_artifacts,
+                novelty_entries=novelty_entries,
             )
         except ReportSafetyError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
@@ -1036,6 +1097,7 @@ def main() -> int:
                     run_dir=run_dir,
                     generated_at=generated_at,
                     advanced_artifacts=advanced_artifacts,
+                    novelty_entries=novelty_entries,
                 )
                 requirement_errors = advanced_validation_errors(refreshed.get("selected_findings") or [])
                 if args.require_advanced_validation and requirement_errors:
@@ -1074,6 +1136,7 @@ def main() -> int:
                 current_findings=all_findings,
                 run_dir=run_dir,
                 advanced_artifacts=advanced_artifacts,
+                novelty_entries=novelty_entries,
             )
         except (OSError, ValueError, json.JSONDecodeError, ReportSafetyError) as exc:
             print(f"ERROR: could not read or verify issue publication plan: {exc}", file=sys.stderr)
@@ -1135,6 +1198,7 @@ def main() -> int:
                 run_dir=run_dir,
                 generated_at=generated_at,
                 advanced_artifacts=advanced_artifacts,
+                novelty_entries=novelty_entries,
             )
         except ReportSafetyError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)

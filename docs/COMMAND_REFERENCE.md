@@ -458,7 +458,7 @@ gra-taxonomy-preflight --findings reports/findings.json --targets reports/target
 
 | Field | Details |
 |---|---|
-| Purpose | Validate `findings.json`, optional `targets.json`, optional chain reports, optional proof artifacts, optional cross-repo trace artifacts, optional adversarial validation output, optional scanner index artifacts, optional dependency artifacts, optional issue ledger, optional duplicate decision records, optional run state, optional command event records, optional run manifest artifact retention and digest hygiene, controlled taxonomy names/IDs/labels, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
+| Purpose | Validate `findings.json`, optional `targets.json`, optional chain reports, optional proof artifacts, optional remediation and patch-validation artifacts, optional known-finding novelty ledger, optional cross-repo trace artifacts, optional adversarial validation output, optional scanner index artifacts, optional dependency artifacts, optional issue ledger, optional duplicate decision records, optional run state, optional command event records, optional run manifest artifact retention and digest hygiene, controlled taxonomy names/IDs/labels, issue body references, schema-required fields, finding assessment enums, target-quality bounds, safety constraints, timestamps, fingerprints, affected locations, and obvious secret disclosure risks. |
 | Workflow category | Validation workflow. |
 | Required inputs | One of `--run RUN_DIR` or `--findings PATH`. |
 | Key options | `--run RUN_DIR`, `--findings PATH`. |
@@ -493,15 +493,36 @@ Example:
 gra-metrics --run runs/OWNER__REPO/RUN_ID
 ```
 
+## `gra-novelty`
+
+| Field | Details |
+|---|---|
+| Purpose | Classify current findings against local known-finding records so recurring audits can distinguish new findings, duplicates, better examples, accepted risks, regressions, invalid known findings, and cases needing human review. |
+| Workflow category | Reporting / local dedupe workflow. |
+| Required inputs | `--run RUN_DIR` with `reports/findings.json`. |
+| Key options | `--prior-ledger PATH` to compare against one or more previous `known-findings.json` files, `--accepted-risk FINDING_ID` to mark a current finding as locally accepted risk, and `--accepted-risk-reason TEXT` for a local-only reason. |
+| Generated outputs | `reports/known-findings.json` and `reports/NOVELTY.md`. The JSON stores fingerprints, bounded hash summaries, novelty status, match reasons, and local issue recommendation state without copying raw evidence, root cause text, impact text, remediation text, regression-test text, or issue bodies. |
+| Exit status behavior | `0` when the novelty ledger and Markdown summary are written; `2` when `findings.json` is missing or usage is invalid. |
+| Security / disclosure cautions | The ledger is local-only and avoids raw evidence, but it still contains repository/finding metadata and accepted-risk reasons. Keep it local unless disclosure has been approved. Do not put secrets or private evidence in accepted-risk reasons. |
+| Related docs | [`docs/NOVELTY_LEDGER.md`](NOVELTY_LEDGER.md), [`docs/ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md). |
+
+Examples:
+
+```bash
+gra-novelty --run runs/OWNER__REPO/RUN_ID
+gra-novelty --run runs/OWNER__REPO/NEW_RUN --prior-ledger runs/OWNER__REPO/OLD_RUN/reports/known-findings.json
+gra-novelty --run runs/OWNER__REPO/RUN_ID --accepted-risk SEC-001 --accepted-risk-reason "accepted by local risk owner"
+```
+
 ## `gra-dashboard`
 
 | Field | Details |
 |---|---|
-| Purpose | Generate a local HTML dashboard summarizing a run's findings, structured finding assessment dimensions, target queue, gapfill current/cumulative queue state, advanced workflow metrics, artifact retention, and observability when present, Scorecard supply-chain posture, dependency risk posture, and scanner result index. |
+| Purpose | Generate a local HTML dashboard summarizing a run's findings, structured finding assessment dimensions, target queue, gapfill current/cumulative queue state, remediation candidates, known-finding novelty status, advanced workflow metrics, artifact retention, and observability when present, Scorecard supply-chain posture, dependency risk posture, and scanner result index. |
 | Workflow category | Reporting workflow. |
 | Required inputs | `--run RUN_DIR`. |
 | Key options | `--out OUT` to override the default `reports/dashboard.html`. |
-| Generated outputs | HTML dashboard file with links to `metrics.json` and `METRICS.md` when `gra-metrics` has been run, including current source-to-gapfill relationships, prioritized next gapfill targets, latest/archive artifact retention counts, manifest hygiene warnings, longest command durations, and high retry / rerun targets from observability metrics. |
+| Generated outputs | HTML dashboard file with links to `metrics.json` / `METRICS.md` and `known-findings.json` / `NOVELTY.md` when those artifacts exist, including current source-to-gapfill relationships, prioritized next gapfill targets, remediation candidate summary, novelty status counts, latest/archive artifact retention counts, manifest hygiene warnings, longest command durations, and high retry / rerun targets from observability metrics. |
 | Exit status behavior | `0` when the dashboard is written; parser status `2` for usage errors. Unexpected unreadable input or write failures surface as non-zero Python errors. |
 | Security / disclosure cautions | The dashboard can contain finding titles, locations, and evidence. Keep it local unless disclosure has been approved. |
 | Related docs | [`docs/REPORTING_AND_STORE.md`](REPORTING_AND_STORE.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
@@ -579,7 +600,7 @@ gra-index --runs-dir runs
 | Key options | `--repo OWNER/REPO`, `--min-severity Critical\|High\|Medium\|Low\|Informational`, `--statuses LIST`, `--dry-run`, `--plan`, `--apply`, `--apply-plan PLAN`, `--replan`, `--verify-ledger`, `--require-advanced-validation`, `--allow-public`, `--create-labels`, `--assignee ASSIGNEE`, `--max-issues N`. |
 | Generated outputs | Preview text in dry-run mode, `reports/issue-publication-plan.json` in plan mode, canonical `reports/issue-ledger.json` for all modes that evaluate findings, `reports/duplicate-decisions/*.json` before dry-run/apply publication decisions, GitHub Issues in apply mode, and `issues-created.json` under the run directory. `issues-created.json` records `plan_sha256` when `--apply-plan` is used. |
 | Exit status behavior | `0` for successful dry-run, plan creation, ledger verification, or issue creation; `2` for missing repo metadata, invalid plans/ledgers, incompatible issue-workflow options, or unsafe issue body references; `3` when apply mode refuses public or unknown repository visibility without `--allow-public`; `4` when selected findings exceed `--max-issues`, an immutable publication plan no longer matches current findings/drafts/advanced evidence, `--verify-ledger` detects GitHub inventory drift or missing duplicate decision records, or `--require-advanced-validation` finds missing required evidence or blocking validation decisions; `gh` command failures return non-zero. |
-| Security / disclosure cautions | Default behavior is dry-run. Apply mode refuses public or unknown repositories unless `--allow-public` is explicitly provided. Prefer `--plan` followed by reviewed `--apply-plan` when approval must be bound to exact Issue titles, labels, fingerprints, body hashes, chain membership, and advanced-validation evidence state. `reports/issue-ledger.json` is the local source of truth for publication state and is checked before creating duplicate Issues on re-run. `reports/duplicate-decisions/*.json` records whether a selected finding was treated as `new`, `exact-duplicate`, `variant`, or `related-not-duplicate` before issue creation/skipping. Human review is required before creating issues, especially for security-sensitive findings and issue body drafts. `ATTACK_CHAINS.md` contents are non-public by default and are not copied into generated Issue bodies. |
+| Security / disclosure cautions | Default behavior is dry-run. Apply mode refuses public or unknown repositories unless `--allow-public` is explicitly provided. Prefer `--plan` followed by reviewed `--apply-plan` when approval must be bound to exact Issue titles, labels, fingerprints, body hashes, chain membership, and advanced-validation evidence state. `reports/known-findings.json`, when present, suppresses `duplicate`, `accepted-risk`, and `invalid-known` findings from default publication selection. `reports/issue-ledger.json` is the local source of truth for publication state and is checked before creating duplicate Issues on re-run. `reports/duplicate-decisions/*.json` records whether a selected finding was treated as `new`, `exact-duplicate`, `variant`, or `related-not-duplicate` before issue creation/skipping. Human review is required before creating issues, especially for security-sensitive findings and issue body drafts. `ATTACK_CHAINS.md` contents are non-public by default and are not copied into generated Issue bodies. |
 | Related docs | [`docs/ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
 
 Examples:

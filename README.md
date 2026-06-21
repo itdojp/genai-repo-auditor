@@ -273,6 +273,7 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-chains` | Synthesize defensive attack-chain reports from existing audit evidence |
 | `gra-proofs` | Generate safe local proof artifacts for existing findings |
 | `gra-remediate` | Generate draft-only remediation candidates and validate draft patches in a disposable workspace |
+| `gra-novelty` | Classify current findings against a local known-finding novelty ledger |
 | `gra-trace` | Trace experimental/P3 cross-repo reachability for shared-library findings |
 | `gra-metrics` | Generate local advanced workflow metrics without raw evidence |
 | `gra-ingest` | Ingest scanner outputs |
@@ -306,6 +307,7 @@ Do not use this project for:
 - [`docs/COMMAND_REFERENCE.md`](docs/COMMAND_REFERENCE.md)
 - [`docs/AGENT_WORKERS.md`](docs/AGENT_WORKERS.md)
 - [`docs/SANDBOX_PROFILES.md`](docs/SANDBOX_PROFILES.md)
+- [`docs/NOVELTY_LEDGER.md`](docs/NOVELTY_LEDGER.md)
 - Japanese docs index: [`docs/ja/README.md`](docs/ja/README.md)
   - [`docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md`](docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md)
   - [`docs/ja/USAGE.ja.md`](docs/ja/USAGE.ja.md)

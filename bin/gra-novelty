@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / "lib"))
+from version import auditor_version
+from gralib import load_context
+from novelty_ledger import build_report, write_report
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Classify current findings against a local known-finding novelty ledger")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {auditor_version(LAB_ROOT)}")
+    parser.add_argument("--run", required=True, help="Run directory containing reports/findings.json")
+    parser.add_argument(
+        "--prior-ledger",
+        action="append",
+        default=[],
+        help="Optional prior reports/known-findings.json to compare against. May be repeated. Default: current run ledger if it exists.",
+    )
+    parser.add_argument(
+        "--accepted-risk",
+        action="append",
+        default=[],
+        help="Mark a current finding ID as locally accepted risk in the output ledger. May be repeated.",
+    )
+    parser.add_argument(
+        "--accepted-risk-reason",
+        default="operator accepted risk locally",
+        help="Local-only reason stored for --accepted-risk entries. Avoid secrets or sensitive evidence.",
+    )
+    args = parser.parse_args()
+
+    run_dir = Path(args.run).resolve()
+    ctx = load_context(run_dir)
+    reports_dir = run_dir / str(ctx.get("reports_dir", "reports"))
+    findings_path = reports_dir / "findings.json"
+    if not findings_path.exists():
+        print(f"ERROR: findings.json not found: {findings_path}", file=sys.stderr)
+        return 2
+
+    prior_paths = [Path(item).resolve() for item in args.prior_ledger]
+    default_prior = reports_dir / "known-findings.json"
+    if not prior_paths and default_prior.exists():
+        prior_paths = [default_prior]
+
+    report = build_report(
+        run_dir=run_dir,
+        prior_paths=prior_paths,
+        accepted_risk_ids={str(item) for item in args.accepted_risk},
+        accepted_risk_reason=str(args.accepted_risk_reason or "operator accepted risk locally"),
+    )
+    json_path, md_path = write_report(report, reports_dir)
+    print(f"Wrote {json_path}")
+    print(f"Wrote {md_path}")
+    counts = report.get("summary", {}).get("status_counts", {})
+    print("Novelty statuses: " + ", ".join(f"{key}={counts.get(key, 0)}" for key in sorted(counts)))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
