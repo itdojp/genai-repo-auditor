@@ -97,7 +97,7 @@ Validation checks that:
 
 1. checks sandbox readiness with an executable sandbox profile such as `local-test`;
 2. copies the target checkout to a disposable workspace under the run directory;
-3. reviews the patch diff paths against the target repository prefix and the candidate `files_touched` list;
+3. reviews the patch diff paths against the target repository prefix and the candidate `files_touched` list, rejecting VCS metadata paths such as `repo/.git/`;
 4. applies the patch to the disposable copy only;
 5. runs explicitly supplied Python build and targeted test commands with an injected Python no-network guard;
 6. records safe proof replay and adversarial review status as not applicable / not run unless an explicit replay stage is added in a later workflow;

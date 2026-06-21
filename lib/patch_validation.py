@@ -203,6 +203,10 @@ def diff_scope_status(*, diff_paths: set[str], declared_files: Iterable[Any], ta
     if unsafe:
         checks.append(check_record("diff-paths", "fail", "patch modifies paths outside the target repository prefix", {"paths": unsafe}))
         return "too-broad", checks
+    vcs_metadata = sorted(path for path in diff_paths if ".git" in Path(path).parts)
+    if vcs_metadata:
+        checks.append(check_record("diff-vcs-metadata", "fail", "patch must not modify VCS metadata paths", {"paths": vcs_metadata}))
+        return "too-broad", checks
     if len(diff_paths) > max_changed_paths:
         checks.append(check_record("diff-size", "fail", "patch changes more files than the bounded review threshold", {"changed_paths": len(diff_paths), "max_changed_paths": max_changed_paths}))
         return "too-broad", checks
@@ -475,9 +479,11 @@ def validate_patch_candidate(
         workspace.mkdir(parents=True)
         workspace_target = workspace / target_prefix
         workspace_target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(target_repo, workspace_target, symlinks=True)
+        shutil.copytree(target_repo, workspace_target, symlinks=True, ignore=shutil.ignore_patterns(".git"))
+        scrubbed_env = validation_environment(workspace)
         init_cp = subprocess.run(
             ["git", "-C", str(workspace), "init"],
+            env=scrubbed_env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -491,6 +497,7 @@ def validate_patch_candidate(
 
         check_cp = subprocess.run(
             ["git", "-C", str(workspace), "apply", "--check", str(patch_path)],
+            env=scrubbed_env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -502,6 +509,7 @@ def validate_patch_candidate(
             raise PatchValidationError("patch failed git apply --check")
         apply_cp = subprocess.run(
             ["git", "-C", str(workspace), "apply", str(patch_path)],
+            env=scrubbed_env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

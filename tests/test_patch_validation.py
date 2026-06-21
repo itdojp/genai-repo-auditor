@@ -8,7 +8,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
-from patch_validation import PatchValidationError, parse_operator_command
+from patch_validation import PatchValidationError, diff_scope_status, parse_operator_command
 
 
 class PatchValidationTests(unittest.TestCase):
@@ -29,6 +29,16 @@ class PatchValidationTests(unittest.TestCase):
             ["python3", "-m", "py_compile", "repo/app.py"],
             parse_operator_command("python3 -m py_compile repo/app.py"),
         )
+
+    def test_diff_scope_rejects_vcs_metadata_paths(self) -> None:
+        status, checks = diff_scope_status(
+            diff_paths={"repo/.git/config"},
+            declared_files=["repo/.git/config"],
+            target_prefix="repo",
+            max_changed_paths=20,
+        )
+        self.assertEqual("too-broad", status)
+        self.assertTrue(any(check["id"] == "diff-vcs-metadata" for check in checks))
 
 
 if __name__ == "__main__":
