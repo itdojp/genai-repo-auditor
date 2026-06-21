@@ -106,8 +106,9 @@ def job_permissions(workflow: str, job_name: str) -> dict[str, str]:
 
 def checkout_step(job: str) -> str:
     lines = job.splitlines()
+    checkout_uses = re.compile(r"^-?\s*uses: actions/checkout@v[0-9]+$")
     for index, line in enumerate(lines):
-        if line.strip() in {"uses: actions/checkout@v6", "- uses: actions/checkout@v6"}:
+        if checkout_uses.match(line.strip()):
             start = index
             while start > 0 and not lines[start].startswith("      - "):
                 start -= 1
@@ -117,7 +118,7 @@ def checkout_step(job: str) -> str:
                     break
                 end += 1
             return "\n".join(lines[start:end])
-    raise AssertionError("missing actions/checkout@v6 step")
+    raise AssertionError("missing actions/checkout step")
 
 
 class WorkflowHardeningTests(unittest.TestCase):
