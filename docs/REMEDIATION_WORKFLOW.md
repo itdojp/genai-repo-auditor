@@ -46,9 +46,10 @@ gra-validate-report --run runs/OWNER__REPO/RUN_ID
 Expected local outputs:
 
 ```text
-reports/remediation/SEC-001/remediation-candidates.json
-reports/remediation/SEC-001/PATCH-001.diff
-reports/remediation/SEC-001/PATCH-001.md
+reports/remediation/remediation-candidates.json
+reports/remediation/SEC-001/subject.json
+reports/remediation/SEC-001/patch.diff
+reports/remediation/SEC-001/notes.md
 ```
 
 Candidate generation must not apply patches to the original target checkout and

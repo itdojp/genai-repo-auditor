@@ -57,7 +57,7 @@ Before applying a publication plan, confirm:
 - The repository, branch, commit, and run ID are correct.
 - Finding severity, confidence, and status have been reviewed.
 - For Critical/High findings, advanced validation is present or the gap is accepted.
-- Adversarial validation is not downgrade, invalidate, or unresolved split without explicit approval.
+- Adversarial validation is not `downgrade`, `invalidate`, or an unresolved split without explicit approval.
 - Safe local proof artifacts are present when required, or marked not applicable with rationale.
 - Chain synthesis is summarized only as remediation/disclosure context.
 - gra-trace, if present, is described as experimental/P3 reachability evidence.
