@@ -33,9 +33,49 @@ EDGE_TYPES = {
 HIGH_CRITICAL = {"Critical", "High"}
 
 
-def reports_dir(run_dir: Path) -> Path:
+class EvidenceGraphSafetyError(RuntimeError):
+    """Raised when evidence graph inputs would escape the local run directory."""
+
+
+def path_under(path: Path, base: Path) -> bool:
+    try:
+        path.resolve(strict=False).relative_to(base.resolve(strict=True))
+        return True
+    except (FileNotFoundError, ValueError):
+        return False
+
+
+def reject_symlink_components_under(path: Path, base: Path, label: str) -> None:
+    try:
+        rel = path.relative_to(base)
+    except ValueError as exc:
+        raise EvidenceGraphSafetyError(f"{label} must stay under run directory: {path}") from exc
+    current = base
+    for part in rel.parts:
+        current = current / part
+        if current.exists() and current.is_symlink():
+            raise EvidenceGraphSafetyError(f"{label} must not contain symlink components: {current}")
+
+
+def ensure_under_run(path: Path, run_dir: Path, label: str) -> Path:
+    if not path_under(path, run_dir):
+        raise EvidenceGraphSafetyError(f"{label} must stay under run directory: {path}")
+    reject_symlink_components_under(path, run_dir, label)
+    return path
+
+
+def safe_relative_context_dir(run_dir: Path, key: str, default: str, label: str) -> Path:
     ctx = load_context(run_dir)
-    return run_dir / ctx.get("reports_dir", "reports")
+    raw = Path(str(ctx.get(key, default) or default))
+    if raw.is_absolute():
+        raise EvidenceGraphSafetyError(f"{label} must be relative under run directory: {raw}")
+    if ".." in raw.parts:
+        raise EvidenceGraphSafetyError(f"{label} must not contain path traversal: {raw}")
+    return ensure_under_run(run_dir / raw, run_dir, label)
+
+
+def reports_dir(run_dir: Path) -> Path:
+    return safe_relative_context_dir(run_dir, "reports_dir", "reports", "reports_dir")
 
 
 def rel_to_run(run_dir: Path, path: Path) -> str:
@@ -112,14 +152,29 @@ class EvidenceGraphBuilder:
     def report_rel(self, rel: str) -> str:
         return rel_to_run(self.run_dir, self.report_artifact(rel))
 
-    def load_report_array(self, rel: str, key: str) -> tuple[bool, list[dict[str, Any]]]:
+    def load_report_array(self, rel: str, key: str) -> list[dict[str, Any]]:
         path = self.report_artifact(rel)
         if not path.exists():
             self.missing_optional_artifacts.append(rel_to_run(self.run_dir, path))
-            return False, []
+            return []
         data = load_json(path, {}) or {}
         records = data.get(key) if isinstance(data, dict) else []
-        return True, [record for record in records if isinstance(record, dict)]
+        return [record for record in records if isinstance(record, dict)]
+
+    def iter_patch_validation_files(self, remediation_root: Path) -> list[Path]:
+        paths: list[Path] = []
+        pending = [ensure_under_run(remediation_root, self.run_dir, "remediation directory")]
+        while pending:
+            current = pending.pop()
+            for entry in sorted(current.iterdir(), key=lambda item: item.name, reverse=True):
+                if entry.is_symlink():
+                    continue
+                if entry.is_dir():
+                    pending.append(ensure_under_run(entry, self.run_dir, "remediation directory"))
+                    continue
+                if entry.name == "patch-validation.json":
+                    paths.append(ensure_under_run(entry, self.run_dir, "patch validation artifact"))
+        return sorted(paths)
 
     def add_node(self, node: dict[str, Any]) -> None:
         node_id = str(node.get("id") or "")
@@ -144,19 +199,19 @@ class EvidenceGraphBuilder:
         }
 
     def load_artifacts(self) -> None:
-        _present, self.findings = self.load_report_array("findings.json", "findings")
-        _present, self.targets = self.load_report_array("targets.json", "targets")
+        self.findings = self.load_report_array("findings.json", "findings")
+        self.targets = self.load_report_array("targets.json", "targets")
         scanner_path = self.reports / "scanner-results" / "scanner-index.json"
         if scanner_path.exists():
             scanner_index = load_json(scanner_path, {}) or {}
             self.scanner_leads = [item for item in scanner_index.get("results") or [] if isinstance(item, dict)]
         else:
             self.missing_optional_artifacts.append(rel_to_run(self.run_dir, scanner_path))
-        _present, self.chains = self.load_report_array("chains.json", "chains")
-        _present, self.proofs = self.load_report_array("proofs.json", "proofs")
-        _present, self.validations = self.load_report_array("validation.json", "validations")
-        _present, self.traces = self.load_report_array("traces.json", "traces")
-        _present, self.remediation_candidates = self.load_report_array("remediation/remediation-candidates.json", "candidates")
+        self.chains = self.load_report_array("chains.json", "chains")
+        self.proofs = self.load_report_array("proofs.json", "proofs")
+        self.validations = self.load_report_array("validation.json", "validations")
+        self.traces = self.load_report_array("traces.json", "traces")
+        self.remediation_candidates = self.load_report_array("remediation/remediation-candidates.json", "candidates")
         issue_plan_path = self.reports / "issue-publication-plan.json"
         if issue_plan_path.exists():
             issue_plan = load_json(issue_plan_path, {}) or {}
@@ -171,7 +226,7 @@ class EvidenceGraphBuilder:
             self.missing_optional_artifacts.append(rel_to_run(self.run_dir, metrics_path))
         remediation_root = self.reports / "remediation"
         if remediation_root.exists():
-            for path in sorted(remediation_root.rglob("patch-validation.json")):
+            for path in self.iter_patch_validation_files(remediation_root):
                 data = load_json(path, {}) or {}
                 if isinstance(data, dict):
                     data = dict(data)

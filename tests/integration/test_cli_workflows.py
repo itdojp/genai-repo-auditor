@@ -3468,6 +3468,47 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("EVIDENCE_GRAPH.md", dashboard)
         self.assertIn("With supporting evidence", dashboard)
 
+    def test_gra_evidence_graph_rejects_reports_dir_path_traversal(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        ctx_path = run_dir / "context.json"
+        ctx = json.loads(ctx_path.read_text(encoding="utf-8"))
+        ctx["reports_dir"] = "../outside-reports"
+        ctx_path.write_text(json.dumps(ctx, indent=2) + "\n", encoding="utf-8")
+
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", run_dir])
+
+        self.assertEqual(2, cp.returncode)
+        self.assertIn("reports_dir must not contain path traversal", cp.stderr)
+        self.assertFalse((self.work_dir / "outside-reports").exists())
+
+    def test_gra_evidence_graph_skips_symlinked_patch_validation_dirs(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        remediation_root = run_dir / "reports" / "remediation"
+        remediation_root.mkdir(parents=True, exist_ok=True)
+        external_dir = self.work_dir / "external-remediation"
+        external_dir.mkdir()
+        (external_dir / "patch-validation.json").write_text(
+            json.dumps(
+                {
+                    "patch_id": "PATCH-EXTERNAL",
+                    "final_status": "needs-human-review",
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        os.symlink(external_dir, remediation_root / "external-ref", target_is_directory=True)
+
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", run_dir], check=True)
+
+        self.assertIn("Evidence graph JSON:", cp.stdout)
+        graph_text = (run_dir / "reports" / "evidence-graph.json").read_text(encoding="utf-8")
+        graph = json.loads(graph_text)
+        self.assertNotIn("PATCH-EXTERNAL", graph_text)
+        self.assertNotIn(str(external_dir), graph_text)
+        self.assertFalse(any(node["type"] == "patch_validation" for node in graph["nodes"]))
+
     def test_gra_metrics_handles_missing_optional_artifacts(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         cp = self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
