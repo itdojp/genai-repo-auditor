@@ -139,6 +139,50 @@ class DogfoodTemplateTests(unittest.TestCase):
         leaked = [term for term in forbidden if term in backlog]
         self.assertEqual([], leaked)
 
+
+    def test_internal_effectiveness_report_template_is_structured_and_sanitized(self) -> None:
+        template = (REPO_ROOT / "docs" / "dogfood" / "INTERNAL_EFFECTIVENESS_REPORT_TEMPLATE.md").read_text(encoding="utf-8")
+        required_terms = [
+            "Internal dogfood effectiveness report template",
+            "self-dogfood run and the ITDO_ERP4 dogfood run",
+            "Executive summary",
+            "Scope and authorization",
+            "Repositories reviewed",
+            "Workflow steps executed",
+            "Metrics summary",
+            "Benchmark summary",
+            "Evidence graph summary",
+            "Findings funnel",
+            "Remediation candidate summary",
+            "Human review burden",
+            "Lessons learned",
+            "Product improvement backlog",
+            "Public-safe material candidates",
+            "Target queue",
+            "Adversarial validation",
+            "Chain synthesis",
+            "Issue publication planning",
+            "Issue dry-run would-create Issue count",
+            "Public product-improvement Issues",
+            "internal/private by default",
+        ]
+        missing = [term for term in required_terms if term not in template]
+        self.assertEqual([], missing)
+        forbidden = [
+            "ATTACK_CHAINS.md",
+            "PROOFS.md",
+            "TRACE.md",
+            "raw scanner output",
+            "remediation diffs",
+            "-----BEGIN",
+            "ghp_",
+            "xoxb-",
+        ]
+        leaked = [term for term in forbidden if term in template]
+        self.assertEqual([], leaked)
+        self.assertIsNone(re.search(r"\b[0-9a-f]{40}\b", template))
+        self.assertIsNone(re.search(r"\b20\d{6}T\d{6}[+-]\d{4}\b", template))
+
     def test_itdo_erp4_planning_docs_are_complete_and_public_safe(self) -> None:
         docs = {
             "scope": REPO_ROOT / "docs" / "dogfood" / "ITDO_ERP4_SCOPE.md",
