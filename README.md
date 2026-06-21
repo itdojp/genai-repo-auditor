@@ -115,6 +115,7 @@ gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --validate --san
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high --votes 3 --policy human-review-on-split
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 gra-metrics --run runs/OWNER__REPO/RUN_ID
+gra-benchmark --run runs/OWNER__REPO/RUN_ID
 gra-evidence-graph --run runs/OWNER__REPO/RUN_ID
 gra-dashboard --run runs/OWNER__REPO/RUN_ID
 gra-sarif --run runs/OWNER__REPO/RUN_ID
@@ -285,6 +286,7 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-novelty` | Classify current findings against a local known-finding novelty ledger |
 | `gra-trace` | Trace experimental/P3 cross-repo reachability for shared-library findings |
 | `gra-metrics` | Generate local advanced workflow metrics without raw evidence |
+| `gra-benchmark` | Score local dogfood quality gates from metrics or fixture runs |
 | `gra-evidence-graph` | Generate a local bounded evidence graph across report artifacts |
 | `gra-ingest` | Ingest scanner outputs |
 | `gra-import-findings` | Normalize generic external finding JSON into review-only local artifacts, with explicit append mode |
@@ -336,6 +338,7 @@ Do not use this project for:
 - [`docs/SAFE_LOCAL_PROOFS.md`](docs/SAFE_LOCAL_PROOFS.md)
 - [`docs/TRACE_REACHABILITY.md`](docs/TRACE_REACHABILITY.md)
 - [`docs/METRICS.md`](docs/METRICS.md)
+- [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md)
 - [`docs/EVIDENCE_GRAPH.md`](docs/EVIDENCE_GRAPH.md)
 - [`docs/SCANNER_INTEGRATION.md`](docs/SCANNER_INTEGRATION.md)
 - [`docs/SCORECARD_INGESTION.md`](docs/SCORECARD_INGESTION.md)

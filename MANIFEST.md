@@ -11,6 +11,7 @@ bin/gra-adversarial-validate
 bin/gra-agent-check
 bin/gra-audit
 bin/gra-batch
+bin/gra-benchmark
 bin/gra-chains
 bin/gra-dashboard
 bin/gra-evidence-graph
@@ -78,6 +79,7 @@ prompts/issue/issue-policy.md
 templates/reports/AUDIT_SUMMARY.md
 templates/reports/FINDINGS.md
 templates/reports/ISSUE_BODY.md
+templates/reports/benchmark.schema.json
 templates/reports/chains.schema.json
 templates/reports/command-event.schema.json
 templates/reports/dependencies.schema.json
@@ -135,6 +137,7 @@ docs/AGENT_SURFACE_DISCOVERY.md
 docs/AGENT_WORKERS.md
 docs/ARCHITECTURE.md
 docs/ATTACK_CHAINS.md
+docs/BENCHMARKING.md
 docs/CODEX_WORK_INSTRUCTIONS.md
 docs/COMMAND_REFERENCE.md
 docs/DEPENDENCY_INGESTION.md

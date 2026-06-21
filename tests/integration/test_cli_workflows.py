@@ -3312,6 +3312,96 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("Latest status artifacts", dashboard)
         self.assertIn("Archive artifacts", dashboard)
 
+    def test_gra_benchmark_fixture_advanced_runs_without_network_or_raw_evidence(self) -> None:
+        out_run = self.work_dir / "advanced-benchmark"
+        gh_log = self.work_dir / "benchmark-gh-calls.jsonl"
+        codex_log = self.work_dir / "benchmark-codex-calls.jsonl"
+        env = self.env.copy()
+        env["GRA_MOCK_GH_LOG"] = str(gh_log)
+        env["GRA_MOCK_CODEX_LOG"] = str(codex_log)
+
+        cp = self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-benchmark", "--fixture", "advanced", "--out-run", out_run],
+            env=env,
+            check=True,
+        )
+        self.assertIn("Overall status: passed", cp.stdout)
+        self.assertIn("Metrics source: computed-fallback", cp.stdout)
+        self.assertIn("Adversarial downgrade/invalidate rate: 0.5000", cp.stdout)
+        self.assertFalse(gh_log.exists(), "benchmark fixture path must not call gh")
+        self.assertFalse(codex_log.exists(), "benchmark fixture path must not call codex")
+
+        benchmark_json = out_run / "reports" / "benchmark.json"
+        benchmark_md = out_run / "reports" / "BENCHMARK.md"
+        self.assertTrue(benchmark_json.exists())
+        self.assertTrue(benchmark_md.exists())
+        benchmark_text = benchmark_json.read_text(encoding="utf-8")
+        benchmark_md_text = benchmark_md.read_text(encoding="utf-8")
+        for forbidden in [
+            "Synthetic fixture code shows direct local data flow",
+            "Static local trace shows token forwarding path",
+            "Fixture handler passes request-controlled body",
+        ]:
+            self.assertNotIn(forbidden, benchmark_text)
+            self.assertNotIn(forbidden, benchmark_md_text)
+
+        benchmark = json.loads(benchmark_text)
+        self.assertEqual("local-benchmark", benchmark["source"])
+        self.assertEqual("advanced", benchmark["fixture"]["name"])
+        self.assertFalse(benchmark["safety"]["network_accessed"])
+        self.assertFalse(benchmark["safety"]["issue_apply_performed"])
+        self.assertEqual("computed-fallback", benchmark["metrics"]["source"])
+        self.assertEqual(3, benchmark["metrics"]["summary"]["findings_total"])
+        self.assertEqual(1, benchmark["metrics"]["summary"]["chain_count"])
+        self.assertEqual(0.5, benchmark["metrics"]["summary"]["adversarial_downgrade_or_invalidate_rate"])
+        gates = {item["id"]: item for item in benchmark["quality_gates"]}
+        self.assertEqual("pass", gates["report-validation"]["status"])
+        self.assertEqual("pass", gates["secret-scan"]["status"])
+        self.assertEqual("pass", gates["no-public-issue-apply"]["status"])
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", out_run], check=True)
+        self.assertIn("Benchmark: validated", cp_validate.stdout)
+
+        cp_dashboard = self.run_cmd([REPO_ROOT / "bin" / "gra-dashboard", "--run", out_run], check=True)
+        self.assertIn("dashboard.html", cp_dashboard.stdout)
+        dashboard = (out_run / "reports" / "dashboard.html").read_text(encoding="utf-8")
+        self.assertIn("Dogfood benchmark", dashboard)
+        self.assertIn("benchmark.json", dashboard)
+        self.assertIn("BENCHMARK.md", dashboard)
+
+    def test_gra_benchmark_uses_existing_metrics_when_present(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-benchmark", "--run", run_dir], check=True)
+        self.assertIn("Metrics source: metrics.json", cp.stdout)
+        benchmark = json.loads((run_dir / "reports" / "benchmark.json").read_text(encoding="utf-8"))
+        self.assertTrue(benchmark["metrics"]["artifact_present"])
+        self.assertFalse(benchmark["metrics"]["degraded"])
+        self.assertEqual("metrics.json", benchmark["metrics"]["source"])
+        self.assertEqual(1, benchmark["metrics"]["summary"]["findings_total"])
+
+    def test_gra_benchmark_fails_secret_gate_without_copying_secret_value(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        secret_value = "ghp_" + "A" * 24
+        (run_dir / "reports" / "generated-secret.txt").write_text(f"token={secret_value}\n", encoding="utf-8")
+
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-benchmark", "--run", run_dir])
+        self.assertEqual(1, cp.returncode, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
+        self.assertIn("Overall status: failed", cp.stdout)
+        self.assertNotIn(secret_value, cp.stdout)
+        self.assertNotIn(secret_value, cp.stderr)
+
+        benchmark_text = (run_dir / "reports" / "benchmark.json").read_text(encoding="utf-8")
+        benchmark_md = (run_dir / "reports" / "BENCHMARK.md").read_text(encoding="utf-8")
+        self.assertNotIn(secret_value, benchmark_text)
+        self.assertNotIn(secret_value, benchmark_md)
+        benchmark = json.loads(benchmark_text)
+        gates = {item["id"]: item for item in benchmark["quality_gates"]}
+        self.assertEqual("fail", gates["secret-scan"]["status"])
+        self.assertEqual(1, gates["secret-scan"]["value"])
+        self.assertEqual(["reports/generated-secret.txt"], gates["secret-scan"]["artifact_paths"])
+
     def test_gra_evidence_graph_links_advanced_artifacts_without_raw_payloads(self) -> None:
         run_dir = self.copy_fixture_run("advanced-workflow-run")
         self.copy_advanced_workflow_outputs(run_dir)

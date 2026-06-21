@@ -18,7 +18,8 @@ safe local proof artifact です。`TRACE.md` / `traces.json` は `gra-trace`
 が producer finding と consumer repository の reachability を整理する
 experimental/P3 cross-repo trace artifact です。`METRICS.md` /
 `metrics.json` は `gra-metrics` が local report artifacts だけから生成する
-advanced workflow metrics artifact です。`EVIDENCE_GRAPH.md` /
+advanced workflow metrics artifact です。`BENCHMARK.md` /
+`benchmark.json` は `gra-benchmark` が metrics または local fallback counts から生成する dogfood quality-gate artifact です。`EVIDENCE_GRAPH.md` /
 `evidence-graph.json` は `gra-evidence-graph` が local report artifacts
 だけから生成する bounded evidence graph artifact です。
 `IMPORTED_FINDINGS.md` / `imported-findings.json` は
@@ -69,6 +70,8 @@ reports/
     sec-001-org-consumer.subjects.json
   METRICS.md
   metrics.json
+  BENCHMARK.md
+  benchmark.json
   EVIDENCE_GRAPH.md
   evidence-graph.json
   IMPORTED_FINDINGS.md
@@ -184,6 +187,15 @@ Issue ledger publication states, duplicate decision counts, artifact counts,
 and run duration when local metadata is available. It must not copy raw finding evidence, issue body text,
 proof evidence, trace evidence, scanner lead bodies, or secret values.
 
+`benchmark.json` is a local-only dogfood benchmark artifact produced by
+`gra-benchmark`. It records bounded summaries for report validation, obvious
+secret scan counts, adversarial downgrade/invalidate rate, chain count bounds,
+unsafe proof rejection count, Issue plan warnings, and Issue publication safety.
+It consumes `metrics.json` when present and degrades to in-memory counts when
+metrics are absent. It must not copy raw finding evidence, issue body text,
+proof payloads, scanner lead bodies, or secret values, and `gra-benchmark` must
+not call `gra-issues --apply`.
+
 `evidence-graph.json` is a local-only bounded graph artifact produced by
 `gra-evidence-graph`. It links findings to targets, scanner leads, chains,
 proofs, adversarial validation records, traces, remediation candidates, patch
@@ -230,7 +242,7 @@ retention categories are:
 
 - `latest`: canonical handoff artifacts needed to understand the latest run
   status, such as `run-summary.txt`, `report-validation.txt`, `findings.json`,
-  `targets.json`, `metrics.json`, `evidence-graph.json`, `issue-ledger.json`,
+  `targets.json`, `metrics.json`, `benchmark.json`, `evidence-graph.json`, `issue-ledger.json`,
   `run-state.json`, and `dashboard.html` when present.
 - `supporting`: bounded schemas and state files that support validation and
   troubleshooting but are not the primary status handoff.

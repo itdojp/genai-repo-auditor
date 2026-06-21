@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor Dogfood Benchmark",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "repo",
+    "generated_at",
+    "source",
+    "safety",
+    "fixture",
+    "metrics",
+    "quality_gates",
+    "summary",
+    "follow_up_actions"
+  ],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "run_id": {"type": "string"},
+    "repo": {"type": "string"},
+    "branch": {"type": ["string", "null"]},
+    "commit": {"type": ["string", "null"]},
+    "generated_at": {"type": "string"},
+    "source": {"enum": ["local-benchmark"]},
+    "fixture": {
+      "type": ["object", "null"],
+      "properties": {
+        "name": {"type": ["string", "null"]},
+        "run_dir": {"type": "string"},
+        "network_allowed": {"type": "boolean"}
+      }
+    },
+    "safety": {
+      "type": "object",
+      "required": [
+        "local_artifacts_only",
+        "network_accessed",
+        "issue_apply_performed",
+        "raw_evidence_copied",
+        "secrets_copied",
+        "bounded_summaries_only",
+        "notes"
+      ],
+      "properties": {
+        "local_artifacts_only": {"type": "boolean"},
+        "network_accessed": {"type": "boolean"},
+        "issue_apply_performed": {"type": "boolean"},
+        "raw_evidence_copied": {"type": "boolean"},
+        "secrets_copied": {"type": "boolean"},
+        "bounded_summaries_only": {"type": "boolean"},
+        "notes": {"type": "string"}
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "required": ["artifact_present", "source", "path", "degraded", "notes", "summary"],
+      "properties": {
+        "artifact_present": {"type": "boolean"},
+        "source": {"enum": ["metrics.json", "computed-fallback"]},
+        "path": {"type": "string"},
+        "degraded": {"type": "boolean"},
+        "notes": {"type": "string"},
+        "summary": {
+          "type": "object",
+          "required": [
+            "findings_total",
+            "issue_recommended_findings",
+            "adversarial_validation_total",
+            "adversarial_downgrade_or_invalidate_rate",
+            "chain_count",
+            "proof_count",
+            "proof_unsafe_rejection_count",
+            "issue_plan_warning_count",
+            "manifest_hygiene_warnings"
+          ],
+          "properties": {
+            "findings_total": {"type": "integer", "minimum": 0},
+            "issue_recommended_findings": {"type": "integer", "minimum": 0},
+            "adversarial_validation_total": {"type": "integer", "minimum": 0},
+            "adversarial_downgrade_or_invalidate_rate": {"type": "number", "minimum": 0},
+            "chain_count": {"type": "integer", "minimum": 0},
+            "proof_count": {"type": "integer", "minimum": 0},
+            "proof_unsafe_rejection_count": {"type": "integer", "minimum": 0},
+            "issue_plan_warning_count": {"type": "integer", "minimum": 0},
+            "manifest_hygiene_warnings": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
+    },
+    "quality_gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "status", "value", "threshold", "details", "artifact_paths"],
+        "properties": {
+          "id": {"type": "string"},
+          "title": {"type": "string"},
+          "status": {"enum": ["pass", "warn", "fail"]},
+          "value": {"type": ["string", "integer", "number", "boolean", "null"]},
+          "threshold": {"type": ["string", "integer", "number", "boolean", "null"]},
+          "details": {"type": "string"},
+          "artifact_paths": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["overall_status", "gate_count", "passed", "warnings", "failed"],
+      "properties": {
+        "overall_status": {"enum": ["passed", "needs-review", "failed"]},
+        "gate_count": {"type": "integer", "minimum": 0},
+        "passed": {"type": "integer", "minimum": 0},
+        "warnings": {"type": "integer", "minimum": 0},
+        "failed": {"type": "integer", "minimum": 0}
+      }
+    },
+    "follow_up_actions": {"type": "array", "items": {"type": "string"}}
+  }
+}

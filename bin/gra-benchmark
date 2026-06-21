@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / "lib"))
+from benchmark import BenchmarkError, copy_fixture_run, write_benchmark, DEFAULT_MAX_CHAINS  # noqa: E402
+from version import auditor_version  # noqa: E402
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Generate local dogfood benchmark quality gates for a GenAI Repo Auditor run")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {auditor_version(LAB_ROOT)}")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--run", help="Existing run directory to summarize")
+    source.add_argument("--fixture", choices=["minimal", "advanced"], help="Copy and benchmark a built-in local fixture")
+    parser.add_argument("--out-run", help="Destination run directory for --fixture. Must not already exist.")
+    parser.add_argument("--out-json", help="Output JSON file. Default: reports/benchmark.json")
+    parser.add_argument("--out-md", help="Output Markdown file. Default: reports/BENCHMARK.md")
+    parser.add_argument("--max-chains", type=int, default=DEFAULT_MAX_CHAINS, help=f"Maximum acceptable chain count. Default: {DEFAULT_MAX_CHAINS}")
+    parser.add_argument("--skip-validation", action="store_true", help="Do not run gra-validate-report before scoring validation gate")
+    args = parser.parse_args()
+
+    if args.max_chains < 0:
+        parser.error("--max-chains must be >= 0")
+    try:
+        if args.fixture:
+            run_dir = copy_fixture_run(LAB_ROOT, args.fixture, Path(args.out_run) if args.out_run else None)
+            fixture = args.fixture
+        else:
+            if args.out_run:
+                parser.error("--out-run can only be used with --fixture")
+            run_dir = Path(args.run).resolve()
+            fixture = None
+        json_path, md_path, benchmark = write_benchmark(
+            lab_root=LAB_ROOT,
+            run_dir=run_dir,
+            fixture=fixture,
+            max_chains=args.max_chains,
+            out_json=Path(args.out_json) if args.out_json else None,
+            out_md=Path(args.out_md) if args.out_md else None,
+            validate_reports=not args.skip_validation,
+        )
+    except (OSError, ValueError, BenchmarkError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    summary = benchmark["summary"]
+    metrics_summary = benchmark["metrics"]["summary"]
+    print(f"Benchmark run directory: {run_dir}")
+    print(f"Benchmark JSON: {json_path}")
+    print(f"Benchmark Markdown: {md_path}")
+    print(f"Overall status: {summary['overall_status']}")
+    print(f"Gates: {summary['passed']} passed, {summary['warnings']} warning(s), {summary['failed']} failed")
+    print(f"Metrics source: {benchmark['metrics']['source']}")
+    print(f"Findings: {metrics_summary['findings_total']}")
+    print(f"Adversarial downgrade/invalidate rate: {metrics_summary['adversarial_downgrade_or_invalidate_rate']:.4f}")
+    print(f"Chains: {metrics_summary['chain_count']}")
+    print(f"Issue plan warnings: {metrics_summary['issue_plan_warning_count']}")
+    return 1 if summary["failed"] else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

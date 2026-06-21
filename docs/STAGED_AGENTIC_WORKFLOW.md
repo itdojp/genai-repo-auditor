@@ -377,6 +377,7 @@ review-only by default; append mode is explicit and imported findings remain
 gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID --fix
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 gra-metrics --run runs/OWNER__REPO/RUN_ID
+gra-benchmark --run runs/OWNER__REPO/RUN_ID
 gra-evidence-graph --run runs/OWNER__REPO/RUN_ID
 gra-dashboard --run runs/OWNER__REPO/RUN_ID
 gra-sarif --run runs/OWNER__REPO/RUN_ID
@@ -388,6 +389,8 @@ Outputs:
 ```text
 reports/metrics.json
 reports/METRICS.md
+reports/benchmark.json
+reports/BENCHMARK.md
 reports/evidence-graph.json
 reports/EVIDENCE_GRAPH.md
 reports/imported-findings.json
@@ -400,8 +403,8 @@ runs/security-audit.sqlite
 `run-manifest.json` at the run root records the canonical latest-status
 handoff artifacts, supporting files, and archive reproducibility artifacts with
 run-relative paths and file digests. `gra-validate-report` enforces manifest
-hygiene when the manifest is present. `gra-metrics`, `gra-evidence-graph`, and
-`gra-dashboard` surface latest/archive retention counts, graph evidence links,
+hygiene when the manifest is present. `gra-metrics`, `gra-benchmark`, `gra-evidence-graph`, and
+`gra-dashboard` surface latest/archive retention counts, benchmark gates, graph evidence links,
 and manifest hygiene warnings without copying artifact contents.
 
 ## Offline staged regression fixture
