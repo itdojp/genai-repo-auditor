@@ -24,6 +24,14 @@ only Potential or Not assessed. In those cases, the Issue draft should avoid
 claiming confirmed exploitability and should explain the remaining validation
 gap.
 
+Findings appended by `gra-import-findings --append-findings` include
+`external_source` metadata but are created with `issue_recommended=false` and no
+`issue_body_file`. Treat them as review leads until a human validates the
+finding locally, revises the assessment/publication fields, and prepares an
+Issue draft. Importing an external finding must not bypass the normal
+Critical/High, Confirmed/Probable, and `issue_recommended=true` selection
+criteria.
+
 For Critical / High candidates, run or review the independent adversarial
 validation stage before publication:
 

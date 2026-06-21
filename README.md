@@ -221,10 +221,17 @@ gra-ingest --run runs/OWNER__REPO/RUN_ID --tool scorecard --file scorecard.json 
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool sbom --file bom.json --format cyclonedx
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool trivy --file trivy.json --format json
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool grype --file grype.json --format json
+gra-import-findings --run runs/OWNER__REPO/RUN_ID --file external-findings.json
+# Append mode is explicit and review-gated: imported findings use issue_recommended=false.
+# gra-import-findings --run runs/OWNER__REPO/RUN_ID --file external-findings.json --append-findings
 gra-scanner-triage --run runs/OWNER__REPO/RUN_ID --model gpt-5.5 --effort xhigh
 ```
 
 Scanner results are leads, not findings. A lead is promoted only after reachability, trust boundary impact, mitigation status, and evidence are reviewed.
+External finding imports are also review leads by default. See
+[`docs/EXTERNAL_FINDING_IMPORT.md`](docs/EXTERNAL_FINDING_IMPORT.md) for the
+generic JSON contract, rejected-lead retention, duplicate fingerprint behavior,
+and append-mode safety rules.
 
 OpenSSF Scorecard JSON ingestion additionally writes deterministic supply-chain
 posture artifacts and can append bounded `TGT-SCORECARD-NNN` review targets for
@@ -280,6 +287,7 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-metrics` | Generate local advanced workflow metrics without raw evidence |
 | `gra-evidence-graph` | Generate a local bounded evidence graph across report artifacts |
 | `gra-ingest` | Ingest scanner outputs |
+| `gra-import-findings` | Normalize generic external finding JSON into review-only local artifacts, with explicit append mode |
 | `gra-scanner-triage` | Triage scanner leads in repository context |
 | `gra-taxonomy-preflight` | Preflight and normalize controlled taxonomy references |
 | `gra-validate-report` | Validate `findings.json`, `targets.json`, chain, proof, trace, validation, evidence graph, and report contract |

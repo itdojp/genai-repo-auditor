@@ -140,3 +140,35 @@ Rules:
   before lead limits are applied; unparsed text inputs are sampled with explicit
   `normalization` limits in the normalized lead artifact.
 - DAST and Nuclei-style external scans are intentionally not built in. Use only in explicitly authorized, isolated environments.
+
+## External finding import
+
+Use `gra-import-findings` when a managed AI security tool, deterministic scanner,
+or internal review system already produced finding-like records and you want to
+normalize them into GenAI Repo Auditor without binding the project to a vendor:
+
+```bash
+gra-import-findings --run runs/OWNER__REPO/RUN_ID --file external-findings.json
+```
+
+This writes:
+
+```text
+reports/imported-findings.json
+reports/IMPORTED_FINDINGS.md
+```
+
+Default mode is review-only and does not modify `reports/findings.json`.
+Invalid per-record input is retained under `rejected_findings` with reasons,
+rather than silently dropped. Use append mode only when you explicitly want to
+add normalized records to `findings.json`:
+
+```bash
+gra-import-findings --run runs/OWNER__REPO/RUN_ID --file external-findings.json --append-findings
+```
+
+Appended imports carry `external_source` metadata and are still review-gated:
+`issue_recommended=false`, `issue_body_file=""`, and assessment dimensions are
+`Not assessed` until a human reviewer validates the finding. See
+[`docs/EXTERNAL_FINDING_IMPORT.md`](EXTERNAL_FINDING_IMPORT.md) for the full
+generic JSON contract and safety rules.

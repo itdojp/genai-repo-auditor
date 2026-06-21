@@ -21,6 +21,9 @@ experimental/P3 cross-repo trace artifact です。`METRICS.md` /
 advanced workflow metrics artifact です。`EVIDENCE_GRAPH.md` /
 `evidence-graph.json` は `gra-evidence-graph` が local report artifacts
 だけから生成する bounded evidence graph artifact です。
+`IMPORTED_FINDINGS.md` / `imported-findings.json` は
+`gra-import-findings` が vendor-neutral external finding JSON を review-only
+lead artifact として正規化する import artifact です。
 `known-findings.json` / `NOVELTY.md`
 は `gra-novelty` が recurring audit の重複・accepted-risk・regression
 分類をローカルに記録する novelty artifact です。`issue-ledger.json` は
@@ -68,6 +71,8 @@ reports/
   metrics.json
   EVIDENCE_GRAPH.md
   evidence-graph.json
+  IMPORTED_FINDINGS.md
+  imported-findings.json
   NOVELTY.md
   known-findings.json
   issue-publication-plan.json
@@ -118,6 +123,7 @@ findings[].labels
 optional chain synthesis output, optional proof artifacts, optional adversarial
 validation output, optional cross-repo trace output, optional metrics output,
 optional evidence graph output,
+optional external imported finding output,
 optional known-finding novelty ledger output, optional issue ledger output, optional command event output, optional run
 manifest output, optional scanner index artifacts, and optional dependency/posture
 artifacts against the bundled JSON schemas using the Python standard library. It also
@@ -366,6 +372,15 @@ Important constraints:
   names, obvious secret-like values, duplicate node IDs, duplicate edge tuples,
   unknown node references, unsafe paths, and inconsistent High/Critical evidence
   coverage counts.
+- If `reports/imported-findings.json` exists, it must match
+  `templates/reports/imported-findings.schema.json`. The artifact must retain
+  valid normalized imports and rejected leads with explicit rejection reasons.
+  Summary counts must match actual records. Normalized imported findings must
+  carry `external_source` metadata and use `issue_recommended=false` with no
+  pre-bound `issue_body_file`, so imported leads do not bypass normal human
+  review and Issue publication controls. `append_status=appended` records must
+  correspond to a fingerprint present in `reports/findings.json`; duplicate
+  fingerprints must be recorded as `duplicate-skipped`.
 - If `reports/metrics.json` exists, it must match
   `templates/reports/metrics.schema.json`, use
   `source: local-report-artifacts`, set `safety.local_artifacts_only` to `true`,
@@ -534,6 +549,30 @@ reviewer can distinguish "not generated yet" from "generated and empty".
 High/Critical issue-recommended findings include summary counts for supporting
 and challenging evidence links. These counts are prioritization aids; they do
 not replace human validation or public disclosure approval.
+
+## imported-findings.json / IMPORTED_FINDINGS.md
+
+`gra-import-findings` writes `reports/imported-findings.json` and
+`reports/IMPORTED_FINDINGS.md` from a conservative generic external finding JSON
+contract. The command treats external records as review leads and does not call
+vendor APIs or run scanners.
+
+The import artifact records:
+
+- top-level source metadata and source file digest metadata;
+- normalized findings with stable `IMP-...` IDs and 24-character fingerprints;
+- rejected leads with bounded rejection reasons;
+- append status for each normalized finding: `review-only`, `appended`, or
+  `duplicate-skipped`.
+
+Default mode is non-mutating. With `--append-findings`, valid non-duplicate
+records are appended to `reports/findings.json` as schema-compatible findings
+with `external_source` metadata, `issue_recommended=false`, empty
+`issue_body_file`, and `Not assessed` structured assessment dimensions.
+
+This means external imports do not automatically create public Issues. A human
+reviewer must validate the finding locally, update publication fields and issue
+drafts, then use the normal `gra-issues` workflow.
 
 ## known-findings.json / NOVELTY.md
 

@@ -50,6 +50,7 @@ NOVELTY_PATH = Path("reports/known-findings.json")
 TRACES_PATH = Path("reports/traces.json")
 METRICS_PATH = Path("reports/metrics.json")
 EVIDENCE_GRAPH_PATH = Path("reports/evidence-graph.json")
+IMPORTED_FINDINGS_PATH = Path("reports/imported-findings.json")
 ISSUE_LEDGER_PATH = Path("reports/issue-ledger.json")
 DUPLICATE_DECISIONS_DIR = Path("reports/duplicate-decisions")
 RUN_STATE_PATH = Path("reports/run-state.json")
@@ -151,6 +152,7 @@ EVIDENCE_GRAPH_EDGE_TYPES = {
     "publication_candidate",
     "not_applicable",
 }
+IMPORTED_FINDING_APPEND_STATUSES = {"review-only", "appended", "duplicate-skipped"}
 REQUIRED_TOP = ["run_id", "repo", "commit", "generated_at", "findings"]
 REQUIRED_FINDING = [
     "id", "fingerprint", "title", "severity", "confidence", "status", "category",
@@ -1855,6 +1857,107 @@ def validate_evidence_graph(run_dir: Path, errors: List[str]) -> bool:
     return True
 
 
+def validate_imported_findings(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
+    imported_path = run_dir / IMPORTED_FINDINGS_PATH
+    if not imported_path.exists():
+        return False
+    try:
+        validate_no_symlink_components(run_dir, IMPORTED_FINDINGS_PATH, field_path="imported_findings")
+    except ReportSafetyError as exc:
+        errors.append(str(exc))
+        return True
+    try:
+        data = json.loads(imported_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"imported-findings.json invalid JSON: {exc}")
+        return True
+
+    validate_schema(data, load_schema("imported-findings.schema.json"), "imported_findings", errors)
+    validate_generated_at(data.get("generated_at"), "imported_findings.generated_at", errors)
+    for secret_error in iter_secret_findings(data, field_path="imported_findings"):
+        errors.append(secret_error)
+
+    imported = data.get("findings") if isinstance(data.get("findings"), list) else []
+    rejected = data.get("rejected_findings") if isinstance(data.get("rejected_findings"), list) else []
+    summary = data.get("summary") if isinstance(data.get("summary"), dict) else {}
+    source = str(data.get("source") or "")
+    current_fingerprints = {str(finding.get("fingerprint") or "") for finding in findings if isinstance(finding, dict)}
+    appended_count = 0
+    duplicate_skipped_count = 0
+    seen_import_fingerprints: set[str] = set()
+    finding_schema = load_schema("findings.schema.json")["properties"]["findings"]["items"]
+
+    for index, item in enumerate(imported):
+        path = f"imported_findings.findings[{index}]"
+        if not isinstance(item, dict):
+            errors.append(f"{path}: imported finding must be an object")
+            continue
+        append_status = str(item.get("append_status") or "")
+        if append_status not in IMPORTED_FINDING_APPEND_STATUSES:
+            errors.append(f"{path}.append_status: invalid append status {append_status}")
+        if item.get("source") != source:
+            errors.append(f"{path}.source: must match imported_findings.source")
+        fingerprint = str(item.get("fingerprint") or "")
+        if not re.fullmatch(r"[a-f0-9]{24}", fingerprint):
+            errors.append(f"{path}.fingerprint: must be 24 lowercase hex characters")
+        if fingerprint in seen_import_fingerprints and append_status != "duplicate-skipped":
+            errors.append(f"{path}.append_status: duplicate import fingerprints must be duplicate-skipped")
+        seen_import_fingerprints.add(fingerprint)
+        if append_status == "appended":
+            appended_count += 1
+            if fingerprint not in current_fingerprints:
+                errors.append(f"{path}.append_status: appended finding fingerprint is not present in reports/findings.json")
+        elif append_status == "duplicate-skipped":
+            duplicate_skipped_count += 1
+
+        validate_affected_locations({"affected_locations": item.get("affected_locations")}, path, errors)
+        normalized = item.get("normalized_finding")
+        if not isinstance(normalized, dict):
+            errors.append(f"{path}.normalized_finding: must be an object")
+            continue
+        validate_schema(normalized, finding_schema, f"{path}.normalized_finding", errors)
+        validate_affected_locations(normalized, f"{path}.normalized_finding", errors)
+        validate_finding_assessments(normalized, f"{path}.normalized_finding", errors)
+        external_source = normalized.get("external_source") if isinstance(normalized.get("external_source"), dict) else {}
+        if external_source.get("source") != source:
+            errors.append(f"{path}.normalized_finding.external_source.source: must match imported_findings.source")
+        if external_source.get("external_id") != item.get("external_id"):
+            errors.append(f"{path}.normalized_finding.external_source.external_id: must match imported finding external_id")
+        if normalized.get("fingerprint") != fingerprint:
+            errors.append(f"{path}.normalized_finding.fingerprint: must match imported finding fingerprint")
+        if normalized.get("issue_recommended") is not False:
+            errors.append(f"{path}.normalized_finding.issue_recommended: imported findings must require review before publication")
+        if normalized.get("issue_body_file"):
+            errors.append(f"{path}.normalized_finding.issue_body_file: imported findings must not pre-bind issue body files")
+
+    for index, item in enumerate(rejected):
+        path = f"imported_findings.rejected_findings[{index}]"
+        if not isinstance(item, dict):
+            errors.append(f"{path}: rejected finding must be an object")
+            continue
+        reasons = item.get("reasons")
+        if not isinstance(reasons, list) or not reasons or any(not isinstance(reason, str) or not reason for reason in reasons):
+            errors.append(f"{path}.reasons: must contain at least one non-empty reason")
+
+    if summary:
+        expected_counts = {
+            "valid_count": len(imported),
+            "rejected_count": len(rejected),
+            "appended_count": appended_count,
+            "duplicate_skipped_count": duplicate_skipped_count,
+        }
+        for key, expected in expected_counts.items():
+            if summary.get(key) != expected:
+                errors.append(f"imported_findings.summary.{key}: expected {expected}, got {summary.get(key)}")
+        input_count = summary.get("input_count")
+        if isinstance(input_count, int) and input_count != len(imported) + len(rejected):
+            errors.append(
+                "imported_findings.summary.input_count: "
+                f"expected {len(imported) + len(rejected)}, got {input_count}"
+            )
+    return True
+
+
 def validate_issue_ledger(run_dir: Path, errors: List[str]) -> bool:
     ledger_path = run_dir / ISSUE_LEDGER_PATH
     if not ledger_path.exists():
@@ -2215,6 +2318,7 @@ def main() -> int:
     traces_validated = validate_traces(run_dir, findings, errors)
     metrics_validated = validate_metrics(run_dir, errors)
     evidence_graph_validated = validate_evidence_graph(run_dir, errors)
+    imported_findings_validated = validate_imported_findings(run_dir, findings, errors)
     issue_ledger_validated = validate_issue_ledger(run_dir, errors)
     duplicate_decisions_validated = validate_duplicate_decisions(run_dir, errors)
     run_state_validated = validate_run_state(run_dir, errors)
@@ -2253,6 +2357,8 @@ def main() -> int:
         print("Metrics: validated")
     if evidence_graph_validated:
         print("Evidence graph: validated")
+    if imported_findings_validated:
+        print("Imported findings: validated")
     if issue_ledger_validated:
         print("Issue ledger: validated")
     if duplicate_decisions_validated:

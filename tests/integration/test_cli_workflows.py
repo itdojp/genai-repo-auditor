@@ -884,11 +884,13 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn({"name": "patch-validation.schema.json", "path": "patch-validation.schema.json"}, manifest["schemas"])
         self.assertIn({"name": "novelty.schema.json", "path": "novelty.schema.json"}, manifest["schemas"])
         self.assertIn({"name": "evidence-graph.schema.json", "path": "evidence-graph.schema.json"}, manifest["schemas"])
+        self.assertIn({"name": "imported-findings.schema.json", "path": "imported-findings.schema.json"}, manifest["schemas"])
         self.assertTrue((run_dir / "command-event.schema.json").exists())
         self.assertTrue((run_dir / "remediation-candidates.schema.json").exists())
         self.assertTrue((run_dir / "patch-validation.schema.json").exists())
         self.assertTrue((run_dir / "novelty.schema.json").exists())
         self.assertTrue((run_dir / "evidence-graph.schema.json").exists())
+        self.assertTrue((run_dir / "imported-findings.schema.json").exists())
         self.assertNotIn("run-manifest.json", self.manifest_artifact_paths(run_dir))
         self.assertIn("prompts/exec/full-audit.prompt.md", self.manifest_artifact_paths(run_dir))
         artifacts_by_path = self.manifest_artifacts_by_path(run_dir)
@@ -6010,6 +6012,146 @@ class CliWorkflowTests(unittest.TestCase):
         sarif_lead = by_tool["codeql"]["leads"][0]
         self.assertEqual(sarif_lead["path"], "src/main.py")
         self.assertEqual(sarif_lead["line"], 12)
+
+    def test_gra_import_findings_review_only_retains_rejected_and_redacts(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        original_findings = json.loads((run_dir / "reports" / "findings.json").read_text(encoding="utf-8"))
+        secret = "ghp_1234567890abcdefghijklmnop"
+        external_file = self.work_dir / "external-findings.json"
+        external_file.write_text(
+            json.dumps(
+                {
+                    "source": "managed-ai-review",
+                    "source_version": "2026.06",
+                    "findings": [
+                        {
+                            "external_id": "EXT-001",
+                            "title": f"Imported candidate containing {secret}",
+                            "severity": "High",
+                            "confidence": "Medium",
+                            "status": "Potential",
+                            "category": "sql-injection",
+                            "affected_locations": [{"file": "app.py", "line": 2}],
+                            "evidence": f"User input reaches SQL with token {secret}",
+                            "minimal_remediation": "Use parameterized queries.",
+                        },
+                        {
+                            "external_id": "EXT-BAD",
+                            "title": "Invalid path candidate",
+                            "severity": "Critical",
+                            "confidence": "High",
+                            "status": "Potential",
+                            "category": "path-traversal",
+                            "affected_locations": [{"file": "../secret.py", "line": 1}],
+                            "evidence": "invalid path must be rejected",
+                            "minimal_remediation": "Fix the path.",
+                        },
+                    ],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        cp_import = self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-import-findings", "--run", run_dir, "--file", external_file],
+            check=True,
+        )
+        self.assertIn("Review-only mode", cp_import.stdout)
+        report_path = run_dir / "reports" / "imported-findings.json"
+        self.assertTrue(report_path.exists())
+        self.assertTrue((run_dir / "reports" / "IMPORTED_FINDINGS.md").exists())
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            {
+                "input_count": 2,
+                "valid_count": 1,
+                "rejected_count": 1,
+                "appended_count": 0,
+                "duplicate_skipped_count": 0,
+            },
+            report["summary"],
+        )
+        self.assertEqual("review-only", report["findings"][0]["append_status"])
+        self.assertEqual("EXT-BAD", report["rejected_findings"][0]["external_id"])
+        self.assertIn("affected_locations[0].file", "; ".join(report["rejected_findings"][0]["reasons"]))
+        self.assertNotIn(secret, json.dumps(report))
+        self.assertEqual(
+            original_findings["findings"],
+            json.loads((run_dir / "reports" / "findings.json").read_text(encoding="utf-8"))["findings"],
+        )
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Imported findings: validated", cp_validate.stdout)
+        self.run_cmd([REPO_ROOT / "bin" / "gra-dashboard", "--run", run_dir], check=True)
+        dashboard = (run_dir / "reports" / "dashboard.html").read_text(encoding="utf-8")
+        self.assertIn("External finding imports", dashboard)
+
+    def test_gra_import_findings_append_mode_dedupes_and_keeps_publication_review_gated(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        external_file = self.work_dir / "external-append-findings.json"
+        payload = {
+            "source": "internal-review",
+            "source_version": "1.2.3",
+            "findings": [
+                {
+                    "external_id": "IR-001",
+                    "title": "Imported SSRF candidate",
+                    "severity": "Critical",
+                    "confidence": "Medium",
+                    "status": "Potential",
+                    "category": "ssrf",
+                    "affected_locations": [{"file": "app.py", "line": 3}],
+                    "evidence": "URL parameter reaches an outbound request helper.",
+                    "minimal_remediation": "Allowlist outbound destinations and validate schemes.",
+                }
+            ],
+        }
+        external_file.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+        cp_first = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-import-findings",
+                "--run",
+                run_dir,
+                "--file",
+                external_file,
+                "--append-findings",
+            ],
+            check=True,
+        )
+        self.assertIn("appended=1", cp_first.stdout)
+        findings = json.loads((run_dir / "reports" / "findings.json").read_text(encoding="utf-8"))["findings"]
+        self.assertEqual(2, len(findings))
+        imported = findings[-1]
+        self.assertTrue(str(imported["id"]).startswith("IMP-"))
+        self.assertFalse(imported["issue_recommended"])
+        self.assertEqual("internal-review", imported["external_source"]["source"])
+        self.assertEqual("IR-001", imported["external_source"]["external_id"])
+
+        cp_second = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-import-findings",
+                "--run",
+                run_dir,
+                "--file",
+                external_file,
+                "--append-findings",
+            ],
+            check=True,
+        )
+        self.assertIn("duplicate_skipped=1", cp_second.stdout)
+        deduped_findings = json.loads((run_dir / "reports" / "findings.json").read_text(encoding="utf-8"))["findings"]
+        self.assertEqual(2, len(deduped_findings))
+        report = json.loads((run_dir / "reports" / "imported-findings.json").read_text(encoding="utf-8"))
+        self.assertEqual("duplicate-skipped", report["findings"][0]["append_status"])
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Imported findings: validated", cp_validate.stdout)
+        cp_plan = self.run_cmd([REPO_ROOT / "bin" / "gra-issues", "--run", run_dir, "--plan"], check=True)
+        self.assertIn("Wrote issue publication plan:", cp_plan.stdout)
+        plan = json.loads((run_dir / "reports" / "issue-publication-plan.json").read_text(encoding="utf-8"))
+        self.assertEqual(["SEC-001"], [item["id"] for item in plan["selected_findings"]])
 
     def test_gra_batch_runs_multiple_repositories_with_mock_commands(self) -> None:
         repo_list = self.work_dir / "repos.txt"
