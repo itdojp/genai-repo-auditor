@@ -142,6 +142,9 @@ counts. Commit only after a human reviewer approves the exact public-safe text.
 | Issue dry-run would-create Issue count | `N` |
 | Issue dry-run warnings | `N` |
 
+`gra-issues --dry-run` never publishes GitHub Issues. The would-create value is
+a preview count used for operator review and disclosure gating.
+
 ## Publication and routing rules
 
 - Keep raw scanner outputs, normalized leads, dependency posture, Scorecard

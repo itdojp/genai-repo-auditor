@@ -222,6 +222,8 @@ class DogfoodTemplateTests(unittest.TestCase):
             "gra-targets --run \"$RUN\" --generate",
             "Metrics/evidence graph update",
             "Issue dry-run would-create Issue count",
+            "never publishes GitHub Issues",
+            "separate explicit approval",
         ]
         missing_scanner = [term for term in required_scanner_terms if term not in scanner_evidence]
         self.assertEqual([], missing_scanner)
