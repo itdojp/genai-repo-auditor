@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import contextlib
 import shutil
 import subprocess
 import sys
@@ -23,10 +24,8 @@ class NoveltyLedgerTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         shutil.rmtree(self.work_dir, ignore_errors=True)
-        try:
+        with contextlib.suppress(OSError):
             self.tmp_parent.rmdir()
-        except OSError:
-            pass
 
     def copy_run(self, name: str) -> Path:
         run_dir = self.work_dir / name
