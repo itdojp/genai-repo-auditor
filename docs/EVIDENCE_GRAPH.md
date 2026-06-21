@@ -103,6 +103,7 @@ gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high --votes 3 --policy human-review-on-split
 gra-issues --run runs/OWNER__REPO/RUN_ID --plan --require-advanced-validation
 gra-metrics --run runs/OWNER__REPO/RUN_ID
+gra-benchmark --run runs/OWNER__REPO/RUN_ID
 gra-evidence-graph --run runs/OWNER__REPO/RUN_ID
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 gra-dashboard --run runs/OWNER__REPO/RUN_ID

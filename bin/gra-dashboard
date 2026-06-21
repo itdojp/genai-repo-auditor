@@ -50,6 +50,8 @@ def main() -> int:
     dependency_vulnerabilities = [v for v in dependencies_data.get('vulnerabilities') or [] if isinstance(v, dict)]
     metrics_data = load_json(reports / 'metrics.json', {}) or {}
     metrics_present = isinstance(metrics_data, dict) and bool(metrics_data)
+    benchmark_data = load_json(reports / 'benchmark.json', {}) or {}
+    benchmark_present = isinstance(benchmark_data, dict) and bool(benchmark_data)
     evidence_graph_data = load_json(reports / 'evidence-graph.json', {}) or {}
     evidence_graph_present = isinstance(evidence_graph_data, dict) and bool(evidence_graph_data)
     gapfill_data = load_json(reports / 'gapfill-targets.json', {}) or {}
@@ -409,6 +411,47 @@ def main() -> int:
             "to generate local-only counts for advanced workflow artifacts.</p>"
         )
 
+    benchmark_section = (
+        "<h2>Dogfood benchmark</h2>"
+        "<p>No benchmark report found. Run <code>gra-benchmark --run RUN_DIR</code> "
+        "to score local v0.4 workflow quality gates.</p>"
+    )
+    if benchmark_present:
+        benchmark_summary = benchmark_data.get('summary') if isinstance(benchmark_data.get('summary'), dict) else {}
+        benchmark_metrics = benchmark_data.get('metrics') if isinstance(benchmark_data.get('metrics'), dict) else {}
+        benchmark_metric_summary = benchmark_metrics.get('summary') if isinstance(benchmark_metrics.get('summary'), dict) else {}
+        benchmark_cards = [
+            ('Overall status', benchmark_summary.get('overall_status', '')),
+            ('Passed gates', benchmark_summary.get('passed', 0)),
+            ('Warnings', benchmark_summary.get('warnings', 0)),
+            ('Failed gates', benchmark_summary.get('failed', 0)),
+            ('Metric source', benchmark_metrics.get('source', '')),
+            ('Chains', benchmark_metric_summary.get('chain_count', 0)),
+            ('Issue plan warnings', benchmark_metric_summary.get('issue_plan_warning_count', 0)),
+        ]
+        gate_rows = []
+        for item in benchmark_data.get('quality_gates') or []:
+            if isinstance(item, dict):
+                gate_rows.append(
+                    "<tr>"
+                    f"<td>{h(item.get('title'))}</td>"
+                    f"<td>{h(item.get('status'))}</td>"
+                    f"<td>{h(item.get('value'))}</td>"
+                    f"<td>{h(item.get('threshold'))}</td>"
+                    "</tr>"
+                )
+        gate_body = ''.join(gate_rows) or '<tr><td colspan="4">No benchmark gates recorded.</td></tr>'
+        benchmark_section = (
+            "<h2>Dogfood benchmark</h2>"
+            "<p>Local-only v0.4 quality gates. "
+            "<a href='benchmark.json'>benchmark.json</a> / <a href='BENCHMARK.md'>BENCHMARK.md</a></p>"
+            "<div class='cards'>"
+            + ''.join(f"<div class='card'><strong>{h(label)}</strong><br>{h(value)}</div>" for label, value in benchmark_cards)
+            + "</div>"
+            "<table><thead><tr><th>Gate</th><th>Status</th><th>Value</th><th>Threshold</th></tr></thead>"
+            f"<tbody>{gate_body}</tbody></table>"
+        )
+
     evidence_graph_section = (
         "<h2>Evidence graph</h2>"
         "<p>No evidence graph found. Run <code>gra-evidence-graph --run RUN_DIR</code> "
@@ -476,6 +519,7 @@ def main() -> int:
 <li>Run directory: <code>{h(run_dir)}</code></li>
 </ul>
 {metrics_section}
+{benchmark_section}
 {evidence_graph_section}
 <h2>Findings by severity</h2><div class='cards'>{counts_table(sev_counts, SEVERITIES)}</div>
 <h2>Findings by status</h2><div class='cards'>{counts_table(status_counts, STATUSES)}</div>

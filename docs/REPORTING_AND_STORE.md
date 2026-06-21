@@ -1,4 +1,4 @@
-# Reporting, Metrics, SARIF, Dashboard, and SQLite Store
+# Reporting, Metrics, Benchmarks, SARIF, Dashboard, and SQLite Store
 
 Validate reports:
 
@@ -23,11 +23,12 @@ prompts, transcripts, target research, variant analysis, scanner-result trees,
 and similar logs discoverable with digests even when they are not active
 validation targets.
 
-Generate local novelty classification, metrics, evidence graph, and dashboard:
+Generate local novelty classification, metrics, dogfood benchmark gates, evidence graph, and dashboard:
 
 ```bash
 gra-novelty --run runs/OWNER__REPO/RUN_ID
 gra-metrics --run runs/OWNER__REPO/RUN_ID
+gra-benchmark --run runs/OWNER__REPO/RUN_ID
 gra-evidence-graph --run runs/OWNER__REPO/RUN_ID
 gra-dashboard --run runs/OWNER__REPO/RUN_ID
 open runs/OWNER__REPO/RUN_ID/reports/dashboard.html
@@ -40,6 +41,8 @@ manifest hygiene warning counts, and run duration when local metadata is
 available. It intentionally omits raw finding evidence, issue body text, proof
 evidence, trace evidence, scanner lead bodies, and secret values.
 
+The benchmark report scores local v0.4 quality gates from `metrics.json` when present and falls back to in-memory bounded counts when metrics are absent. It records validation status, obvious-secret scan count, adversarial downgrade/invalidate rate, chain bounds, unsafe proof rejection count, Issue plan warnings, and publication-safety status without copying raw evidence.
+
 The evidence graph links findings to supporting and challenging local artifacts
 such as targets, chains, proofs, validation, traces, remediation candidates,
 patch validation, Issue plans, and metrics. It records bounded metadata and
@@ -47,7 +50,7 @@ run-relative artifact references only; it does not copy raw evidence,
 remediation text, proof payloads, Issue bodies, or secrets.
 
 The dashboard summarizes findings, target status, taxonomy mappings, known-finding
-novelty status when `reports/known-findings.json` exists, evidence graph
+novelty status when `reports/known-findings.json` exists, dogfood benchmark gate status when `reports/benchmark.json` exists, evidence graph
 coverage when `reports/evidence-graph.json` exists, advanced workflow metrics
 when `reports/metrics.json` exists, imported external finding status when
 `reports/imported-findings.json` exists, artifact retention status,

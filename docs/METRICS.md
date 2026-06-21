@@ -17,6 +17,7 @@ Issue ledger creation:
 
 ```bash
 gra-metrics --run runs/OWNER__REPO/RUN_ID
+gra-benchmark --run runs/OWNER__REPO/RUN_ID
 gra-dashboard --run runs/OWNER__REPO/RUN_ID
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
@@ -111,6 +112,17 @@ table so operators can distinguish latest status artifacts from archive logs.
 Run `gra-validate-report --run RUN_DIR` for the stricter manifest hygiene gate,
 including path containment, file size, SHA-256 digest, and retention summary
 count checks.
+
+## Benchmarking with metrics
+
+`gra-benchmark` consumes `reports/metrics.json` when present and uses in-memory fallback counts when it is absent. Use the benchmark after metrics generation for release or dogfood comparisons:
+
+```bash
+gra-metrics --run runs/OWNER__REPO/RUN_ID
+gra-benchmark --run runs/OWNER__REPO/RUN_ID
+```
+
+The benchmark records quality gates such as report validation status, adversarial downgrade/invalidate rate, chain count bounds, unsafe proof rejection count, Issue plan warnings, and publication-safety status without copying raw evidence.
 
 ## Safety boundary
 

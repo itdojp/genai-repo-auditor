@@ -195,6 +195,7 @@ gra-proofs --run "$RUN_DIR" --all-critical-high
 # gra-trace --producer-run "$RUN_DIR" --finding SEC-001 --consumer-run "$GRA_HOME/runs/OWNER__consumer/RUN_ID" --mode exec
 gra-adversarial-validate --run "$RUN_DIR" --all-critical-high --votes 3 --policy human-review-on-split
 gra-validate-report --run "$RUN_DIR"
+gra-benchmark --run "$RUN_DIR"
 gra-dashboard --run "$RUN_DIR"
 gra-sarif --run "$RUN_DIR"
 gra-store --run "$RUN_DIR"
@@ -202,7 +203,7 @@ gra-store --run "$RUN_DIR"
 
 Review `reports/FINDINGS.md`, `reports/findings.json`, `reports/COVERAGE.md`,
 `reports/gapfill-targets.json`, `reports/ATTACK_CHAINS.md`,
-`reports/PROOFS.md`, `reports/TRACE.md`, `reports/VALIDATION.md`, and `reports/issue-drafts/` before
+`reports/PROOFS.md`, `reports/TRACE.md`, `reports/VALIDATION.md`, `reports/BENCHMARK.md`, and `reports/issue-drafts/` before
 taking action. Treat AI output as analysis that requires human verification.
 
 ## Optional GitHub Issue workflow

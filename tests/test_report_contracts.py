@@ -18,6 +18,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 VALIDATOR_PATH = REPO_ROOT / "bin" / "gra-validate-report"
 SCHEMAS = REPO_ROOT / "templates" / "reports"
+sys.path.insert(0, str(REPO_ROOT / "lib"))
+from benchmark import validate_benchmark_payload as validate_benchmark_payload_internal  # noqa: E402
 
 
 def load_validator() -> types.ModuleType:
@@ -171,6 +173,7 @@ class ReportContractTests(unittest.TestCase):
         novelty_schema = self.load_json(SCHEMAS / "novelty.schema.json")
         traces_schema = self.load_json(SCHEMAS / "traces.schema.json")
         metrics_schema = self.load_json(SCHEMAS / "metrics.schema.json")
+        benchmark_schema = self.load_json(SCHEMAS / "benchmark.schema.json")
         evidence_graph_schema = self.load_json(SCHEMAS / "evidence-graph.schema.json")
         imported_findings_schema = self.load_json(SCHEMAS / "imported-findings.schema.json")
         issue_ledger_schema = self.load_json(SCHEMAS / "issue-ledger.schema.json")
@@ -518,6 +521,41 @@ class ReportContractTests(unittest.TestCase):
             set(gapfill_schema["properties"]["cumulative"]["required"]),
         )
         self.assertEqual(
+            {
+                "schema_version",
+                "run_id",
+                "repo",
+                "generated_at",
+                "source",
+                "safety",
+                "fixture",
+                "metrics",
+                "quality_gates",
+                "summary",
+                "follow_up_actions",
+            },
+            set(benchmark_schema["required"]),
+        )
+        self.assertEqual(["local-benchmark"], benchmark_schema["properties"]["source"]["enum"])
+        benchmark_safety = benchmark_schema["properties"]["safety"]["properties"]
+        for field in [
+            "local_artifacts_only",
+            "network_accessed",
+            "issue_apply_performed",
+            "raw_evidence_copied",
+            "secrets_copied",
+            "bounded_summaries_only",
+        ]:
+            self.assertEqual("boolean", benchmark_safety[field]["type"])
+        benchmark_gate = benchmark_schema["properties"]["quality_gates"]["items"]
+        self.assertEqual(
+            {"id", "title", "status", "value", "threshold", "details", "artifact_paths"},
+            set(benchmark_gate["required"]),
+        )
+        self.assertEqual(["pass", "warn", "fail"], benchmark_gate["properties"]["status"]["enum"])
+        self.assertEqual(["passed", "needs-review", "failed"], benchmark_schema["properties"]["summary"]["properties"]["overall_status"]["enum"])
+        self.assertEqual(["metrics.json", "computed-fallback"], benchmark_schema["properties"]["metrics"]["properties"]["source"]["enum"])
+        self.assertEqual(
             {"schema_version", "run_id", "repo", "generated_at", "source", "safety", "summary", "nodes", "edges"},
             set(evidence_graph_schema["required"]),
         )
@@ -863,6 +901,86 @@ class ReportContractTests(unittest.TestCase):
         self.assertNotEqual(cp.returncode, 0)
         self.assertIn("metrics.safety.secrets_copied: must be false", cp.stderr)
         self.assertIn("metrics.evidence: metrics must not copy raw evidence or issue body content", cp.stderr)
+
+    def test_benchmark_validates_gate_summary_and_safety(self) -> None:
+        run_dir = self.copy_run()
+        benchmark = {
+            "schema_version": "1",
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "branch": "main",
+            "commit": "0000000000000000000000000000000000000000",
+            "generated_at": "2026-06-21T00:00:00Z",
+            "source": "local-benchmark",
+            "fixture": None,
+            "safety": {
+                "local_artifacts_only": True,
+                "network_accessed": False,
+                "issue_apply_performed": False,
+                "raw_evidence_copied": False,
+                "secrets_copied": False,
+                "bounded_summaries_only": True,
+                "notes": "counts only",
+            },
+            "metrics": {
+                "artifact_present": False,
+                "source": "computed-fallback",
+                "path": "reports/metrics.json",
+                "degraded": True,
+                "notes": "metrics absent",
+                "summary": {
+                    "findings_total": 1,
+                    "issue_recommended_findings": 1,
+                    "adversarial_validation_total": 0,
+                    "adversarial_downgrade_or_invalidate_rate": 0,
+                    "chain_count": 0,
+                    "proof_count": 0,
+                    "proof_unsafe_rejection_count": 0,
+                    "issue_plan_warning_count": 0,
+                    "manifest_hygiene_warnings": 0,
+                },
+            },
+            "quality_gates": [
+                {
+                    "id": "report-validation",
+                    "title": "Report validation passes",
+                    "status": "pass",
+                    "value": 0,
+                    "threshold": 0,
+                    "details": "validated",
+                    "artifact_paths": [],
+                }
+            ],
+            "summary": {"overall_status": "passed", "gate_count": 1, "passed": 1, "warnings": 0, "failed": 0},
+            "follow_up_actions": ["No follow-up."],
+        }
+        self.write_json(run_dir / "reports" / "benchmark.json", benchmark)
+        self.assertEqual([], validate_benchmark_payload_internal(benchmark))
+        cp = self.run_validator(run_dir)
+        self.assertEqual(cp.returncode, 0, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
+        self.assertIn("Benchmark: validated", cp.stdout)
+
+        bad_internal = dict(benchmark)
+        bad_internal.pop("fixture")
+        bad_internal["Issue-Body"] = "raw issue body must never be copied"
+        internal_errors = validate_benchmark_payload_internal(bad_internal)
+        self.assertIn("benchmark.fixture: missing required field", internal_errors)
+        self.assertTrue(
+            any("benchmark.Issue-Body: benchmark must not copy raw evidence" in error for error in internal_errors),
+            internal_errors,
+        )
+
+        bad = dict(benchmark)
+        bad["safety"] = dict(benchmark["safety"], issue_apply_performed=True)
+        bad["summary"] = {"overall_status": "passed", "gate_count": 1, "passed": 0, "warnings": 0, "failed": 1}
+        bad["evidence"] = "raw evidence must never be copied"
+        self.write_json(run_dir / "reports" / "benchmark.json", bad)
+        cp_bad = self.run_validator(run_dir)
+        self.assertNotEqual(cp_bad.returncode, 0)
+        self.assertIn("benchmark.safety.issue_apply_performed: must be false", cp_bad.stderr)
+        self.assertIn("benchmark.summary.passed: value does not match passing gate count", cp_bad.stderr)
+        self.assertIn("benchmark.summary.failed: value does not match failed gate count", cp_bad.stderr)
+        self.assertIn("benchmark.evidence: benchmark must not copy raw evidence", cp_bad.stderr)
 
     def test_evidence_graph_validates_shape_safety_and_local_refs(self) -> None:
         run_dir = self.copy_run()
