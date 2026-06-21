@@ -106,10 +106,10 @@ def codeowners_pattern_matches(pattern: str, rel_path: str) -> bool:
 
 
 def codeowners_owner_hint(repo_dir: Path, rel_path: str) -> str:
-    owner_hint = ''
     for candidate in codeowners_candidates(repo_dir):
         if not candidate.exists() or not candidate.is_file():
             continue
+        owner_hint = ''
         for raw_line in candidate.read_text(encoding='utf-8', errors='replace').splitlines():
             line = raw_line.split('#', 1)[0].strip()
             if not line:
@@ -121,7 +121,8 @@ def codeowners_owner_hint(repo_dir: Path, rel_path: str) -> str:
             owners = [part for part in parts[1:] if part.startswith('@')]
             if owners and codeowners_pattern_matches(pattern, rel_path):
                 owner_hint = ' '.join(owners)
-    return owner_hint
+        return owner_hint
+    return ''
 
 
 def owner_route_for_subject(run_dir: Path, subject: dict[str, Any]) -> dict[str, str]:

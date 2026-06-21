@@ -2134,6 +2134,7 @@ class CliWorkflowTests(unittest.TestCase):
         repo = run_dir / "repo"
         (repo / ".github").mkdir(parents=True)
         (repo / ".github" / "CODEOWNERS").write_text("/auth/ @team/appsec\n", encoding="utf-8")
+        (repo / "CODEOWNERS").write_text("/auth/ @team/wrong-root\n", encoding="utf-8")
         (repo / "auth").mkdir()
         (repo / "auth" / "login.py").write_text("def login():\n    pass\n", encoding="utf-8")
         findings_path = run_dir / "reports" / "findings.json"
