@@ -225,9 +225,9 @@ class EvidenceGraphBuilder:
         else:
             self.missing_optional_artifacts.append(rel_to_run(self.run_dir, metrics_path))
         remediation_root = self.reports / "remediation"
-        remediation_root = ensure_under_run(remediation_root, self.run_dir, "remediation directory")
-        if remediation_root.exists():
-            for path in self.iter_patch_validation_files(remediation_root):
+        safe_remediation_root = ensure_under_run(remediation_root, self.run_dir, "remediation directory")
+        if safe_remediation_root.exists():
+            for path in self.iter_patch_validation_files(safe_remediation_root):
                 data = load_json(path, {}) or {}
                 if isinstance(data, dict):
                     data = dict(data)
