@@ -194,6 +194,9 @@ fi
 if [[ -f "$LAB_ROOT/templates/reports/traces.schema.json" ]]; then
   cp "$LAB_ROOT/templates/reports/traces.schema.json" "$RUN_DIR/traces.schema.json"
 fi
+if [[ -f "$LAB_ROOT/templates/reports/evidence-graph.schema.json" ]]; then
+  cp "$LAB_ROOT/templates/reports/evidence-graph.schema.json" "$RUN_DIR/evidence-graph.schema.json"
+fi
 if [[ -f "$LAB_ROOT/templates/reports/issue-ledger.schema.json" ]]; then
   cp "$LAB_ROOT/templates/reports/issue-ledger.schema.json" "$RUN_DIR/issue-ledger.schema.json"
 fi

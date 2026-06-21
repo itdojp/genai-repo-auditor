@@ -171,6 +171,7 @@ class ReportContractTests(unittest.TestCase):
         novelty_schema = self.load_json(SCHEMAS / "novelty.schema.json")
         traces_schema = self.load_json(SCHEMAS / "traces.schema.json")
         metrics_schema = self.load_json(SCHEMAS / "metrics.schema.json")
+        evidence_graph_schema = self.load_json(SCHEMAS / "evidence-graph.schema.json")
         issue_ledger_schema = self.load_json(SCHEMAS / "issue-ledger.schema.json")
         duplicate_decision_schema = self.load_json(SCHEMAS / "duplicate-decision.schema.json")
         run_state_schema = self.load_json(SCHEMAS / "run-state.schema.json")
@@ -511,6 +512,46 @@ class ReportContractTests(unittest.TestCase):
             set(gapfill_schema["properties"]["cumulative"]["required"]),
         )
         self.assertEqual(
+            {"schema_version", "run_id", "repo", "generated_at", "source", "safety", "summary", "nodes", "edges"},
+            set(evidence_graph_schema["required"]),
+        )
+        self.assertEqual(["local-report-artifacts"], evidence_graph_schema["properties"]["source"]["enum"])
+        evidence_safety = evidence_graph_schema["properties"]["safety"]["properties"]
+        self.assertEqual(True, evidence_safety["local_artifacts_only"]["const"])
+        self.assertEqual(False, evidence_safety["raw_evidence_copied"]["const"])
+        self.assertEqual(False, evidence_safety["secret_values_copied"]["const"])
+        self.assertEqual(True, evidence_safety["bounded_summaries_only"]["const"])
+        self.assertEqual(
+            [
+                "target",
+                "scanner_lead",
+                "finding",
+                "chain",
+                "proof",
+                "validation",
+                "trace",
+                "remediation_candidate",
+                "patch_validation",
+                "issue_plan_entry",
+                "metric",
+            ],
+            evidence_graph_schema["properties"]["nodes"]["items"]["properties"]["type"]["enum"],
+        )
+        self.assertEqual(
+            [
+                "produced",
+                "supports",
+                "challenges",
+                "invalidates",
+                "depends_on",
+                "member_of",
+                "validated_by",
+                "publication_candidate",
+                "not_applicable",
+            ],
+            evidence_graph_schema["properties"]["edges"]["items"]["properties"]["type"]["enum"],
+        )
+        self.assertEqual(
             {
                 "schema_version",
                 "run_id",
@@ -776,6 +817,82 @@ class ReportContractTests(unittest.TestCase):
         self.assertNotEqual(cp.returncode, 0)
         self.assertIn("metrics.safety.secrets_copied: must be false", cp.stderr)
         self.assertIn("metrics.evidence: metrics must not copy raw evidence or issue body content", cp.stderr)
+
+    def test_evidence_graph_validates_shape_safety_and_local_refs(self) -> None:
+        run_dir = self.copy_run()
+        graph = {
+            "schema_version": "1",
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "commit": "0000000000000000000000000000000000000000",
+            "generated_at": "2026-05-28T00:00:00Z",
+            "source": "local-report-artifacts",
+            "safety": {
+                "local_artifacts_only": True,
+                "raw_evidence_copied": False,
+                "secret_values_copied": False,
+                "bounded_summaries_only": True,
+            },
+            "summary": {
+                "node_count": 2,
+                "edge_count": 1,
+                "node_counts": {"finding": 1, "target": 1},
+                "edge_counts": {"supports": 1},
+                "missing_optional_artifacts": [],
+                "high_critical_issue_recommended_findings": 1,
+                "high_critical_with_supporting_evidence": 1,
+                "high_critical_with_challenging_evidence": 0,
+            },
+            "nodes": [
+                {
+                    "id": "finding:SEC-001",
+                    "type": "finding",
+                    "ref_id": "SEC-001",
+                    "label": "Fixture command injection finding",
+                    "severity": "High",
+                    "status": "Confirmed",
+                    "path": "reports/findings.json#/findings/0",
+                    "summary": "Fixture command injection finding",
+                },
+                {
+                    "id": "target:TGT-001",
+                    "type": "target",
+                    "ref_id": "TGT-001",
+                    "label": "Fixture target",
+                    "severity": "high",
+                    "status": "reviewed",
+                    "path": "reports/targets.json#/targets/0",
+                    "summary": "Fixture target",
+                },
+            ],
+            "edges": [
+                {
+                    "source": "target:TGT-001",
+                    "target": "finding:SEC-001",
+                    "type": "supports",
+                    "reason": "target overlaps finding",
+                    "path": "",
+                }
+            ],
+        }
+        self.write_json(run_dir / "reports" / "evidence-graph.json", graph)
+        cp = self.run_validator(run_dir)
+        self.assertEqual(cp.returncode, 0, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
+        self.assertIn("Evidence graph: validated", cp.stdout)
+
+        graph["safety"]["secret_values_copied"] = True
+        graph["summary"]["node_count"] = 99
+        graph["nodes"][0]["path"] = "../findings.json"
+        graph["nodes"][0]["evidence"] = "raw evidence must never be copied into the graph"
+        graph["edges"][0]["target"] = "finding:SEC-999"
+        self.write_json(run_dir / "reports" / "evidence-graph.json", graph)
+        cp_bad = self.run_validator(run_dir)
+        self.assertNotEqual(cp_bad.returncode, 0)
+        self.assertIn("evidence_graph.safety.secret_values_copied: must be false", cp_bad.stderr)
+        self.assertIn("evidence_graph.nodes[0].evidence: evidence graph must not copy raw evidence", cp_bad.stderr)
+        self.assertIn("evidence_graph.nodes[0].path: artifact path must not contain '..'", cp_bad.stderr)
+        self.assertIn("evidence_graph.edges[0].target: unknown node id 'finding:SEC-999'", cp_bad.stderr)
+        self.assertIn("evidence_graph.summary.node_count: value does not match nodes length", cp_bad.stderr)
 
     def test_scanner_index_rejects_unsafe_artifact_paths(self) -> None:
         run_dir = self.copy_run()

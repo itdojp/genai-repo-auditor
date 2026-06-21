@@ -883,10 +883,12 @@ class CliWorkflowTests(unittest.TestCase):
         )
         self.assertIn({"name": "patch-validation.schema.json", "path": "patch-validation.schema.json"}, manifest["schemas"])
         self.assertIn({"name": "novelty.schema.json", "path": "novelty.schema.json"}, manifest["schemas"])
+        self.assertIn({"name": "evidence-graph.schema.json", "path": "evidence-graph.schema.json"}, manifest["schemas"])
         self.assertTrue((run_dir / "command-event.schema.json").exists())
         self.assertTrue((run_dir / "remediation-candidates.schema.json").exists())
         self.assertTrue((run_dir / "patch-validation.schema.json").exists())
         self.assertTrue((run_dir / "novelty.schema.json").exists())
+        self.assertTrue((run_dir / "evidence-graph.schema.json").exists())
         self.assertNotIn("run-manifest.json", self.manifest_artifact_paths(run_dir))
         self.assertIn("prompts/exec/full-audit.prompt.md", self.manifest_artifact_paths(run_dir))
         artifacts_by_path = self.manifest_artifacts_by_path(run_dir)
@@ -3307,6 +3309,205 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("Artifact retention", dashboard)
         self.assertIn("Latest status artifacts", dashboard)
         self.assertIn("Archive artifacts", dashboard)
+
+    def test_gra_evidence_graph_links_advanced_artifacts_without_raw_payloads(self) -> None:
+        run_dir = self.copy_fixture_run("advanced-workflow-run")
+        self.copy_advanced_workflow_outputs(run_dir)
+        findings_path = run_dir / "reports" / "findings.json"
+        findings = json.loads(findings_path.read_text(encoding="utf-8"))
+        findings["findings"][0]["evidence"] = "SHOULD_NOT_COPY_EVIDENCE_GRAPH_FINDING"
+        findings_path.write_text(json.dumps(findings, indent=2) + "\n", encoding="utf-8")
+
+        traces = {
+            "run_id": "advanced-workflow-run",
+            "repo": "example/advanced-workflow",
+            "branch": "main",
+            "commit": "1111111111111111111111111111111111111111",
+            "generated_at": "2026-05-28T00:00:00Z",
+            "traces": [
+                {
+                    "id": "TRACE-101",
+                    "finding_id": "SEC-101",
+                    "producer_repo": "example/advanced-workflow",
+                    "consumer_repo": "example/consumer-api",
+                    "entry_points": ["repo/routes/upload.py"],
+                    "sink": "src.report.render_report",
+                    "attacker_control": "Probable",
+                    "reachable": "Potential",
+                    "evidence": "SHOULD_NOT_COPY_EVIDENCE_GRAPH_TRACE",
+                    "limitations": ["static fixture only"],
+                    "status": "Needs human review",
+                }
+            ],
+        }
+        (run_dir / "reports" / "traces.json").write_text(json.dumps(traces, indent=2) + "\n", encoding="utf-8")
+
+        remediation_root = run_dir / "reports" / "remediation"
+        patch_root = remediation_root / "SEC-101"
+        patch_root.mkdir(parents=True, exist_ok=True)
+        (patch_root / "patch.diff").write_text(
+            "diff --git a/repo/src/handler.py b/repo/src/handler.py\n"
+            "--- a/repo/src/handler.py\n"
+            "+++ b/repo/src/handler.py\n"
+            "@@ -1,1 +1,1 @@\n"
+            "-old\n"
+            "+new\n",
+            encoding="utf-8",
+        )
+        (patch_root / "notes.md").write_text("Local draft notes only.\n", encoding="utf-8")
+        (patch_root / "subject.json").write_text(json.dumps({"finding_id": "SEC-101"}) + "\n", encoding="utf-8")
+        remediation_candidates = {
+            "schema_version": "1",
+            "run_id": "advanced-workflow-run",
+            "repo": "example/advanced-workflow",
+            "branch": "main",
+            "commit": "1111111111111111111111111111111111111111",
+            "generated_at": "2026-05-28T00:00:01Z",
+            "candidates": [
+                {
+                    "id": "PATCH-101",
+                    "finding_id": "SEC-101",
+                    "status": "draft",
+                    "safe_by_design": True,
+                    "patch_file": "reports/remediation/SEC-101/patch.diff",
+                    "notes_file": "reports/remediation/SEC-101/notes.md",
+                    "subject_file": "reports/remediation/SEC-101/subject.json",
+                    "summary": "SHOULD_NOT_COPY_EVIDENCE_GRAPH_REMEDIATION_TEXT",
+                    "files_touched": ["repo/src/handler.py"],
+                    "expected_validation": ["python parser check"],
+                    "limitations": ["fixture only"],
+                    "requires_human_review": True,
+                }
+            ],
+        }
+        (remediation_root / "remediation-candidates.json").write_text(
+            json.dumps(remediation_candidates, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        patch_validation = {
+            "schema_version": "1",
+            "run_id": "advanced-workflow-run",
+            "repo": "example/advanced-workflow",
+            "branch": "main",
+            "commit": "1111111111111111111111111111111111111111",
+            "generated_at": "2026-05-28T00:00:02Z",
+            "patch_id": "PATCH-101",
+            "finding_id": "SEC-101",
+            "sandbox_profile": "local-test",
+            "network_allowed": False,
+            "patch_file": "reports/remediation/SEC-101/patch.diff",
+            "candidate_file": "reports/remediation/remediation-candidates.json",
+            "validation_workspace": {"path": "reports/remediation/SEC-101/.validation-workspace", "disposed": True},
+            "patch_applied": False,
+            "build_status": "not-run",
+            "test_status": "not-run",
+            "safe_proof_replay_status": "not-run",
+            "adversarial_review_status": "needs-human-review",
+            "diff_scope_status": "needs-human-review",
+            "final_status": "needs-human-review",
+            "checks": [],
+            "commands_run": [],
+            "limitations": ["no local commands configured"],
+        }
+        (patch_root / "patch-validation.json").write_text(
+            json.dumps(patch_validation, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        cp_plan = self.run_cmd([REPO_ROOT / "bin" / "gra-issues", "--run", run_dir, "--plan"], check=True)
+        self.assertIn("Wrote issue publication plan:", cp_plan.stdout)
+        self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+
+        cp_graph = self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", run_dir], check=True)
+        self.assertIn("Evidence graph JSON:", cp_graph.stdout)
+        self.assertIn("Nodes:", cp_graph.stdout)
+        graph_text = (run_dir / "reports" / "evidence-graph.json").read_text(encoding="utf-8")
+        graph_md = (run_dir / "reports" / "EVIDENCE_GRAPH.md").read_text(encoding="utf-8")
+        for forbidden in [
+            "SHOULD_NOT_COPY_EVIDENCE_GRAPH_FINDING",
+            "SHOULD_NOT_COPY_EVIDENCE_GRAPH_TRACE",
+            "SHOULD_NOT_COPY_EVIDENCE_GRAPH_REMEDIATION_TEXT",
+        ]:
+            self.assertNotIn(forbidden, graph_text)
+            self.assertNotIn(forbidden, graph_md)
+
+        graph = json.loads(graph_text)
+        node_types = {node["type"] for node in graph["nodes"]}
+        self.assertTrue(
+            {
+                "finding",
+                "target",
+                "scanner_lead",
+                "chain",
+                "proof",
+                "validation",
+                "trace",
+                "remediation_candidate",
+                "patch_validation",
+                "issue_plan_entry",
+                "metric",
+            }.issubset(node_types),
+            node_types,
+        )
+        edge_types = {edge["type"] for edge in graph["edges"]}
+        self.assertTrue({"supports", "challenges", "validated_by", "depends_on", "publication_candidate"}.issubset(edge_types), edge_types)
+        self.assertEqual(2, graph["summary"]["high_critical_issue_recommended_findings"])
+        self.assertEqual(2, graph["summary"]["high_critical_with_supporting_evidence"])
+        self.assertEqual(2, graph["summary"]["high_critical_with_challenging_evidence"])
+        self.assertEqual([], graph["summary"]["missing_optional_artifacts"])
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Evidence graph: validated", cp_validate.stdout)
+        self.assertIn("Patch validations: validated", cp_validate.stdout)
+
+        cp_dashboard = self.run_cmd([REPO_ROOT / "bin" / "gra-dashboard", "--run", run_dir], check=True)
+        self.assertIn("dashboard.html", cp_dashboard.stdout)
+        dashboard = (run_dir / "reports" / "dashboard.html").read_text(encoding="utf-8")
+        self.assertIn("Evidence graph", dashboard)
+        self.assertIn("evidence-graph.json", dashboard)
+        self.assertIn("EVIDENCE_GRAPH.md", dashboard)
+        self.assertIn("With supporting evidence", dashboard)
+
+    def test_gra_evidence_graph_rejects_reports_dir_path_traversal(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        ctx_path = run_dir / "context.json"
+        ctx = json.loads(ctx_path.read_text(encoding="utf-8"))
+        ctx["reports_dir"] = "../outside-reports"
+        ctx_path.write_text(json.dumps(ctx, indent=2) + "\n", encoding="utf-8")
+
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", run_dir])
+
+        self.assertEqual(2, cp.returncode)
+        self.assertIn("reports_dir must not contain path traversal", cp.stderr)
+        self.assertFalse((self.work_dir / "outside-reports").exists())
+
+    def test_gra_evidence_graph_skips_symlinked_patch_validation_dirs(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        remediation_root = run_dir / "reports" / "remediation"
+        remediation_root.mkdir(parents=True, exist_ok=True)
+        external_dir = self.work_dir / "external-remediation"
+        external_dir.mkdir()
+        (external_dir / "patch-validation.json").write_text(
+            json.dumps(
+                {
+                    "patch_id": "PATCH-EXTERNAL",
+                    "final_status": "needs-human-review",
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (remediation_root / "external-ref").symlink_to(external_dir, target_is_directory=True)
+
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", run_dir], check=True)
+
+        self.assertIn("Evidence graph JSON:", cp.stdout)
+        graph_text = (run_dir / "reports" / "evidence-graph.json").read_text(encoding="utf-8")
+        graph = json.loads(graph_text)
+        self.assertNotIn("PATCH-EXTERNAL", graph_text)
+        self.assertNotIn(str(external_dir), graph_text)
+        self.assertFalse(any(node["type"] == "patch_validation" for node in graph["nodes"]))
 
     def test_gra_metrics_handles_missing_optional_artifacts(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

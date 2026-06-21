@@ -373,6 +373,7 @@ Scanner results are leads. They are not automatically treated as findings.
 gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID --fix
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 gra-metrics --run runs/OWNER__REPO/RUN_ID
+gra-evidence-graph --run runs/OWNER__REPO/RUN_ID
 gra-dashboard --run runs/OWNER__REPO/RUN_ID
 gra-sarif --run runs/OWNER__REPO/RUN_ID
 gra-store --run runs/OWNER__REPO/RUN_ID
@@ -383,6 +384,8 @@ Outputs:
 ```text
 reports/metrics.json
 reports/METRICS.md
+reports/evidence-graph.json
+reports/EVIDENCE_GRAPH.md
 reports/dashboard.html
 reports/findings.sarif
 runs/security-audit.sqlite
@@ -391,9 +394,9 @@ runs/security-audit.sqlite
 `run-manifest.json` at the run root records the canonical latest-status
 handoff artifacts, supporting files, and archive reproducibility artifacts with
 run-relative paths and file digests. `gra-validate-report` enforces manifest
-hygiene when the manifest is present. `gra-metrics` and `gra-dashboard` surface
-latest/archive retention counts and manifest hygiene warnings without copying
-artifact contents.
+hygiene when the manifest is present. `gra-metrics`, `gra-evidence-graph`, and
+`gra-dashboard` surface latest/archive retention counts, graph evidence links,
+and manifest hygiene warnings without copying artifact contents.
 
 ## Offline staged regression fixture
 

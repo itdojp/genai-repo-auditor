@@ -50,6 +50,8 @@ def main() -> int:
     dependency_vulnerabilities = [v for v in dependencies_data.get('vulnerabilities') or [] if isinstance(v, dict)]
     metrics_data = load_json(reports / 'metrics.json', {}) or {}
     metrics_present = isinstance(metrics_data, dict) and bool(metrics_data)
+    evidence_graph_data = load_json(reports / 'evidence-graph.json', {}) or {}
+    evidence_graph_present = isinstance(evidence_graph_data, dict) and bool(evidence_graph_data)
     gapfill_data = load_json(reports / 'gapfill-targets.json', {}) or {}
     gapfill_present = isinstance(gapfill_data, dict) and bool(gapfill_data)
     remediation_data = load_json(reports / 'remediation' / 'remediation-candidates.json', {}) or {}
@@ -347,6 +349,47 @@ def main() -> int:
             "to generate local-only counts for advanced workflow artifacts.</p>"
         )
 
+    evidence_graph_section = (
+        "<h2>Evidence graph</h2>"
+        "<p>No evidence graph found. Run <code>gra-evidence-graph --run RUN_DIR</code> "
+        "to link findings, targets, scanner leads, chains, proofs, validation, remediation, issue plans, and metrics.</p>"
+    )
+    if evidence_graph_present:
+        graph_summary = evidence_graph_data.get('summary') if isinstance(evidence_graph_data.get('summary'), dict) else {}
+        graph_cards = [
+            ('Nodes', graph_summary.get('node_count', 0)),
+            ('Edges', graph_summary.get('edge_count', 0)),
+            ('High/Critical issue findings', graph_summary.get('high_critical_issue_recommended_findings', 0)),
+            ('With supporting evidence', graph_summary.get('high_critical_with_supporting_evidence', 0)),
+            ('With challenging evidence', graph_summary.get('high_critical_with_challenging_evidence', 0)),
+        ]
+        def graph_count_rows(values) -> str:
+            if not isinstance(values, dict):
+                return ""
+            rows = []
+            for key, value in sorted(values.items()):
+                rows.append(f"<tr><td>{h(key)}</td><td>{h(value)}</td></tr>")
+            return ''.join(rows)
+
+        node_count_rows = graph_count_rows(graph_summary.get('node_counts'))
+        edge_count_rows = graph_count_rows(graph_summary.get('edge_counts'))
+        node_count_body = node_count_rows or '<tr><td colspan="2">No nodes.</td></tr>'
+        edge_count_body = edge_count_rows or '<tr><td colspan="2">No edges.</td></tr>'
+        evidence_graph_section = (
+            "<h2>Evidence graph</h2>"
+            "<p>Local-only artifact graph with bounded summaries only. "
+            "<a href='evidence-graph.json'>evidence-graph.json</a> / <a href='EVIDENCE_GRAPH.md'>EVIDENCE_GRAPH.md</a></p>"
+            "<div class='cards'>"
+            + ''.join(f"<div class='card'><strong>{h(label)}</strong><br>{h(value)}</div>" for label, value in graph_cards)
+            + "</div>"
+            "<h3>Nodes by type</h3>"
+            "<table><thead><tr><th>Type</th><th>Count</th></tr></thead>"
+            f"<tbody>{node_count_body}</tbody></table>"
+            "<h3>Edges by type</h3>"
+            "<table><thead><tr><th>Type</th><th>Count</th></tr></thead>"
+            f"<tbody>{edge_count_body}</tbody></table>"
+        )
+
     css = """
     body { font-family: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; margin: 32px; }
     table { border-collapse: collapse; width: 100%; margin: 16px 0 32px; }
@@ -373,6 +416,7 @@ def main() -> int:
 <li>Run directory: <code>{h(run_dir)}</code></li>
 </ul>
 {metrics_section}
+{evidence_graph_section}
 <h2>Findings by severity</h2><div class='cards'>{counts_table(sev_counts, SEVERITIES)}</div>
 <h2>Findings by status</h2><div class='cards'>{counts_table(status_counts, STATUSES)}</div>
 <h2>Finding assessment dimensions</h2>
