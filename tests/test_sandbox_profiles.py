@@ -50,6 +50,31 @@ class SandboxProfileTests(unittest.TestCase):
         with suppress(OSError):
             self.tmp_parent.rmdir()
 
+    def init_clean_git_repo(self) -> None:
+        subprocess.run(["git", "init"], cwd=self.repo_dir, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    def path_with_git_only(self) -> str:
+        git = shutil.which("git")
+        if not git:
+            self.skipTest("git executable is required for sandbox profile tests")
+        bin_dir = self.work_dir / "git-only-bin"
+        bin_dir.mkdir()
+        try:
+            (bin_dir / "git").symlink_to(git)
+        except OSError:
+            shutil.copy2(git, bin_dir / "git")
+        return str(bin_dir)
+
+    def write_context(self, **overrides: object) -> None:
+        data = json.loads((self.run_dir / "context.json").read_text(encoding="utf-8"))
+        data.update(overrides)
+        (self.run_dir / "context.json").write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    def check_by_id(self, report: dict[str, object], check_id: str) -> dict[str, object]:
+        checks = report["checks"]
+        self.assertIsInstance(checks, list)
+        return next(check for check in checks if isinstance(check, dict) and check["id"] == check_id)
+
     def test_source_only_succeeds_without_container_runtime(self) -> None:
         report = evaluate_sandbox_readiness(
             run_dir=self.run_dir,
@@ -66,6 +91,7 @@ class SandboxProfileTests(unittest.TestCase):
         self.assertEqual("info", container_check["status"])
 
     def test_container_profile_fails_closed_when_runtime_missing(self) -> None:
+        self.init_clean_git_repo()
         report = evaluate_sandbox_readiness(
             run_dir=self.run_dir,
             profile_id="container",
@@ -89,14 +115,85 @@ class SandboxProfileTests(unittest.TestCase):
             )
 
     def test_write_readiness_report_outputs_json_and_markdown(self) -> None:
+        self.init_clean_git_repo()
         report = evaluate_sandbox_readiness(run_dir=self.run_dir, profile_id="local-test", path_env=str(self.work_dir / "empty-bin"), env={})
         out_json, out_md = write_readiness_report(self.run_dir, report)
 
+        self.assertEqual("ready", report["status"])
         self.assertEqual(self.reports_dir / "sandbox-readiness.json", out_json)
         self.assertEqual(self.reports_dir / "SANDBOX_READINESS.md", out_md)
         loaded = json.loads(out_json.read_text(encoding="utf-8"))
         self.assertEqual("local-test", loaded["profile"]["id"])
+        self.assertEqual(".", loaded["run_dir"])
+        self.assertNotIn(str(self.run_dir), json.dumps(loaded))
         self.assertIn("# Sandbox Readiness", out_md.read_text(encoding="utf-8"))
+
+    def test_absolute_repo_dir_under_run_dir_is_allowed_for_generated_contexts(self) -> None:
+        self.write_context(repo_dir=str(self.repo_dir))
+
+        report = evaluate_sandbox_readiness(
+            run_dir=self.run_dir,
+            profile_id="source-only",
+            path_env=str(self.work_dir / "empty-bin"),
+            env={},
+        )
+
+        self.assertEqual("ready", report["status"])
+        workspace_check = self.check_by_id(report, "workspace-cleanliness")
+        self.assertEqual("repo", workspace_check["details"]["repo_dir"])
+
+    def test_repo_dir_must_stay_under_run_dir(self) -> None:
+        outside = self.work_dir / "outside-repo"
+        outside.mkdir()
+        for override in ({"repo_dir": "../outside-repo"}, {"repo_dir": str(outside)}):
+            with self.subTest(override=override):
+                self.write_context(**override)
+                with self.assertRaisesRegex(SandboxProfileError, "repo_dir"):
+                    evaluate_sandbox_readiness(
+                        run_dir=self.run_dir,
+                        profile_id="source-only",
+                        path_env=str(self.work_dir / "empty-bin"),
+                        env={},
+                    )
+
+    def test_missing_run_dir_is_error(self) -> None:
+        with self.assertRaisesRegex(SandboxProfileError, "run directory does not exist"):
+            evaluate_sandbox_readiness(
+                run_dir=self.work_dir / "missing-run",
+                profile_id="source-only",
+                path_env=str(self.work_dir / "empty-bin"),
+                env={},
+            )
+
+    def test_executable_profile_fails_when_repo_state_cannot_be_verified(self) -> None:
+        report = evaluate_sandbox_readiness(
+            run_dir=self.run_dir,
+            profile_id="local-test",
+            path_env=str(self.work_dir / "empty-bin"),
+            env={},
+        )
+
+        self.assertEqual("blocked", report["status"])
+        workspace_check = self.check_by_id(report, "workspace-cleanliness")
+        self.assertEqual("fail", workspace_check["status"])
+        self.assertEqual("required", workspace_check["severity"])
+        self.assertIn("not a Git worktree", str(workspace_check["message"]))
+
+    def test_executable_profile_blocks_visible_credentials_without_secret_values(self) -> None:
+        self.init_clean_git_repo()
+
+        report = evaluate_sandbox_readiness(
+            run_dir=self.run_dir,
+            profile_id="local-test",
+            path_env=str(self.work_dir / "empty-bin"),
+            env={"GH_TOKEN": "ghp_secret-value-that-must-not-appear"},
+        )
+
+        self.assertEqual("blocked", report["status"])
+        credential_check = self.check_by_id(report, "credential-exposure")
+        self.assertEqual("fail", credential_check["status"])
+        self.assertEqual(["GH_TOKEN"], credential_check["details"]["credential_environment_names"])
+        self.assertNotIn("ghp_secret-value-that-must-not-appear", json.dumps(report))
 
     def test_gra_sandbox_check_source_only_cli_writes_reports(self) -> None:
         cp = subprocess.run(
@@ -116,6 +213,7 @@ class SandboxProfileTests(unittest.TestCase):
         self.assertTrue((self.reports_dir / "SANDBOX_READINESS.md").exists())
 
     def test_gra_sandbox_check_container_missing_returns_one_and_writes_report(self) -> None:
+        self.init_clean_git_repo()
         cp = subprocess.run(
             [
                 sys.executable,
@@ -128,7 +226,7 @@ class SandboxProfileTests(unittest.TestCase):
                 "--json",
             ],
             cwd=REPO_ROOT,
-            env={"PATH": str(self.work_dir / "empty-bin"), "PYTHONUNBUFFERED": "1"},
+            env={"PATH": self.path_with_git_only(), "PYTHONUNBUFFERED": "1"},
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

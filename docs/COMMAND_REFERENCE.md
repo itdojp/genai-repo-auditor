@@ -80,8 +80,13 @@ Examples:
 ```bash
 gra-sandbox-check --run runs/OWNER__REPO/RUN_ID --profile source-only
 gra-sandbox-check --run runs/OWNER__REPO/RUN_ID --profile local-test --json
-gra-sandbox-check --run runs/OWNER__REPO/RUN_ID --profile container --executable-workflow
+gra-sandbox-check --run runs/OWNER__REPO/RUN_ID --profile container
 ```
+
+Profiles other than `source-only` are executable profiles and fail closed by
+default when required readiness checks are unavailable. Use
+`--executable-workflow` only when a higher-level command needs to explicitly
+assert that target-code execution is being requested.
 
 ## `gra-audit`
 

@@ -41,8 +41,14 @@ gra-sandbox-check --run runs/OWNER__REPO/RUN_ID --profile local-test
 Check a future container profile and fail closed when Docker/Podman is unavailable:
 
 ```bash
-gra-sandbox-check --run runs/OWNER__REPO/RUN_ID --profile container --executable-workflow
+gra-sandbox-check --run runs/OWNER__REPO/RUN_ID --profile container
 ```
+
+Profiles other than `source-only` are executable profiles, so they fail closed
+by default when required readiness checks are unavailable. Use
+`--executable-workflow` when a higher-level command wants to explicitly assert
+that target-code execution is being requested; using it with `source-only`
+intentionally fails.
 
 The command writes:
 

@@ -114,15 +114,33 @@ def reports_dir(run_dir: Path) -> Path:
     return run_dir / reports
 
 
+def contained_run_path(run_dir: Path, value: str, field: str) -> Path:
+    raw = Path(value)
+    if ".." in raw.parts:
+        raise SandboxProfileError(f"unsafe {field} in context.json: {value}")
+    candidate = raw if raw.is_absolute() else run_dir / raw
+    run_resolved = run_dir.resolve(strict=False)
+    candidate_resolved = candidate.resolve(strict=False)
+    try:
+        candidate_resolved.relative_to(run_resolved)
+    except ValueError as exc:
+        raise SandboxProfileError(f"{field} must stay under run directory: {value}") from exc
+    return candidate
+
+
 def target_repo_dir(run_dir: Path) -> Path:
     ctx = load_context(run_dir)
     if ctx.get("repo_dir"):
-        path = Path(str(ctx["repo_dir"]))
-        if not path.is_absolute() and not path.exists():
-            path = run_dir / path
-        return path
-    else:
-        return run_dir / str(ctx.get("target_repo_dir") or "repo")
+        return contained_run_path(run_dir, str(ctx["repo_dir"]), "repo_dir")
+    return contained_run_path(run_dir, str(ctx.get("target_repo_dir") or "repo"), "target_repo_dir")
+
+
+def display_run_path(run_dir: Path, path: Path) -> str:
+    try:
+        relative = path.resolve(strict=False).relative_to(run_dir.resolve(strict=False))
+    except ValueError:
+        return path.name
+    return "." if str(relative) == "." else relative.as_posix()
 
 
 def profile_by_id(profile_id: str) -> SandboxProfile:
@@ -219,18 +237,18 @@ def evaluate_sandbox_readiness(
     env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     run_dir = Path(run_dir)
+    if not run_dir.exists() or not run_dir.is_dir():
+        raise SandboxProfileError(f"run directory does not exist: {run_dir}")
     if network_policy not in NETWORK_POLICIES:
         raise SandboxProfileError(f"network_policy must be one of: {', '.join(NETWORK_POLICIES)}")
     profile = profile_by_id(profile_id)
     executable_requested = profile.executes_target_code if executable_workflow is None else executable_workflow
     checks: list[dict[str, Any]] = []
 
-    if run_dir.exists() and run_dir.is_dir():
-        checks.append(check_record("run-directory", "pass", "required", "run directory exists", {"path": str(run_dir)}))
-    else:
-        checks.append(check_record("run-directory", "fail", "required", "run directory does not exist", {"path": str(run_dir)}))
+    checks.append(check_record("run-directory", "pass", "required", "run directory exists", {"path": "."}))
 
     repo_dir = target_repo_dir(run_dir)
+    repo_display = display_run_path(run_dir, repo_dir)
     repo_status = git_clean_status(repo_dir)
     if profile.id == "source-only":
         checks.append(
@@ -239,11 +257,11 @@ def evaluate_sandbox_readiness(
                 "info" if repo_status["clean"] is None else ("pass" if repo_status["clean"] else "warn"),
                 "advisory",
                 "workspace cleanliness recorded for source-only workflow",
-                {"repo_dir": str(repo_dir), **repo_status},
+                {"repo_dir": repo_display, **repo_status},
             )
         )
     elif repo_status["clean"] is True:
-        checks.append(check_record("workspace-cleanliness", "pass", "required", "target repository worktree is clean", {"repo_dir": str(repo_dir)}))
+        checks.append(check_record("workspace-cleanliness", "pass", "required", "target repository worktree is clean", {"repo_dir": repo_display}))
     elif repo_status["clean"] is False:
         checks.append(
             check_record(
@@ -251,11 +269,19 @@ def evaluate_sandbox_readiness(
                 "warn" if profile.id == "local-test" else "fail",
                 "required",
                 "target repository has local changes; freeze or copy to a disposable workspace before executable validation",
-                {"repo_dir": str(repo_dir), "changed_paths": repo_status["changed_paths"]},
+                {"repo_dir": repo_display, "changed_paths": repo_status["changed_paths"]},
             )
         )
     else:
-        checks.append(check_record("workspace-cleanliness", "warn", "advisory", repo_status["message"], {"repo_dir": str(repo_dir)}))
+        checks.append(
+            check_record(
+                "workspace-cleanliness",
+                "fail" if profile.executes_target_code else "warn",
+                "required" if profile.executes_target_code else "advisory",
+                repo_status["message"],
+                {"repo_dir": repo_display},
+            )
+        )
 
     checks.append(
         check_record(
@@ -314,7 +340,7 @@ def evaluate_sandbox_readiness(
 
     credential_paths = detect_credential_paths(repo_dir)
     credential_env = detect_visible_credential_env(env)
-    credential_status = "pass" if not credential_paths and not credential_env else ("warn" if profile.id in {"source-only", "local-test"} else "fail")
+    credential_status = "pass" if not credential_paths and not credential_env else ("fail" if profile.executes_target_code else "warn")
     checks.append(
         check_record(
             "credential-exposure",
@@ -364,7 +390,7 @@ def evaluate_sandbox_readiness(
         "generated_at": utc_now(),
         "run_id": ctx.get("run_id", run_dir.name),
         "repo": ctx.get("repo", ""),
-        "run_dir": str(run_dir),
+        "run_dir": ".",
         "profile": {
             "id": profile.id,
             "display_name": profile.display_name,
