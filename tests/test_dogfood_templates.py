@@ -140,6 +140,44 @@ class DogfoodTemplateTests(unittest.TestCase):
         self.assertEqual([], leaked)
 
 
+
+    def test_public_self_dogfood_case_study_is_public_safe(self) -> None:
+        case_study = (REPO_ROOT / "docs" / "dogfood" / "PUBLIC_SELF_DOGFOOD_CASE_STUDY.md").read_text(encoding="utf-8")
+        required_terms = [
+            "Public self-dogfood case study",
+            "Architecture / workflow diagram",
+            "Why self-dogfood was run",
+            "Workflow stages exercised",
+            "Sanitized metrics categories",
+            "What validation and issue planning prevented",
+            "Product improvements identified",
+            "local-first",
+            "vendor-neutral",
+            "AI agent harness",
+            "Evidence validation",
+            "Controlled GitHub Issue publication",
+            "No Issues were created",
+            "Benchmark gates passed",
+            "Agent-surface review leads",
+            "review leads, not confirmed vulnerabilities",
+        ]
+        missing = [term for term in required_terms if term not in case_study]
+        self.assertEqual([], missing)
+        forbidden = [
+            "ATTACK_CHAINS.md",
+            "PROOFS.md",
+            "TRACE.md",
+            "raw scanner output",
+            "remediation patch details",
+            "exact exploitability steps",
+            "-----BEGIN",
+            "ghp_",
+            "xoxb-",
+        ]
+        case_study_lower = case_study.lower()
+        leaked = [term for term in forbidden if term.lower() in case_study_lower]
+        self.assertEqual([], leaked)
+
     def test_internal_effectiveness_report_template_is_structured_and_sanitized(self) -> None:
         template = (REPO_ROOT / "docs" / "dogfood" / "INTERNAL_EFFECTIVENESS_REPORT_TEMPLATE.md").read_text(encoding="utf-8")
         required_terms = [

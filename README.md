@@ -75,6 +75,7 @@ For a fresh local install and first `OWNER/REPO` audit, see:
 - [`docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md`](docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md) (Japanese)
 - [`docs/LOCAL_ARTIFACT_CLEANUP.md`](docs/LOCAL_ARTIFACT_CLEANUP.md) for local retention and cleanup guidance
 - [`docs/DOGFOOD_CAMPAIGN.md`](docs/DOGFOOD_CAMPAIGN.md), [`docs/DOGFOOD_RUNBOOK.md`](docs/DOGFOOD_RUNBOOK.md), and [`docs/DOGFOOD_REPORTING.md`](docs/DOGFOOD_REPORTING.md) for controlled dogfood campaign planning and public-safe reporting
+- [`docs/dogfood/PUBLIC_SELF_DOGFOOD_CASE_STUDY.md`](docs/dogfood/PUBLIC_SELF_DOGFOOD_CASE_STUDY.md) for a public-safe self-dogfood example
 
 ## Quick start: full audit
 
