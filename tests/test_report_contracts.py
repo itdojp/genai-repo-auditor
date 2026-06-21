@@ -18,6 +18,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 VALIDATOR_PATH = REPO_ROOT / "bin" / "gra-validate-report"
 SCHEMAS = REPO_ROOT / "templates" / "reports"
+sys.path.insert(0, str(REPO_ROOT / "lib"))
+from benchmark import validate_benchmark_payload as validate_benchmark_payload_internal  # noqa: E402
 
 
 def load_validator() -> types.ModuleType:
@@ -953,9 +955,20 @@ class ReportContractTests(unittest.TestCase):
             "follow_up_actions": ["No follow-up."],
         }
         self.write_json(run_dir / "reports" / "benchmark.json", benchmark)
+        self.assertEqual([], validate_benchmark_payload_internal(benchmark))
         cp = self.run_validator(run_dir)
         self.assertEqual(cp.returncode, 0, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
         self.assertIn("Benchmark: validated", cp.stdout)
+
+        bad_internal = dict(benchmark)
+        bad_internal.pop("fixture")
+        bad_internal["Issue-Body"] = "raw issue body must never be copied"
+        internal_errors = validate_benchmark_payload_internal(bad_internal)
+        self.assertIn("benchmark.fixture: missing required field", internal_errors)
+        self.assertTrue(
+            any("benchmark.Issue-Body: benchmark must not copy raw evidence" in error for error in internal_errors),
+            internal_errors,
+        )
 
         bad = dict(benchmark)
         bad["safety"] = dict(benchmark["safety"], issue_apply_performed=True)

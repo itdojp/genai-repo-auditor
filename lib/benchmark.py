@@ -160,6 +160,19 @@ def run_validation(lab_root: Path, run_dir: Path) -> dict[str, Any]:
     }
 
 
+def count_pattern_findings(value: Any, *, field_path: str = "$") -> int:
+    return sum(1 for _finding in iter_secret_findings(value, field_path=field_path))
+
+
+def count_text_pattern_findings(text: str) -> int:
+    count = 0
+    for index, line in enumerate(text.splitlines(), start=1):
+        if not line.strip():
+            continue
+        count += count_pattern_findings(line, field_path=f"$[{index}]")
+    return count
+
+
 def summarize_pattern_matches(run_dir: Path, reports: Path) -> dict[str, Any]:
     """Return bounded counts and paths for obvious disclosure patterns.
 
@@ -190,9 +203,9 @@ def summarize_pattern_matches(run_dir: Path, reports: Path) -> dict[str, Any]:
         try:
             if path.suffix.lower() == ".json":
                 value = json.loads(text)
-                findings = list(iter_secret_findings(value, field_path="$"))
+                finding_count = count_pattern_findings(value, field_path="$")
             elif path.suffix.lower() in {".jsonl", ".ndjson"}:
-                findings = []
+                finding_count = 0
                 for index, line in enumerate(text.splitlines(), start=1):
                     if not line.strip():
                         continue
@@ -200,13 +213,13 @@ def summarize_pattern_matches(run_dir: Path, reports: Path) -> dict[str, Any]:
                         value = json.loads(line)
                     except json.JSONDecodeError:
                         value = line
-                    findings.extend(iter_secret_findings(value, field_path=f"$[{index}]"))
+                    finding_count += count_pattern_findings(value, field_path=f"$[{index}]")
             else:
-                findings = list(iter_secret_findings(text, field_path="$"))
+                finding_count = count_text_pattern_findings(text)
         except ValueError:
-            findings = list(iter_secret_findings(text, field_path="$"))
-        if findings:
-            match_count += len(findings)
+            finding_count = count_text_pattern_findings(text)
+        if finding_count:
+            match_count += finding_count
             if len(matched_paths) < MAX_PATTERN_MATCH_PATHS:
                 matched_paths.append(rel)
     return {
@@ -332,7 +345,8 @@ def validate_benchmark_payload(value: Any) -> list[str]:
     def walk(item: Any, path: str) -> None:
         if isinstance(item, dict):
             for key, child in item.items():
-                if str(key) in BENCHMARK_FORBIDDEN_KEYS:
+                normalized_key = str(key).strip().lower().replace("-", "_")
+                if normalized_key in BENCHMARK_FORBIDDEN_KEYS:
                     errors.append(f"{path}.{key}: benchmark must not copy raw evidence, issue body, or secret-bearing fields")
                 walk(child, f"{path}.{key}")
         elif isinstance(item, list):
@@ -341,7 +355,7 @@ def validate_benchmark_payload(value: Any) -> list[str]:
 
     if not isinstance(value, dict):
         return ["benchmark: expected object"]
-    required = ["schema_version", "run_id", "repo", "generated_at", "source", "safety", "metrics", "summary", "quality_gates", "follow_up_actions"]
+    required = ["schema_version", "run_id", "repo", "generated_at", "source", "safety", "fixture", "metrics", "summary", "quality_gates", "follow_up_actions"]
     for key in required:
         if key not in value:
             errors.append(f"benchmark.{key}: missing required field")
@@ -382,6 +396,13 @@ def validate_benchmark_payload(value: Any) -> list[str]:
     return errors
 
 
+def context_text(ctx: dict[str, Any], key: str, default: str = "") -> str:
+    value = ctx.get(key)
+    if value is None or value == "":
+        return default
+    return str(value)
+
+
 def build_benchmark(
     *,
     lab_root: Path,
@@ -391,6 +412,10 @@ def build_benchmark(
     validate_reports: bool = True,
 ) -> dict[str, Any]:
     run_dir = run_dir.resolve()
+    if not run_dir.is_dir():
+        raise BenchmarkError(f"benchmark run directory not found: {run_dir}")
+    if not (run_dir / "context.json").is_file():
+        raise BenchmarkError(f"benchmark run context not found: {run_dir / 'context.json'}")
     ctx = load_context(run_dir)
     reports = reports_dir(run_dir)
     reports.mkdir(parents=True, exist_ok=True)
@@ -485,10 +510,10 @@ def build_benchmark(
     summary = summarize_gates(gates)
     benchmark = {
         "schema_version": "1",
-        "run_id": str(ctx.get("run_id", run_dir.name)),
-        "repo": str(ctx.get("repo", "")),
-        "branch": ctx.get("branch", ""),
-        "commit": ctx.get("commit", ""),
+        "run_id": context_text(ctx, "run_id", run_dir.name),
+        "repo": context_text(ctx, "repo"),
+        "branch": context_text(ctx, "branch"),
+        "commit": context_text(ctx, "commit"),
         "generated_at": utc_now(),
         "source": "local-benchmark",
         "fixture": {

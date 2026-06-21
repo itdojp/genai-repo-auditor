@@ -3381,10 +3381,46 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual("metrics.json", benchmark["metrics"]["source"])
         self.assertEqual(1, benchmark["metrics"]["summary"]["findings_total"])
 
+    def test_gra_benchmark_rejects_missing_context_without_creating_reports(self) -> None:
+        missing_run = self.work_dir / "missing-run"
+        cp_missing = self.run_cmd([REPO_ROOT / "bin" / "gra-benchmark", "--run", missing_run])
+        self.assertEqual(2, cp_missing.returncode)
+        self.assertIn("benchmark run directory not found", cp_missing.stderr)
+        self.assertFalse(missing_run.exists())
+
+        bad_run = self.work_dir / "bad-run"
+        bad_run.mkdir()
+        cp_bad = self.run_cmd([REPO_ROOT / "bin" / "gra-benchmark", "--run", bad_run])
+        self.assertEqual(2, cp_bad.returncode)
+        self.assertIn("benchmark run context not found", cp_bad.stderr)
+        self.assertFalse((bad_run / "reports").exists())
+
+    def test_gra_benchmark_treats_null_context_fields_as_defaults(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        context_path = run_dir / "context.json"
+        context = json.loads(context_path.read_text(encoding="utf-8"))
+        context["run_id"] = None
+        context["repo"] = None
+        context["branch"] = None
+        context["commit"] = None
+        context_path.write_text(json.dumps(context, indent=2) + "\n", encoding="utf-8")
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-benchmark", "--run", run_dir], check=True)
+        benchmark = json.loads((run_dir / "reports" / "benchmark.json").read_text(encoding="utf-8"))
+        self.assertEqual(run_dir.name, benchmark["run_id"])
+        self.assertEqual("", benchmark["repo"])
+        self.assertEqual("", benchmark["branch"])
+        self.assertEqual("", benchmark["commit"])
+        self.assertNotEqual("None", benchmark["run_id"])
+        self.assertNotEqual("None", benchmark["repo"])
+
     def test_gra_benchmark_fails_secret_gate_without_copying_secret_value(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         secret_value = "ghp_" + "A" * 24
-        (run_dir / "reports" / "generated-secret.txt").write_text(f"token={secret_value}\n", encoding="utf-8")
+        (run_dir / "reports" / "generated-secret.txt").write_text(
+            f"example=REDACTED\nreal-token={secret_value}\n",
+            encoding="utf-8",
+        )
 
         cp = self.run_cmd([REPO_ROOT / "bin" / "gra-benchmark", "--run", run_dir])
         self.assertEqual(1, cp.returncode, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
