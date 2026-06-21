@@ -39,10 +39,10 @@ class EvidenceGraphSafetyError(RuntimeError):
 
 def path_under(path: Path, base: Path) -> bool:
     try:
-        path.resolve(strict=False).relative_to(base.resolve(strict=True))
-        return True
-    except (FileNotFoundError, ValueError):
+        rel = path.relative_to(base)
+    except ValueError:
         return False
+    return ".." not in rel.parts
 
 
 def reject_symlink_components_under(path: Path, base: Path, label: str) -> None:
@@ -163,7 +163,7 @@ class EvidenceGraphBuilder:
 
     def iter_patch_validation_files(self, remediation_root: Path) -> list[Path]:
         paths: list[Path] = []
-        pending = [ensure_under_run(remediation_root, self.run_dir, "remediation directory")]
+        pending = [remediation_root]
         while pending:
             current = pending.pop()
             for entry in sorted(current.iterdir(), key=lambda item: item.name):
@@ -225,6 +225,7 @@ class EvidenceGraphBuilder:
         else:
             self.missing_optional_artifacts.append(rel_to_run(self.run_dir, metrics_path))
         remediation_root = self.reports / "remediation"
+        remediation_root = ensure_under_run(remediation_root, self.run_dir, "remediation directory")
         if remediation_root.exists():
             for path in self.iter_patch_validation_files(remediation_root):
                 data = load_json(path, {}) or {}
