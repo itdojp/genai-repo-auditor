@@ -97,7 +97,7 @@ count signals only.
 | Target queue | 44 queued targets were generated; six first-wave candidates were selected for operator consideration; one bounded target was researched in this pass. | The queue made broad AppSec scope manageable and reviewable before deep analysis. |
 | Scanner ingestion | No authorized current-run scanner artifacts were available for this pass. | The campaign recorded the absence explicitly instead of inventing scanner evidence. |
 | Adversarial validation | No Critical/High candidate was advanced to the public case study. | The stage remains a safeguard for future high-impact private review rather than a public claim. |
-| Chain synthesis | Not published and not needed for a public case-study result. | The harness can support private relationship analysis without making that analysis public. |
+| Chain synthesis | Not published and not needed for a public case study result. | The harness can support private relationship analysis without making that analysis public. |
 | Safe proof artifacts | Not published and not needed for this bounded public summary. | Proof-oriented work remains gated behind local-only and human-review controls. |
 | Metrics and benchmark | Benchmark gates passed: 7. | Quality gates gave an operator-readable signal that deterministic stages completed. |
 | Evidence graph | Graph summary: 45 nodes and 0 edges for this bounded pass. | Aggregate graph counts helped distinguish workflow coverage from disclosure content. |

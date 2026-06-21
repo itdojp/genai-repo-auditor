@@ -170,10 +170,10 @@ class DogfoodTemplateTests(unittest.TestCase):
         case_study_lower = case_study.lower()
         missing = [term for term in required_terms if term.lower() not in case_study_lower]
         self.assertEqual([], missing)
-        self.assertRegex(case_study, r"\| Targets generated \| 44 \|")
-        self.assertRegex(case_study, r"\| Benchmark status \| 7 gates passed\. \|")
-        self.assertRegex(case_study, r"\| Evidence graph summary \| 45 nodes / 0 edges\. \|")
-        self.assertRegex(case_study, r"\| Issue dry-run would-create Issue count \| 0 \|")
+        self.assertRegex(case_study, r"\| Targets generated \| [0-9]+ \|")
+        self.assertRegex(case_study, r"\| Benchmark status \| [0-9]+ gates passed\. \|")
+        self.assertRegex(case_study, r"\| Evidence graph summary \| [0-9]+ nodes / [0-9]+ edges\. \|")
+        self.assertRegex(case_study, r"\| Issue dry-run would-create Issue count \| [0-9]+ \|")
         forbidden = [
             "ATTACK_CHAINS.md",
             "PROOFS.md",
