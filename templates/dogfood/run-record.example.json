@@ -45,10 +45,19 @@
       "name": "gra-issues --dry-run",
       "status": "planned",
       "artifact_refs": [
+        "issues-created.json",
+        "reports/issue-ledger.json"
+      ],
+      "public_safe_summary": "preview and warning counts only after review"
+    },
+    {
+      "name": "gra-issues --plan",
+      "status": "planned",
+      "artifact_refs": [
         "reports/issue-publication-plan.json",
         "reports/issue-ledger.json"
       ],
-      "public_safe_summary": "warning counts only after review"
+      "public_safe_summary": "immutable plan metadata only after human review"
     }
   ],
   "review_status": "planned",

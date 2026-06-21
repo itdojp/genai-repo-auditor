@@ -47,6 +47,10 @@ gra-evidence-graph --run "$RUN"
 gra-dashboard --run "$RUN"
 gra-validate-report --run "$RUN"
 gra-issues --run "$RUN" --dry-run
+# Optional immutable approval artifact after reviewing the dry-run preview.
+gra-issues --run "$RUN" --plan --require-advanced-validation
+# Optional immutable approval artifact after reviewing the dry-run preview.
+gra-issues --run "$RUN" --plan --require-advanced-validation
 ```
 
 Review findings locally. If the run exposes product friction rather than target
@@ -84,8 +88,11 @@ gra-validate-report --run "$RUN"
 gra-issues --run "$RUN" --dry-run
 ```
 
-`gra-issues --dry-run` is an operator review tool. It is not approval to publish.
-Use [`DISCLOSURE_AND_PUBLICATION_POLICY.md`](DISCLOSURE_AND_PUBLICATION_POLICY.md)
+`gra-issues --dry-run` is an operator preview tool. It does not write
+`reports/issue-publication-plan.json`. Use `gra-issues --plan` only after
+reviewing the preview and when an immutable approval artifact is needed. Neither
+command is approval to publish. Use
+[`DISCLOSURE_AND_PUBLICATION_POLICY.md`](DISCLOSURE_AND_PUBLICATION_POLICY.md)
 before any `gra-issues --apply` workflow.
 
 ## Scanner and external evidence path
@@ -121,6 +128,32 @@ artifact references only:
     "reports/metrics.json"
   ],
   "public_safe_summary": "counts-only summary after review"
+}
+```
+
+For Issue review, keep preview and immutable plan records separate:
+
+```json
+{
+  "name": "gra-issues --dry-run",
+  "status": "passed",
+  "artifact_refs": [
+    "issues-created.json",
+    "reports/issue-ledger.json"
+  ],
+  "public_safe_summary": "preview and warning counts only after review"
+}
+```
+
+```json
+{
+  "name": "gra-issues --plan",
+  "status": "passed",
+  "artifact_refs": [
+    "reports/issue-publication-plan.json",
+    "reports/issue-ledger.json"
+  ],
+  "public_safe_summary": "immutable plan metadata only after human review"
 }
 ```
 

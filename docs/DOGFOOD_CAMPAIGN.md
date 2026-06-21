@@ -73,7 +73,8 @@ Each run record should include at least:
 - `authorized_by`: human approver or approval record reference;
 - `run_mode`: `prepare`, `exec`, `staged`, `goal`, or `not-executed`;
 - `artifact_refs`: relative paths to expected local artifacts, not embedded
-  artifact contents;
+  artifact contents. Record `reports/issue-publication-plan.json` only for
+  runs where `gra-issues --plan` was actually executed;
 - `review_status`: campaign state from the table above;
 - `publication_status`: `private`, `sanitized-public`, or `not-approved`;
 - `retention_decision`: `delete-after-review`, `retain-local`, or

@@ -20,7 +20,8 @@
         "benchmark": "reports/benchmark.json",
         "evidence_graph": "reports/evidence-graph.json",
         "dashboard": "reports/dashboard.html",
-        "issue_plan": "reports/issue-publication-plan.json"
+        "issue_ledger": "reports/issue-ledger.json",
+        "issue_publication_plan": "reports/issue-publication-plan.json"
       },
       "review_status": "planned",
       "publication_status": "private",
@@ -38,7 +39,8 @@
         "benchmark": "reports/benchmark.json",
         "evidence_graph": "reports/evidence-graph.json",
         "dashboard": "reports/dashboard.html",
-        "issue_plan": "reports/issue-publication-plan.json"
+        "issue_ledger": "reports/issue-ledger.json",
+        "issue_publication_plan": "reports/issue-publication-plan.json"
       },
       "review_status": "planned",
       "publication_status": "not-approved",

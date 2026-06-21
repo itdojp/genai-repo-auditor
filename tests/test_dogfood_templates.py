@@ -37,6 +37,15 @@ class DogfoodTemplateTests(unittest.TestCase):
         missing = [term for term in required_cautions if term not in text]
         self.assertEqual([], missing)
 
+
+    def test_dry_run_issue_record_does_not_claim_publication_plan(self) -> None:
+        record = json.loads((DOGFOOD_TEMPLATES / "run-record.example.json").read_text(encoding="utf-8"))
+        commands = {entry["name"]: entry for entry in record["commands"]}
+        dry_run_refs = set(commands["gra-issues --dry-run"]["artifact_refs"])
+        plan_refs = set(commands["gra-issues --plan"]["artifact_refs"])
+        self.assertNotIn("reports/issue-publication-plan.json", dry_run_refs)
+        self.assertIn("reports/issue-publication-plan.json", plan_refs)
+
     def test_campaign_ledger_records_publication_and_retention_status(self) -> None:
         ledger = json.loads((DOGFOOD_TEMPLATES / "campaign-ledger.example.json").read_text(encoding="utf-8"))
         self.assertIn("runs", ledger)
