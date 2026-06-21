@@ -166,7 +166,7 @@ class EvidenceGraphBuilder:
         pending = [ensure_under_run(remediation_root, self.run_dir, "remediation directory")]
         while pending:
             current = pending.pop()
-            for entry in sorted(current.iterdir(), key=lambda item: item.name, reverse=True):
+            for entry in sorted(current.iterdir(), key=lambda item: item.name):
                 if entry.is_symlink():
                     continue
                 if entry.is_dir():
