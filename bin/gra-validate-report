@@ -2232,7 +2232,7 @@ def main() -> int:
             started_at=started_at,
             started_perf=started_perf,
             exit_code=exit_code,
-            artifact_paths=[path],
+            artifact_paths=["reports/findings.json"],
         )
         return exit_code
 
