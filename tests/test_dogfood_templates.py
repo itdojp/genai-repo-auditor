@@ -38,7 +38,6 @@ class DogfoodTemplateTests(unittest.TestCase):
         missing = [term for term in required_cautions if term not in text]
         self.assertEqual([], missing)
 
-
     def test_dry_run_issue_record_does_not_claim_publication_plan(self) -> None:
         record = json.loads((DOGFOOD_TEMPLATES / "run-record.example.json").read_text(encoding="utf-8"))
         commands = {entry["name"]: entry for entry in record["commands"]}
@@ -56,7 +55,6 @@ class DogfoodTemplateTests(unittest.TestCase):
             self.assertIn(run["retention_decision"], {"delete-after-review", "retain-local", "secure-archive"})
             self.assertIn("artifact_refs", run)
             self.assertNotIn("artifact_contents", run)
-
 
     def test_self_dogfood_summary_is_public_safe(self) -> None:
         summary = (REPO_ROOT / "docs" / "dogfood" / "SELF_DOGFOOD_SUMMARY.md").read_text(encoding="utf-8")
@@ -139,6 +137,58 @@ class DogfoodTemplateTests(unittest.TestCase):
         leaked = [term for term in forbidden if term in backlog]
         self.assertEqual([], leaked)
 
+    def test_public_itdo_erp4_case_study_is_public_safe(self) -> None:
+        case_study = (REPO_ROOT / "docs" / "dogfood" / "PUBLIC_ITDO_ERP4_CASE_STUDY.md").read_text(encoding="utf-8")
+        required_terms = [
+            "Public ITDO_ERP4 AppSec dogfood case study",
+            "Why ITDO_ERP4 is a realistic AppSec target",
+            "Selected scope",
+            "Architecture / workflow diagram",
+            "Workflow stages that were useful",
+            "target queue",
+            "scanner ingestion",
+            "Adversarial validation",
+            "Chain synthesis",
+            "Safe proof artifacts",
+            "Metrics and benchmark",
+            "Evidence graph",
+            "Issue publication planning",
+            "Sanitized metrics categories",
+            "Targets generated",
+            "First-wave candidates considered",
+            "Targets deep-researched in this pass",
+            "Confirmed findings approved for public Issue publication",
+            "Issue dry-run would-create Issue count",
+            "No GitHub Issues were created from audit output",
+            "How private details stayed out of public output",
+            "Business value demonstrated",
+            "local-first",
+            "vendor-neutral AI agent harness",
+            "evidence validation",
+            "Controlled GitHub Issue publication",
+        ]
+        case_study_lower = case_study.lower()
+        missing = [term for term in required_terms if term.lower() not in case_study_lower]
+        self.assertEqual([], missing)
+        self.assertRegex(case_study, r"\| Targets generated \| 44 \|")
+        self.assertRegex(case_study, r"\| Benchmark status \| 7 gates passed\. \|")
+        self.assertRegex(case_study, r"\| Evidence graph summary \| 45 nodes / 0 edges\. \|")
+        self.assertRegex(case_study, r"\| Issue dry-run would-create Issue count \| 0 \|")
+        forbidden = [
+            "ATTACK_CHAINS.md",
+            "PROOFS.md",
+            "TRACE.md",
+            "raw scanner output",
+            "remediation diffs",
+            "exact exploitability steps",
+            "-----BEGIN",
+            "ghp_",
+            "xoxb-",
+        ]
+        leaked = [term for term in forbidden if term.lower() in case_study_lower]
+        self.assertEqual([], leaked)
+        self.assertIsNone(re.search(r"\b[0-9a-f]{40}\b", case_study))
+        self.assertIsNone(re.search(r"\b20\d{6}T\d{6}[+-]\d{4}\b", case_study))
 
     def test_public_self_dogfood_case_study_is_public_safe(self) -> None:
         case_study = (REPO_ROOT / "docs" / "dogfood" / "PUBLIC_SELF_DOGFOOD_CASE_STUDY.md").read_text(encoding="utf-8")
