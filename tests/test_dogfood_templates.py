@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -143,6 +144,7 @@ class DogfoodTemplateTests(unittest.TestCase):
             "scope": REPO_ROOT / "docs" / "dogfood" / "ITDO_ERP4_SCOPE.md",
             "targets": REPO_ROOT / "docs" / "dogfood" / "ITDO_ERP4_TARGET_SELECTION.md",
             "boundaries": REPO_ROOT / "docs" / "dogfood" / "ITDO_ERP4_REPORTING_BOUNDARIES.md",
+            "summary_template": REPO_ROOT / "docs" / "dogfood" / "ITDO_ERP4_INTERNAL_SUMMARY_TEMPLATE.md",
         }
         for path in docs.values():
             self.assertTrue(path.exists(), f"missing {path.relative_to(REPO_ROOT)}")
@@ -150,7 +152,8 @@ class DogfoodTemplateTests(unittest.TestCase):
         scope = docs["scope"].read_text(encoding="utf-8")
         targets = docs["targets"].read_text(encoding="utf-8")
         boundaries = docs["boundaries"].read_text(encoding="utf-8")
-        combined = "\n".join([scope, targets, boundaries])
+        summary_template = docs["summary_template"].read_text(encoding="utf-8")
+        combined = "\n".join([scope, targets, boundaries, summary_template])
 
         required_scope_terms = [
             "planning material only",
@@ -187,6 +190,28 @@ class DogfoodTemplateTests(unittest.TestCase):
         ]
         missing_boundaries = [term for term in required_boundary_terms if term not in boundaries]
         self.assertEqual([], missing_boundaries)
+
+        required_template_terms = [
+            "Copy this template to a local or restricted location",
+            "Findings funnel counts",
+            "Issue dry-run created Issues",
+            "Product-improvement observations",
+            "--allow-public",
+            "Do not include",
+        ]
+        missing_template = [term for term in required_template_terms if term not in summary_template]
+        self.assertEqual([], missing_template)
+        self.assertIn("runs/itdojp__ITDO_ERP4/RUN_ID", summary_template)
+
+        sensitive_refs = [
+            ".codex-local/tmp/",
+            ".log",
+            "issue-publication-plan.json",
+        ]
+        leaked_sensitive_refs = [term for term in sensitive_refs if term in summary_template]
+        self.assertEqual([], leaked_sensitive_refs)
+        self.assertIsNone(re.search(r"\b[0-9a-f]{40}\b", summary_template))
+        self.assertIsNone(re.search(r"\b20\d{6}T\d{6}[+-]\d{4}\b", summary_template))
 
         forbidden = [
             "-----BEGIN",
