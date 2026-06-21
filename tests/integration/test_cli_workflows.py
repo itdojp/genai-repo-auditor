@@ -3498,7 +3498,7 @@ class CliWorkflowTests(unittest.TestCase):
             + "\n",
             encoding="utf-8",
         )
-        os.symlink(external_dir, remediation_root / "external-ref", target_is_directory=True)
+        (remediation_root / "external-ref").symlink_to(external_dir, target_is_directory=True)
 
         cp = self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", run_dir], check=True)
 

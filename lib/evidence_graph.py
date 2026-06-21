@@ -42,7 +42,16 @@ def path_under(path: Path, base: Path) -> bool:
         rel = path.relative_to(base)
     except ValueError:
         return False
-    return ".." not in rel.parts
+    if ".." in rel.parts:
+        return False
+    existing = path
+    while existing != base and not existing.exists() and not existing.is_symlink():
+        existing = existing.parent
+    try:
+        existing.resolve(strict=True).relative_to(base.resolve(strict=True))
+        return True
+    except (FileNotFoundError, ValueError):
+        return False
 
 
 def reject_symlink_components_under(path: Path, base: Path, label: str) -> None:
@@ -53,7 +62,7 @@ def reject_symlink_components_under(path: Path, base: Path, label: str) -> None:
     current = base
     for part in rel.parts:
         current = current / part
-        if current.exists() and current.is_symlink():
+        if current.is_symlink():
             raise EvidenceGraphSafetyError(f"{label} must not contain symlink components: {current}")
 
 
@@ -161,7 +170,7 @@ class EvidenceGraphBuilder:
         records = data.get(key) if isinstance(data, dict) else []
         return [record for record in records if isinstance(record, dict)]
 
-    def iter_patch_validation_files(self, remediation_root: Path) -> list[Path]:
+    def collect_patch_validation_files(self, remediation_root: Path) -> list[Path]:
         paths: list[Path] = []
         pending = [remediation_root]
         while pending:
@@ -227,7 +236,7 @@ class EvidenceGraphBuilder:
         remediation_root = self.reports / "remediation"
         safe_remediation_root = ensure_under_run(remediation_root, self.run_dir, "remediation directory")
         if safe_remediation_root.exists():
-            for path in self.iter_patch_validation_files(safe_remediation_root):
+            for path in self.collect_patch_validation_files(safe_remediation_root):
                 data = load_json(path, {}) or {}
                 if isinstance(data, dict):
                     data = dict(data)
