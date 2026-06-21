@@ -89,6 +89,55 @@ class DogfoodTemplateTests(unittest.TestCase):
         self.assertIn("outside Git by", reporting)
         self.assertNotIn("docs/dogfood/*_SUMMARY.md", reporting)
 
+    def test_self_dogfood_backlog_is_structured_and_sanitized(self) -> None:
+        backlog = (REPO_ROOT / "docs" / "dogfood" / "SELF_DOGFOOD_BACKLOG.md").read_text(encoding="utf-8")
+        required_columns = [
+            "| ID | Priority | Category | Severity | Impact | Proposed fix | Affected command/docs | Should become GitHub Issue? |",
+            "| Category | Severity | Impact from this run | Proposed fix / disposition | Affected command/docs | Should become GitHub Issue? |",
+        ]
+        missing_columns = [column for column in required_columns if column not in backlog]
+        self.assertEqual([], missing_columns)
+        required_categories = [
+            "usability",
+            "target granularity",
+            "false positive control",
+            "metrics / benchmark",
+            "evidence graph",
+            "issue publication safety",
+            "remediation / patch validation",
+            "sandbox readiness",
+            "scanner / external import",
+            "docs / runbooks",
+            "performance / cost",
+        ]
+        missing_categories = [category for category in required_categories if category not in backlog]
+        self.assertEqual([], missing_categories)
+        required_items = [
+            "SDFB-001",
+            "Make reconnaissance-only validation easier".lower(),
+            "SDFB-002",
+            "clarify `gra-issues --dry-run`",
+            "Deferred",
+            "private findings",
+            "scanner raw output",
+        ]
+        backlog_lower = backlog.lower()
+        missing_items = [item for item in required_items if item.lower() not in backlog_lower]
+        self.assertEqual([], missing_items)
+        forbidden = [
+            "-----BEGIN",
+            "ghp_",
+            "xoxb-",
+            "ATTACK_CHAINS.md",
+            "PROOFS.md",
+            "TRACE.md",
+            "reports/chains.json",
+            "reports/proofs.json",
+            "reports/traces.json",
+        ]
+        leaked = [term for term in forbidden if term in backlog]
+        self.assertEqual([], leaked)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
