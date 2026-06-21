@@ -6153,6 +6153,41 @@ class CliWorkflowTests(unittest.TestCase):
         plan = json.loads((run_dir / "reports" / "issue-publication-plan.json").read_text(encoding="utf-8"))
         self.assertEqual(["SEC-001"], [item["id"] for item in plan["selected_findings"]])
 
+    def test_gra_import_findings_rejects_broken_symlink_reports_dir(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        ctx_path = run_dir / "context.json"
+        ctx = json.loads(ctx_path.read_text(encoding="utf-8"))
+        ctx["reports_dir"] = "broken-reports/reports"
+        ctx_path.write_text(json.dumps(ctx, indent=2) + "\n", encoding="utf-8")
+        (run_dir / "broken-reports").symlink_to(self.work_dir / "missing-target", target_is_directory=True)
+        external_file = self.work_dir / "external-symlink-findings.json"
+        external_file.write_text(
+            json.dumps(
+                {
+                    "source": "internal-review",
+                    "findings": [
+                        {
+                            "external_id": "IR-001",
+                            "title": "Imported candidate",
+                            "severity": "High",
+                            "confidence": "Medium",
+                            "status": "Potential",
+                            "category": "input-validation",
+                            "affected_locations": [{"file": "app.py", "line": 1}],
+                            "evidence": "bounded evidence",
+                            "minimal_remediation": "Validate input.",
+                        }
+                    ],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-import-findings", "--run", run_dir, "--file", external_file])
+        self.assertNotEqual(0, cp.returncode)
+        self.assertIn("reports_dir must not contain symlink components", cp.stderr)
+
     def test_gra_batch_runs_multiple_repositories_with_mock_commands(self) -> None:
         repo_list = self.work_dir / "repos.txt"
         repo_list.write_text("example/one\n# comment\n\nexample/two\n", encoding="utf-8")

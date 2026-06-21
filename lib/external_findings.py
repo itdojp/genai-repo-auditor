@@ -42,7 +42,7 @@ def safe_reports_dir(run_dir: Path) -> Path:
     current = run_dir
     for part in raw.parts:
         current = current / part
-        if current.exists() and current.is_symlink():
+        if current.is_symlink():
             raise ExternalFindingImportError(f"reports_dir must not contain symlink components: {raw}")
     try:
         reports.resolve(strict=False).relative_to(run_dir.resolve(strict=True))
