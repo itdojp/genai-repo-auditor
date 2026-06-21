@@ -223,7 +223,7 @@ class DogfoodTemplateTests(unittest.TestCase):
         ]
         leaked = [term for term in forbidden_markers if term.lower() in combined_lower]
         self.assertEqual([], leaked)
-        self.assertIsNone(re.search(r"\b[0-9a-f]{40}\b", combined))
+        self.assertIsNone(re.search(r"\b[0-9a-f]{40}\b", combined, re.IGNORECASE))
         self.assertIsNone(re.search(r"\b20\d{6}T\d{6}[+-]\d{4}\b", combined))
 
     def test_public_itdo_erp4_case_study_is_public_safe(self) -> None:
