@@ -2523,6 +2523,32 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual("rejected", report["commands_run"][0]["status"])
         self.assertTrue(any("not allowed by default" in check["message"] for check in report["checks"]))
 
+    def test_gra_remediate_validate_rejects_network_operator_command(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.prepare_patch_validation_run(run_dir)
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-remediate",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--validate",
+                "--sandbox-profile",
+                "local-test",
+                "--build-command",
+                'python3 -c "__import__(\'urllib.request\').request.urlopen(\'https://example.invalid\')"',
+            ],
+            env=self.env_without_credentials(),
+        )
+        self.assertEqual(1, cp.returncode, cp.stdout + cp.stderr)
+        report = json.loads((run_dir / "reports" / "remediation" / "SEC-001" / "patch-validation.json").read_text(encoding="utf-8"))
+        self.assertEqual("failed", report["build_status"])
+        self.assertEqual("failed", report["final_status"])
+        self.assertEqual("rejected", report["commands_run"][0]["status"])
+        self.assertTrue(any("network-capable arguments" in check["message"] for check in report["checks"]))
+
     def test_gra_remediate_validate_fails_closed_when_sandbox_not_ready(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         self.prepare_patch_validation_run(run_dir)

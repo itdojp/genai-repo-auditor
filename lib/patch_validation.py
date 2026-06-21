@@ -23,6 +23,10 @@ ADVERSARIAL_STATUSES = {"passed", "failed", "needs-human-review", "not-run"}
 DIFF_SCOPE_STATUSES = {"bounded", "too-broad", "needs-human-review"}
 FINAL_STATUSES = {"validated", "failed", "needs-human-review"}
 SHELL_METACHARS_RE = re.compile(r"[;&|`$<>\n\r]")
+NETWORK_ACTIVITY_RE = re.compile(
+    r"(https?://|urllib|urlopen|requests|websocket|socket|fetch|axios|http\.server|ftplib|telnetlib)",
+    re.IGNORECASE,
+)
 DENIED_EXECUTABLES = {
     "apt",
     "apt-get",
@@ -214,6 +218,9 @@ def parse_operator_command(raw: str) -> list[str]:
     lowered = {token.lower() for token in argv[1:]}
     if lowered & DENIED_TOKENS:
         raise PatchValidationError("validation command includes an unsafe install/publish/deploy token")
+    joined_args = " ".join(argv[1:])
+    if NETWORK_ACTIVITY_RE.search(joined_args):
+        raise PatchValidationError("validation command includes network-capable arguments and is not allowed by default")
     return argv
 
 
