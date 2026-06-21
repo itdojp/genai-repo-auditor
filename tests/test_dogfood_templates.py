@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -200,6 +201,17 @@ class DogfoodTemplateTests(unittest.TestCase):
         ]
         missing_template = [term for term in required_template_terms if term not in summary_template]
         self.assertEqual([], missing_template)
+        self.assertIn("runs/itdojp__ITDO_ERP4/RUN_ID", summary_template)
+
+        sensitive_refs = [
+            ".codex-local/tmp/",
+            ".log",
+            "issue-publication-plan.json",
+        ]
+        leaked_sensitive_refs = [term for term in sensitive_refs if term in summary_template]
+        self.assertEqual([], leaked_sensitive_refs)
+        self.assertIsNone(re.search(r"\b[0-9a-f]{40}\b", summary_template))
+        self.assertIsNone(re.search(r"\b20\d{6}T\d{6}[+-]\d{4}\b", summary_template))
 
         forbidden = [
             "-----BEGIN",
