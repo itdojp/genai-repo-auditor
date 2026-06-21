@@ -64,16 +64,21 @@ class DogfoodTemplateTests(unittest.TestCase):
             "excludes private finding bodies",
             "gra-issues --dry-run",
             "No Issues were created",
-            "0abeafc133f405d370d84628b33f0bfc902a18ba",
+            "| Target commit | `",
         ]
         missing = [term for term in required if term not in summary]
         self.assertEqual([], missing)
+        self.assertRegex(summary, r"\| Target commit \| `[0-9a-f]{40}` \|")
         forbidden = [
             "-----BEGIN",
             "ghp_",
             "xoxb-",
-            "ATTACK_CHAINS.md excerpt",
-            "PROOFS.md excerpt",
+            "ATTACK_CHAINS.md",
+            "PROOFS.md",
+            "TRACE.md",
+            "reports/chains.json",
+            "reports/proofs.json",
+            "reports/traces.json",
         ]
         leaked = [term for term in forbidden if term in summary]
         self.assertEqual([], leaked)
