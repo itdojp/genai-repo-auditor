@@ -52,7 +52,7 @@ because they were outside the approved current-run scope.
 | CycloneDX SBOM | Not available | Generate with the target repository's approved SBOM workflow before ingest. |
 | Trivy JSON | Not available | Use only if produced from an approved local filesystem/container context. |
 | Grype JSON | Not available | Use only if produced from an approved local SBOM or filesystem context. |
-| OpenSSF Scorecard JSON | Not available | Run Scorecard externally only with approved repository access and token handling. |
+| OpenSSF Scorecard JSON | Not available | Prefer an already authorized artifact; any new external Scorecard run requires separate explicit approval for repository access and token handling. |
 | Secret-scan output | Not available | Ingest only redacted or safely bounded output; never publish raw matches. |
 | GitHub Actions artifacts | Not downloaded | Download only approved artifacts, then keep them in the local run directory. |
 
@@ -98,7 +98,7 @@ These paths are local run artifacts and must not be committed:
 | Scorecard posture | `reports/supply-chain-posture.json` and posture summary | check count and risk distribution only |
 | Target queue updates | `reports/targets.json` | generated target count and selected target IDs only |
 | Metrics/evidence graph update | metrics and evidence graph reports | aggregate counts and graph node/edge counts only |
-| Issue dry-run | issue preview and ledger artifacts | Issue dry-run created Issues and warning counts only |
+| Issue dry-run | issue preview and ledger artifacts | Issue dry-run would-create Issue count and warning counts only |
 
 If scanner ingestion produces zero leads, record that as an explicit count rather
 than omitting the scanner stage. If ingestion fails, record the tool, status, and
@@ -139,7 +139,7 @@ counts. Commit only after a human reviewer approves the exact public-safe text.
 | Evidence graph nodes | `N` |
 | Evidence graph edges | `N` |
 | Confirmed findings from scanner leads | `N` |
-| Issue dry-run created Issues | `N` |
+| Issue dry-run would-create Issue count | `N` |
 | Issue dry-run warnings | `N` |
 
 ## Publication and routing rules
