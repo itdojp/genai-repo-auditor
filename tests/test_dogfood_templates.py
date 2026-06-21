@@ -7,6 +7,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DOGFOOD_TEMPLATES = REPO_ROOT / "templates" / "dogfood"
+DOGFOOD_DOCS = REPO_ROOT / "docs"
 
 
 class DogfoodTemplateTests(unittest.TestCase):
@@ -45,6 +46,12 @@ class DogfoodTemplateTests(unittest.TestCase):
             self.assertIn(run["retention_decision"], {"delete-after-review", "retain-local", "secure-archive"})
             self.assertIn("artifact_refs", run)
             self.assertNotIn("artifact_contents", run)
+
+    def test_reporting_guide_keeps_internal_summaries_outside_git(self) -> None:
+        reporting = (DOGFOOD_DOCS / "DOGFOOD_REPORTING.md").read_text(encoding="utf-8")
+        self.assertIn(".codex-local/dogfood/", reporting)
+        self.assertIn("outside Git by", reporting)
+        self.assertNotIn("docs/dogfood/*_SUMMARY.md", reporting)
 
 
 if __name__ == "__main__":

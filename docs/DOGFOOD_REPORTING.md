@@ -9,7 +9,7 @@ GitHub Issues, pull requests, README updates, blog posts, or launch material.
 | Tier | Audience | Typical artifact | Content boundary |
 |---|---|---|---|
 | Local/private | Operator and approved reviewers | `runs/OWNER__REPO/RUN_ID/reports/*` | Full local context; never committed by default. |
-| Internal sanitized | Project maintainers / customer contacts | `docs/dogfood/*_SUMMARY.md` when approved | Counts, workflow observations, product backlog, no private details. |
+| Internal sanitized | Project maintainers / customer contacts | local memo under `.codex-local/dogfood/` or restricted tracker entry | Counts, workflow observations, product backlog, no private details; not a public repo document by default. |
 | Public-safe | README, blog, demo, public case study | [`templates/dogfood/public-safe-report-template.md`](../templates/dogfood/public-safe-report-template.md) | Approved narrative, bounded metrics categories, no vulnerability details. |
 
 If a report cannot satisfy the public-safe boundary, keep it local/private and
@@ -68,7 +68,9 @@ Internal summaries should still be sanitized by default:
 ```
 
 Use `not executed`, `skipped`, or `not available` when a stage was not run. Do
-not infer results from missing artifacts.
+not infer results from missing artifacts. Keep these summaries outside Git by
+default unless a human reviewer has approved the exact text for a specific
+restricted channel.
 
 ## Public-safe case study structure
 
