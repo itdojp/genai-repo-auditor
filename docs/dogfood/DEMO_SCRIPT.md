@@ -64,7 +64,9 @@ gra-validate-report --run "$RUN"
 gra-metrics --run "$RUN"
 gra-benchmark --run "$RUN"
 gra-evidence-graph --run "$RUN"
-gra-issues --run "$RUN" --dry-run
+# Do not run gra-issues --dry-run on public live output. It can print
+# target-specific titles or fingerprints; run it privately after the demo or
+# use a sanitized fixture with output captured to a private log.
 ```
 
 Narration points:
@@ -73,7 +75,8 @@ Narration points:
 - `recon` and `target queue` organize the review before deep analysis.
 - `validate`, `metrics`, `benchmark`, and `evidence graph` are deterministic
   checkpoints.
-- `gra-issues --dry-run` previews publication status and warning counts only.
+- Public narration may discuss `gra-issues --dry-run` using approved case-study
+  counts, but the command is not run live against unsanitized target output.
 - `gra-issues --apply` is not part of a public demo.
 
 ## Five-minute demo agenda
@@ -96,7 +99,8 @@ Say:
 - “Scanner evidence is ingested only when authorized.”
 - “The case studies show aggregate counts and workflow decisions, not target
   vulnerability detail.”
-- “Public GitHub Issues are controlled by policy and dry-run review.”
+- “Public GitHub Issues are controlled by policy and dry-run review; dry-run
+  command output is reviewed privately before any public display.”
 
 Do not say:
 
