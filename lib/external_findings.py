@@ -444,25 +444,34 @@ def import_external_findings(run_dir: Path, input_file: Path, *, append_findings
 
     appended_count = 0
     duplicate_skipped_count = 0
+    seen_import_fingerprints: set[str] = set()
+    for item in normalized_findings:
+        fingerprint = str(item.get("fingerprint") or "")
+        if fingerprint in seen_import_fingerprints:
+            item["append_status"] = "duplicate-skipped"
+            item["duplicate_reason"] = "fingerprint already present in this import"
+            duplicate_skipped_count += 1
+        else:
+            seen_import_fingerprints.add(fingerprint)
     if append_findings:
         findings_data = load_or_create_findings(run_dir, reports, ctx)
         existing = findings_data.get("findings")
         if not isinstance(existing, list):
             raise ExternalFindingImportError("reports/findings.json findings must be an array before append")
         existing_fingerprints = {str(item.get("fingerprint") or "") for item in existing if isinstance(item, dict)}
-        seen_this_import: set[str] = set()
         for item in normalized_findings:
+            if item.get("append_status") == "duplicate-skipped":
+                continue
             fingerprint = str(item.get("fingerprint") or "")
-            if fingerprint in existing_fingerprints or fingerprint in seen_this_import:
+            if fingerprint in existing_fingerprints:
                 item["append_status"] = "duplicate-skipped"
-                item["duplicate_reason"] = "fingerprint already present in reports/findings.json or this import"
+                item["duplicate_reason"] = "fingerprint already present in reports/findings.json"
                 duplicate_skipped_count += 1
                 continue
             finding = item.get("normalized_finding")
             if isinstance(finding, dict):
                 existing.append(finding)
                 existing_fingerprints.add(fingerprint)
-                seen_this_import.add(fingerprint)
                 item["append_status"] = "appended"
                 appended_count += 1
         findings_data["generated_at"] = utc_now()

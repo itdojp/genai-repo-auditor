@@ -6036,6 +6036,17 @@ class CliWorkflowTests(unittest.TestCase):
                             "minimal_remediation": "Use parameterized queries.",
                         },
                         {
+                            "external_id": "EXT-001",
+                            "title": f"Imported candidate containing {secret}",
+                            "severity": "High",
+                            "confidence": "Medium",
+                            "status": "Potential",
+                            "category": "sql-injection",
+                            "affected_locations": [{"file": "app.py", "line": 2}],
+                            "evidence": f"User input reaches SQL with token {secret}",
+                            "minimal_remediation": "Use parameterized queries.",
+                        },
+                        {
                             "external_id": "EXT-BAD",
                             "title": "Invalid path candidate",
                             "severity": "Critical",
@@ -6064,15 +6075,16 @@ class CliWorkflowTests(unittest.TestCase):
         report = json.loads(report_path.read_text(encoding="utf-8"))
         self.assertEqual(
             {
-                "input_count": 2,
-                "valid_count": 1,
+                "input_count": 3,
+                "valid_count": 2,
                 "rejected_count": 1,
                 "appended_count": 0,
-                "duplicate_skipped_count": 0,
+                "duplicate_skipped_count": 1,
             },
             report["summary"],
         )
         self.assertEqual("review-only", report["findings"][0]["append_status"])
+        self.assertEqual("duplicate-skipped", report["findings"][1]["append_status"])
         self.assertEqual("EXT-BAD", report["rejected_findings"][0]["external_id"])
         self.assertIn("affected_locations[0].file", "; ".join(report["rejected_findings"][0]["reasons"]))
         self.assertNotIn(secret, json.dumps(report))
