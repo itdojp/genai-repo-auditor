@@ -23,14 +23,19 @@ DIFF_SCOPE_STATUSES = {"bounded", "too-broad", "needs-human-review"}
 FINAL_STATUSES = {"validated", "failed", "needs-human-review"}
 SHELL_METACHARS_RE = re.compile(r"[;&|`$<>\n\r]")
 NETWORK_ACTIVITY_PATTERNS = (
+    # URLs and generic dynamic import hooks.
     r"https?://",
-    r"__import__\s*\(\s*['\"](?:urllib(?:\.[^'\"]+)?|requests|websocket|http\.server|ftplib|telnetlib)['\"]\s*\)",
-    r"\burllib(?:\.[A-Za-z_][A-Za-z0-9_]*)*\b",
+    r"__import__\s*\(",
+    # Python network-related imports and API use.
+    r"\bimport\s+urllib(?:\.[A-Za-z_][A-Za-z0-9_]*)*\b",
+    r"\bfrom\s+urllib(?:\.[A-Za-z_][A-Za-z0-9_]*)*\s+import\b",
     r"\brequests\.[A-Za-z_][A-Za-z0-9_]*\b",
     r"\burlopen\s*\(",
     r"\bwebsocket\.[A-Za-z_][A-Za-z0-9_]*\b",
+    # JavaScript/browser-style network APIs.
     r"\bfetch\s*\(",
     r"\baxios(?:\.[A-Za-z_][A-Za-z0-9_]*)?\b",
+    # Common network-facing standard-library modules.
     r"\bhttp\.server\b",
     r"\bftplib\b",
     r"\btelnetlib\b",

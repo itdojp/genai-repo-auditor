@@ -12,13 +12,17 @@ from patch_validation import PatchValidationError, diff_scope_status, parse_oper
 
 
 class PatchValidationTests(unittest.TestCase):
-    def test_parse_operator_command_rejects_url_argument(self) -> None:
+    def test_parse_operator_command_rejects_network_call_argument(self) -> None:
         with self.assertRaisesRegex(PatchValidationError, "network-capable arguments"):
-            parse_operator_command("python3 -c \"print('https://example.invalid')\"")
+            parse_operator_command("python3 -c \"urlopen('https://example.invalid')\"")
 
     def test_parse_operator_command_rejects_dynamic_import_network_argument(self) -> None:
         with self.assertRaisesRegex(PatchValidationError, "network-capable arguments"):
             parse_operator_command('python3 -c "__import__(\'urllib.request\')"')
+
+    def test_parse_operator_command_rejects_dynamic_import_expression_argument(self) -> None:
+        with self.assertRaisesRegex(PatchValidationError, "network-capable arguments"):
+            parse_operator_command('python3 -c "__import__(f\'urllib.{name}\')"')
 
     def test_parse_operator_command_rejects_direct_network_import_argument(self) -> None:
         with self.assertRaisesRegex(PatchValidationError, "network-capable arguments"):
