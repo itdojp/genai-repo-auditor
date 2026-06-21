@@ -47,6 +47,7 @@ Expected local outputs:
 
 ```text
 reports/remediation/remediation-candidates.json
+reports/remediation/REMEDIATION_CANDIDATES.md
 reports/remediation/SEC-001/subject.json
 reports/remediation/SEC-001/patch.diff
 reports/remediation/SEC-001/notes.md
