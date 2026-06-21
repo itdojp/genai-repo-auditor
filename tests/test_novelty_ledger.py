@@ -105,6 +105,56 @@ class NoveltyLedgerTests(unittest.TestCase):
         self.assertTrue(ledger["findings"][0]["issue_recommended"])
         self.assertIn("root_cause", ledger["findings"][0]["match"]["reasons"])
 
+    def test_root_cause_only_match_needs_human_review_not_duplicate(self) -> None:
+        prior_run = self.copy_run("prior")
+        first = self.run_cmd(REPO_ROOT / "bin" / "gra-novelty", "--run", prior_run)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        prior_ledger = prior_run / "reports" / "known-findings.json"
+
+        current_run = self.copy_run("current")
+        findings_path = current_run / "reports" / "findings.json"
+        data = json.loads(findings_path.read_text(encoding="utf-8"))
+        finding = data["findings"][0]
+        finding["fingerprint"] = "111122223333444455556666"
+        finding["affected_locations"] = [{"file": "other.py", "line": 10, "end_line": 10}]
+        finding["entry_point"] = "other.entry"
+        finding["trust_boundary"] = "different boundary"
+        finding["source_to_sink"] = "other input -> other sink"
+        self.write_findings(current_run, data)
+
+        current = self.run_cmd(
+            REPO_ROOT / "bin" / "gra-novelty",
+            "--run",
+            current_run,
+            "--prior-ledger",
+            prior_ledger,
+        )
+        self.assertEqual(current.returncode, 0, current.stderr)
+        ledger = self.read_ledger(current_run)
+        self.assertEqual("needs-human-review", ledger["findings"][0]["novelty_status"])
+        self.assertTrue(ledger["findings"][0]["issue_recommended"])
+        self.assertEqual(["root_cause"], ledger["findings"][0]["match"]["reasons"])
+
+    def test_stale_novelty_fingerprint_does_not_suppress_issue_plan(self) -> None:
+        run_dir = self.copy_run("run")
+        created = self.run_cmd(REPO_ROOT / "bin" / "gra-novelty", "--run", run_dir)
+        self.assertEqual(created.returncode, 0, created.stderr)
+        repeated = self.run_cmd(REPO_ROOT / "bin" / "gra-novelty", "--run", run_dir)
+        self.assertEqual(repeated.returncode, 0, repeated.stderr)
+        ledger = self.read_ledger(run_dir)
+        self.assertEqual("duplicate", ledger["findings"][0]["novelty_status"])
+
+        findings_path = run_dir / "reports" / "findings.json"
+        data = json.loads(findings_path.read_text(encoding="utf-8"))
+        data["findings"][0]["fingerprint"] = "999988887777666655554444"
+        self.write_findings(run_dir, data)
+
+        plan = self.run_cmd(REPO_ROOT / "bin" / "gra-issues", "--run", run_dir, "--plan")
+        self.assertEqual(plan.returncode, 0, plan.stderr)
+        issue_plan = json.loads((run_dir / "reports" / "issue-publication-plan.json").read_text(encoding="utf-8"))
+        self.assertEqual(["SEC-001"], [entry["id"] for entry in issue_plan["selected_findings"]])
+        self.assertEqual("stale-ignored", issue_plan["selected_findings"][0]["novelty"]["status"])
+
     def test_accepted_risk_is_not_republished_unless_evidence_changes(self) -> None:
         accepted_run = self.copy_run("accepted")
         accepted = self.run_cmd(

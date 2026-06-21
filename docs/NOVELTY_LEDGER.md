@@ -46,6 +46,11 @@ Re-running the same command against the same run uses the existing
 `reports/known-findings.json` as the prior ledger. Exact fingerprint matches are
 classified as `duplicate`.
 
+Root-cause text alone is not enough to suppress a finding. If the root-cause hash
+matches but no contextual hash also matches, `gra-novelty` classifies the record
+as `needs-human-review` so separate findings that share a generic root-cause
+phrase are not collapsed automatically.
+
 To compare a new run against a previous run:
 
 ```bash
@@ -83,6 +88,11 @@ of `accepted-risk`.
 `duplicate`, `accepted-risk`, or `invalid-known` are excluded from the default
 publication selection. Findings classified as `better-example` or `regression`
 remain eligible when they otherwise satisfy severity/status filters.
+
+`gra-issues` applies suppression only when the novelty record fingerprint matches
+the current finding fingerprint. If `findings.json` changed after
+`gra-novelty` ran, the stale novelty record is ignored for publication
+suppression and the plan marks the novelty status as `stale-ignored`.
 
 Run the recommended sequence:
 

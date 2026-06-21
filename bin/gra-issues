@@ -543,16 +543,28 @@ def remediation_candidate_summary(finding: Dict[str, Any], artifacts: Dict[str, 
     }
 
 
-def novelty_summary(finding: Dict[str, Any], novelty_entries: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+def matching_novelty_entry(repo: str, finding: Dict[str, Any], novelty_entries: Dict[str, Dict[str, Any]]) -> Dict[str, Any] | None:
+    entry = novelty_entries.get(str(finding.get("id") or ""))
+    if not entry:
+        return None
+    current_fingerprint = stable_fingerprint(repo, finding)
+    if str(entry.get("fingerprint") or "") != current_fingerprint:
+        return None
+    return entry
+
+
+def novelty_summary(repo: str, finding: Dict[str, Any], novelty_entries: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
     finding_id = str(finding.get("id") or "")
-    entry = novelty_entries.get(finding_id)
+    raw_entry = novelty_entries.get(finding_id)
+    entry = matching_novelty_entry(repo, finding, novelty_entries)
     if not entry:
         return {
-            "artifact_present": False,
-            "status": "not-run",
+            "artifact_present": bool(raw_entry),
+            "status": "stale-ignored" if raw_entry else "not-run",
             "issue_recommended": bool(finding.get("issue_recommended")),
             "suppresses_publication": False,
             "match_reasons": [],
+            "warning": "novelty fingerprint did not match current finding" if raw_entry else None,
         }
     match = entry.get("match") if isinstance(entry.get("match"), dict) else {}
     return {
@@ -593,7 +605,7 @@ def plan_finding_entry(
     artifacts = advanced_artifacts or load_advanced_artifacts(run_dir)
     advanced = advanced_validation_summary(finding, artifacts)
     remediation = remediation_candidate_summary(finding, artifacts)
-    novelty = novelty_summary(finding, novelty_entries or novelty_by_finding_id(run_dir))
+    novelty = novelty_summary(repo, finding, novelty_entries or novelty_by_finding_id(run_dir))
     entry: Dict[str, Any] = {
         "id": str(finding.get("id", "SEC-UNKNOWN")),
         "fingerprint": fingerprint,
@@ -999,7 +1011,7 @@ def main() -> int:
         f
         for f in all_findings
         if should_include(f, args.min_severity, statuses)
-        and not novelty_suppresses_publication(novelty_entries.get(str(f.get("id") or "")))
+        and not novelty_suppresses_publication(matching_novelty_entry(repo, f, novelty_entries))
     ]
     if args.verify_ledger:
         ledger_path = default_ledger_path(run_dir)

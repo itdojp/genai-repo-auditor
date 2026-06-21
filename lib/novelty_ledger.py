@@ -28,6 +28,7 @@ FINDING_STATUS_RANK = {
     "Informational": 1,
     "Invalid": 0,
 }
+EMPTY_HASH = hashlib.sha256(b"").hexdigest()[:24]
 
 
 def normalize_text(value: Any) -> str:
@@ -187,7 +188,7 @@ def select_prior(current: dict[str, Any], prior_entries: list[dict[str, Any]]) -
                 reasons = ["root_cause"]
                 for name in ["source_to_sink", "affected_locations", "entry_point", "trust_boundary", "chain_membership"]:
                     current_hash = str((current.get("hashes") or {}).get(name) or "")
-                    if current_hash and current_hash == prior_hash(prior, name):
+                    if current_hash and current_hash != EMPTY_HASH and current_hash == prior_hash(prior, name):
                         reasons.append(name)
                 return prior, reasons
     return None, []
@@ -221,6 +222,11 @@ def classify_entry(
         "previous_fingerprint": str(prior.get("fingerprint") or "") or None,
         "reasons": reasons,
     }
+
+    if reasons == ["root_cause"]:
+        entry["novelty_status"] = "needs-human-review"
+        entry["issue_recommended"] = bool(finding.get("issue_recommended"))
+        return entry
 
     if prior_is_accepted_risk(prior):
         if accepted_risk_changed(entry, prior):
