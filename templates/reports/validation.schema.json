@@ -9,6 +9,8 @@
     "branch": {"type": ["string", "null"]},
     "commit": {"type": ["string", "null"]},
     "generated_at": {"type": "string"},
+    "requested_votes": {"type": "integer", "minimum": 1},
+    "vote_policy": {"enum": ["human-review-on-split", "precision-biased", "recall-biased"]},
     "validations": {
       "type": "array",
       "items": {
@@ -39,7 +41,38 @@
           "reasoning_summary": {"type": "string"},
           "evidence_checked": {"type": "array", "items": {"type": "string"}},
           "missing_evidence": {"type": "array", "items": {"type": "string"}},
-          "safe_validation_steps": {"type": "array", "items": {"type": "string"}}
+          "safe_validation_steps": {"type": "array", "items": {"type": "string"}},
+          "vote_count": {"type": "integer", "minimum": 1},
+          "vote_policy": {"enum": ["human-review-on-split", "precision-biased", "recall-biased"]},
+          "votes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "vote_id",
+                "decision",
+                "recommended_severity",
+                "recommended_confidence",
+                "reasoning_summary",
+                "evidence_checked",
+                "missing_evidence",
+                "safe_validation_steps"
+              ],
+              "properties": {
+                "vote_id": {"type": "string", "pattern": "^VOTE-[0-9]{3,}$"},
+                "decision": {"enum": ["confirm", "downgrade", "invalidate", "needs-human-review"]},
+                "recommended_severity": {"enum": ["Critical", "High", "Medium", "Low", "Informational", "Unknown"]},
+                "recommended_confidence": {"enum": ["High", "Medium", "Low", "Unknown"]},
+                "reasoning_summary": {"type": "string"},
+                "evidence_checked": {"type": "array", "items": {"type": "string"}},
+                "missing_evidence": {"type": "array", "items": {"type": "string"}},
+                "safe_validation_steps": {"type": "array", "items": {"type": "string"}}
+              }
+            }
+          },
+          "component": {"type": "string"},
+          "owner_hint": {"type": "string"},
+          "owner_source": {"enum": ["CODEOWNERS", "path heuristic", "manual", "unknown"]}
         }
       }
     }

@@ -36,7 +36,7 @@ gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --mode goal
 gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --validate --sandbox-profile local-test --build-command "python3 -m py_compile repo/app.py" --test-command "python3 -m py_compile repo/app.py"
 # Optional for shared-library / producer findings:
 # gra-trace --producer-run runs/OWNER__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode exec
-gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
+gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high --votes 3 --policy human-review-on-split
 gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID --fix
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
@@ -60,6 +60,11 @@ refine Issue wording, not as public exploit evidence. Cross-repo trace artifacts
 are experimental/P3 reachability evidence, not exploit proof; do not publish
 them wholesale or use them to claim confirmed exploitability without human
 review.
+
+For multi-vote validation, inspect both the aggregate decision and the `votes`
+array. `human-review-on-split` intentionally converts split vote outcomes into
+`needs-human-review`; do not publish those findings until the split is resolved
+or explicitly accepted by the operator.
 
 ## dry-run
 
@@ -104,13 +109,17 @@ runs/OWNER__REPO/RUN_ID/reports/issue-ledger.json
 
 The plan records the selected finding IDs, fingerprints, titles, labels, issue
 body files, issue body SHA-256 hashes, public disclosure risk, run ID, repo,
-commit, `chain_membership`, and an `advanced_validation` summary. The advanced
+commit, `chain_membership`, optional advisory `owner_routing`, and an
+`advanced_validation` summary. The advanced
 summary records whether related `reports/chains.json` records exist, whether
 related adversarial validation records exist, whether safe local proof artifacts
 exist or are explicitly not applicable, and any warnings that should be reviewed
 before publication. Review the plan, referenced issue drafts, any
 `reports/ATTACK_CHAINS.md` chain implications, any `reports/PROOFS.md` proof
 limitations, and any `reports/VALIDATION.md` decisions before publishing.
+When `owner_routing` is present, use it to route review or remediation; it is an
+advisory hint derived from manual metadata, CODEOWNERS, or path heuristics, not
+an authorization decision.
 
 Warnings do not block publication by default. Operators that require advanced
 evidence before publication can add:

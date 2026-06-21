@@ -193,7 +193,7 @@ gra-chains --run "$RUN_DIR"
 gra-proofs --run "$RUN_DIR" --all-critical-high
 # Optional for shared-library / producer findings:
 # gra-trace --producer-run "$RUN_DIR" --finding SEC-001 --consumer-run "$GRA_HOME/runs/OWNER__consumer/RUN_ID" --mode exec
-gra-adversarial-validate --run "$RUN_DIR" --all-critical-high
+gra-adversarial-validate --run "$RUN_DIR" --all-critical-high --votes 3 --policy human-review-on-split
 gra-validate-report --run "$RUN_DIR"
 gra-dashboard --run "$RUN_DIR"
 gra-sarif --run "$RUN_DIR"

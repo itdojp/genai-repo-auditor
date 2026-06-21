@@ -304,7 +304,7 @@ gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 # Optional for shared-library / producer findings:
 # gra-trace --producer-run runs/OWNER__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode goal
-gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
+gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high --votes 3 --policy human-review-on-split
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
 

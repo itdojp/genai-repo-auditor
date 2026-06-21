@@ -165,7 +165,7 @@ selected subjects should be confirmed, downgraded, invalidated, or marked
 `needs-human-review`.
 
 ```bash
-gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high --model gpt-5.5 --effort xhigh
+gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high --votes 3 --policy human-review-on-split --model gpt-5.5 --effort xhigh
 gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID --fix
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
