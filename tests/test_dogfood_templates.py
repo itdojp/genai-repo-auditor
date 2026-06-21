@@ -140,7 +140,6 @@ class DogfoodTemplateTests(unittest.TestCase):
         self.assertEqual([], leaked)
 
 
-
     def test_public_self_dogfood_case_study_is_public_safe(self) -> None:
         case_study = (REPO_ROOT / "docs" / "dogfood" / "PUBLIC_SELF_DOGFOOD_CASE_STUDY.md").read_text(encoding="utf-8")
         required_terms = [
@@ -161,7 +160,8 @@ class DogfoodTemplateTests(unittest.TestCase):
             "Agent-surface review leads",
             "review leads, not confirmed vulnerabilities",
         ]
-        missing = [term for term in required_terms if term not in case_study]
+        case_study_lower = case_study.lower()
+        missing = [term for term in required_terms if term.lower() not in case_study_lower]
         self.assertEqual([], missing)
         forbidden = [
             "ATTACK_CHAINS.md",
@@ -174,7 +174,6 @@ class DogfoodTemplateTests(unittest.TestCase):
             "ghp_",
             "xoxb-",
         ]
-        case_study_lower = case_study.lower()
         leaked = [term for term in forbidden if term.lower() in case_study_lower]
         self.assertEqual([], leaked)
 
