@@ -108,6 +108,7 @@ gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
 gra-chains --run runs/OWNER__REPO/RUN_ID
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --mode goal
+gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --validate --sandbox-profile local-test
 # Optional for shared-library / producer findings:
 # gra-trace --producer-run runs/OWNER__REPO/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode exec
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
@@ -124,6 +125,7 @@ Create GitHub Issues only after human review:
 gra-chains --run runs/OWNER__REPO/RUN_ID
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
 gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --mode goal
+gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --validate --sandbox-profile local-test
 # Optional for shared-library / producer findings:
 # gra-trace --producer-run runs/OWNER__REPO/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode exec
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high
@@ -191,6 +193,7 @@ Defensive chain synthesis, optional cross-repo trace reachability, and adversari
 gra-chains --run runs/OWNER__REPO/RUN_ID --model gpt-5.5 --effort xhigh
 gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high --model gpt-5.5 --effort xhigh
 gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --mode goal --model gpt-5.5 --effort xhigh
+gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --validate --sandbox-profile local-test
 # Optional for shared-library / producer findings:
 # gra-trace --producer-run runs/OWNER__REPO/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode exec --model gpt-5.5 --effort xhigh
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high --model gpt-5.5 --effort xhigh
@@ -266,7 +269,7 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-adversarial-validate` | Independently challenge existing findings or chains before publication |
 | `gra-chains` | Synthesize defensive attack-chain reports from existing audit evidence |
 | `gra-proofs` | Generate safe local proof artifacts for existing findings |
-| `gra-remediate` | Generate draft-only remediation candidate artifacts for human review |
+| `gra-remediate` | Generate draft-only remediation candidates and validate draft patches in a disposable workspace |
 | `gra-trace` | Trace experimental/P3 cross-repo reachability for shared-library findings |
 | `gra-metrics` | Generate local advanced workflow metrics without raw evidence |
 | `gra-ingest` | Ingest scanner outputs |

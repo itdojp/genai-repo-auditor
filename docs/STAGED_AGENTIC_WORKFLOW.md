@@ -268,6 +268,23 @@ gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --mode goal
 Outputs stay under `reports/remediation/` and are validated by
 `gra-validate-report`.
 
+After a candidate patch exists, run the patch validation ladder in a disposable
+workspace. This applies the patch only to a copied checkout, keeps network
+disabled, and records build/test/proof/adversarial-review status without
+publishing anything:
+
+```bash
+gra-remediate --run runs/OWNER__REPO/RUN_ID --finding SEC-001 --validate \
+  --sandbox-profile local-test \
+  --build-command "python3 -m py_compile repo/app.py"
+```
+
+The validation report is written to
+`reports/remediation/<FINDING-ID>/patch-validation.json` and
+`patch-validation.md`. A validated report is still a local handoff artifact; a
+human must review the diff before applying it in a separate remediation
+workflow.
+
 ## Cross-repo trace reachability
 
 Use `gra-trace` when a producer finding, such as a shared-library flaw, may be

@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor Patch Validation Report",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "repo",
+    "generated_at",
+    "patch_id",
+    "finding_id",
+    "sandbox_profile",
+    "network_allowed",
+    "patch_file",
+    "patch_applied",
+    "build_status",
+    "test_status",
+    "safe_proof_replay_status",
+    "adversarial_review_status",
+    "diff_scope_status",
+    "final_status",
+    "checks",
+    "commands_run",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "const": "1"},
+    "run_id": {"type": "string"},
+    "repo": {"type": "string"},
+    "branch": {"type": "string"},
+    "commit": {"type": "string"},
+    "generated_at": {"type": "string"},
+    "patch_id": {"type": "string", "pattern": "^PATCH-[0-9]{3,}$"},
+    "finding_id": {"type": "string"},
+    "sandbox_profile": {"type": "string", "enum": ["local-test", "container", "gvisor", "vm"]},
+    "network_allowed": {"type": "boolean", "const": false},
+    "patch_file": {"type": "string"},
+    "candidate_file": {"type": "string"},
+    "validation_workspace": {
+      "type": "object",
+      "required": ["path", "disposed"],
+      "properties": {
+        "path": {"type": "string"},
+        "disposed": {"type": "boolean", "const": true}
+      },
+      "additionalProperties": true
+    },
+    "patch_applied": {"type": "boolean"},
+    "build_status": {"type": "string", "enum": ["passed", "failed", "not-run"]},
+    "test_status": {"type": "string", "enum": ["passed", "failed", "not-run"]},
+    "safe_proof_replay_status": {"type": "string", "enum": ["passed", "failed", "not-applicable", "not-run"]},
+    "adversarial_review_status": {"type": "string", "enum": ["passed", "failed", "needs-human-review", "not-run"]},
+    "diff_scope_status": {"type": "string", "enum": ["bounded", "too-broad", "needs-human-review"]},
+    "final_status": {"type": "string", "enum": ["validated", "failed", "needs-human-review"]},
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "message", "details"],
+        "properties": {
+          "id": {"type": "string"},
+          "status": {"type": "string", "enum": ["pass", "fail", "warn", "info"]},
+          "message": {"type": "string"},
+          "details": {"type": "object"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "commands_run": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "argv", "status", "exit_code", "cwd"],
+        "properties": {
+          "kind": {"type": "string", "enum": ["build", "test"]},
+          "argv": {"type": "array", "items": {"type": "string"}},
+          "status": {"type": "string", "enum": ["passed", "failed", "rejected"]},
+          "exit_code": {"type": ["integer", "null"]},
+          "cwd": {"type": "string", "const": "validation_workspace"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": true
+}

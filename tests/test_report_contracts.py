@@ -167,6 +167,7 @@ class ReportContractTests(unittest.TestCase):
         chains_schema = self.load_json(SCHEMAS / "chains.schema.json")
         proofs_schema = self.load_json(SCHEMAS / "proofs.schema.json")
         remediation_schema = self.load_json(SCHEMAS / "remediation-candidates.schema.json")
+        patch_validation_schema = self.load_json(SCHEMAS / "patch-validation.schema.json")
         traces_schema = self.load_json(SCHEMAS / "traces.schema.json")
         metrics_schema = self.load_json(SCHEMAS / "metrics.schema.json")
         issue_ledger_schema = self.load_json(SCHEMAS / "issue-ledger.schema.json")
@@ -385,6 +386,37 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual(["draft"], remediation_properties["status"]["enum"])
         self.assertEqual("boolean", remediation_properties["safe_by_design"]["type"])
         self.assertEqual("boolean", remediation_properties["requires_human_review"]["type"])
+
+        self.assertEqual(
+            {
+                "schema_version",
+                "run_id",
+                "repo",
+                "generated_at",
+                "patch_id",
+                "finding_id",
+                "sandbox_profile",
+                "network_allowed",
+                "patch_file",
+                "patch_applied",
+                "build_status",
+                "test_status",
+                "safe_proof_replay_status",
+                "adversarial_review_status",
+                "diff_scope_status",
+                "final_status",
+                "checks",
+                "commands_run",
+                "limitations",
+            },
+            set(patch_validation_schema["required"]),
+        )
+        patch_validation_properties = patch_validation_schema["properties"]
+        self.assertEqual("^PATCH-[0-9]{3,}$", patch_validation_properties["patch_id"]["pattern"])
+        self.assertEqual(["local-test", "container", "gvisor", "vm"], patch_validation_properties["sandbox_profile"]["enum"])
+        self.assertEqual(["passed", "failed", "not-run"], patch_validation_properties["build_status"]["enum"])
+        self.assertEqual(["passed", "failed", "not-run"], patch_validation_properties["test_status"]["enum"])
+        self.assertEqual(["validated", "failed", "needs-human-review"], patch_validation_properties["final_status"]["enum"])
 
         self.assertEqual({"run_id", "repo", "generated_at", "traces"}, set(traces_schema["required"]))
         trace_item = traces_schema["properties"]["traces"]["items"]

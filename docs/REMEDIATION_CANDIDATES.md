@@ -8,7 +8,8 @@ Remediation candidates are local/private, draft-only patch proposals for existin
 
 1. **Selection phase**: choose one finding with `--finding SEC-001` or all Critical/High findings in Confirmed, Probable, or Potential status with `--all-critical-high`.
 2. **Draft phase**: create subject seed JSON and a remediation prompt. In `exec` mode, Codex may write draft artifacts under `reports/remediation/`.
-3. **Review phase**: a human reviews the patch, notes, limitations, and expected validation plan. Applying the patch is out of scope for this command.
+3. **Patch validation phase**: optionally run the draft patch through a conservative local validation ladder in a disposable workspace.
+4. **Review phase**: a human reviews the patch, validation report, notes, limitations, and expected validation plan. Applying or publishing the patch remains out of scope for this command.
 
 ## Command examples
 
@@ -30,6 +31,15 @@ Prepare candidates for all Critical/High findings that are not invalidated:
 gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --mode goal
 ```
 
+Validate an existing candidate patch in a disposable local workspace:
+
+```bash
+gra-remediate --run runs/OWNER__REPO/RUN_ID --finding SEC-001 --validate \
+  --sandbox-profile local-test \
+  --build-command "python3 -m py_compile repo/app.py" \
+  --test-command "python3 -m unittest discover -s repo/tests"
+```
+
 ## Artifacts
 
 The workflow writes local artifacts under `reports/remediation/`:
@@ -40,6 +50,8 @@ reports/remediation/REMEDIATION_CANDIDATES.md
 reports/remediation/SEC-001/subject.json
 reports/remediation/SEC-001/patch.diff
 reports/remediation/SEC-001/notes.md
+reports/remediation/SEC-001/patch-validation.json
+reports/remediation/SEC-001/patch-validation.md
 ```
 
 `remediation-candidates.json` is the machine-readable handoff. Each candidate remains draft-only:
@@ -61,7 +73,7 @@ reports/remediation/SEC-001/notes.md
 
 The Markdown summary is for local review. Issue publication plans may record that a candidate exists, but must not embed the full diff.
 
-## Validation
+## Candidate contract validation
 
 When remediation artifacts exist, validate them with:
 
@@ -79,13 +91,45 @@ Validation checks that:
 - patch files use `.diff` and are regular files;
 - `files_touched` are relative repository paths.
 
+## Patch validation ladder
+
+`gra-remediate --validate` validates existing draft patches, not new findings. It:
+
+1. checks sandbox readiness with an executable sandbox profile such as `local-test`;
+2. copies the target checkout to a disposable workspace under the run directory;
+3. reviews the patch diff paths against the target repository prefix and the candidate `files_touched` list;
+4. applies the patch to the disposable copy only;
+5. runs explicitly supplied build and targeted test commands with network disabled by default;
+6. records safe proof replay and adversarial review status when available or as not applicable / not run;
+7. removes the disposable workspace and writes `patch-validation.json` plus `patch-validation.md`.
+
+The patch validation report includes:
+
+```json
+{
+  "patch_id": "PATCH-001",
+  "finding_id": "SEC-001",
+  "sandbox_profile": "local-test",
+  "patch_applied": true,
+  "build_status": "passed",
+  "test_status": "passed",
+  "safe_proof_replay_status": "not-applicable",
+  "adversarial_review_status": "not-run",
+  "diff_scope_status": "bounded",
+  "final_status": "validated"
+}
+```
+
+Validation returns exit status `1` when a candidate fails the ladder and still writes a local report with the failure reason. `gra-issues --plan --require-advanced-validation` accounts for patch validation status when present, including failed or needs-human-review validation as a blocking warning.
+
 ## Safety boundaries
 
 - Draft patch only.
 - Do not apply the patch to the original target checkout in place.
 - Do not push, open pull requests, create issues, releases, or tags.
 - Do not install dependencies or access the network.
-- Do not execute target code, tests, proof helpers, or the candidate patch in this stage.
+- Do not execute target code, tests, proof helpers, or the candidate patch during candidate generation.
+- Execute build/test commands only in the `--validate` stage, only in the disposable workspace, and only when the operator supplies bounded commands.
 - Do not include exploit payloads, weaponized instructions, credential extraction, or live-service probing.
 - Prefer minimal diffs and explicit limitations.
 
