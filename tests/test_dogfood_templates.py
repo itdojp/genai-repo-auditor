@@ -56,6 +56,33 @@ class DogfoodTemplateTests(unittest.TestCase):
             self.assertIn("artifact_refs", run)
             self.assertNotIn("artifact_contents", run)
 
+
+    def test_self_dogfood_summary_is_public_safe(self) -> None:
+        summary = (REPO_ROOT / "docs" / "dogfood" / "SELF_DOGFOOD_SUMMARY.md").read_text(encoding="utf-8")
+        required = [
+            "public-safe summary",
+            "excludes private finding bodies",
+            "gra-issues --dry-run",
+            "No Issues were created",
+            "| Target commit | `",
+        ]
+        missing = [term for term in required if term not in summary]
+        self.assertEqual([], missing)
+        self.assertRegex(summary, r"\| Target commit \| `[0-9a-f]{40}` \|")
+        forbidden = [
+            "-----BEGIN",
+            "ghp_",
+            "xoxb-",
+            "ATTACK_CHAINS.md",
+            "PROOFS.md",
+            "TRACE.md",
+            "reports/chains.json",
+            "reports/proofs.json",
+            "reports/traces.json",
+        ]
+        leaked = [term for term in forbidden if term in summary]
+        self.assertEqual([], leaked)
+
     def test_reporting_guide_keeps_internal_summaries_outside_git(self) -> None:
         reporting = (DOGFOOD_DOCS / "DOGFOOD_REPORTING.md").read_text(encoding="utf-8")
         self.assertIn(".codex-local/dogfood/", reporting)
