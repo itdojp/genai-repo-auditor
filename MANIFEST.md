@@ -22,6 +22,7 @@ bin/gra-proofs
 bin/gra-recon
 bin/gra-research
 bin/gra-run-state
+bin/gra-sandbox-check
 bin/gra-sarif
 bin/gra-scanner-triage
 bin/gra-store
@@ -142,6 +143,7 @@ docs/RELEASE_PROCESS.md
 docs/REPORTING_AND_STORE.md
 docs/REPORT_CONTRACT.md
 docs/SAFE_LOCAL_PROOFS.md
+docs/SANDBOX_PROFILES.md
 docs/SCANNER_INTEGRATION.md
 docs/SCORECARD_INGESTION.md
 docs/SECURITY_MODEL.md

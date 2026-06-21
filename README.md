@@ -256,6 +256,7 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-recon` | Generate inventory, threat model, and attack surface |
 | `gra-targets` | Generate, list, show, and update target queue |
 | `gra-run-state` | Record paused/resume/blocked run state and guard deep-review starts |
+| `gra-sandbox-check` | Check sandbox profile readiness before future executable validation workflows |
 | `gra-research` | Research one target with exec or supervised goal mode |
 | `gra-gapfill` | Requeue high-risk targets with incomplete coverage |
 | `gra-variant` | Find variants based on a finding or root cause |
@@ -294,6 +295,7 @@ Do not use this project for:
 - [`docs/LOCAL_INSTALL_AND_AUDIT.md`](docs/LOCAL_INSTALL_AND_AUDIT.md)
 - [`docs/COMMAND_REFERENCE.md`](docs/COMMAND_REFERENCE.md)
 - [`docs/AGENT_WORKERS.md`](docs/AGENT_WORKERS.md)
+- [`docs/SANDBOX_PROFILES.md`](docs/SANDBOX_PROFILES.md)
 - Japanese docs index: [`docs/ja/README.md`](docs/ja/README.md)
   - [`docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md`](docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md)
   - [`docs/ja/USAGE.ja.md`](docs/ja/USAGE.ja.md)
