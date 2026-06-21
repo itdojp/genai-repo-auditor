@@ -138,6 +138,70 @@ class DogfoodTemplateTests(unittest.TestCase):
         leaked = [term for term in forbidden if term in backlog]
         self.assertEqual([], leaked)
 
+    def test_itdo_erp4_planning_docs_are_complete_and_public_safe(self) -> None:
+        docs = {
+            "scope": REPO_ROOT / "docs" / "dogfood" / "ITDO_ERP4_SCOPE.md",
+            "targets": REPO_ROOT / "docs" / "dogfood" / "ITDO_ERP4_TARGET_SELECTION.md",
+            "boundaries": REPO_ROOT / "docs" / "dogfood" / "ITDO_ERP4_REPORTING_BOUNDARIES.md",
+        }
+        for path in docs.values():
+            self.assertTrue(path.exists(), f"missing {path.relative_to(REPO_ROOT)}")
+
+        scope = docs["scope"].read_text(encoding="utf-8")
+        targets = docs["targets"].read_text(encoding="utf-8")
+        boundaries = docs["boundaries"].read_text(encoding="utf-8")
+        combined = "\n".join([scope, targets, boundaries])
+
+        required_scope_terms = [
+            "planning material only",
+            "itdojp/ITDO_ERP4",
+            "RBAC and visibility boundaries",
+            "Agent-First write guardrails",
+            "CI, supply-chain, and secret-detection posture",
+            "gra-audit --repo itdojp/ITDO_ERP4 --mode prepare",
+            "gra-issues --run \"$RUN\" --dry-run",
+        ]
+        missing_scope = [term for term in required_scope_terms if term not in scope]
+        self.assertEqual([], missing_scope)
+
+        required_target_terms = [
+            "ERP4-SCOPE-01",
+            "ERP4-SCOPE-02",
+            "ERP4-SCOPE-03",
+            "RBAC and user/project visibility",
+            "Financial state transitions",
+            "CI, secret scanning, supply chain, and SBOM",
+            "Select at most six".lower(),
+        ]
+        targets_lower = targets.lower()
+        missing_targets = [term for term in required_target_terms if term.lower() not in targets_lower]
+        self.assertEqual([], missing_targets)
+
+        required_boundary_terms = [
+            "GitHub Security Advisories",
+            "Public GitHub Issues are not the first reporting channel",
+            "gra-issues --dry-run",
+            "Artifact handling matrix",
+            "GenAI Repo Auditor product friction",
+            "Local retention or cleanup decision is recorded",
+        ]
+        missing_boundaries = [term for term in required_boundary_terms if term not in boundaries]
+        self.assertEqual([], missing_boundaries)
+
+        forbidden = [
+            "-----BEGIN",
+            "ghp_",
+            "xoxb-",
+            "ATTACK_CHAINS.md",
+            "PROOFS.md",
+            "TRACE.md",
+            "reports/chains.json",
+            "reports/proofs.json",
+            "reports/traces.json",
+        ]
+        leaked = [term for term in forbidden if term in combined]
+        self.assertEqual([], leaked)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
