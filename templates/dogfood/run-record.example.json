@@ -1,0 +1,67 @@
+{
+  "campaign_id": "dogfood-YYYYMM",
+  "target_repo": "OWNER/REPO",
+  "target_commit": "COMMIT_SHA_OR_NOT_RECORDED",
+  "run_id": "RUN_ID",
+  "scope": "self-dogfood",
+  "authorized_by": "human operator",
+  "run_mode": "prepare",
+  "started_at": "YYYY-MM-DDTHH:MM:SSZ",
+  "completed_at": null,
+  "commands": [
+    {
+      "name": "gra-audit",
+      "status": "planned",
+      "artifact_refs": [
+        "reports/findings.json"
+      ],
+      "public_safe_summary": "not reviewed"
+    },
+    {
+      "name": "gra-metrics",
+      "status": "planned",
+      "artifact_refs": [
+        "reports/metrics.json"
+      ],
+      "public_safe_summary": "counts only after review"
+    },
+    {
+      "name": "gra-benchmark",
+      "status": "planned",
+      "artifact_refs": [
+        "reports/benchmark.json"
+      ],
+      "public_safe_summary": "quality gate status only after review"
+    },
+    {
+      "name": "gra-evidence-graph",
+      "status": "planned",
+      "artifact_refs": [
+        "reports/evidence-graph.json"
+      ],
+      "public_safe_summary": "graph summary only after review"
+    },
+    {
+      "name": "gra-issues --dry-run",
+      "status": "planned",
+      "artifact_refs": [
+        "issues-created.json",
+        "reports/issue-ledger.json"
+      ],
+      "public_safe_summary": "preview and warning counts only after review"
+    },
+    {
+      "name": "gra-issues --plan",
+      "status": "planned",
+      "artifact_refs": [
+        "reports/issue-publication-plan.json",
+        "reports/issue-ledger.json"
+      ],
+      "public_safe_summary": "immutable plan metadata only after human review"
+    }
+  ],
+  "review_status": "planned",
+  "publication_status": "private",
+  "retention_decision": "delete-after-review",
+  "follow_ups": []
+}

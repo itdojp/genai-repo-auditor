@@ -1,0 +1,52 @@
+{
+  "campaign_id": "dogfood-YYYYMM",
+  "description": "Public-safe placeholder campaign ledger for authorized dogfood runs.",
+  "owners": {
+    "request_owner": "human operator",
+    "security_reviewer": "security reviewer",
+    "publication_approver": "publication approver"
+  },
+  "default_publication_status": "private",
+  "default_retention_decision": "delete-after-review",
+  "runs": [
+    {
+      "target_repo": "itdojp/genai-repo-auditor",
+      "run_id": "RUN_ID",
+      "scope": "self-dogfood",
+      "authorized_by": "human operator",
+      "run_mode": "prepare",
+      "artifact_refs": {
+        "metrics": "reports/metrics.json",
+        "benchmark": "reports/benchmark.json",
+        "evidence_graph": "reports/evidence-graph.json",
+        "dashboard": "reports/dashboard.html",
+        "issue_ledger": "reports/issue-ledger.json",
+        "issue_publication_plan": "reports/issue-publication-plan.json"
+      },
+      "review_status": "planned",
+      "publication_status": "private",
+      "retention_decision": "delete-after-review",
+      "follow_ups": []
+    },
+    {
+      "target_repo": "itdojp/ITDO_ERP4",
+      "run_id": "RUN_ID",
+      "scope": "itdo-erp4-scoped",
+      "authorized_by": "human operator",
+      "run_mode": "staged",
+      "artifact_refs": {
+        "metrics": "reports/metrics.json",
+        "benchmark": "reports/benchmark.json",
+        "evidence_graph": "reports/evidence-graph.json",
+        "dashboard": "reports/dashboard.html",
+        "issue_ledger": "reports/issue-ledger.json",
+        "issue_publication_plan": "reports/issue-publication-plan.json"
+      },
+      "review_status": "planned",
+      "publication_status": "not-approved",
+      "retention_decision": "retain-local",
+      "follow_ups": []
+    }
+  ],
+  "public_safe_outputs": []
+}
