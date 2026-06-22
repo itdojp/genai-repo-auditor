@@ -190,6 +190,28 @@ class ReportContractTests(unittest.TestCase):
         self.assertIn("retention", artifact_item["required"])
         self.assertEqual(["latest", "supporting", "archive"], artifact_item["properties"]["retention"]["enum"])
         self.assertEqual("^[a-f0-9]{64}$", artifact_item["properties"]["sha256"]["pattern"])
+        self.assertIn("summary", metrics_schema["required"])
+        metrics_summary = metrics_schema["properties"]["summary"]
+        self.assertEqual(
+            {
+                "public_safe",
+                "notes",
+                "findings_total",
+                "findings_by_severity",
+                "findings_by_status",
+                "issue_recommended_findings",
+                "issue_publication_warning_count",
+                "issue_ledger_published_findings",
+                "issue_ledger_drift_warning_count",
+                "evidence_graph",
+                "benchmark",
+                "scanner",
+                "no_findings",
+            },
+            set(metrics_summary["required"]),
+        )
+        self.assertEqual({"artifact_present", "node_count", "edge_count"}, set(metrics_summary["properties"]["evidence_graph"]["required"]))
+        self.assertEqual({"artifact_present", "result_count", "normalized_leads_count"}, set(metrics_summary["properties"]["scanner"]["required"]))
         retention_schema = manifest_schema["properties"]["artifact_retention"]
         self.assertEqual(
             {"latest_status_artifacts", "supporting_artifacts", "archive_artifacts", "by_retention", "notes"},
@@ -480,6 +502,7 @@ class ReportContractTests(unittest.TestCase):
                 "generated_at",
                 "source",
                 "safety",
+                "summary",
                 "findings",
                 "adversarial_validation",
                 "chains",

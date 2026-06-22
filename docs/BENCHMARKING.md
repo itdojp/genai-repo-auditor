@@ -72,6 +72,11 @@ The initial v0.4 gate set is intentionally conservative:
 
 Warnings produce `overall_status: needs-review` but keep the command exit status
 at `0`. Failed gates produce `overall_status: failed` and exit status `1`.
+`benchmark.json` also includes a compact `summary` object with
+`overall_status`, gate count, passed gates, warnings, and failures. When
+`reports/benchmark.json` is present, `gra-metrics` copies those gate totals into
+`metrics.summary.benchmark` so dogfood reports do not need to scrape
+`BENCHMARK.md` tables manually.
 
 Tune the chain bound for a specific dogfood run:
 

@@ -50,6 +50,31 @@ Unexpected dimension values are bucketed as `Unknown`, `unknown`, or
 `Not assessed` rather than copied verbatim. This keeps malformed local artifacts
 from leaking raw report text or secret-like values through metric labels.
 
+## Public-safe compact summary
+
+`metrics.json` includes a top-level `summary` object for dogfood reports,
+release notes, and public-safe case-study drafts. It contains only count fields
+and simple status flags:
+
+- `findings_total`, `findings_by_severity`, `findings_by_status`, and
+  `issue_recommended_findings`
+- `issue_publication_warning_count`,
+  `issue_ledger_published_findings`, and
+  `issue_ledger_drift_warning_count`
+- `evidence_graph.artifact_present`, `node_count`, and `edge_count`
+- `benchmark.artifact_present`, `overall_status`, gate totals, warnings, and
+  failures when `reports/benchmark.json` is present
+- `scanner.artifact_present`, `result_count`, and
+  `normalized_leads_count` when scanner index artifacts are present
+- `no_findings.recorded`, `source_stage`, and `recon_only` for explicit
+  no-confirmed-finding records
+
+These fields are designed for external reuse only after human review confirms
+that the repository name, timing, and aggregate counts are approved for the
+target audience. Do not copy detailed metrics sections, finding bodies, raw
+evidence, scanner leads, issue drafts, proof payloads, traces, dashboards, or
+local paths into public material.
+
 ## Observability metrics
 
 `gra-research`, `gra-gapfill`, and `gra-validate-report` append structured

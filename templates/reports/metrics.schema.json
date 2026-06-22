@@ -9,6 +9,7 @@
     "generated_at",
     "source",
     "safety",
+    "summary",
     "findings",
     "adversarial_validation",
     "chains",
@@ -38,6 +39,74 @@
         "raw_evidence_copied": {"type": "boolean"},
         "secrets_copied": {"type": "boolean"},
         "notes": {"type": "string"}
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "public_safe",
+        "notes",
+        "findings_total",
+        "findings_by_severity",
+        "findings_by_status",
+        "issue_recommended_findings",
+        "issue_publication_warning_count",
+        "issue_ledger_published_findings",
+        "issue_ledger_drift_warning_count",
+        "evidence_graph",
+        "benchmark",
+        "scanner",
+        "no_findings"
+      ],
+      "properties": {
+        "public_safe": {"type": "boolean"},
+        "notes": {"type": "string"},
+        "findings_total": {"type": "integer", "minimum": 0},
+        "findings_by_severity": {"type": "object"},
+        "findings_by_status": {"type": "object"},
+        "issue_recommended_findings": {"type": "integer", "minimum": 0},
+        "issue_publication_warning_count": {"type": "integer", "minimum": 0},
+        "issue_ledger_published_findings": {"type": "integer", "minimum": 0},
+        "issue_ledger_drift_warning_count": {"type": "integer", "minimum": 0},
+        "evidence_graph": {
+          "type": "object",
+          "required": ["artifact_present", "node_count", "edge_count"],
+          "properties": {
+            "artifact_present": {"type": "boolean"},
+            "node_count": {"type": "integer", "minimum": 0},
+            "edge_count": {"type": "integer", "minimum": 0}
+          }
+        },
+        "benchmark": {
+          "type": "object",
+          "required": ["artifact_present", "overall_status", "gate_count", "passed", "warnings", "failed"],
+          "properties": {
+            "artifact_present": {"type": "boolean"},
+            "overall_status": {"type": "string"},
+            "gate_count": {"type": "integer", "minimum": 0},
+            "passed": {"type": "integer", "minimum": 0},
+            "warnings": {"type": "integer", "minimum": 0},
+            "failed": {"type": "integer", "minimum": 0}
+          }
+        },
+        "scanner": {
+          "type": "object",
+          "required": ["artifact_present", "result_count", "normalized_leads_count"],
+          "properties": {
+            "artifact_present": {"type": "boolean"},
+            "result_count": {"type": "integer", "minimum": 0},
+            "normalized_leads_count": {"type": "integer", "minimum": 0}
+          }
+        },
+        "no_findings": {
+          "type": "object",
+          "required": ["recorded", "source_stage", "recon_only"],
+          "properties": {
+            "recorded": {"type": "boolean"},
+            "source_stage": {"type": "string"},
+            "recon_only": {"type": "boolean"}
+          }
+        }
       }
     },
     "findings": {
