@@ -3677,14 +3677,31 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("Findings: 0", cp_metrics.stdout)
         metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
         self.assertEqual(0, metrics["findings"]["total"])
+        self.assertTrue(metrics["summary"]["public_safe"])
+        self.assertEqual(0, metrics["summary"]["findings_total"])
+        self.assertEqual(0, metrics["summary"]["issue_recommended_findings"])
+        self.assertTrue(metrics["summary"]["no_findings"]["recorded"])
+        self.assertEqual("recon", metrics["summary"]["no_findings"]["source_stage"])
+        self.assertTrue(metrics["summary"]["no_findings"]["recon_only"])
 
         cp_benchmark = self.run_cmd([REPO_ROOT / "bin" / "gra-benchmark", "--run", run_dir], check=True)
         self.assertIn("Findings: 0", cp_benchmark.stdout)
+        benchmark = json.loads((run_dir / "reports" / "benchmark.json").read_text(encoding="utf-8"))
+        self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        refreshed_metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
+        self.assertTrue(refreshed_metrics["summary"]["benchmark"]["artifact_present"])
+        self.assertEqual(benchmark["summary"]["gate_count"], refreshed_metrics["summary"]["benchmark"]["gate_count"])
+        self.assertEqual(benchmark["summary"]["warnings"], refreshed_metrics["summary"]["benchmark"]["warnings"])
 
         cp_graph = self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", run_dir], check=True)
         self.assertIn("Nodes:", cp_graph.stdout)
         graph = json.loads((run_dir / "reports" / "evidence-graph.json").read_text(encoding="utf-8"))
         self.assertEqual(0, graph["summary"]["high_critical_issue_recommended_findings"])
+        self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        graph_metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
+        self.assertTrue(graph_metrics["summary"]["evidence_graph"]["artifact_present"])
+        self.assertEqual(len(graph["nodes"]), graph_metrics["summary"]["evidence_graph"]["node_count"])
+        self.assertEqual(len(graph["edges"]), graph_metrics["summary"]["evidence_graph"]["edge_count"])
 
         cp_issues = self.run_cmd(
             [
@@ -3772,6 +3789,13 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("Findings: 1", cp.stdout)
         metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
         self.assertEqual(1, metrics["findings"]["total"])
+        self.assertTrue(metrics["summary"]["public_safe"])
+        self.assertEqual(1, metrics["summary"]["findings_total"])
+        self.assertEqual(1, metrics["summary"]["issue_recommended_findings"])
+        self.assertEqual(0, metrics["summary"]["issue_publication_warning_count"])
+        self.assertEqual(0, metrics["summary"]["benchmark"]["gate_count"])
+        self.assertFalse(metrics["summary"]["benchmark"]["artifact_present"])
+        self.assertFalse(metrics["summary"]["scanner"]["artifact_present"])
         self.assertFalse(metrics["adversarial_validation"]["artifact_present"])
         self.assertFalse(metrics["chains"]["artifact_present"])
         self.assertFalse(metrics["proofs"]["artifact_present"])
@@ -3781,6 +3805,18 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertIn("Run duration was not available", (run_dir / "reports" / "METRICS.md").read_text(encoding="utf-8"))
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Metrics: validated", cp_validate.stdout)
+
+    def test_validate_report_accepts_v1_metrics_without_compact_summary(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        metrics_path = run_dir / "reports" / "metrics.json"
+        metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+        metrics.pop("summary")
+        metrics_path.write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+
         self.assertIn("Metrics: validated", cp_validate.stdout)
 
     def test_gra_metrics_skips_symlinked_report_directories(self) -> None:
@@ -6011,6 +6047,12 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertTrue(normalized_path.exists())
         normalized = json.loads(normalized_path.read_text(encoding="utf-8"))
         self.assertEqual(index["results"][0]["normalized_leads_count"], len(normalized["leads"]))
+        cp_metrics = self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        self.assertIn("metrics.json", cp_metrics.stdout)
+        metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
+        self.assertTrue(metrics["summary"]["scanner"]["artifact_present"])
+        self.assertEqual(1, metrics["summary"]["scanner"]["result_count"])
+        self.assertEqual(len(normalized["leads"]), metrics["summary"]["scanner"]["normalized_leads_count"])
 
         cp_triage = self.run_cmd([REPO_ROOT / "bin" / "gra-scanner-triage", "--run", run_dir], check=True)
         self.assertIn("Codex status: 0", cp_triage.stdout)

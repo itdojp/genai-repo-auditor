@@ -37,6 +37,13 @@ warning totals. The command output is preview material, not an immutable
 publication plan, and may include target-specific titles, fingerprints, or issue
 body hashes.
 
+Prefer the top-level `summary` object in `reports/metrics.json` when preparing
+dogfood reports. It is the stable public-safe count surface for findings,
+Issue-publication warnings, benchmark gates, evidence-graph size, scanner lead
+availability, and explicit no-confirmed-finding records. Reuse those fields only
+after confirming the aggregate counts and repository identity are approved for
+the intended audience.
+
 ## Prohibited report content
 
 Do not publish or commit:

@@ -53,6 +53,16 @@ def load_json(path: Path, default: Any = None) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def load_report_json(root: Path, rel: Path, default: Any = None) -> Any:
+    path = root / rel
+    current = root
+    for part in rel.parts:
+        current = current / part
+        if current.exists() and current.is_symlink():
+            return default
+    return load_json(path, default)
+
+
 def counter_dict(counter: Counter[Any], ordered_keys: list[str] | None = None) -> dict[str, int]:
     result: dict[str, int] = {}
     if ordered_keys:
@@ -392,6 +402,85 @@ def issue_plan_metrics(plan: Any, present: bool) -> dict[str, Any]:
     }
 
 
+def evidence_graph_compact_summary(graph: Any) -> dict[str, Any]:
+    nodes = []
+    edges = []
+    if isinstance(graph, dict):
+        nodes = [item for item in graph.get("nodes") or [] if isinstance(item, dict)]
+        edges = [item for item in graph.get("edges") or [] if isinstance(item, dict)]
+    return {
+        "artifact_present": isinstance(graph, dict),
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+    }
+
+
+def benchmark_compact_summary(benchmark: Any) -> dict[str, Any]:
+    gates = []
+    summary = {}
+    if isinstance(benchmark, dict):
+        gates = [item for item in benchmark.get("quality_gates") or [] if isinstance(item, dict)]
+        summary = benchmark.get("summary") if isinstance(benchmark.get("summary"), dict) else {}
+    statuses = Counter(str(item.get("status") or "unknown") for item in gates)
+    return {
+        "artifact_present": isinstance(benchmark, dict),
+        "overall_status": str(summary.get("overall_status") or "not-available"),
+        "gate_count": int(summary.get("gate_count") if isinstance(summary.get("gate_count"), int) else len(gates)),
+        "passed": int(summary.get("passed") if isinstance(summary.get("passed"), int) else statuses.get("pass", 0)),
+        "warnings": int(summary.get("warnings") if isinstance(summary.get("warnings"), int) else statuses.get("warn", 0)),
+        "failed": int(summary.get("failed") if isinstance(summary.get("failed"), int) else statuses.get("fail", 0)),
+    }
+
+
+def scanner_compact_summary(scanner_index: Any) -> dict[str, Any]:
+    results = []
+    if isinstance(scanner_index, dict):
+        results = [item for item in scanner_index.get("results") or [] if isinstance(item, dict)]
+    normalized_leads = 0
+    for item in results:
+        count = item.get("normalized_leads_count")
+        if isinstance(count, int) and not isinstance(count, bool) and count > 0:
+            normalized_leads += count
+    return {
+        "artifact_present": isinstance(scanner_index, dict),
+        "result_count": len(results),
+        "normalized_leads_count": normalized_leads,
+    }
+
+
+def compact_public_summary(
+    *,
+    findings_data: Any,
+    findings: dict[str, Any],
+    issue_publication_plan: dict[str, Any],
+    issue_ledger: dict[str, Any],
+    evidence_graph: Any,
+    benchmark: Any,
+    scanner_index: Any,
+) -> dict[str, Any]:
+    no_findings = findings_data.get("no_findings") if isinstance(findings_data, dict) and isinstance(findings_data.get("no_findings"), dict) else {}
+    no_findings_source_stage = str(no_findings.get("source_stage") or "")
+    return {
+        "public_safe": True,
+        "notes": "Counts and status flags only; review repository names and aggregate counts before external reuse.",
+        "findings_total": int(findings.get("total") or 0),
+        "findings_by_severity": dict(findings.get("by_severity") or {}),
+        "findings_by_status": dict(findings.get("by_status") or {}),
+        "issue_recommended_findings": int(findings.get("issue_recommended") or 0),
+        "issue_publication_warning_count": int(issue_publication_plan.get("warning_count") or 0),
+        "issue_ledger_published_findings": int(issue_ledger.get("published_findings") or 0),
+        "issue_ledger_drift_warning_count": int(issue_ledger.get("drift_warning_count") or 0),
+        "evidence_graph": evidence_graph_compact_summary(evidence_graph),
+        "benchmark": benchmark_compact_summary(benchmark),
+        "scanner": scanner_compact_summary(scanner_index),
+        "no_findings": {
+            "recorded": bool(no_findings),
+            "source_stage": no_findings_source_stage,
+            "recon_only": no_findings_source_stage == "recon",
+        },
+    }
+
+
 def parse_time(value: Any) -> dt.datetime | None:
     if not isinstance(value, str) or not value.strip():
         return None
@@ -514,6 +603,9 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
     gapfill_data = load_json(reports / "gapfill-targets.json", None)
     issue_plan = load_json(reports / "issue-publication-plan.json", None)
     issue_ledger = load_json(reports / "issue-ledger.json", None)
+    evidence_graph = load_report_json(reports, Path("evidence-graph.json"), None)
+    benchmark = load_report_json(reports, Path("benchmark.json"), None)
+    scanner_index = load_report_json(reports, Path("scanner-results") / "scanner-index.json", None)
     command_events_path = reports / "command-events.jsonl"
     command_events = load_jsonl_objects(command_events_path)
     taxonomy_normalizations_path = reports / "taxonomy-normalizations.jsonl"
@@ -533,6 +625,29 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
     chains = list_of_dicts(chains_data, "chains")
     proofs = list_of_dicts(proofs_data, "proofs")
     traces = list_of_dicts(traces_data, "traces")
+    findings_metrics = finding_metrics(findings)
+    validation_summary = validation_metrics(validations, validation_data is not None)
+    chains_summary = chain_metrics(chains, chains_data is not None)
+    proofs_summary = proof_metrics(proofs, proofs_data is not None)
+    gapfill_summary = gapfill_metrics(
+        targets,
+        gapfill_data,
+        (reports / "COVERAGE.md").exists(),
+        gapfill_data is not None,
+    )
+    traces_summary = trace_metrics(traces, traces_data is not None)
+    issue_plan_summary = issue_plan_metrics(issue_plan, issue_plan is not None)
+    issue_ledger_summary = ledger_metrics(issue_ledger, issue_ledger is not None)
+    duplicate_decisions_summary = duplicate_decision_metrics(duplicate_decisions, duplicate_decisions_present)
+    observability_summary = observability_metrics(
+        command_events=command_events,
+        command_events_present=command_events_path.exists(),
+        taxonomy_normalizations=taxonomy_normalizations,
+        taxonomy_normalizations_present=taxonomy_normalizations_path.exists(),
+        targets=targets,
+    )
+    artifacts_summary = artifact_metrics(run_dir, reports, manifest)
+    duration_summary = run_duration_metrics(manifest)
 
     return {
         "schema_version": "1",
@@ -548,29 +663,27 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
             "secrets_copied": False,
             "notes": "Counts only; finding evidence, issue body text, proof evidence, and trace evidence are not copied.",
         },
-        "findings": finding_metrics(findings),
-        "adversarial_validation": validation_metrics(validations, validation_data is not None),
-        "chains": chain_metrics(chains, chains_data is not None),
-        "proofs": proof_metrics(proofs, proofs_data is not None),
-        "gapfill": gapfill_metrics(
-            targets,
-            gapfill_data,
-            (reports / "COVERAGE.md").exists(),
-            gapfill_data is not None,
+        "summary": compact_public_summary(
+            findings_data=findings_data,
+            findings=findings_metrics,
+            issue_publication_plan=issue_plan_summary,
+            issue_ledger=issue_ledger_summary,
+            evidence_graph=evidence_graph,
+            benchmark=benchmark,
+            scanner_index=scanner_index,
         ),
-        "traces": trace_metrics(traces, traces_data is not None),
-        "issue_publication_plan": issue_plan_metrics(issue_plan, issue_plan is not None),
-        "issue_ledger": ledger_metrics(issue_ledger, issue_ledger is not None),
-        "duplicate_decisions": duplicate_decision_metrics(duplicate_decisions, duplicate_decisions_present),
-        "observability": observability_metrics(
-            command_events=command_events,
-            command_events_present=command_events_path.exists(),
-            taxonomy_normalizations=taxonomy_normalizations,
-            taxonomy_normalizations_present=taxonomy_normalizations_path.exists(),
-            targets=targets,
-        ),
-        "artifacts": artifact_metrics(run_dir, reports, manifest),
-        "run_duration": run_duration_metrics(manifest),
+        "findings": findings_metrics,
+        "adversarial_validation": validation_summary,
+        "chains": chains_summary,
+        "proofs": proofs_summary,
+        "gapfill": gapfill_summary,
+        "traces": traces_summary,
+        "issue_publication_plan": issue_plan_summary,
+        "issue_ledger": issue_ledger_summary,
+        "duplicate_decisions": duplicate_decisions_summary,
+        "observability": observability_summary,
+        "artifacts": artifacts_summary,
+        "run_duration": duration_summary,
     }
 
 
@@ -587,6 +700,11 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
         "This report intentionally excludes raw finding evidence, issue body text, proof evidence, trace evidence, and "
         + "secret values."
     )
+    compact = metrics.get("summary") if isinstance(metrics.get("summary"), dict) else {}
+    evidence = compact.get("evidence_graph") if isinstance(compact.get("evidence_graph"), dict) else {}
+    benchmark = compact.get("benchmark") if isinstance(compact.get("benchmark"), dict) else {}
+    scanner = compact.get("scanner") if isinstance(compact.get("scanner"), dict) else {}
+    no_findings = compact.get("no_findings") if isinstance(compact.get("no_findings"), dict) else {}
     lines = [
         "# Advanced Workflow Metrics",
         "",
@@ -598,6 +716,26 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
         f"- Commit: `{metrics.get('commit', '')}`",
         f"- Generated at: `{metrics.get('generated_at', '')}`",
         f"- Source: `{metrics.get('source', '')}`",
+        "",
+        "## Public-safe compact summary",
+        "",
+        "These counts are designed for dogfood reports after human review; they do not include finding bodies, raw evidence, proof payloads, scanner lead bodies, or issue draft text.",
+        "",
+        "| Field | Value |",
+        "|---|---:|",
+        f"| Findings total | {compact.get('findings_total', 0)} |",
+        f"| Issue-recommended findings | {compact.get('issue_recommended_findings', 0)} |",
+        f"| Issue-publication warnings | {compact.get('issue_publication_warning_count', 0)} |",
+        f"| Published findings in ledger | {compact.get('issue_ledger_published_findings', 0)} |",
+        f"| Issue ledger drift warnings | {compact.get('issue_ledger_drift_warning_count', 0)} |",
+        f"| Evidence graph nodes | {evidence.get('node_count', 0)} |",
+        f"| Evidence graph edges | {evidence.get('edge_count', 0)} |",
+        f"| Benchmark gates | {benchmark.get('gate_count', 0)} |",
+        f"| Benchmark warnings | {benchmark.get('warnings', 0)} |",
+        f"| Benchmark failures | {benchmark.get('failed', 0)} |",
+        f"| Scanner results | {scanner.get('result_count', 0)} |",
+        f"| Normalized scanner leads | {scanner.get('normalized_leads_count', 0)} |",
+        f"| No-findings record present | {str(bool(no_findings.get('recorded'))).lower()} |",
         "",
         "## Summary",
         "",
