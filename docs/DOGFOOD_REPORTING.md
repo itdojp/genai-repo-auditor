@@ -32,6 +32,10 @@ Public-safe dogfood reports may include:
 
 Use bounded counts and categories. Do not include path-level evidence, code
 snippets, exploitability details, scanner records, or private target context.
+When summarizing `gra-issues --dry-run`, publish only reviewed counts and
+warning totals. The command output is preview material, not an immutable
+publication plan, and may include target-specific titles, fingerprints, or issue
+body hashes.
 
 ## Prohibited report content
 

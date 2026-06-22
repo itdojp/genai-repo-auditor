@@ -709,8 +709,11 @@ def plan_hash(plan_path: Path) -> str:
     return sha256_file(plan_path)
 
 
-def print_plan_summary(plan_path: Path, plan: Dict[str, Any], *, prefix: str = "Plan") -> None:
-    print(f"{prefix}: {plan_path}")
+def print_plan_summary(plan_path: Optional[Path], plan: Dict[str, Any], *, prefix: str = "Plan") -> None:
+    if plan_path is None:
+        print(prefix)
+    else:
+        print(f"{prefix}: {plan_path}")
     for entry in plan.get("selected_findings") or []:
         print(f"- {entry.get('id', 'SEC-UNKNOWN')}: issue_body_sha256={entry.get('issue_body_sha256', '')}")
         advanced = entry.get("advanced_validation") if isinstance(entry.get("advanced_validation"), dict) else {}
@@ -755,6 +758,12 @@ def print_plan_summary(plan_path: Path, plan: Dict[str, Any], *, prefix: str = "
             print(f"  WARNING: {warning}")
         for warning in remediation.get("warnings") or []:
             print(f"  WARNING: {warning}")
+
+
+def print_dry_run_preview_summary(preview_plan_path: Path, plan: Dict[str, Any]) -> None:
+    print("Dry-run preview only; no issue publication plan was written.")
+    print(f"Preview plan path if promoted with --plan: {preview_plan_path}")
+    print_plan_summary(preview_plan_path, plan, prefix="Preview issue publication entries")
 
 
 def finding_selection_reason(finding: Dict[str, Any], min_severity: str, statuses: Iterable[str]) -> str:
@@ -863,6 +872,8 @@ def write_issue_ledger_snapshot(
     statuses: Iterable[str],
     plan_path: Optional[Path],
     plan_sha256: Optional[str],
+    plan_written: bool,
+    publication_plan_status: str,
     overrides: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     ledger_path = default_ledger_path(run_dir)
@@ -879,7 +890,15 @@ def write_issue_ledger_snapshot(
         plan_sha256=plan_sha256,
         overrides=overrides,
     )
-    ledger = merge_current_entries(existing=existing, current_entries=current_entries, run_id=run_id, repo=repo, commit=commit)
+    ledger = merge_current_entries(
+        existing=existing,
+        current_entries=current_entries,
+        run_id=run_id,
+        repo=repo,
+        commit=commit,
+        plan_written=plan_written,
+        publication_plan_status=publication_plan_status,
+    )
     write_ledger(ledger_path, ledger)
     print(f"Wrote issue ledger: {ledger_path}")
     return ledger
@@ -1113,6 +1132,8 @@ def main() -> int:
             statuses=statuses,
             plan_path=plan_path,
             plan_sha256=plan_sha256,
+            plan_written=True,
+            publication_plan_status="written",
         )
         return 0
 
@@ -1158,6 +1179,8 @@ def main() -> int:
                     statuses=statuses,
                     plan_path=plan_path,
                     plan_sha256=refreshed_sha256,
+                    plan_written=True,
+                    publication_plan_status="rewritten",
                 )
             except ReportSafetyError as exc:
                 print(f"ERROR: {exc}", file=sys.stderr)
@@ -1198,6 +1221,7 @@ def main() -> int:
             return 4
         if args.dry_run:
             dry_run = True
+            print("Dry-run preview only; verified issue publication plan was not applied.")
 
     visibility = gh_repo_visibility(repo) if not dry_run else "NOT_CHECKED"
     if not dry_run and visibility in {"PUBLIC", "UNKNOWN", ""} and not args.allow_public:
@@ -1207,13 +1231,26 @@ def main() -> int:
     if args.create_labels and not dry_run:
         create_default_labels(repo)
 
+    plan_verified = bool(plan_path and plan_sha256 and args.apply_plan)
+    if args.apply_plan:
+        publication_plan_status = "verified-existing-plan-preview" if dry_run else "verified-existing-plan-applied"
+    elif dry_run:
+        publication_plan_status = "not-written-preview"
+    else:
+        publication_plan_status = "not-written-direct-apply"
+
     result = {
         "repo": repo,
         "run_id": run_id,
         "commit": commit,
         "visibility": visibility,
         "dry_run": dry_run,
-        "plan_path": str(plan_path) if plan_path else str(default_plan_path(run_dir)),
+        "preview_only": dry_run,
+        "plan_written": False,
+        "plan_verified": plan_verified,
+        "publication_plan_status": publication_plan_status,
+        "plan_path": str(plan_path) if plan_path else None,
+        "preview_plan_path": str(default_plan_path(run_dir)) if dry_run and plan_path is None else None,
         "plan_sha256": plan_sha256,
         "ledger_path": str(default_ledger_path(run_dir)),
         "duplicate_decisions_path": str(run_dir / "reports" / "duplicate-decisions"),
@@ -1247,7 +1284,10 @@ def main() -> int:
             for error in requirement_errors:
                 print(f"- {error}", file=sys.stderr)
             return 4
-        print_plan_summary(default_plan_path(run_dir), preview_plan)
+        if dry_run:
+            print_dry_run_preview_summary(default_plan_path(run_dir), preview_plan)
+        else:
+            print_plan_summary(None, preview_plan, prefix="Direct apply transient issue selection; no issue publication plan was written")
         issue_entries = [(entry, preview_bodies.get(plan_entry_key(entry), "")) for entry in preview_plan["selected_findings"]]
 
     findings_by_key = {
@@ -1411,6 +1451,8 @@ def main() -> int:
         statuses=statuses,
         plan_path=plan_path,
         plan_sha256=plan_sha256,
+        plan_written=False,
+        publication_plan_status=publication_plan_status,
         overrides=ledger_overrides,
     )
 

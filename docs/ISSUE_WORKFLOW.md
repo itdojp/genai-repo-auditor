@@ -85,9 +85,14 @@ If a finding uses `issue_body_file`, the path must be a relative `.md` file unde
 symlinks, non-Markdown files, and oversized drafts before dry-run or apply
 output is produced.
 
-Dry-run output includes the default immutable publication plan path and the
-SHA-256 hash of each issue body. Use those hashes to confirm exactly which
-content is being reviewed.
+Dry-run output is a preview only. It does not write
+`reports/issue-publication-plan.json`, it does not create GitHub Issues, and it
+sets `plan_written=false` plus `publication_plan_status=not-written-preview` in
+`issues-created.json` and `reports/issue-ledger.json`. The preview prints the
+path that would be used if the operator later promotes the same selection with
+`--plan`, along with each issue body SHA-256 hash. Use those hashes to confirm
+which candidate content is being reviewed, but treat the dry-run output as
+unapproved preview material rather than an immutable publication record.
 It also writes `reports/issue-ledger.json`, a canonical local ledger that tracks
 each finding's publication state (`not-selected`, `pending`, `dry-run`,
 `published`, or `duplicate`), fingerprint, title, labels, body hash, source plan,
@@ -171,7 +176,9 @@ gra-issues --run runs/OWNER__REPO/RUN_ID --apply
 
 Direct `--apply` remains available for already-reviewed private workflows, but
 the plan workflow is recommended when approval must be bound to exact Issue
-content.
+content. Direct apply does not write an issue-publication plan; its
+`issues-created.json` record uses `plan_written=false` and
+`publication_plan_status=not-written-direct-apply`.
 
 ## labels
 

@@ -224,6 +224,10 @@ and drift warnings when current findings or GitHub inventory no longer match
 the ledger. It is the canonical local source for idempotent Issue publication;
 `issues-created.json` remains a per-command result artifact for backward
 compatibility.
+New ledgers also record `plan_written` and `publication_plan_status` so
+operators can distinguish a dry-run preview (`not-written-preview`) from an
+immutable plan created by `--plan` (`written`) or an existing plan verified by
+`--apply-plan`.
 
 `reports/duplicate-decisions/*.json` are local publication-decision records
 produced by `gra-issues` before dry-run or apply output is written for a
