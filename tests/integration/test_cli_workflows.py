@@ -3733,6 +3733,71 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(2, cp_existing.returncode)
         self.assertIn("findings.json already exists", cp_existing.stderr)
 
+    def test_gra_workflow_profile_marks_recon_only_scoped_skips_for_reporting(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+
+        cp_profile = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-workflow-profile",
+                "--run",
+                run_dir,
+                "--profile",
+                "recon-only",
+                "--reviewer",
+                "test-operator",
+                "--rationale",
+                "Reconnaissance completed and advanced validation stages are intentionally out of scope.",
+            ],
+            check=True,
+        )
+
+        self.assertIn("Profile: recon-only", cp_profile.stdout)
+        self.assertIn("Skipped by scope:", cp_profile.stdout)
+        profile = json.loads((run_dir / "reports" / "workflow-profile.json").read_text(encoding="utf-8"))
+        self.assertEqual("gra-workflow-profile", profile["source"])
+        self.assertEqual("recon-only", profile["profile"])
+        self.assertEqual("test-operator", profile["reviewer"])
+        self.assertTrue(profile["safety"]["local_artifacts_only"])
+        self.assertFalse(profile["safety"]["raw_evidence_copied"])
+        self.assertFalse(profile["safety"]["issue_bodies_created"])
+        self.assertGreater(profile["summary"]["skipped_by_scope_count"], 0)
+        self.assertIn("adversarial_validation", profile["summary"]["scoped_skip_stages"])
+        self.assertIn("remediation", profile["summary"]["scoped_skip_stages"])
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Workflow profile: validated", cp_validate.stdout)
+
+        cp_metrics = self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        self.assertIn("Workflow profile skipped by scope:", cp_metrics.stdout)
+        metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
+        self.assertEqual("recon-only", metrics["workflow_profile"]["profile"])
+        self.assertEqual(profile["summary"]["skipped_by_scope_count"], metrics["workflow_profile"]["skipped_by_scope_count"])
+        self.assertEqual(profile["summary"]["skipped_by_scope_count"], metrics["summary"]["workflow_profile"]["skipped_by_scope_count"])
+
+        cp_benchmark = self.run_cmd([REPO_ROOT / "bin" / "gra-benchmark", "--run", run_dir], check=True)
+        self.assertIn("Workflow skipped by scope:", cp_benchmark.stdout)
+        benchmark = json.loads((run_dir / "reports" / "benchmark.json").read_text(encoding="utf-8"))
+        self.assertEqual("recon-only", benchmark["metrics"]["summary"]["workflow_profile"])
+        self.assertEqual(
+            profile["summary"]["skipped_by_scope_count"],
+            benchmark["metrics"]["summary"]["workflow_skipped_by_scope_count"],
+        )
+
+        cp_graph = self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", run_dir], check=True)
+        self.assertIn("Nodes:", cp_graph.stdout)
+        graph = json.loads((run_dir / "reports" / "evidence-graph.json").read_text(encoding="utf-8"))
+        self.assertEqual("recon-only", graph["summary"]["workflow_profile"]["profile"])
+        self.assertEqual(profile["summary"]["skipped_by_scope_count"], graph["summary"]["workflow_profile"]["skipped_by_scope_count"])
+        node_types = {node["type"] for node in graph["nodes"]}
+        self.assertIn("workflow_profile", node_types)
+        self.assertIn("workflow_stage", node_types)
+
+        cp_final_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Metrics: validated", cp_final_validate.stdout)
+        self.assertIn("Workflow profile: validated", cp_final_validate.stdout)
+        self.assertIn("Benchmark: validated", cp_final_validate.stdout)
+        self.assertIn("Evidence graph: validated", cp_final_validate.stdout)
+
     def test_gra_no_findings_rejects_symlinked_reports_dir(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         shutil.rmtree(run_dir / "reports")

@@ -66,6 +66,9 @@ and simple status flags:
   failures when `reports/benchmark.json` is present
 - `scanner.artifact_present`, `result_count`, and
   `normalized_leads_count` when scanner index artifacts are present
+- `workflow_profile.artifact_present`, `profile`,
+  `skipped_by_scope_count`, and status counts when
+  `reports/workflow-profile.json` is present
 - `no_findings.recorded`, `source_stage`, and `recon_only` for explicit
   no-confirmed-finding records
 
@@ -147,7 +150,7 @@ gra-metrics --run runs/OWNER__REPO/RUN_ID
 gra-benchmark --run runs/OWNER__REPO/RUN_ID
 ```
 
-The benchmark records quality gates such as report validation status, adversarial downgrade/invalidate rate, chain count bounds, unsafe proof rejection count, Issue plan warnings, and publication-safety status without copying raw evidence.
+The benchmark records quality gates such as report validation status, adversarial downgrade/invalidate rate, chain count bounds, unsafe proof rejection count, Issue plan warnings, and publication-safety status without copying raw evidence. Its metrics summary also carries workflow-profile scoped-skip counts when present.
 
 ## Safety boundary
 

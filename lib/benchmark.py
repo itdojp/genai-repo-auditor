@@ -428,6 +428,7 @@ def build_benchmark(
     proofs = metrics.get("proofs") if isinstance(metrics.get("proofs"), dict) else {}
     issue_plan = metrics.get("issue_publication_plan") if isinstance(metrics.get("issue_publication_plan"), dict) else {}
     artifacts = metrics.get("artifacts") if isinstance(metrics.get("artifacts"), dict) else {}
+    workflow_profile = metrics.get("workflow_profile") if isinstance(metrics.get("workflow_profile"), dict) else {}
     proofs_data = load_json(reports / "proofs.json", {}) or {}
     unsafe_proof_count = count_unsafe_proof_records(proofs_data) + count_rejected_patch_validation_commands(reports)
     existing_publications = count_existing_publications(reports)
@@ -437,6 +438,7 @@ def build_benchmark(
     chain_total = safe_int(chains.get("total"))
     issue_warning_count = safe_int(issue_plan.get("warning_count"))
     downgrade_rate = safe_float(adv.get("downgrade_or_invalidate_rate"))
+    skipped_by_scope_count = safe_int(workflow_profile.get("skipped_by_scope_count"))
 
     gates = [
         gate(
@@ -542,6 +544,8 @@ def build_benchmark(
                 "proof_unsafe_rejection_count": unsafe_proof_count,
                 "issue_plan_warning_count": issue_warning_count,
                 "manifest_hygiene_warnings": safe_int(artifacts.get("manifest_hygiene_warnings")),
+                "workflow_profile": str(workflow_profile.get("profile") or "not-recorded"),
+                "workflow_skipped_by_scope_count": skipped_by_scope_count,
             },
         },
         "quality_gates": gates,
@@ -584,6 +588,7 @@ def render_benchmark_markdown(benchmark: dict[str, Any]) -> str:
         f"| Unsafe proof rejections | {metrics_summary.get('proof_unsafe_rejection_count', 0)} |",
         f"| Issue plan warnings | {metrics_summary.get('issue_plan_warning_count', 0)} |",
         f"| Manifest hygiene warnings | {metrics_summary.get('manifest_hygiene_warnings', 0)} |",
+        f"| Workflow skipped by scope | {metrics_summary.get('workflow_skipped_by_scope_count', 0)} |",
         "",
         "## Quality gates",
         "",

@@ -123,6 +123,7 @@ class CliHelpTests(unittest.TestCase):
             ("gra-targets", [], 2, "the following arguments are required: --run"),
             ("gra-taxonomy-preflight", [], 2, "one of the arguments --run --findings is required"),
             ("gra-validate-report", [], 2, "one of --run or --findings is required"),
+            ("gra-workflow-profile", [], 2, "the following arguments are required: --run, --profile, --rationale"),
         ]
         for command, args, expected_status, expected_message in cases:
             with self.subTest(command=command):

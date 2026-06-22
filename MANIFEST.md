@@ -37,6 +37,7 @@ bin/gra-taxonomy-preflight
 bin/gra-trace
 bin/gra-validate-report
 bin/gra-variant
+bin/gra-workflow-profile
 bin/gra-worktree-check
 ```
 
@@ -100,6 +101,7 @@ templates/reports/scanner-index.schema.json
 templates/reports/targets.schema.json
 templates/reports/traces.schema.json
 templates/reports/validation.schema.json
+templates/reports/workflow-profile.schema.json
 ```
 
 ## Dogfood templates

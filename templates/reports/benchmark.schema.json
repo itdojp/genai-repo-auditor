@@ -83,7 +83,9 @@
             "proof_count": {"type": "integer", "minimum": 0},
             "proof_unsafe_rejection_count": {"type": "integer", "minimum": 0},
             "issue_plan_warning_count": {"type": "integer", "minimum": 0},
-            "manifest_hygiene_warnings": {"type": "integer", "minimum": 0}
+            "manifest_hygiene_warnings": {"type": "integer", "minimum": 0},
+            "workflow_profile": {"type": "string"},
+            "workflow_skipped_by_scope_count": {"type": "integer", "minimum": 0}
           }
         }
       }

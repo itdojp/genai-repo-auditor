@@ -42,8 +42,12 @@ gra-targets --run "$RUN" --list
 
 # Recon-only stop path:
 # If the bounded pass intentionally stops here with no confirmed findings, run
-# gra-no-findings and the deterministic reporting commands in a separate
-# terminal/session, then stop. Do not run gra-no-findings before the deeper path.
+# gra-workflow-profile, gra-no-findings, and the deterministic reporting
+# commands in a separate terminal/session, then stop. Do not run these stop-path
+# commands before the deeper path.
+# gra-workflow-profile --run "$RUN" \
+#   --profile recon-only \
+#   --rationale "Bounded reconnaissance completed; advanced stages are intentionally out of scope."
 # gra-no-findings --run "$RUN" \
 #   --source-stage recon \
 #   --rationale "Bounded reconnaissance completed; no candidate findings were advanced for this pass."
@@ -204,11 +208,16 @@ ledger and store them only through an approved secure process.
 ### Recon-only / no-confirmed-finding runs
 
 When a dogfood pass intentionally stops after reconnaissance or human scope
-review and no finding is confirmed, do not create `reports/findings.json` by
-hand. Use `gra-no-findings` to write a schema-valid empty findings artifact with
-a required rationale and target metadata:
+review and no finding is confirmed, do not create `reports/findings.json` or a
+stage-status record by hand. Use `gra-workflow-profile --profile recon-only` to
+record that advanced stages are intentionally `skipped_by_scope`, then use
+`gra-no-findings` to write a schema-valid empty findings artifact with a
+required rationale and target metadata:
 
 ```bash
+gra-workflow-profile --run "$RUN" \
+  --profile recon-only \
+  --rationale "Bounded reconnaissance completed; advanced stages are intentionally out of scope."
 gra-no-findings --run "$RUN" \
   --source-stage recon \
   --rationale "Bounded reconnaissance completed; no candidate findings were advanced for this pass."
@@ -222,4 +231,7 @@ gra-issues --run "$RUN" --dry-run --min-severity Low \
 
 The generated artifact records a `no_findings` decision and an empty `findings`
 array. It does not assert that the repository has no vulnerabilities; it only
-records the reviewed state of this bounded run.
+records the reviewed state of this bounded run. The generated workflow profile
+records `skipped_by_scope` stage status so `gra-metrics`, `gra-benchmark`, and
+`gra-evidence-graph` can distinguish scoped skips from missing outputs or
+command failures.

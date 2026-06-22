@@ -15,7 +15,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 - Non-interactive `codex exec` invocations set approval behavior through `-c 'approval_policy="never"'` rather than the interactive-only `--ask-for-approval` flag, preserving compatibility with `codex-cli 0.135.0`.
 - Codex-driven commands derive the default executable name from the built-in `codex-cli` worker profile while preserving the tested `codex exec` argument construction in `lib/gralib.py`. `gra-agent-check` can list profiles and check whether the required local worker executable is available without running the worker.
 - Executable target-code validation should be gated by an explicit sandbox profile. `gra-sandbox-check` records readiness for `source-only`, `local-test`, `container`, `gvisor`, and `vm` profiles without executing target code.
-- Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-trace`, `gra-no-findings`, `gra-metrics`, `gra-benchmark`, `gra-evidence-graph`, `gra-import-findings`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
+- Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-trace`, `gra-no-findings`, `gra-workflow-profile`, `gra-metrics`, `gra-benchmark`, `gra-evidence-graph`, `gra-import-findings`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
 - Python commands use `argparse`; missing required arguments or invalid choices normally exit with status `2`.
 - Generated audit artifacts, cloned target repositories, scanner raw outputs, issue drafts, and local stores should remain local and should not be committed.
 
@@ -38,7 +38,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Remediation candidates | `gra-remediate` | Draft-only remediation prompt, subject seed JSON, `reports/remediation/remediation-candidates.json`, local patch drafts |
 | Cross-repo trace reachability | `gra-trace` | Experimental/P3 trace prompt, subject seed JSON, `reports/traces.json`, `reports/TRACE.md` |
 | Scanner / external finding import | `gra-ingest`, `gra-import-findings`, `gra-scanner-triage` | Raw scanner copies, redacted normalized leads, scanner index, review-only imported finding artifacts, Scorecard posture artifacts, dependency posture artifacts, triage output |
-| Validation | `gra-no-findings`, `gra-taxonomy-preflight`, `gra-validate-report` | Explicit no-confirmed-finding artifact, controlled taxonomy preflight, report contract validation result |
+| Validation | `gra-no-findings`, `gra-workflow-profile`, `gra-taxonomy-preflight`, `gra-validate-report` | Explicit no-confirmed-finding artifact, workflow scope profile, controlled taxonomy preflight, report contract validation result |
 | Reporting / persistence | `gra-metrics`, `gra-benchmark`, `gra-evidence-graph`, `gra-dashboard`, `gra-sarif`, `gra-store`, `gra-index` | Local metrics, dogfood benchmark gates, evidence graph, HTML dashboard, SARIF, SQLite store, run index |
 | Issue workflow | `gra-issues` | Dry-run previews, canonical issue ledger, duplicate decision records, ledger verification, or GitHub Issues after human review |
 
@@ -480,6 +480,31 @@ gra-issues --run runs/OWNER__REPO/RUN_ID --dry-run --min-severity Low \
   --statuses Confirmed,Probable,Potential,Informational
 ```
 
+## `gra-workflow-profile`
+
+| Field | Details |
+|---|---|
+| Purpose | Record an explicit workflow scope profile so intentionally skipped advanced stages are distinct from missing outputs or command failures. |
+| Workflow category | Validation / reporting setup. |
+| Required inputs | `--run RUN_DIR --profile recon-only --rationale TEXT`. The run directory must contain `context.json`. |
+| Key options | Optional `--reviewer TEXT`, and `--force` to overwrite an existing `workflow-profile.json` after review. |
+| Generated outputs | `reports/workflow-profile.json` and `reports/WORKFLOW_PROFILE.md`. The recon-only profile marks reconnaissance and target generation as completed and advanced stages such as target research, scanner triage, adversarial validation, chain synthesis, safe proofs, trace reachability, remediation, dashboard generation, and Issue publication as `skipped_by_scope`. |
+| Exit status behavior | `0` when the workflow profile is written; `2` for missing context, empty rationale, unsafe context paths, existing profile without `--force`, or invalid options. |
+| Security / disclosure cautions | The profile records stage intent and aggregate status only. It does not create findings, issue bodies, GitHub Issues, scanner output, proofs, traces, remediation content, or dashboards. Treat `skipped_by_scope` as an operator scope decision, not proof that the skipped stage has no risk. |
+| Related docs | [`docs/DOGFOOD_RUNBOOK.md`](DOGFOOD_RUNBOOK.md), [`docs/DOGFOOD_REPORTING.md`](DOGFOOD_REPORTING.md), [`docs/METRICS.md`](METRICS.md), [`docs/BENCHMARKING.md`](BENCHMARKING.md), [`docs/EVIDENCE_GRAPH.md`](EVIDENCE_GRAPH.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md). |
+
+Examples:
+
+```bash
+gra-workflow-profile --run runs/OWNER__REPO/RUN_ID \
+  --profile recon-only \
+  --rationale "Reconnaissance completed and advanced validation stages are intentionally out of scope."
+gra-validate-report --run runs/OWNER__REPO/RUN_ID
+gra-metrics --run runs/OWNER__REPO/RUN_ID
+gra-benchmark --run runs/OWNER__REPO/RUN_ID
+gra-evidence-graph --run runs/OWNER__REPO/RUN_ID
+```
+
 ## `gra-taxonomy-preflight`
 
 | Field | Details |
@@ -529,7 +554,7 @@ gra-validate-report --findings runs/OWNER__REPO/RUN_ID/reports/findings.json
 | Workflow category | Reporting workflow. |
 | Required inputs | `--run RUN_DIR`. |
 | Key options | `--out-json OUT` and `--out-md OUT` to override the default `reports/metrics.json` and `reports/METRICS.md`. |
-| Generated outputs | `reports/metrics.json` and `reports/METRICS.md` with counts for findings, adversarial validation decisions, downgrade/invalidate rate, chains, proofs, gapfill current/cumulative queue state, traces, issue publication plan warnings, duplicate decisions, command-event durations, failures, reruns, validation retries, taxonomy normalizations, artifact counts, manifest retention buckets, manifest hygiene warning counts, and run duration when available. |
+| Generated outputs | `reports/metrics.json` and `reports/METRICS.md` with counts for findings, adversarial validation decisions, downgrade/invalidate rate, chains, proofs, gapfill current/cumulative queue state, traces, issue publication plan warnings, workflow-profile scoped skips, duplicate decisions, command-event durations, failures, reruns, validation retries, taxonomy normalizations, artifact counts, manifest retention buckets, manifest hygiene warning counts, and run duration when available. |
 | Exit status behavior | `0` when metrics are written; parser status `2` for usage errors; unsafe `reports_dir` or unreadable local artifacts return `2`. |
 | Security / disclosure cautions | Metrics are generated from local report artifacts only and intentionally omit raw finding evidence, issue body text, proof evidence, trace evidence, scanner lead bodies, and secret values. Keep metrics local unless aggregate repository risk information is approved for sharing. |
 | Related docs | [`docs/METRICS.md`](METRICS.md), [`docs/REPORTING_AND_STORE.md`](REPORTING_AND_STORE.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
@@ -548,7 +573,7 @@ gra-metrics --run runs/OWNER__REPO/RUN_ID
 | Workflow category | Reporting / quality-gate workflow. |
 | Required inputs | Either `--run RUN_DIR` for an existing run or `--fixture minimal\|advanced` to copy a built-in local fixture into an ignored `runs/benchmark-fixtures/` directory. |
 | Key options | `--out-run DIR` for fixture destination, `--max-chains N` to tune the chain-count bound, `--out-json OUT`, `--out-md OUT`, and `--skip-validation` for diagnostic runs that should not execute `gra-validate-report`. |
-| Generated outputs | `reports/benchmark.json` and `reports/BENCHMARK.md` with bounded metric summaries, gate statuses, and follow-up actions. The benchmark consumes `reports/metrics.json` when present and computes in-memory fallback counts when it is absent. |
+| Generated outputs | `reports/benchmark.json` and `reports/BENCHMARK.md` with bounded metric summaries, workflow-profile scoped-skip counts, gate statuses, and follow-up actions. The benchmark consumes `reports/metrics.json` when present and computes in-memory fallback counts when it is absent. |
 | Exit status behavior | `0` when no quality gate fails, even if warning gates need human review; `1` when one or more gates fail; parser/status `2` for usage errors, missing runs, unsafe report paths, invalid fixtures, or unreadable local artifacts. |
 | Security / disclosure cautions | The benchmark is local-only, does not call Codex, does not contact external networks, and never calls `gra-issues --apply`. It records counts, rates, and local artifact paths only; raw finding evidence, issue bodies, proof payloads, scanner lead bodies, and secret values are excluded. |
 | Related docs | [`docs/BENCHMARKING.md`](BENCHMARKING.md), [`docs/METRICS.md`](METRICS.md), [`docs/REPORTING_AND_STORE.md`](REPORTING_AND_STORE.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
@@ -565,11 +590,11 @@ gra-benchmark --run runs/OWNER__REPO/RUN_ID --max-chains 10
 
 | Field | Details |
 |---|---|
-| Purpose | Generate a local graph that links findings to supporting and challenging artifacts across targets, scanner leads, chains, safe proofs, adversarial validation, traces, remediation candidates, patch validation, Issue publication plans, and metrics. |
+| Purpose | Generate a local graph that links findings to supporting and challenging artifacts across targets, scanner leads, chains, safe proofs, adversarial validation, traces, remediation candidates, patch validation, Issue publication plans, workflow profiles, and metrics. |
 | Workflow category | Reporting / evidence handoff workflow. |
 | Required inputs | `--run RUN_DIR` with `reports/findings.json`; all other artifacts are optional and missing optional artifacts are recorded in the graph summary instead of causing failure. |
 | Key options | `--run RUN_DIR`. |
-| Generated outputs | `reports/evidence-graph.json` and `reports/EVIDENCE_GRAPH.md` with bounded node/edge summaries, artifact references, high/Critical issue-recommended coverage counts, and missing optional artifact metadata. |
+| Generated outputs | `reports/evidence-graph.json` and `reports/EVIDENCE_GRAPH.md` with bounded node/edge summaries, workflow-profile scoped-skip status, artifact references, high/Critical issue-recommended coverage counts, and missing optional artifact metadata. |
 | Exit status behavior | `0` when the graph is written; parser status `2` for usage errors. |
 | Security / disclosure cautions | The graph is local-only and intentionally avoids raw finding evidence, root cause text, remediation text, proof payloads, issue bodies, and secret values. Keep it local unless repository-risk metadata sharing is approved. |
 | Related docs | [`docs/EVIDENCE_GRAPH.md`](EVIDENCE_GRAPH.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |

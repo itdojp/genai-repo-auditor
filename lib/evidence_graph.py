@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from gralib import load_context, load_json, utc_now, write_json
+from workflow_profile import summarize_workflow_profile
 
 NODE_TYPES = {
     "target",
@@ -18,6 +19,8 @@ NODE_TYPES = {
     "patch_validation",
     "issue_plan_entry",
     "metric",
+    "workflow_profile",
+    "workflow_stage",
 }
 EDGE_TYPES = {
     "produced",
@@ -154,6 +157,7 @@ class EvidenceGraphBuilder:
         self.patch_validations: list[dict[str, Any]] = []
         self.issue_plan_entries: list[dict[str, Any]] = []
         self.metrics: dict[str, Any] = {}
+        self.workflow_profile: dict[str, Any] = {}
 
     def report_artifact(self, rel: str) -> Path:
         return self.reports / rel
@@ -233,6 +237,10 @@ class EvidenceGraphBuilder:
             self.metrics = metrics if isinstance(metrics, dict) else {}
         else:
             self.missing_optional_artifacts.append(rel_to_run(self.run_dir, metrics_path))
+        workflow_profile_path = self.reports / "workflow-profile.json"
+        if workflow_profile_path.exists():
+            profile = load_json(workflow_profile_path, {}) or {}
+            self.workflow_profile = profile if isinstance(profile, dict) else {}
         remediation_root = self.reports / "remediation"
         safe_remediation_root = ensure_under_run(remediation_root, self.run_dir, "remediation directory")
         if safe_remediation_root.exists():
@@ -376,6 +384,32 @@ class EvidenceGraphBuilder:
                 "path": self.report_rel("metrics.json"),
                 "summary": "Run-level aggregate metrics",
             })
+        if self.workflow_profile:
+            profile_name = str(self.workflow_profile.get("profile") or "unknown")
+            self.add_node({
+                "id": "workflow_profile:run",
+                "type": "workflow_profile",
+                "ref_id": profile_name,
+                "label": f"Workflow profile: {profile_name}",
+                "severity": "Unknown",
+                "status": profile_name,
+                "path": self.report_rel("workflow-profile.json"),
+                "summary": short_text(f"Workflow profile {profile_name}"),
+            })
+            for index, stage in enumerate(self.workflow_profile.get("stages") or []):
+                if not isinstance(stage, dict):
+                    continue
+                stage_id = str(stage.get("id") or f"index-{index}")
+                self.add_node({
+                    "id": f"workflow_stage:{stage_id}",
+                    "type": "workflow_stage",
+                    "ref_id": stage_id,
+                    "label": str(stage.get("title") or stage_id),
+                    "severity": "Unknown",
+                    "status": str(stage.get("status") or "unknown"),
+                    "path": json_pointer(self.report_rel("workflow-profile.json"), "stages", index),
+                    "summary": short_text(stage.get("reason") or stage_id),
+                })
 
     def add_edges(self) -> None:
         for target in self.targets:
@@ -440,6 +474,18 @@ class EvidenceGraphBuilder:
             for finding in self.findings:
                 finding_id = str(finding.get("id") or "")
                 self.add_edge("metric:run", f"finding:{finding_id}", "produced", reason="run metrics summarize finding population")
+        if self.workflow_profile and "workflow_profile:run" in self.nodes:
+            for stage in self.workflow_profile.get("stages") or []:
+                if not isinstance(stage, dict):
+                    continue
+                stage_id = str(stage.get("id") or "")
+                if stage_id:
+                    self.add_edge(
+                        "workflow_profile:run",
+                        f"workflow_stage:{stage_id}",
+                        "produced",
+                        reason=f"workflow profile marks stage {stage.get('status', 'unknown')}",
+                    )
 
     def summary(self) -> dict[str, Any]:
         node_counts = Counter(node["type"] for node in self.nodes.values())
@@ -456,6 +502,7 @@ class EvidenceGraphBuilder:
             "node_counts": dict(sorted(node_counts.items())),
             "edge_counts": dict(sorted(edge_counts.items())),
             "missing_optional_artifacts": sorted(set(self.missing_optional_artifacts)),
+            "workflow_profile": summarize_workflow_profile(self.workflow_profile),
             "high_critical_issue_recommended_findings": len(high_issue_findings),
             "high_critical_with_supporting_evidence": sum(1 for finding in high_issue_findings if f"finding:{finding.get('id')}" in supporting_edges),
             "high_critical_with_challenging_evidence": sum(1 for finding in high_issue_findings if f"finding:{finding.get('id')}" in challenging_edges),
@@ -501,6 +548,7 @@ def write_evidence_graph(run_dir: Path, graph: dict[str, Any]) -> tuple[Path, Pa
 
 def render_evidence_graph_markdown(path: Path, graph: dict[str, Any]) -> None:
     summary = graph.get("summary") if isinstance(graph.get("summary"), dict) else {}
+    workflow_profile = summary.get("workflow_profile") if isinstance(summary.get("workflow_profile"), dict) else {}
     lines = [
         "# Evidence Graph",
         "",
@@ -514,6 +562,8 @@ def render_evidence_graph_markdown(path: Path, graph: dict[str, Any]) -> None:
         "",
         f"- Nodes: {summary.get('node_count', 0)}",
         f"- Edges: {summary.get('edge_count', 0)}",
+        f"- Workflow profile: `{workflow_profile.get('profile', 'not-recorded')}`",
+        f"- Stages skipped by scope: {workflow_profile.get('skipped_by_scope_count', 0)}",
         f"- High/Critical issue-recommended findings: {summary.get('high_critical_issue_recommended_findings', 0)}",
         f"- With supporting evidence: {summary.get('high_critical_with_supporting_evidence', 0)}",
         f"- With challenging evidence: {summary.get('high_critical_with_challenging_evidence', 0)}",

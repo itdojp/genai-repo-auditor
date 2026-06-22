@@ -39,6 +39,7 @@ The graph is generated from local run artifacts only:
 - `reports/remediation/**/patch-validation.json`
 - `reports/issue-publication-plan.json`
 - `reports/metrics.json`
+- `reports/workflow-profile.json`
 
 Only `findings.json` is expected for a useful graph. All other inputs are
 optional; missing optional artifacts are recorded under
@@ -59,6 +60,8 @@ Node types:
 - `patch_validation`
 - `issue_plan_entry`
 - `metric`
+- `workflow_profile`
+- `workflow_stage`
 
 Edge types:
 
@@ -84,6 +87,7 @@ The evidence graph is local/private by default. It stores bounded metadata only:
 - finding IDs, titles, severity, status, and artifact pointers
 - validation decisions and missing-evidence challenge links
 - chain/proof/trace/remediation/Issue-plan IDs and status
+- workflow-profile and stage IDs, status, and scoped-skip counts
 - aggregate node/edge counts
 
 It must not copy raw finding evidence, root cause text, impact text, remediation

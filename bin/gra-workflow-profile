@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / "lib"))
+from version import auditor_version  # noqa: E402
+from workflow_profile import PROFILES, WorkflowProfileError, write_workflow_profile  # noqa: E402
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Record an explicit workflow profile for intentionally scoped audit stages"
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {auditor_version(LAB_ROOT)}")
+    parser.add_argument("--run", required=True, help="Run directory containing context.json")
+    parser.add_argument("--profile", required=True, choices=sorted(PROFILES), help="Workflow profile to record")
+    parser.add_argument("--rationale", required=True, help="Human-readable scope rationale")
+    parser.add_argument("--reviewer", help="Optional reviewer/operator name to record locally")
+    parser.add_argument("--force", action="store_true", help="Overwrite an existing workflow-profile.json after review")
+    args = parser.parse_args()
+
+    try:
+        json_path, md_path, profile = write_workflow_profile(
+            Path(args.run),
+            profile=args.profile,
+            rationale=args.rationale,
+            reviewer=args.reviewer,
+            force=args.force,
+        )
+    except (OSError, ValueError, WorkflowProfileError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    summary = profile.get("summary", {})
+    print(f"Wrote {json_path}")
+    print(f"Wrote {md_path}")
+    print(f"Profile: {profile['profile']}")
+    print(f"Stages: {summary.get('stage_count', 0)}")
+    print(f"Skipped by scope: {summary.get('skipped_by_scope_count', 0)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
