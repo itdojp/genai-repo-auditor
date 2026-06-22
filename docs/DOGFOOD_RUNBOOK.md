@@ -40,13 +40,20 @@ gra-recon --run "$RUN" --model gpt-5.5 --effort xhigh
 gra-targets --run "$RUN" --generate --model gpt-5.5 --effort xhigh
 gra-targets --run "$RUN" --list
 
-# If the bounded pass intentionally stops here with no confirmed findings,
-# record that state explicitly before deterministic reporting. Otherwise,
-# continue with deeper target research and validation before reporting.
-gra-no-findings --run "$RUN" \
-  --source-stage recon \
-  --rationale "Bounded reconnaissance completed; no candidate findings were advanced for this pass."
+# Recon-only stop path:
+# If the bounded pass intentionally stops here with no confirmed findings, run
+# gra-no-findings and the deterministic reporting commands in a separate
+# terminal/session, then stop. Do not run gra-no-findings before the deeper path.
+# gra-no-findings --run "$RUN" \
+#   --source-stage recon \
+#   --rationale "Bounded reconnaissance completed; no candidate findings were advanced for this pass."
+# gra-validate-report --run "$RUN"
+# gra-metrics --run "$RUN"
+# gra-benchmark --run "$RUN"
+# gra-evidence-graph --run "$RUN"
+# gra-issues --run "$RUN" --dry-run
 
+# Deeper review path:
 gra-gapfill --run "$RUN" --generate
 gra-adversarial-validate --run "$RUN" --all-critical-high --votes 3 --policy human-review-on-split
 gra-validate-report --run "$RUN"

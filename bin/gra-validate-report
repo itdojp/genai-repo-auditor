@@ -241,6 +241,8 @@ def validate_schema(value: Any, schema: Dict[str, Any], path: str, errors: List[
 
     if "enum" in schema and value not in schema["enum"]:
         errors.append(f"{path}: value {value!r} is not one of {schema['enum']}")
+    if "const" in schema and value != schema["const"]:
+        errors.append(f"{path}: value {value!r} does not match required constant {schema['const']!r}")
 
     if isinstance(value, dict):
         for key in schema.get("required", []):
@@ -278,6 +280,8 @@ def validate_schema_shape(value: Any, schema: Dict[str, Any], path: str, errors:
 
     if "enum" in schema and value not in schema["enum"]:
         errors.append(f"{path}: value is not allowed")
+    if "const" in schema and value != schema["const"]:
+        errors.append(f"{path}: value does not match required constant")
 
     if isinstance(value, dict):
         for key in schema.get("required", []):

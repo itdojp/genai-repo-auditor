@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from gralib import load_context, utc_now, write_json, load_json
@@ -48,9 +48,21 @@ def _git_commit(repo_dir: Path) -> str:
 
 def reports_dir(run_dir: Path, ctx: dict[str, Any]) -> Path:
     raw = Path(str(ctx.get("reports_dir", "reports") or "reports"))
-    if raw.is_absolute() or ".." in raw.parts:
+    if raw.is_absolute() or PureWindowsPath(str(raw)).is_absolute():
         raise NoFindingsError(f"reports_dir must be relative under the run directory: {raw}")
-    return run_dir / raw
+    if raw == Path(".") or ".." in raw.parts:
+        raise NoFindingsError(f"reports_dir must be relative under the run directory: {raw}")
+    reports = run_dir / raw
+    current = run_dir
+    for part in raw.parts:
+        current = current / part
+        if current.is_symlink():
+            raise NoFindingsError(f"reports_dir must not contain symlink components: {raw}")
+    try:
+        reports.resolve(strict=False).relative_to(run_dir.resolve(strict=True))
+    except (FileNotFoundError, ValueError) as exc:
+        raise NoFindingsError(f"reports_dir must stay under the run directory: {raw}") from exc
+    return reports
 
 
 def target_repo_dir(run_dir: Path, ctx: dict[str, Any]) -> Path:
