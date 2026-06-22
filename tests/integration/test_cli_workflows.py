@@ -3637,6 +3637,135 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertNotIn(str(external_dir), graph_text)
         self.assertFalse(any(node["type"] == "patch_validation" for node in graph["nodes"]))
 
+    def test_gra_no_findings_records_empty_findings_for_downstream_reporting(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        findings_path = run_dir / "reports" / "findings.json"
+        findings_path.unlink()
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-no-findings",
+                "--run",
+                run_dir,
+                "--source-stage",
+                "recon",
+                "--reviewer",
+                "test-operator",
+                "--rationale",
+                "Bounded reconnaissance completed and no candidate findings were advanced.",
+            ],
+            check=True,
+        )
+
+        self.assertIn("Findings: 0", cp.stdout)
+        self.assertTrue(findings_path.exists())
+        no_findings_md = run_dir / "reports" / "NO_FINDINGS.md"
+        self.assertTrue(no_findings_md.exists())
+        report = json.loads(findings_path.read_text(encoding="utf-8"))
+        self.assertEqual([], report["findings"])
+        self.assertEqual("no-confirmed-findings", report["no_findings"]["status"])
+        self.assertEqual("recon", report["no_findings"]["source_stage"])
+        self.assertEqual("test-operator", report["no_findings"]["reviewer"])
+        self.assertTrue(report["no_findings"]["safety"]["no_finding_bodies"])
+        self.assertFalse(report["no_findings"]["safety"]["issue_bodies_created"])
+        self.assertEqual("example/demo", report["no_findings"]["target_metadata"]["repo"])
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Findings: 0", cp_validate.stdout)
+
+        cp_metrics = self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        self.assertIn("Findings: 0", cp_metrics.stdout)
+        metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
+        self.assertEqual(0, metrics["findings"]["total"])
+
+        cp_benchmark = self.run_cmd([REPO_ROOT / "bin" / "gra-benchmark", "--run", run_dir], check=True)
+        self.assertIn("Findings: 0", cp_benchmark.stdout)
+
+        cp_graph = self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", run_dir], check=True)
+        self.assertIn("Nodes:", cp_graph.stdout)
+        graph = json.loads((run_dir / "reports" / "evidence-graph.json").read_text(encoding="utf-8"))
+        self.assertEqual(0, graph["summary"]["high_critical_issue_recommended_findings"])
+
+        cp_issues = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--dry-run",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed,Probable,Potential,Informational",
+            ],
+            check=True,
+        )
+        self.assertIn("Wrote", cp_issues.stdout)
+        issue_result = json.loads((run_dir / "issues-created.json").read_text(encoding="utf-8"))
+        self.assertTrue(issue_result["dry_run"])
+        self.assertEqual([], issue_result["created"])
+
+        cp_existing = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-no-findings",
+                "--run",
+                run_dir,
+                "--rationale",
+                "Second write should require explicit force.",
+            ]
+        )
+        self.assertEqual(2, cp_existing.returncode)
+        self.assertIn("findings.json already exists", cp_existing.stderr)
+
+    def test_gra_no_findings_rejects_symlinked_reports_dir(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        shutil.rmtree(run_dir / "reports")
+        outside = self.work_dir / "outside-reports"
+        outside.mkdir()
+        (run_dir / "reports").symlink_to(outside, target_is_directory=True)
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-no-findings",
+                "--run",
+                run_dir,
+                "--source-stage",
+                "recon",
+                "--rationale",
+                "Bounded reconnaissance completed with no confirmed findings.",
+            ]
+        )
+
+        self.assertEqual(2, cp.returncode)
+        self.assertIn("reports_dir must not contain symlink components", cp.stderr)
+        self.assertFalse((outside / "findings.json").exists())
+        self.assertFalse((outside / "NO_FINDINGS.md").exists())
+
+    def test_gra_validate_report_enforces_no_findings_safety_constants(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        findings_path = run_dir / "reports" / "findings.json"
+        findings_path.unlink()
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-no-findings",
+                "--run",
+                run_dir,
+                "--source-stage",
+                "recon",
+                "--rationale",
+                "Bounded reconnaissance completed with no confirmed findings.",
+            ],
+            check=True,
+        )
+
+        report = json.loads(findings_path.read_text(encoding="utf-8"))
+        report["no_findings"]["safety"]["issue_bodies_created"] = True
+        findings_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir])
+
+        self.assertNotEqual(0, cp.returncode)
+        self.assertIn("findings.no_findings.safety.issue_bodies_created", cp.stderr)
+        self.assertIn("does not match required constant False", cp.stderr)
+
     def test_gra_metrics_handles_missing_optional_artifacts(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         cp = self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)

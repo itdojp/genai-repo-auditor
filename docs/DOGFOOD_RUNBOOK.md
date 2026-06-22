@@ -39,16 +39,29 @@ RUN=runs/itdojp__genai-repo-auditor/RUN_ID
 gra-recon --run "$RUN" --model gpt-5.5 --effort xhigh
 gra-targets --run "$RUN" --generate --model gpt-5.5 --effort xhigh
 gra-targets --run "$RUN" --list
+
+# Recon-only stop path:
+# If the bounded pass intentionally stops here with no confirmed findings, run
+# gra-no-findings and the deterministic reporting commands in a separate
+# terminal/session, then stop. Do not run gra-no-findings before the deeper path.
+# gra-no-findings --run "$RUN" \
+#   --source-stage recon \
+#   --rationale "Bounded reconnaissance completed; no candidate findings were advanced for this pass."
+# gra-validate-report --run "$RUN"
+# gra-metrics --run "$RUN"
+# gra-benchmark --run "$RUN"
+# gra-evidence-graph --run "$RUN"
+# gra-issues --run "$RUN" --dry-run
+
+# Deeper review path:
 gra-gapfill --run "$RUN" --generate
 gra-adversarial-validate --run "$RUN" --all-critical-high --votes 3 --policy human-review-on-split
+gra-validate-report --run "$RUN"
 gra-metrics --run "$RUN"
 gra-benchmark --run "$RUN"
 gra-evidence-graph --run "$RUN"
 gra-dashboard --run "$RUN"
-gra-validate-report --run "$RUN"
 gra-issues --run "$RUN" --dry-run
-# Optional immutable approval artifact after reviewing the dry-run preview.
-gra-issues --run "$RUN" --plan --require-advanced-validation
 # Optional immutable approval artifact after reviewing the dry-run preview.
 gra-issues --run "$RUN" --plan --require-advanced-validation
 ```
@@ -185,3 +198,26 @@ python3 scripts/clean-local-artifacts.py --apply
 
 If artifacts are retained, record the retention decision in the local campaign
 ledger and store them only through an approved secure process.
+
+### Recon-only / no-confirmed-finding runs
+
+When a dogfood pass intentionally stops after reconnaissance or human scope
+review and no finding is confirmed, do not create `reports/findings.json` by
+hand. Use `gra-no-findings` to write a schema-valid empty findings artifact with
+a required rationale and target metadata:
+
+```bash
+gra-no-findings --run "$RUN" \
+  --source-stage recon \
+  --rationale "Bounded reconnaissance completed; no candidate findings were advanced for this pass."
+gra-validate-report --run "$RUN"
+gra-metrics --run "$RUN"
+gra-benchmark --run "$RUN"
+gra-evidence-graph --run "$RUN"
+gra-issues --run "$RUN" --dry-run --min-severity Low \
+  --statuses Confirmed,Probable,Potential,Informational
+```
+
+The generated artifact records a `no_findings` decision and an empty `findings`
+array. It does not assert that the repository has no vulnerabilities; it only
+records the reviewed state of this bounded run.
