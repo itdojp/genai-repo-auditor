@@ -19,6 +19,17 @@
     "commit": {"type": "string"},
     "generated_at": {"type": "string"},
     "source": {"enum": ["gra-issues"]},
+    "plan_written": {"type": "boolean"},
+    "publication_plan_status": {
+      "enum": [
+        "written",
+        "rewritten",
+        "not-written-preview",
+        "not-written-direct-apply",
+        "verified-existing-plan-preview",
+        "verified-existing-plan-applied"
+      ]
+    },
     "findings": {
       "type": "array",
       "items": {

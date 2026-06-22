@@ -104,7 +104,9 @@ gra-issues --run "$RUN" --dry-run
 `gra-issues --dry-run` is an operator preview tool. It does not write
 `reports/issue-publication-plan.json`. Use `gra-issues --plan` only after
 reviewing the preview and when an immutable approval artifact is needed. Neither
-command is approval to publish. Use
+command is approval to publish. Dry-run output may include target-specific Issue
+titles, fingerprints, and issue body hashes; use approved counts or sanitized
+fixtures for public demos. Use
 [`DISCLOSURE_AND_PUBLICATION_POLICY.md`](DISCLOSURE_AND_PUBLICATION_POLICY.md)
 before any `gra-issues --apply` workflow.
 

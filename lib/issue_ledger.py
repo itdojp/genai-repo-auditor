@@ -31,8 +31,16 @@ def entry_key(entry: dict[str, Any]) -> str:
     return finding_key(entry.get("finding_id"), entry.get("fingerprint"))
 
 
-def empty_ledger(*, run_id: str, repo: str, commit: str, generated_at: str | None = None) -> dict[str, Any]:
-    return {
+def empty_ledger(
+    *,
+    run_id: str,
+    repo: str,
+    commit: str,
+    generated_at: str | None = None,
+    plan_written: bool | None = None,
+    publication_plan_status: str | None = None,
+) -> dict[str, Any]:
+    ledger = {
         "schema_version": "1",
         "run_id": run_id,
         "repo": repo,
@@ -42,6 +50,11 @@ def empty_ledger(*, run_id: str, repo: str, commit: str, generated_at: str | Non
         "findings": [],
         "warnings": [],
     }
+    if plan_written is not None:
+        ledger["plan_written"] = bool(plan_written)
+    if publication_plan_status:
+        ledger["publication_plan_status"] = publication_plan_status
+    return ledger
 
 
 def load_ledger(path: Path, *, run_id: str, repo: str, commit: str) -> dict[str, Any]:
@@ -169,6 +182,8 @@ def merge_current_entries(
     run_id: str,
     repo: str,
     commit: str,
+    plan_written: bool | None = None,
+    publication_plan_status: str | None = None,
 ) -> dict[str, Any]:
     old_entries = entries_by_key(existing)
     merged_entries: list[dict[str, Any]] = []
@@ -205,7 +220,7 @@ def merge_current_entries(
             warnings.append(f"{previous.get('finding_id')}: ledger entry is not present in current findings.json")
             merged_entries.append(orphan)
 
-    return {
+    ledger = {
         "schema_version": "1",
         "run_id": run_id,
         "repo": repo,
@@ -215,6 +230,15 @@ def merge_current_entries(
         "findings": sorted(merged_entries, key=lambda item: (str(item.get("finding_id") or ""), str(item.get("fingerprint") or ""))),
         "warnings": sorted(set(warnings + [str(item) for item in existing.get("warnings") or [] if item])),
     }
+    if plan_written is not None:
+        ledger["plan_written"] = bool(plan_written)
+    elif isinstance(existing.get("plan_written"), bool):
+        ledger["plan_written"] = existing["plan_written"]
+    if publication_plan_status:
+        ledger["publication_plan_status"] = publication_plan_status
+    elif isinstance(existing.get("publication_plan_status"), str):
+        ledger["publication_plan_status"] = existing["publication_plan_status"]
+    return ledger
 
 
 def ledger_metrics(ledger: Any, present: bool) -> dict[str, Any]:
