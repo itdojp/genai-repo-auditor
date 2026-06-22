@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / "lib"))
+from no_findings import NoFindingsError, SOURCE_STAGES, write_no_findings_report  # noqa: E402
+from version import auditor_version  # noqa: E402
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Write an explicit empty findings artifact for a reviewed no-confirmed-finding run"
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {auditor_version(LAB_ROOT)}")
+    parser.add_argument("--run", required=True, help="Run directory containing context.json")
+    parser.add_argument("--rationale", required=True, help="Human-readable rationale for recording no confirmed findings")
+    parser.add_argument(
+        "--source-stage",
+        choices=sorted(SOURCE_STAGES),
+        default="recon",
+        help="Workflow stage that supports the no-confirmed-finding decision. Default: recon",
+    )
+    parser.add_argument("--reviewer", help="Optional reviewer/operator name to record locally")
+    parser.add_argument("--force", action="store_true", help="Overwrite an existing findings.json after explicit review")
+    args = parser.parse_args()
+
+    try:
+        findings_path, md_path, report = write_no_findings_report(
+            Path(args.run),
+            rationale=args.rationale,
+            source_stage=args.source_stage,
+            reviewer=args.reviewer,
+            force=args.force,
+        )
+    except (OSError, ValueError, NoFindingsError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    no_findings = report["no_findings"]
+    print(f"Wrote {findings_path}")
+    print(f"Wrote {md_path}")
+    print(f"Status: {no_findings['status']}")
+    print(f"Source stage: {no_findings['source_stage']}")
+    print("Findings: 0")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

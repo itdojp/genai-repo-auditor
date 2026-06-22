@@ -348,6 +348,103 @@
           }
         }
       }
+    },
+    "no_findings": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "status",
+        "rationale",
+        "source_stage",
+        "recorded_at",
+        "recorded_by",
+        "target_metadata",
+        "safety"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1"
+        },
+        "status": {
+          "enum": [
+            "no-confirmed-findings"
+          ]
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "source_stage": {
+          "enum": [
+            "manual-review",
+            "other",
+            "recon",
+            "scanner-triage",
+            "target-queue",
+            "validation"
+          ]
+        },
+        "recorded_at": {
+          "type": "string"
+        },
+        "recorded_by": {
+          "const": "gra-no-findings"
+        },
+        "reviewer": {
+          "type": "string"
+        },
+        "target_metadata": {
+          "type": "object",
+          "required": [
+            "run_id",
+            "repo",
+            "commit",
+            "visibility"
+          ],
+          "properties": {
+            "run_id": {
+              "type": "string"
+            },
+            "repo": {
+              "type": "string"
+            },
+            "branch": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "commit": {
+              "type": "string"
+            },
+            "visibility": {
+              "type": "string"
+            }
+          }
+        },
+        "safety": {
+          "type": "object",
+          "required": [
+            "no_finding_bodies",
+            "issue_bodies_created",
+            "raw_evidence_copied",
+            "safe_for_public_summary_after_review"
+          ],
+          "properties": {
+            "no_finding_bodies": {
+              "const": true
+            },
+            "issue_bodies_created": {
+              "const": false
+            },
+            "raw_evidence_copied": {
+              "const": false
+            },
+            "safe_for_public_summary_after_review": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
     }
   }
 }

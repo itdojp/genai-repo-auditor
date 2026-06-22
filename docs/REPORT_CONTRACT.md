@@ -118,7 +118,18 @@ findings[].issue_body_file
 findings[].issue_recommended
 findings[].public_disclosure_risk
 findings[].labels
+no_findings.status
+no_findings.rationale
+no_findings.source_stage
+no_findings.target_metadata
+no_findings.safety
 ```
+
+For a reviewed reconnaissance-only or no-confirmed-finding run, use
+`gra-no-findings` instead of hand-editing JSON. It writes an empty `findings`
+array plus a top-level `no_findings` decision record with the rationale, source
+stage, target metadata, and safety flags. This records the state of the bounded
+run; it is not a claim that the repository is vulnerability-free.
 
 ## validation and safety constraints
 

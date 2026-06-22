@@ -21,6 +21,7 @@ bin/gra-import-findings
 bin/gra-ingest
 bin/gra-issues
 bin/gra-metrics
+bin/gra-no-findings
 bin/gra-novelty
 bin/gra-proofs
 bin/gra-recon
