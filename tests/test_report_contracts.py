@@ -190,7 +190,7 @@ class ReportContractTests(unittest.TestCase):
         self.assertIn("retention", artifact_item["required"])
         self.assertEqual(["latest", "supporting", "archive"], artifact_item["properties"]["retention"]["enum"])
         self.assertEqual("^[a-f0-9]{64}$", artifact_item["properties"]["sha256"]["pattern"])
-        self.assertIn("summary", metrics_schema["required"])
+        self.assertNotIn("summary", metrics_schema["required"])
         metrics_summary = metrics_schema["properties"]["summary"]
         self.assertEqual(
             {
@@ -502,7 +502,6 @@ class ReportContractTests(unittest.TestCase):
                 "generated_at",
                 "source",
                 "safety",
-                "summary",
                 "findings",
                 "adversarial_validation",
                 "chains",

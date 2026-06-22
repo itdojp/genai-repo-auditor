@@ -3807,6 +3807,18 @@ class CliWorkflowTests(unittest.TestCase):
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
         self.assertIn("Metrics: validated", cp_validate.stdout)
 
+    def test_validate_report_accepts_v1_metrics_without_compact_summary(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        metrics_path = run_dir / "reports" / "metrics.json"
+        metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+        metrics.pop("summary")
+        metrics_path.write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
+
+        cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+
+        self.assertIn("Metrics: validated", cp_validate.stdout)
+
     def test_gra_metrics_skips_symlinked_report_directories(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         outside = self.work_dir / "outside-reports"
