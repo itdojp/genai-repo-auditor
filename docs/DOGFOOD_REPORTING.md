@@ -24,6 +24,8 @@ Public-safe dogfood reports may include:
 - workflow stages exercised;
 - artifact types generated, such as metrics, benchmark, evidence graph,
   dashboard, validation, and issue dry-run;
+- explicit workflow-profile status, including `skipped_by_scope` counts for
+  stages intentionally excluded from a bounded run;
 - counts by status after human review;
 - issue-publication warning counts;
 - operator UX observations;
@@ -40,9 +42,9 @@ body hashes.
 Prefer the top-level `summary` object in `reports/metrics.json` when preparing
 dogfood reports. It is the stable public-safe count surface for findings,
 Issue-publication warnings, benchmark gates, evidence-graph size, scanner lead
-availability, and explicit no-confirmed-finding records. Reuse those fields only
-after confirming the aggregate counts and repository identity are approved for
-the intended audience.
+availability, workflow-profile scoped skips, and explicit no-confirmed-finding
+records. Reuse those fields only after confirming the aggregate counts and
+repository identity are approved for the intended audience.
 
 ## Prohibited report content
 
@@ -78,10 +80,11 @@ Internal summaries should still be sanitized by default:
 - Retention and cleanup decision
 ```
 
-Use `not executed`, `skipped`, or `not available` when a stage was not run. Do
-not infer results from missing artifacts. Keep these summaries outside Git by
-default unless a human reviewer has approved the exact text for a specific
-restricted channel.
+Use `not executed`, `skipped`, or `not available` when a stage was not run. Use
+`skipped_by_scope` only when `reports/workflow-profile.json` records an explicit
+scope decision, such as a recon-only run. Do not infer results from missing
+artifacts. Keep these summaries outside Git by default unless a human reviewer
+has approved the exact text for a specific restricted channel.
 
 ## Public-safe case study structure
 

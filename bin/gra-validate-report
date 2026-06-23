@@ -28,6 +28,7 @@ from taxonomies import (  # noqa: E402
     validate_taxonomy_refs,
 )
 from run_events import append_command_event, start_command_event  # noqa: E402
+from workflow_profile import validate_workflow_profile_payload  # noqa: E402
 
 SEVERITIES = {"Critical", "High", "Medium", "Low", "Informational"}
 CONFIDENCES = {"High", "Medium", "Low"}
@@ -52,6 +53,7 @@ METRICS_PATH = Path("reports/metrics.json")
 EVIDENCE_GRAPH_PATH = Path("reports/evidence-graph.json")
 IMPORTED_FINDINGS_PATH = Path("reports/imported-findings.json")
 BENCHMARK_PATH = Path("reports/benchmark.json")
+WORKFLOW_PROFILE_PATH = Path("reports/workflow-profile.json")
 ISSUE_LEDGER_PATH = Path("reports/issue-ledger.json")
 DUPLICATE_DECISIONS_DIR = Path("reports/duplicate-decisions")
 RUN_STATE_PATH = Path("reports/run-state.json")
@@ -141,6 +143,8 @@ EVIDENCE_GRAPH_NODE_TYPES = {
     "patch_validation",
     "issue_plan_entry",
     "metric",
+    "workflow_profile",
+    "workflow_stage",
 }
 EVIDENCE_GRAPH_EDGE_TYPES = {
     "produced",
@@ -1742,6 +1746,29 @@ def validate_metrics(run_dir: Path, errors: List[str]) -> bool:
     return True
 
 
+def validate_workflow_profile(run_dir: Path, errors: List[str]) -> bool:
+    profile_path = run_dir / WORKFLOW_PROFILE_PATH
+    if not profile_path.exists():
+        return False
+    try:
+        validate_no_symlink_components(run_dir, WORKFLOW_PROFILE_PATH, field_path="workflow_profile")
+    except ReportSafetyError as exc:
+        errors.append(str(exc))
+        return True
+    try:
+        profile_data = json.loads(profile_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"workflow_profile invalid JSON: {exc}")
+        return True
+    if not isinstance(profile_data, dict):
+        errors.append(f"workflow_profile: expected type object, got {json_type_name(profile_data)}")
+        return True
+    validate_schema(profile_data, load_schema("workflow-profile.schema.json"), "workflow_profile", errors)
+    validate_generated_at(profile_data.get("generated_at"), "workflow_profile.generated_at", errors)
+    errors.extend(validate_workflow_profile_payload(profile_data))
+    return True
+
+
 def validate_benchmark_payload(value: Any, path: str, errors: List[str]) -> None:
     if isinstance(value, dict):
         for key, item in value.items():
@@ -2509,6 +2536,7 @@ def main() -> int:
     novelty_validated = validate_novelty_ledger(run_dir, findings, errors)
     traces_validated = validate_traces(run_dir, findings, errors)
     metrics_validated = validate_metrics(run_dir, errors)
+    workflow_profile_validated = validate_workflow_profile(run_dir, errors)
     benchmark_validated = validate_benchmark(run_dir, errors)
     evidence_graph_validated = validate_evidence_graph(run_dir, errors)
     imported_findings_validated = validate_imported_findings(run_dir, findings, errors)
@@ -2548,6 +2576,8 @@ def main() -> int:
         print("Traces: validated")
     if metrics_validated:
         print("Metrics: validated")
+    if workflow_profile_validated:
+        print("Workflow profile: validated")
     if benchmark_validated:
         print("Benchmark: validated")
     if evidence_graph_validated:

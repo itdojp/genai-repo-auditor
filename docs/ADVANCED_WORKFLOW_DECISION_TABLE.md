@@ -16,6 +16,7 @@ repository risk, and publication decision.
 | Strict issue plan (`--require-advanced-validation`) | Publication requires proof that advanced evidence was reviewed | Recommended for customer/public Critical/High Issues | `issue-publication-plan.json` | Bypassing human approval |
 | Trace reachability (`gra-trace`) | Shared-library producer finding needs a specific consumer reachability check | Only with explicit approval; P3/experimental evidence | `traces.json`, `TRACE.md` | Claiming exploit proof or broad ecosystem scanning |
 | Remediation candidates (`gra-remediate`) | Owner/customer approved draft fix planning for validated findings | Not required for publication; useful for handoff | `remediation-candidates.json`, patch validation reports | Autonomous patching or PR creation |
+| Workflow profile (`gra-workflow-profile`) | A bounded run intentionally stops before advanced stages | Recommended for recon-only dogfood summaries | `workflow-profile.json`, `WORKFLOW_PROFILE.md` | Treating skipped stages as reviewed or risk-free |
 | Metrics and benchmark | Release readiness, workflow tuning, or dogfood quality gates | Recommended for process improvement, not finding proof | `metrics.json`, `benchmark.json` | Replacing security review |
 | Evidence graph | Handoff needs artifact lineage across findings, validation, remediation, and publication plans | Recommended for complex customer/internal handoff | `evidence-graph.json` | Publishing raw local artifact relationships |
 
@@ -29,6 +30,7 @@ Add gapfill: high-risk area has shallow coverage
 Add adversarial validation: any Critical/High finding before Issue planning
 Add proofs/chains: claim depends on reachability, boundary crossing, or composed impact
 Add remediation: owner approved draft fix planning
+For recon-only dogfood: record gra-workflow-profile --profile recon-only before metrics/benchmark/evidence graph
 ```
 
 ### Customer audit

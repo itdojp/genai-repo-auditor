@@ -97,6 +97,20 @@
             "normalized_leads_count": {"type": "integer", "minimum": 0}
           }
         },
+        "workflow_profile": {
+          "type": "object",
+          "required": ["artifact_present", "profile", "stage_count", "by_status", "skipped_by_scope_count", "scoped_skip_stages", "failed_count", "failed_stages"],
+          "properties": {
+            "artifact_present": {"type": "boolean"},
+            "profile": {"type": "string"},
+            "stage_count": {"type": "integer", "minimum": 0},
+            "by_status": {"type": "object"},
+            "skipped_by_scope_count": {"type": "integer", "minimum": 0},
+            "scoped_skip_stages": {"type": "array", "items": {"type": "string"}},
+            "failed_count": {"type": "integer", "minimum": 0},
+            "failed_stages": {"type": "array", "items": {"type": "string"}}
+          }
+        },
         "no_findings": {
           "type": "object",
           "required": ["recorded", "source_stage", "recon_only"],
@@ -220,6 +234,20 @@
         "published_findings": {"type": "integer", "minimum": 0},
         "by_publication_status": {"type": "object"},
         "drift_warning_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "workflow_profile": {
+      "type": "object",
+      "required": ["artifact_present", "profile", "stage_count", "by_status", "skipped_by_scope_count", "scoped_skip_stages", "failed_count", "failed_stages"],
+      "properties": {
+        "artifact_present": {"type": "boolean"},
+        "profile": {"type": "string"},
+        "stage_count": {"type": "integer", "minimum": 0},
+        "by_status": {"type": "object"},
+        "skipped_by_scope_count": {"type": "integer", "minimum": 0},
+        "scoped_skip_stages": {"type": "array", "items": {"type": "string"}},
+        "failed_count": {"type": "integer", "minimum": 0},
+        "failed_stages": {"type": "array", "items": {"type": "string"}}
       }
     },
     "duplicate_decisions": {

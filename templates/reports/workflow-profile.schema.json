@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://itdojp.github.io/genai-repo-auditor/schemas/workflow-profile.schema.json",
+  "title": "GenAI Repo Auditor workflow profile",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "repo",
+    "generated_at",
+    "source",
+    "profile",
+    "rationale",
+    "safety",
+    "summary",
+    "stages"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "repo": {
+      "type": "string"
+    },
+    "branch": {
+      "type": "string"
+    },
+    "commit": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "gra-workflow-profile"
+      ]
+    },
+    "profile": {
+      "type": "string",
+      "enum": [
+        "recon-only"
+      ]
+    },
+    "rationale": {
+      "type": "string"
+    },
+    "reviewer": {
+      "type": "string"
+    },
+    "safety": {
+      "type": "object",
+      "required": [
+        "local_artifacts_only",
+        "raw_evidence_copied",
+        "secrets_copied",
+        "issue_bodies_created",
+        "bounded_summaries_only"
+      ],
+      "properties": {
+        "local_artifacts_only": {
+          "type": "boolean",
+          "const": true
+        },
+        "raw_evidence_copied": {
+          "type": "boolean",
+          "const": false
+        },
+        "secrets_copied": {
+          "type": "boolean",
+          "const": false
+        },
+        "issue_bodies_created": {
+          "type": "boolean",
+          "const": false
+        },
+        "bounded_summaries_only": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "stage_count",
+        "by_status",
+        "skipped_by_scope_count",
+        "scoped_skip_stages",
+        "failed_count",
+        "failed_stages"
+      ],
+      "properties": {
+        "stage_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_status": {
+          "type": "object"
+        },
+        "skipped_by_scope_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scoped_skip_stages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "failed_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_stages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "stages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "status",
+          "reason",
+          "expected_artifacts",
+          "publication_blocking"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "skipped_by_scope",
+              "not_started",
+              "failed",
+              "not_applicable"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "expected_artifacts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "publication_blocking": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

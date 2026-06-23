@@ -60,6 +60,7 @@ def main() -> int:
     print(f"Adversarial downgrade/invalidate rate: {metrics_summary['adversarial_downgrade_or_invalidate_rate']:.4f}")
     print(f"Chains: {metrics_summary['chain_count']}")
     print(f"Issue plan warnings: {metrics_summary['issue_plan_warning_count']}")
+    print(f"Workflow skipped by scope: {metrics_summary.get('workflow_skipped_by_scope_count', 0)}")
     return 1 if summary["failed"] else 0
 
 

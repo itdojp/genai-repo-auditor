@@ -175,6 +175,7 @@ class ReportContractTests(unittest.TestCase):
         metrics_schema = self.load_json(SCHEMAS / "metrics.schema.json")
         benchmark_schema = self.load_json(SCHEMAS / "benchmark.schema.json")
         evidence_graph_schema = self.load_json(SCHEMAS / "evidence-graph.schema.json")
+        workflow_profile_schema = self.load_json(SCHEMAS / "workflow-profile.schema.json")
         imported_findings_schema = self.load_json(SCHEMAS / "imported-findings.schema.json")
         issue_ledger_schema = self.load_json(SCHEMAS / "issue-ledger.schema.json")
         duplicate_decision_schema = self.load_json(SCHEMAS / "duplicate-decision.schema.json")
@@ -212,6 +213,8 @@ class ReportContractTests(unittest.TestCase):
         )
         self.assertEqual({"artifact_present", "node_count", "edge_count"}, set(metrics_summary["properties"]["evidence_graph"]["required"]))
         self.assertEqual({"artifact_present", "result_count", "normalized_leads_count"}, set(metrics_summary["properties"]["scanner"]["required"]))
+        self.assertIn("workflow_profile", metrics_summary["properties"])
+        self.assertIn("workflow_profile", metrics_schema["properties"])
         retention_schema = manifest_schema["properties"]["artifact_retention"]
         self.assertEqual(
             {"latest_status_artifacts", "supporting_artifacts", "archive_artifacts", "by_retention", "notes"},
@@ -577,6 +580,36 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual(["pass", "warn", "fail"], benchmark_gate["properties"]["status"]["enum"])
         self.assertEqual(["passed", "needs-review", "failed"], benchmark_schema["properties"]["summary"]["properties"]["overall_status"]["enum"])
         self.assertEqual(["metrics.json", "computed-fallback"], benchmark_schema["properties"]["metrics"]["properties"]["source"]["enum"])
+        benchmark_summary = benchmark_schema["properties"]["metrics"]["properties"]["summary"]["properties"]
+        self.assertIn("workflow_profile", benchmark_summary)
+        self.assertIn("workflow_skipped_by_scope_count", benchmark_summary)
+        self.assertEqual(
+            {
+                "schema_version",
+                "run_id",
+                "repo",
+                "generated_at",
+                "source",
+                "profile",
+                "rationale",
+                "safety",
+                "summary",
+                "stages",
+            },
+            set(workflow_profile_schema["required"]),
+        )
+        self.assertEqual(["gra-workflow-profile"], workflow_profile_schema["properties"]["source"]["enum"])
+        self.assertEqual(["recon-only"], workflow_profile_schema["properties"]["profile"]["enum"])
+        profile_safety = workflow_profile_schema["properties"]["safety"]["properties"]
+        self.assertEqual(True, profile_safety["local_artifacts_only"]["const"])
+        self.assertEqual(False, profile_safety["raw_evidence_copied"]["const"])
+        self.assertEqual(False, profile_safety["secrets_copied"]["const"])
+        self.assertEqual(False, profile_safety["issue_bodies_created"]["const"])
+        self.assertEqual(True, profile_safety["bounded_summaries_only"]["const"])
+        self.assertEqual(
+            ["completed", "skipped_by_scope", "not_started", "failed", "not_applicable"],
+            workflow_profile_schema["properties"]["stages"]["items"]["properties"]["status"]["enum"],
+        )
         self.assertEqual(
             {"schema_version", "run_id", "repo", "generated_at", "source", "safety", "summary", "nodes", "edges"},
             set(evidence_graph_schema["required"]),
@@ -600,9 +633,12 @@ class ReportContractTests(unittest.TestCase):
                 "patch_validation",
                 "issue_plan_entry",
                 "metric",
+                "workflow_profile",
+                "workflow_stage",
             ],
             evidence_graph_schema["properties"]["nodes"]["items"]["properties"]["type"]["enum"],
         )
+        self.assertIn("workflow_profile", evidence_graph_schema["properties"]["summary"]["properties"])
         self.assertEqual(
             [
                 "produced",
@@ -1307,12 +1343,32 @@ class ReportContractTests(unittest.TestCase):
         target_research = run_dir / "reports" / "target-research"
         target_research.mkdir(parents=True, exist_ok=True)
         (target_research / "TGT-001.md").write_text("not json, retained for reproducibility\n", encoding="utf-8")
+        subprocess.run(
+            [
+                REPO_ROOT / "bin" / "gra-workflow-profile",
+                "--run",
+                run_dir,
+                "--profile",
+                "recon-only",
+                "--reviewer",
+                "test-operator",
+                "--rationale",
+                "Reconnaissance completed and advanced stages are intentionally out of scope.",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
 
         manifest = self.write_run_manifest(run_dir)
         latest = manifest["artifact_retention"]["latest_status_artifacts"]
         archive = manifest["artifact_retention"]["archive_artifacts"]
         self.assertIn("reports/findings.json", latest)
         self.assertIn("reports/targets.json", latest)
+        self.assertIn("reports/workflow-profile.json", latest)
+        self.assertIn("reports/WORKFLOW_PROFILE.md", latest)
         self.assertIn("run-summary.txt", latest)
         self.assertIn("report-validation.txt", latest)
         self.assertIn("codex-transcript.txt", archive)
@@ -1320,6 +1376,8 @@ class ReportContractTests(unittest.TestCase):
         findings_entry = next(item for item in manifest["artifacts"] if item["path"] == "reports/findings.json")
         self.assertEqual("latest", findings_entry["retention"])
         self.assertRegex(findings_entry["sha256"], r"^[a-f0-9]{64}$")
+        workflow_entry = next(item for item in manifest["artifacts"] if item["path"] == "reports/workflow-profile.json")
+        self.assertEqual("latest", workflow_entry["retention"])
         transcript_entry = next(item for item in manifest["artifacts"] if item["path"] == "codex-transcript.txt")
         self.assertEqual("archive", transcript_entry["retention"])
 

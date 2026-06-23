@@ -10,6 +10,7 @@ from typing import Any
 from gralib import load_context, utc_now, write_json
 from duplicate_decisions import duplicate_decision_metrics
 from issue_ledger import ledger_metrics
+from workflow_profile import summarize_workflow_profile
 
 COUNT_STATUSES = [
     "Confirmed",
@@ -454,6 +455,7 @@ def compact_public_summary(
     findings: dict[str, Any],
     issue_publication_plan: dict[str, Any],
     issue_ledger: dict[str, Any],
+    workflow_profile: dict[str, Any],
     evidence_graph: Any,
     benchmark: Any,
     scanner_index: Any,
@@ -470,6 +472,7 @@ def compact_public_summary(
         "issue_publication_warning_count": int(issue_publication_plan.get("warning_count") or 0),
         "issue_ledger_published_findings": int(issue_ledger.get("published_findings") or 0),
         "issue_ledger_drift_warning_count": int(issue_ledger.get("drift_warning_count") or 0),
+        "workflow_profile": dict(workflow_profile),
         "evidence_graph": evidence_graph_compact_summary(evidence_graph),
         "benchmark": benchmark_compact_summary(benchmark),
         "scanner": scanner_compact_summary(scanner_index),
@@ -603,6 +606,7 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
     gapfill_data = load_json(reports / "gapfill-targets.json", None)
     issue_plan = load_json(reports / "issue-publication-plan.json", None)
     issue_ledger = load_json(reports / "issue-ledger.json", None)
+    workflow_profile_data = load_report_json(reports, Path("workflow-profile.json"), None)
     evidence_graph = load_report_json(reports, Path("evidence-graph.json"), None)
     benchmark = load_report_json(reports, Path("benchmark.json"), None)
     scanner_index = load_report_json(reports, Path("scanner-results") / "scanner-index.json", None)
@@ -638,6 +642,7 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
     traces_summary = trace_metrics(traces, traces_data is not None)
     issue_plan_summary = issue_plan_metrics(issue_plan, issue_plan is not None)
     issue_ledger_summary = ledger_metrics(issue_ledger, issue_ledger is not None)
+    workflow_profile_summary = summarize_workflow_profile(workflow_profile_data)
     duplicate_decisions_summary = duplicate_decision_metrics(duplicate_decisions, duplicate_decisions_present)
     observability_summary = observability_metrics(
         command_events=command_events,
@@ -668,6 +673,7 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
             findings=findings_metrics,
             issue_publication_plan=issue_plan_summary,
             issue_ledger=issue_ledger_summary,
+            workflow_profile=workflow_profile_summary,
             evidence_graph=evidence_graph,
             benchmark=benchmark,
             scanner_index=scanner_index,
@@ -680,6 +686,7 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
         "traces": traces_summary,
         "issue_publication_plan": issue_plan_summary,
         "issue_ledger": issue_ledger_summary,
+        "workflow_profile": workflow_profile_summary,
         "duplicate_decisions": duplicate_decisions_summary,
         "observability": observability_summary,
         "artifacts": artifacts_summary,
@@ -705,6 +712,7 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
     benchmark = compact.get("benchmark") if isinstance(compact.get("benchmark"), dict) else {}
     scanner = compact.get("scanner") if isinstance(compact.get("scanner"), dict) else {}
     no_findings = compact.get("no_findings") if isinstance(compact.get("no_findings"), dict) else {}
+    workflow_profile = compact.get("workflow_profile") if isinstance(compact.get("workflow_profile"), dict) else {}
     lines = [
         "# Advanced Workflow Metrics",
         "",
@@ -728,6 +736,8 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
         f"| Issue-publication warnings | {compact.get('issue_publication_warning_count', 0)} |",
         f"| Published findings in ledger | {compact.get('issue_ledger_published_findings', 0)} |",
         f"| Issue ledger drift warnings | {compact.get('issue_ledger_drift_warning_count', 0)} |",
+        f"| Workflow profile recorded | {str(bool(workflow_profile.get('artifact_present'))).lower()} |",
+        f"| Stages skipped by scope | {workflow_profile.get('skipped_by_scope_count', 0)} |",
         f"| Evidence graph nodes | {evidence.get('node_count', 0)} |",
         f"| Evidence graph edges | {evidence.get('edge_count', 0)} |",
         f"| Benchmark gates | {benchmark.get('gate_count', 0)} |",
@@ -753,6 +763,7 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
         f"| Traces | {metrics['traces']['total']} |",
         f"| Issue plan warnings | {metrics['issue_publication_plan']['warning_count']} |",
         f"| Issue ledger published findings | {metrics['issue_ledger']['published_findings']} |",
+        f"| Workflow profile stages skipped by scope | {metrics['workflow_profile']['skipped_by_scope_count']} |",
         f"| Duplicate decisions | {metrics['duplicate_decisions']['total']} |",
         f"| Command events | {metrics['observability']['total_events']} |",
         f"| Validation retries | {metrics['observability']['validation_retry_count']} |",
@@ -796,6 +807,14 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
     lines.append(f"| Drift warnings | {metrics['issue_ledger']['drift_warning_count']} |")
     lines.append("")
     lines.extend(markdown_counts("Publication status", metrics["issue_ledger"]["by_publication_status"]))
+    lines.extend(["## Workflow profile", "", "| Metric | Value |", "|---|---:|"])
+    lines.append(f"| Artifact present | {str(bool(metrics['workflow_profile']['artifact_present'])).lower()} |")
+    lines.append(f"| Profile | {metrics['workflow_profile']['profile']} |")
+    lines.append(f"| Stages | {metrics['workflow_profile']['stage_count']} |")
+    lines.append(f"| Skipped by scope | {metrics['workflow_profile']['skipped_by_scope_count']} |")
+    lines.append(f"| Failed stages | {metrics['workflow_profile']['failed_count']} |")
+    lines.append("")
+    lines.extend(markdown_counts("Workflow stage status", metrics["workflow_profile"]["by_status"]))
     lines.extend(["## Duplicate decisions", "", "| Metric | Count |", "|---|---:|"])
     lines.append(f"| Total | {metrics['duplicate_decisions']['total']} |")
     lines.append(f"| Exact matches | {metrics['duplicate_decisions']['exact_match_count']} |")

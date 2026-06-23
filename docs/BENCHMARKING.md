@@ -76,7 +76,9 @@ at `0`. Failed gates produce `overall_status: failed` and exit status `1`.
 `overall_status`, gate count, passed gates, warnings, and failures. When
 `reports/benchmark.json` is present, `gra-metrics` copies those gate totals into
 `metrics.summary.benchmark` so dogfood reports do not need to scrape
-`BENCHMARK.md` tables manually.
+`BENCHMARK.md` tables manually. The benchmark metrics summary also carries the
+workflow profile name and `workflow_skipped_by_scope_count` when
+`reports/workflow-profile.json` is present.
 
 Tune the chain bound for a specific dogfood run:
 
