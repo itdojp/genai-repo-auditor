@@ -39,6 +39,8 @@ def latest_status_paths(run_dir: Path) -> set[str]:
         reports_artifact(run_dir, "METRICS.md"),
         reports_artifact(run_dir, "benchmark.json"),
         reports_artifact(run_dir, "BENCHMARK.md"),
+        reports_artifact(run_dir, "workflow-profile.json"),
+        reports_artifact(run_dir, "WORKFLOW_PROFILE.md"),
         reports_artifact(run_dir, "evidence-graph.json"),
         reports_artifact(run_dir, "EVIDENCE_GRAPH.md"),
         reports_artifact(run_dir, "imported-findings.json"),

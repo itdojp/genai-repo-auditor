@@ -1343,12 +1343,32 @@ class ReportContractTests(unittest.TestCase):
         target_research = run_dir / "reports" / "target-research"
         target_research.mkdir(parents=True, exist_ok=True)
         (target_research / "TGT-001.md").write_text("not json, retained for reproducibility\n", encoding="utf-8")
+        subprocess.run(
+            [
+                REPO_ROOT / "bin" / "gra-workflow-profile",
+                "--run",
+                run_dir,
+                "--profile",
+                "recon-only",
+                "--reviewer",
+                "test-operator",
+                "--rationale",
+                "Reconnaissance completed and advanced stages are intentionally out of scope.",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
 
         manifest = self.write_run_manifest(run_dir)
         latest = manifest["artifact_retention"]["latest_status_artifacts"]
         archive = manifest["artifact_retention"]["archive_artifacts"]
         self.assertIn("reports/findings.json", latest)
         self.assertIn("reports/targets.json", latest)
+        self.assertIn("reports/workflow-profile.json", latest)
+        self.assertIn("reports/WORKFLOW_PROFILE.md", latest)
         self.assertIn("run-summary.txt", latest)
         self.assertIn("report-validation.txt", latest)
         self.assertIn("codex-transcript.txt", archive)
@@ -1356,6 +1376,8 @@ class ReportContractTests(unittest.TestCase):
         findings_entry = next(item for item in manifest["artifacts"] if item["path"] == "reports/findings.json")
         self.assertEqual("latest", findings_entry["retention"])
         self.assertRegex(findings_entry["sha256"], r"^[a-f0-9]{64}$")
+        workflow_entry = next(item for item in manifest["artifacts"] if item["path"] == "reports/workflow-profile.json")
+        self.assertEqual("latest", workflow_entry["retention"])
         transcript_entry = next(item for item in manifest["artifacts"] if item["path"] == "codex-transcript.txt")
         self.assertEqual("archive", transcript_entry["retention"])
 
