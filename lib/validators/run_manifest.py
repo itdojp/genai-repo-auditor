@@ -3,11 +3,11 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, List
 
 from .common import json_type_name, validate_generated_at, validate_schema
-from .registry import ValidationContext
+from .context import ValidationContext
 
 
 RUN_MANIFEST_PATH = Path("run-manifest.json")
@@ -32,7 +32,8 @@ def validate_manifest_artifact_path(
         errors.append(f"{field_path}: path must be a non-empty string")
         return None
     rel = Path(value)
-    if rel.is_absolute():
+    windows_rel = PureWindowsPath(value)
+    if rel.is_absolute() or windows_rel.drive or windows_rel.root:
         errors.append(f"{field_path}: artifact path must be relative to the run directory")
         return None
     if ".." in rel.parts:

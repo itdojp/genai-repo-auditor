@@ -11,7 +11,7 @@ from .common import (
     validate_run_artifact_path,
     validate_schema,
 )
-from .registry import ValidationContext
+from .context import ValidationContext
 
 
 SCANNER_RESULTS_DIR = Path("reports/scanner-results")

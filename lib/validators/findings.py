@@ -12,7 +12,7 @@ from report_safety import (
 from taxonomies import validate_taxonomy_refs
 
 from .common import json_type_name, validate_generated_at, validate_schema, validate_string_list
-from .registry import ValidationContext
+from .context import ValidationContext
 
 
 SEVERITIES = {"Critical", "High", "Medium", "Low", "Informational"}

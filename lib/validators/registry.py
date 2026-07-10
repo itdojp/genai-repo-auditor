@@ -1,36 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Iterable
 
-from .common import load_schema
-
-
-@dataclass
-class ValidationContext:
-    """Shared validation inputs and ordered error state for validators."""
-
-    lab_root: Path
-    run_dir: Path
-    findings_path: Path
-    findings_data: dict[str, Any]
-    errors: list[str]
-    taxonomy_profiles: dict[str, dict[str, Any]] = field(default_factory=dict)
-    taxonomy_labels: dict[tuple[str, str], str] = field(default_factory=dict)
-    taxonomy_aliases: dict[str, Any] = field(default_factory=dict)
-    taxonomy_profiles_loaded: bool = False
-
-    @property
-    def findings(self) -> list[Any]:
-        value = self.findings_data.get("findings")
-        return value if isinstance(value, list) else []
-
-    def schema(self, name: str) -> dict[str, Any]:
-        return load_schema(self.lab_root, name)
-
-
-Validator = Callable[[ValidationContext], bool]
+from .context import ValidationContext, Validator
 
 
 class ValidatorRegistry:
@@ -44,7 +16,7 @@ class ValidatorRegistry:
         return tuple(self._validators)
 
     def register(self, name: str, validator: Validator) -> None:
-        if not name or name in self._validators:
+        if not isinstance(name, str) or not name.strip() or name in self._validators:
             raise ValueError(f"validator already registered or invalid: {name!r}")
         self._validators[name] = validator
 

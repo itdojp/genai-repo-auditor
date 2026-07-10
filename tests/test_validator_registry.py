@@ -11,7 +11,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 from validators.findings import validate_findings  # noqa: E402
 from validators.registry import ValidationContext, ValidatorRegistry, core_validator_registry  # noqa: E402
-from validators.run_manifest import validate_run_manifest  # noqa: E402
+from validators.run_manifest import validate_manifest_artifact_path, validate_run_manifest  # noqa: E402
 from validators.scanner import validate_scanner_index  # noqa: E402
 from validators.targets import validate_targets  # noqa: E402
 
@@ -51,8 +51,21 @@ class ValidatorRegistryTests(unittest.TestCase):
         self.assertEqual(["second", "first"], context.errors)
         with self.assertRaisesRegex(ValueError, "already registered"):
             registry.register("first", first)
+        with self.assertRaisesRegex(ValueError, "invalid"):
+            registry.register("   ", first)
         with self.assertRaisesRegex(KeyError, "unknown validator"):
             registry.run(context, ["missing"])
+
+    def test_manifest_paths_reject_windows_anchored_paths(self) -> None:
+        run_dir = REPO_ROOT / "tests" / "fixtures" / "minimal-run"
+        for value in ["C:temp\\file.txt", "C:\\temp\\file.txt", "\\temp\\file.txt"]:
+            with self.subTest(value=value):
+                errors: list[str] = []
+                self.assertIsNone(validate_manifest_artifact_path(run_dir, value, "run_manifest.artifacts[0].path", errors))
+                self.assertEqual(
+                    ["run_manifest.artifacts[0].path: artifact path must be relative to the run directory"],
+                    errors,
+                )
 
     def test_core_registry_has_stable_names_and_extracted_implementations(self) -> None:
         registry = core_validator_registry()
