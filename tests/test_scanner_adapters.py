@@ -103,6 +103,12 @@ class ScannerAdapterTests(unittest.TestCase):
         validate_schema(plan, plan_schema, "scanner_plan", plan_errors)
         self.assertEqual([], plan_errors)
 
+        malformed_plan = json.loads(json.dumps(plan))
+        malformed_plan["adapter"] = {}
+        malformed_errors: list[str] = []
+        validate_schema(malformed_plan, plan_schema, "scanner_plan", malformed_errors)
+        self.assertTrue(any("scanner_plan.adapter.id: missing required field" in item for item in malformed_errors))
+
     def test_list_contract_does_not_require_binary(self) -> None:
         payload = list_adapters(path_env=str(self.work_dir / "missing-bin"))
         self.assertEqual("list", payload["mode"])

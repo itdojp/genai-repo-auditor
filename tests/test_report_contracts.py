@@ -216,6 +216,10 @@ class ReportContractTests(unittest.TestCase):
             "readiness",
         }
         self.assertEqual(adapter_required, set(scanner_adapter_schema["required"]))
+        plan_adapter_schema = scanner_plan_schema["properties"]["adapter"]
+        self.assertNotIn("$ref", plan_adapter_schema)
+        for key in ("type", "additionalProperties", "required", "properties"):
+            self.assertEqual(scanner_adapter_schema[key], plan_adapter_schema[key])
         for adapter in list_adapters(path_env=str(self.work_dir / "missing-bin"))["adapters"]:
             adapter_errors: list[str] = []
             validate_schema(adapter, scanner_adapter_schema, f"adapter.{adapter['id']}", adapter_errors)
