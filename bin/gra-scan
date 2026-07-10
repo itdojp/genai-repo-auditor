@@ -9,7 +9,6 @@ from pathlib import Path
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
 from scanner_adapters import (  # noqa: E402
-    ADAPTERS,
     NETWORK_POLICIES,
     ScannerAdapterError,
     build_scan_plan,
