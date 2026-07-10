@@ -66,6 +66,18 @@ class ManifestTests(unittest.TestCase):
             {".github/workflows/release.yml", "scripts/build_release.py"},
         )
 
+    def test_manifest_lists_packaging_metadata(self) -> None:
+        self.assert_manifest_section(
+            "Packaging",
+            {
+                "MANIFEST.in",
+                "pyproject.toml",
+                "src/genai_repo_auditor/__init__.py",
+                "src/genai_repo_auditor/resources.py",
+                "src/genai_repo_auditor/version.py",
+            },
+        )
+
     def test_manifest_lists_prompt_surface(self) -> None:
         self.assert_manifest_section("Prompts", relative_files("prompts", pattern="*.md"))
 

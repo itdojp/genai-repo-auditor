@@ -48,6 +48,17 @@ bin/gra-worktree-check
 scripts/build_release.py
 ```
 
+
+## Packaging
+
+```text
+MANIFEST.in
+pyproject.toml
+src/genai_repo_auditor/__init__.py
+src/genai_repo_auditor/resources.py
+src/genai_repo_auditor/version.py
+```
+
 ## Prompts
 
 ```text

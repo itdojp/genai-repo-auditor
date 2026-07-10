@@ -38,6 +38,34 @@ When adding integration coverage:
 3. Keep generated run directories under `.test-tmp/` through `CliWorkflowTestCase.setUp()`.
 4. Do not commit generated runs, target repositories, scanner outputs, transcripts, credentials, or local audit artifacts.
 
+## Packaging and resource discovery
+
+Package metadata is declared in [`pyproject.toml`](../pyproject.toml), with
+source files under [`src/genai_repo_auditor/`](../src/genai_repo_auditor/).
+The package intentionally has no runtime third-party dependencies. The
+declared build backend packages the prompt and template resource families under
+`share/genai-repo-auditor/` so installed code can locate them without relying
+on a source checkout.
+
+Use the canonical resource API for new package-aware code:
+
+```python
+from genai_repo_auditor import prompt_path, report_schema_path, resource_root
+
+root = resource_root()
+prompt = prompt_path("exec", "full-audit.prompt.md")
+findings_schema = report_schema_path("findings.schema.json")
+```
+
+Compatibility invariants:
+
+- Source-checkout commands under `bin/` must continue to work while packaging
+  support is introduced incrementally.
+- Packaged resources must include prompts, report schemas/templates,
+  taxonomies, and agent worker profiles.
+- Package builds must not include local runs, cloned repositories, scanner
+  output, stores, credentials, Codex transcripts, or agent-local artifacts.
+
 ## Adding a report validator
 
 Report validation is registry-driven. Core registry entry points are:

@@ -1,0 +1,19 @@
+include LICENSE NOTICE README.md VERSION
+recursive-include prompts *.md
+recursive-include templates *
+prune .codex-local
+prune .test-tmp
+prune audits
+prune batches
+prune build
+prune dist
+prune locks
+prune repos
+prune reports
+prune runs
+prune src/genai_repo_auditor.egg-info
+prune worktrees
+global-exclude __pycache__ *.py[cod] *.sqlite *.sqlite3 *.sarif
+global-exclude codex-events.jsonl codex-final.md codex-stderr.txt codex-transcript.txt
+global-exclude agent-events.jsonl agent-final.md
+global-exclude semgrep.json gitleaks.json trivy.json checkov.json codeql-results.sarif
