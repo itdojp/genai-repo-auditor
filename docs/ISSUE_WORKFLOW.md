@@ -43,7 +43,8 @@ gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --mode goal
 # Add project-specific Python build/test commands; otherwise final_status remains needs-human-review.
 gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --validate --sandbox-profile local-test --build-command "python3 -m py_compile repo/app.py" --test-command "python3 -m py_compile repo/app.py"
 # Optional for shared-library / producer findings:
-# gra-trace --producer-run runs/OWNER__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode exec
+# gra-trace --producer-run runs/OWNER__shared-lib/RUN_ID --finding SEC-001 --consumer-repo OWNER/consumer --mode prepare
+# gra-trace --producer-run runs/OWNER__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__shared-lib/RUN_ID/trace-consumers/OWNER__consumer --mode exec
 gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high --votes 3 --policy human-review-on-split
 gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID --fix
 gra-validate-report --run runs/OWNER__REPO/RUN_ID

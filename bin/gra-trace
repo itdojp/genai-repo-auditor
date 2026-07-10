@@ -21,6 +21,7 @@ from gralib import (
     utc_now,
     write_json,
 )
+from run_events import append_command_event, start_command_event
 
 
 class TraceSafetyError(RuntimeError):
@@ -76,6 +77,11 @@ def resolve_run_dir(value: str, label: str) -> Path:
     if raw.is_symlink():
         raise TraceSafetyError(f'{label} must not be a symlink: {raw}')
     return raw.resolve()
+
+
+def resolve_consumer_run_dir(value: str, producer_run: Path) -> Path:
+    consumer_run = resolve_run_dir(value, 'consumer run')
+    return ensure_under_run(consumer_run, producer_run, 'consumer run')
 
 
 def reports_dir(run_dir: Path) -> Path:
@@ -258,7 +264,7 @@ def build_subject_payload(
         'generated_at': utc_now(),
         'finding_id': finding_id,
         'producer': {
-            'run_dir': str(producer_run),
+            'run_dir': '.',
             'repo': producer_ctx.get('repo', ''),
             'branch': producer_ctx.get('branch', ''),
             'commit': producer_ctx.get('commit', ''),
@@ -267,14 +273,14 @@ def build_subject_payload(
             'finding': finding,
         },
         'consumer': {
-            'run_dir': str(consumer_run),
+            'run_dir': rel_to(consumer_run, producer_run),
             'repo': consumer_ctx.get('repo', ''),
             'branch': consumer_ctx.get('branch', ''),
             'commit': consumer_ctx.get('commit', ''),
-            'repo_dir': str(repo_dir(consumer_run)),
-            'reports_dir': str(consumer_reports),
-            'findings_report': str(consumer_findings_path) if consumer_findings_path.exists() else '',
-            'targets_report': str(consumer_targets_path) if consumer_targets_path.exists() else '',
+            'repo_dir': rel_to(repo_dir(consumer_run), producer_run),
+            'reports_dir': rel_to(consumer_reports, producer_run),
+            'findings_report': rel_to(consumer_findings_path, producer_run) if consumer_findings_path.exists() else '',
+            'targets_report': rel_to(consumer_targets_path, producer_run) if consumer_targets_path.exists() else '',
         },
         'trace_contract': {
             'output_json': rel_to(output_json, producer_run),
@@ -317,6 +323,8 @@ def write_subject_file(producer_run: Path, finding_id: str, consumer_run: Path) 
 def trace_env(producer_run: Path, finding_id: str, subject_path: Path, consumer_run: Path, consumer_ctx: dict[str, Any]) -> dict[str, str]:
     output_json = reports_dir(producer_run) / 'traces.json'
     output_md = reports_dir(producer_run) / 'TRACE.md'
+    consumer_run_ref = rel_to(consumer_run, producer_run)
+    consumer_repo_ref = rel_to(repo_dir(consumer_run), producer_run)
     return env_from_context(
         producer_run,
         {
@@ -324,10 +332,10 @@ def trace_env(producer_run: Path, finding_id: str, subject_path: Path, consumer_
             'TRACE_SUBJECTS_FILE': rel_to(subject_path, producer_run),
             'TRACE_OUTPUT_JSON': rel_to(output_json, producer_run),
             'TRACE_OUTPUT_MD': rel_to(output_md, producer_run),
-            'TRACE_PRODUCER_RUN_DIR': str(producer_run),
-            'TRACE_CONSUMER_RUN_DIR': str(consumer_run),
+            'TRACE_PRODUCER_RUN_DIR': '.',
+            'TRACE_CONSUMER_RUN_DIR': consumer_run_ref,
             'TRACE_CONSUMER_REPO': str(consumer_ctx.get('repo') or ''),
-            'TRACE_CONSUMER_REPO_DIR': str(repo_dir(consumer_run)),
+            'TRACE_CONSUMER_REPO_DIR': consumer_repo_ref,
         },
     )
 
@@ -414,16 +422,48 @@ def main() -> int:
         return 2
     if not (producer_run / 'context.json').exists():
         return mode_error(f'producer context.json not found under {producer_run}')
+    started_at, started_perf = start_command_event()
+    input_artifacts = [producer_run / 'context.json', producer_run / 'reports' / 'findings.json']
+    output_artifacts: list[Path] = []
+
+    def add_if_under_producer(path: Path, artifacts: list[Path]) -> None:
+        try:
+            path.resolve(strict=False).relative_to(producer_run.resolve(strict=False))
+        except ValueError:
+            return
+        artifacts.append(path)
+
+    def finish(exit_code: int, *, error_category: str | None = None) -> int:
+        append_command_event(
+            producer_run,
+            command='gra-trace',
+            phase='prepare' if args.mode == 'prepare' else 'goal' if args.mode == 'goal' else 'trace',
+            subject_id=args.finding,
+            started_at=started_at,
+            started_perf=started_perf,
+            exit_code=exit_code,
+            error_category=error_category,
+            model=args.model,
+            effort=args.effort,
+            network_allowed=True if args.mode == 'prepare' else False,
+            sandbox_profile='host' if args.mode == 'prepare' else 'workspace-write',
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=output_artifacts,
+            failure_mode='warn' if exit_code != 0 else 'block',
+        )
+        return exit_code
+
     try:
         safe_context_path(producer_run, 'producer')
     except (FileNotFoundError, TraceSafetyError) as exc:
         print(str(exc), file=sys.stderr)
-        return 2
+        return finish(2, error_category='input_validation')
 
     try:
         if args.mode == 'prepare':
             if not args.consumer_repo:
-                return mode_error('--mode prepare requires --consumer-repo')
+                print('--mode prepare requires --consumer-repo', file=sys.stderr)
+                return finish(2, error_category='input_validation')
             # Validate producer finding before cloning so typos do not trigger network access.
             find_producer_finding(producer_run, args.finding)
             consumer_run = clone_consumer_repo(
@@ -436,6 +476,7 @@ def main() -> int:
             env = trace_env(producer_run, args.finding, subject_path, consumer_run, consumer_ctx)
             prompt = trace_prompt_path(producer_run, 'goal', slug(f'{args.finding}-{args.consumer_repo}'))
             render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'goal' / 'trace-reachability.goal.md', prompt, env)
+            output_artifacts.extend([subject_path, consumer_run / 'context.json', prompt])
             print('Prepared cross-repo trace reachability workspace.')
             print(f'Producer run: {producer_run}')
             print(f'Consumer run: {consumer_run}')
@@ -444,22 +485,27 @@ def main() -> int:
             print(f'Goal prompt: {prompt}')
             print('\nNext exec command:')
             print(f'  gra-trace --producer-run "{producer_run}" --finding "{args.finding}" --consumer-run "{consumer_run}" --mode exec')
-            return 0
+            return finish(0)
 
         if not args.consumer_run:
-            return mode_error(f'--mode {args.mode} requires --consumer-run')
-        consumer_run = resolve_run_dir(args.consumer_run, 'consumer run')
+            print(f'--mode {args.mode} requires --consumer-run', file=sys.stderr)
+            return finish(2, error_category='input_validation')
+        consumer_run = resolve_consumer_run_dir(args.consumer_run, producer_run)
         if not (consumer_run / 'context.json').exists():
-            return mode_error(f'consumer context.json not found under {consumer_run}')
+            print(f'consumer context.json not found under {consumer_run}', file=sys.stderr)
+            return finish(2, error_category='input_validation')
         safe_context_path(consumer_run, 'consumer')
+        add_if_under_producer(consumer_run / 'context.json', input_artifacts)
 
         subject_path, producer_ctx, consumer_ctx = write_subject_file(producer_run, args.finding, consumer_run)
+        output_artifacts.append(subject_path)
         env = trace_env(producer_run, args.finding, subject_path, consumer_run, consumer_ctx)
         selection_slug = slug(f"{args.finding}-{consumer_ctx.get('repo') or consumer_run.name}")
 
         if args.mode == 'goal':
             prompt = trace_prompt_path(producer_run, 'goal', selection_slug)
             render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'goal' / 'trace-reachability.goal.md', prompt, env)
+            output_artifacts.append(prompt)
             print('Prepared supervised /goal trace reachability run.')
             print(f'Producer run: {producer_run}')
             print(f'Consumer run: {consumer_run}')
@@ -468,33 +514,38 @@ def main() -> int:
             print('\nStart Codex:')
             print(f'  codex --cd "{producer_run}" --skip-git-repo-check --model "{args.model}" --enable goals --sandbox workspace-write --ask-for-approval on-request -c \'model_reasoning_effort="{args.effort}"\' -c \'web_search="disabled"\' -c \'sandbox_workspace_write.network_access=false\'')
             print('\nThen paste the contents of the goal prompt.')
-            return 0
+            return finish(0)
 
         prompt = trace_prompt_path(producer_run, 'exec', selection_slug)
         render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'trace-reachability.prompt.md', prompt, env)
+        output_artifacts.append(prompt)
         print(
             f"Running Codex trace reachability for {args.finding}: "
             f"{producer_ctx.get('repo', '')} -> {consumer_ctx.get('repo', '')}".strip()
         )
+        final_path = trace_output_path(producer_run, f'codex-trace-{selection_slug}-final.md')
+        events_path = trace_output_path(producer_run, f'codex-trace-{selection_slug}-events.jsonl')
+        stderr_path = trace_output_path(producer_run, f'codex-trace-{selection_slug}-stderr.txt')
         status = run_codex_exec(
             run_dir=producer_run,
             prompt_file=prompt,
             model=args.model,
             effort=args.effort,
             network=False,
-            output_last=trace_output_path(producer_run, f'codex-trace-{selection_slug}-final.md'),
-            events_file=trace_output_path(producer_run, f'codex-trace-{selection_slug}-events.jsonl'),
-            stderr_file=trace_output_path(producer_run, f'codex-trace-{selection_slug}-stderr.txt'),
+            output_last=final_path,
+            events_file=events_path,
+            stderr_file=stderr_path,
         )
         ensure_trace_artifacts(producer_run, producer_ctx)
+        output_artifacts.extend([final_path, events_path, stderr_path, reports_dir(producer_run) / 'traces.json', reports_dir(producer_run) / 'TRACE.md'])
         print(f'Codex status: {status}')
         print(f'Trace subjects: {subject_path}')
         print(f'Trace report: {reports_dir(producer_run) / "TRACE.md"}')
         print(f'Trace JSON: {reports_dir(producer_run) / "traces.json"}')
-        return status
+        return finish(status)
     except (FileNotFoundError, KeyError, RuntimeError, TraceSafetyError, subprocess.CalledProcessError) as exc:
         print(str(exc), file=sys.stderr)
-        return 2
+        return finish(2, error_category='input_validation')
 
 
 if __name__ == '__main__':

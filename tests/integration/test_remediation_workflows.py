@@ -70,6 +70,16 @@ class RemediationWorkflowTests(CliWorkflowTestCase):
         self.assertEqual(len(calls), 1, calls)
         self.assertIn(str(final_path), calls[0])
         self.assertIn('model_reasoning_effort="medium"', calls[0])
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assert_public_command_event(
+            events[0],
+            command="gra-adversarial-validate",
+            phase="adversarial-validate",
+            subject_id="SEC-001",
+        )
+        self.assertIn("reports/adversarial-validation/sec-001.subjects.json", events[0]["output_artifact_refs"])
+        self.assertIn("reports/validation.json", events[0]["output_artifact_refs"])
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
         self.assertIn("Adversarial validations: validated", cp_validate.stdout)
@@ -255,6 +265,11 @@ class RemediationWorkflowTests(CliWorkflowTestCase):
         self.assertTrue(prompt.read_text(encoding="utf-8").startswith("/goal "))
         self.assertIn("You must not create new findings.", prompt.read_text(encoding="utf-8"))
         self.assertEqual(self.read_codex_calls(codex_log), [])
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assert_public_command_event(events[0], command="gra-adversarial-validate", phase="goal", subject_id="critical-high")
+        self.assertIn("reports/adversarial-validation/critical-high.subjects.json", events[0]["output_artifact_refs"])
+        self.assertIn("prompts/goal/adversarial-validate-critical-high.goal.md", events[0]["output_artifact_refs"])
 
     def test_gra_adversarial_validate_all_critical_high_requires_findings_json(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -312,6 +327,10 @@ class RemediationWorkflowTests(CliWorkflowTestCase):
         self.assertEqual(["chain"], [item["subject_type"] for item in subjects["subjects"]])
         self.assertEqual(["CHAIN-001"], [item["subject_id"] for item in subjects["subjects"]])
         self.assertEqual(self.read_codex_calls(codex_log), [])
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assert_public_command_event(events[0], command="gra-adversarial-validate", phase="goal", subject_id="CHAIN-001")
+        self.assertIn("reports/adversarial-validation/chain-001.subjects.json", events[0]["output_artifact_refs"])
 
     def test_gra_proofs_finding_exec_writes_safe_local_proof_artifacts(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -373,6 +392,11 @@ class RemediationWorkflowTests(CliWorkflowTestCase):
         self.assertEqual(len(calls), 1, calls)
         self.assertIn(str(final_path), calls[0])
         self.assertIn('model_reasoning_effort="medium"', calls[0])
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assert_public_command_event(events[0], command="gra-proofs", phase="proof", subject_id="SEC-001")
+        self.assertIn("reports/proofs/sec-001.subjects.json", events[0]["output_artifact_refs"])
+        self.assertIn("reports/proofs.json", events[0]["output_artifact_refs"])
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
         self.assertIn("Proofs: validated", cp_validate.stdout)
@@ -435,6 +459,11 @@ class RemediationWorkflowTests(CliWorkflowTestCase):
         self.assertIn(str(final_path), calls[0])
         self.assertIn('model_reasoning_effort="medium"', calls[0])
         self.assertIn('sandbox_workspace_write.network_access=false', calls[0])
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assert_public_command_event(events[0], command="gra-remediate", phase="remediate", subject_id="SEC-001")
+        self.assertIn("reports/remediation/sec-001.subjects.json", events[0]["output_artifact_refs"])
+        self.assertIn("reports/remediation/remediation-candidates.json", events[0]["output_artifact_refs"])
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
         self.assertIn("Remediation candidates: validated", cp_validate.stdout)
@@ -492,6 +521,11 @@ class RemediationWorkflowTests(CliWorkflowTestCase):
         self.assertTrue((run_dir / "reports" / "remediation" / "SEC-001" / "subject.json").exists())
         self.assertEqual(self.read_codex_calls(codex_log), [])
         self.assertFalse((run_dir / "codex-remediate-sec-001-final.md").exists())
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assert_public_command_event(events[0], command="gra-remediate", phase="goal", subject_id="SEC-001")
+        self.assertIn("reports/remediation/sec-001.subjects.json", events[0]["output_artifact_refs"])
+        self.assertIn("prompts/goal/remediate-sec-001.goal.md", events[0]["output_artifact_refs"])
 
     def test_gra_remediate_all_critical_high_goal_selects_relevant_findings(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -571,6 +605,12 @@ class RemediationWorkflowTests(CliWorkflowTestCase):
         self.assertEqual(original_app, (run_dir / "repo" / "app.py").read_text(encoding="utf-8"))
         self.assertNotIn("expected-fixture", (run_dir / "repo" / "app.py").read_text(encoding="utf-8"))
         self.assertTrue((run_dir / "reports" / "remediation" / "SEC-001" / "patch-validation.md").exists())
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assert_public_command_event(events[0], command="gra-remediate", phase="patch-validate", subject_id="SEC-001")
+        self.assertEqual("best-effort-host-python-guard", events[0]["sandbox_profile"])
+        self.assertIsNone(events[0]["network_allowed"])
+        self.assertIn("reports/remediation/SEC-001/patch-validation.json", events[0]["output_artifact_refs"])
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
         self.assertIn("Patch validations: validated", cp_validate.stdout)
@@ -738,6 +778,100 @@ class RemediationWorkflowTests(CliWorkflowTestCase):
         self.assertEqual("failed", report["final_status"])
         self.assertEqual(["python3", "repo/network_check.py"], report["commands_run"][0]["argv"])
 
+    def test_gra_remediate_validate_blocks_python_subprocess_network_tools(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.prepare_patch_validation_run(run_dir)
+        subprocess_check = run_dir / "repo" / "subprocess_check.py"
+        subprocess_check.write_text(
+            "import subprocess\n"
+            "import sys\n"
+            "\n"
+            "commands = [\n"
+            "    ['curl', '--version'],\n"
+            "    ['python3', '-S', '-c', 'print(1)'],\n"
+            "]\n"
+            "for command in commands:\n"
+            "    try:\n"
+            "        subprocess.run(command, check=False)\n"
+            "    except OSError as exc:\n"
+            "        if 'disabled by GenAI Repo Auditor patch validation' in str(exc) or 'Python guard bypass flags are disabled' in str(exc):\n"
+            "            continue\n"
+            "        raise\n"
+            "    raise SystemExit(9)\n"
+            "import os\n"
+            "exec_commands = [\n"
+            "    (sys.executable, [sys.executable, '-S', '-c', 'raise SystemExit(9)'], None),\n"
+            "    (sys.executable, [sys.executable, '-c', 'raise SystemExit(9)'], {}),\n"
+            "]\n"
+            "for path, argv, env in exec_commands:\n"
+            "    try:\n"
+            "        if env is None:\n"
+            "            os.execv(path, argv)\n"
+            "        else:\n"
+            "            os.execve(path, argv, env)\n"
+            "    except OSError as exc:\n"
+            "        if 'Python guard bypass flags are disabled' in str(exc) or 'Python guard environment is required' in str(exc):\n"
+            "            continue\n"
+            "        raise\n"
+            "    raise SystemExit(9)\n"
+            "for name in ['posix_spawn', 'posix_spawnp']:\n"
+            "    if not hasattr(os, name):\n"
+            "        continue\n"
+            "    try:\n"
+            "        pid = getattr(os, name)(sys.executable, [sys.executable, '-S', '-c', 'raise SystemExit(9)'], {})\n"
+            "    except OSError as exc:\n"
+            "        if 'Python guard bypass flags are disabled' in str(exc) or 'Python guard environment is required' in str(exc):\n"
+            "            continue\n"
+            "        raise\n"
+            "    else:\n"
+            "        os.waitpid(pid, 0)\n"
+            "        raise SystemExit(9)\n",
+            encoding="utf-8",
+        )
+        subprocess.run(["git", "-C", str(run_dir / "repo"), "add", "subprocess_check.py"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(run_dir / "repo"),
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-m",
+                "add subprocess check",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-remediate",
+                "--run",
+                run_dir,
+                "--finding",
+                "SEC-001",
+                "--validate",
+                "--sandbox-profile",
+                "local-test",
+                "--build-command",
+                "python3 repo/subprocess_check.py",
+                "--test-command",
+                "python3 repo/subprocess_check.py",
+            ],
+            env=self.env_without_credentials(),
+            check=True,
+        )
+        self.assertIn("final_status=validated", cp.stdout)
+        report = json.loads((run_dir / "reports" / "remediation" / "SEC-001" / "patch-validation.json").read_text(encoding="utf-8"))
+        self.assertEqual("passed", report["build_status"])
+        self.assertEqual("passed", report["test_status"])
+        self.assertEqual("validated", report["final_status"])
+
     def test_gra_remediate_validate_without_commands_needs_human_review(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         self.prepare_patch_validation_run(run_dir)
@@ -866,6 +1000,11 @@ class RemediationWorkflowTests(CliWorkflowTestCase):
         self.assertIn("Do not modify files under repo/.", prompt_text)
         self.assertIn("Every proof must set safe_by_design to true.", prompt_text)
         self.assertEqual(self.read_codex_calls(codex_log), [])
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assert_public_command_event(events[0], command="gra-proofs", phase="goal", subject_id="critical-high")
+        self.assertIn("reports/proofs/critical-high.subjects.json", events[0]["output_artifact_refs"])
+        self.assertIn("prompts/goal/safe-proof-critical-high.goal.md", events[0]["output_artifact_refs"])
 
     def test_gra_proofs_all_critical_high_requires_findings_json(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -931,6 +1070,11 @@ class RemediationWorkflowTests(CliWorkflowTestCase):
         self.assertEqual(len(calls), 1, calls)
         self.assertIn(str(final_path), calls[0])
         self.assertIn('model_reasoning_effort="medium"', calls[0])
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assert_public_command_event(events[0], command="gra-chains", phase="chain")
+        self.assertIn("reports/chains.json", events[0]["output_artifact_refs"])
+        self.assertIn("codex-chains-final.md", events[0]["output_artifact_refs"])
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
         self.assertIn("Chains: validated", cp_validate.stdout)
@@ -958,6 +1102,10 @@ class RemediationWorkflowTests(CliWorkflowTestCase):
         self.assertIn("safe validation plan", prompt_text)
         self.assertEqual(self.read_codex_calls(codex_log), [])
         self.assertFalse((run_dir / "codex-chains-final.md").exists())
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assert_public_command_event(events[0], command="gra-chains", phase="goal")
+        self.assertIn("prompts/goal/synthesize-chains.goal.md", events[0]["output_artifact_refs"])
 
     def test_advanced_chain_proof_validation_workflow_fixture(self) -> None:
         run_dir = self.copy_fixture_run("advanced-workflow-run")

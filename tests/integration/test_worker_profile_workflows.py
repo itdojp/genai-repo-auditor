@@ -321,7 +321,8 @@ class WorkerProfileWorkflowTests(CliWorkflowTestCase):
 
     def test_gra_trace_exec_with_consumer_run_writes_trace_artifacts(self) -> None:
         producer_run = self.copy_fixture_run("minimal-run")
-        consumer_run = self.copy_fixture_run("minimal-run")
+        consumer_run = producer_run / "trace-consumers" / "example__consumer-api"
+        shutil.copytree(FIXTURES / "minimal-run", consumer_run)
         consumer_ctx_path = consumer_run / "context.json"
         consumer_ctx = json.loads(consumer_ctx_path.read_text(encoding="utf-8"))
         consumer_ctx.update(
@@ -370,6 +371,10 @@ class WorkerProfileWorkflowTests(CliWorkflowTestCase):
         self.assertEqual("SEC-001", subject["finding_id"])
         self.assertEqual("example/demo", subject["producer"]["repo"])
         self.assertEqual("example/consumer-api", subject["consumer"]["repo"])
+        self.assertEqual("trace-consumers/example__consumer-api", subject["consumer"]["run_dir"])
+        self.assertEqual("trace-consumers/example__consumer-api/repo", subject["consumer"]["repo_dir"])
+        self.assertFalse(Path(subject["consumer"]["run_dir"]).is_absolute())
+        self.assertFalse(Path(subject["consumer"]["repo_dir"]).is_absolute())
         self.assertIn("required_trace_fields", subject["trace_contract"])
 
         prompt = producer_run / "prompts" / "exec" / "trace-reachability-sec-001-example-consumer-api.prompt.md"
@@ -414,9 +419,60 @@ class WorkerProfileWorkflowTests(CliWorkflowTestCase):
         self.assertIn(str(final_path), calls[0])
         self.assertIn('model_reasoning_effort="medium"', calls[0])
         self.assertIn("sandbox_workspace_write.network_access=false", calls[0])
+        events = self.read_command_events(producer_run)
+        self.assertEqual(1, len(events), events)
+        self.assert_public_command_event(events[0], command="gra-trace", phase="trace", subject_id="SEC-001")
+        self.assertIn("reports/traces/sec-001-example-consumer-api.subjects.json", events[0]["output_artifact_refs"])
+        self.assertIn("reports/traces.json", events[0]["output_artifact_refs"])
+
+        cp_goal = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-trace",
+                "--producer-run",
+                producer_run,
+                "--finding",
+                "SEC-001",
+                "--consumer-run",
+                consumer_run,
+                "--mode",
+                "goal",
+                "--model",
+                "gpt-fixture",
+                "--effort",
+                "medium",
+            ],
+            check=True,
+        )
+        self.assertIn("Prepared supervised /goal trace reachability run.", cp_goal.stdout)
+        events = self.read_command_events(producer_run)
+        self.assertEqual(2, len(events), events)
+        self.assert_public_command_event(events[1], command="gra-trace", phase="goal", subject_id="SEC-001")
+        self.assertIn("prompts/goal/trace-reachability-sec-001-example-consumer-api.goal.md", events[1]["output_artifact_refs"])
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", producer_run], check=True)
         self.assertIn("Traces: validated", cp_validate.stdout)
+
+    def test_gra_trace_rejects_external_consumer_run(self) -> None:
+        producer_run = self.copy_fixture_run("minimal-run")
+        consumer_run = self.copy_fixture_run("minimal-run")
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-trace",
+                "--producer-run",
+                producer_run,
+                "--finding",
+                "SEC-001",
+                "--consumer-run",
+                consumer_run,
+                "--mode",
+                "goal",
+            ],
+        )
+
+        self.assertEqual(2, cp.returncode)
+        self.assertIn("consumer run must stay under run directory", cp.stderr)
+        self.assertFalse((producer_run / "reports" / "traces" / "sec-001-example-demo.subjects.json").exists())
 
     def test_gra_trace_prepare_invalid_finding_fails_before_clone(self) -> None:
         producer_run = self.copy_fixture_run("minimal-run")
@@ -467,7 +523,8 @@ class WorkerProfileWorkflowTests(CliWorkflowTestCase):
 
     def test_gra_trace_rejects_reports_dir_path_traversal(self) -> None:
         producer_run = self.copy_fixture_run("minimal-run")
-        consumer_run = self.copy_fixture_run("minimal-run")
+        consumer_run = producer_run / "trace-consumers" / "example__consumer-api"
+        shutil.copytree(FIXTURES / "minimal-run", consumer_run)
         ctx_path = producer_run / "context.json"
         ctx = json.loads(ctx_path.read_text(encoding="utf-8"))
         ctx["reports_dir"] = "../outside-reports"
@@ -494,7 +551,8 @@ class WorkerProfileWorkflowTests(CliWorkflowTestCase):
 
     def test_gra_trace_rejects_repo_dir_path_traversal(self) -> None:
         producer_run = self.copy_fixture_run("minimal-run")
-        consumer_run = self.copy_fixture_run("minimal-run")
+        consumer_run = producer_run / "trace-consumers" / "example__consumer-api"
+        shutil.copytree(FIXTURES / "minimal-run", consumer_run)
         ctx_path = producer_run / "context.json"
         ctx = json.loads(ctx_path.read_text(encoding="utf-8"))
         ctx["repo_dir"] = "../outside-repo"
@@ -520,7 +578,8 @@ class WorkerProfileWorkflowTests(CliWorkflowTestCase):
 
     def test_gra_trace_rejects_symlinked_producer_reports_dir(self) -> None:
         producer_run = self.copy_fixture_run("minimal-run")
-        consumer_run = self.copy_fixture_run("minimal-run")
+        consumer_run = producer_run / "trace-consumers" / "example__consumer-api"
+        shutil.copytree(FIXTURES / "minimal-run", consumer_run)
         outside_reports = self.work_dir / "outside-reports"
         shutil.move(str(producer_run / "reports"), outside_reports)
         os.symlink(outside_reports, producer_run / "reports", target_is_directory=True)
@@ -637,6 +696,13 @@ class WorkerProfileWorkflowTests(CliWorkflowTestCase):
         self.assertEqual(self.read_codex_calls(codex_log), [])
         calls = self.read_gh_calls(gh_log)
         self.assert_gh_called(calls, ["repo", "clone"])
+        events = self.read_command_events(producer_run)
+        self.assertEqual(1, len(events), events)
+        self.assert_public_command_event(events[0], command="gra-trace", phase="prepare", subject_id="SEC-001")
+        self.assertTrue(events[0]["network_allowed"])
+        self.assertEqual("host", events[0]["sandbox_profile"])
+        self.assertIn("trace-consumers/example__consumer-api/context.json", events[0]["output_artifact_refs"])
+        self.assertIn("prompts/goal/trace-reachability-sec-001-example-consumer-api.goal.md", events[0]["output_artifact_refs"])
 
         repo_dir = consumer_run / "repo"
         subprocess.run(

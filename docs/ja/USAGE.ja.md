@@ -54,7 +54,8 @@ gra-gapfill --run "$RUN_DIR" --generate
 gra-chains --run "$RUN_DIR"
 gra-proofs --run "$RUN_DIR" --all-critical-high
 # shared-library / producer finding の consumer 到達可能性を確認する場合:
-# gra-trace --producer-run "$RUN_DIR" --finding SEC-001 --consumer-run "$GRA_HOME/runs/OWNER__consumer/RUN_ID" --mode exec
+# gra-trace --producer-run "$RUN_DIR" --finding SEC-001 --consumer-repo OWNER/consumer --mode prepare
+# gra-trace --producer-run "$RUN_DIR" --finding SEC-001 --consumer-run "$RUN_DIR/trace-consumers/OWNER__consumer" --mode exec
 gra-adversarial-validate --run "$RUN_DIR" --all-critical-high --votes 3 --policy human-review-on-split
 gra-validate-report --run "$RUN_DIR"
 gra-issues --run "$RUN_DIR" --dry-run

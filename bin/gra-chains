@@ -10,6 +10,7 @@ LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
 from gralib import env_from_context, load_context, load_json, render_template, run_codex_exec, write_json, utc_now
+from run_events import append_command_event, start_command_event
 
 
 def render_chains_markdown(run_dir: Path, chains_data: dict[str, Any]) -> None:
@@ -105,6 +106,33 @@ def main() -> int:
     args = p.parse_args()
 
     run_dir = Path(args.run).resolve()
+    started_at, started_perf = start_command_event()
+    input_artifacts = [
+        run_dir / 'context.json',
+        run_dir / 'reports' / 'findings.json',
+        run_dir / 'reports' / 'validation.json',
+        run_dir / 'reports' / 'proofs.json',
+    ]
+    output_artifacts: list[Path] = []
+
+    def finish(exit_code: int) -> int:
+        append_command_event(
+            run_dir,
+            command='gra-chains',
+            phase='goal' if args.mode == 'goal' else 'chain',
+            started_at=started_at,
+            started_perf=started_perf,
+            exit_code=exit_code,
+            model=args.model,
+            effort=args.effort,
+            network_allowed=args.network,
+            sandbox_profile='workspace-write',
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=output_artifacts,
+            failure_mode='warn' if exit_code != 0 else 'block',
+        )
+        return exit_code
+
     ctx = load_context(run_dir)
     env = env_from_context(run_dir, {
         'CHAINS_OUTPUT_JSON': 'reports/chains.json',
@@ -114,6 +142,7 @@ def main() -> int:
     if args.mode == 'goal':
         prompt = run_dir / 'prompts' / 'goal' / 'synthesize-chains.goal.md'
         render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'goal' / 'synthesize-chains.goal.md', prompt, env)
+        output_artifacts.append(prompt)
         print('Prepared supervised /goal chain synthesis run.')
         print(f'Run directory: {run_dir}')
         print(f'Goal prompt: {prompt}')
@@ -121,26 +150,31 @@ def main() -> int:
         print('\nStart Codex:')
         print(f'  codex --cd "{run_dir}" --skip-git-repo-check --model "{args.model}" --enable goals --sandbox workspace-write --ask-for-approval on-request -c \'model_reasoning_effort="{args.effort}"\' -c \'web_search="disabled"\' -c \'sandbox_workspace_write.network_access={network_value}\'')
         print('\nThen paste the contents of the goal prompt.')
-        return 0
+        return finish(0)
 
     prompt = run_dir / 'prompts' / 'exec' / 'synthesize-chains.prompt.md'
     render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'synthesize-chains.prompt.md', prompt, env)
+    output_artifacts.append(prompt)
     print(f'Running Codex defensive chain synthesis for {ctx.get("repo", "")}'.strip())
+    final_path = run_dir / 'codex-chains-final.md'
+    events_path = run_dir / 'codex-chains-events.jsonl'
+    stderr_path = run_dir / 'codex-chains-stderr.txt'
     status = run_codex_exec(
         run_dir=run_dir,
         prompt_file=prompt,
         model=args.model,
         effort=args.effort,
         network=args.network,
-        output_last=run_dir / 'codex-chains-final.md',
-        events_file=run_dir / 'codex-chains-events.jsonl',
-        stderr_file=run_dir / 'codex-chains-stderr.txt',
+        output_last=final_path,
+        events_file=events_path,
+        stderr_file=stderr_path,
     )
     ensure_chain_artifacts(run_dir, ctx)
+    output_artifacts.extend([final_path, events_path, stderr_path, run_dir / 'reports' / 'chains.json', run_dir / 'reports' / 'ATTACK_CHAINS.md'])
     print(f'Codex status: {status}')
     print(f'Chains report: {run_dir / "reports" / "ATTACK_CHAINS.md"}')
     print(f'Chains JSON: {run_dir / "reports" / "chains.json"}')
-    return status
+    return finish(status)
 
 
 if __name__ == '__main__':

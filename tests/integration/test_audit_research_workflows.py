@@ -93,6 +93,40 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
         self.assertNotIn("OPENAI_API_KEY", manifest_text)
         self.assertNotIn("fixture-secret-value", manifest_text)
         self.assertNotIn(str(self.runs_dir), manifest_text)
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assert_public_command_event(events[0], command="gra-audit", phase="prepare")
+        self.assertIn("prompt.exec.md", events[0]["output_artifact_refs"])
+        self.assertIn("run-manifest.json", events[0]["output_artifact_refs"])
+
+    def test_gra_audit_goal_creates_goal_prompt_and_command_event(self) -> None:
+        env, codex_log = self.env_with_codex_log()
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-audit",
+                "--repo",
+                "example/demo",
+                "--mode",
+                "goal",
+                "--run-id",
+                "goal-run",
+                "--runs-dir",
+                self.runs_dir,
+                "--no-lock",
+            ],
+            env=env,
+            check=True,
+        )
+        run_dir = self.runs_dir / "example__demo" / "goal-run"
+        self.assertIn("Prepared interactive /goal run.", cp.stdout)
+        self.assertTrue((run_dir / "prompt.goal.md").exists())
+        self.assertTrue((run_dir / "prompts" / "goal" / "full-audit.goal.md").exists())
+        self.assertEqual(self.read_codex_calls(codex_log), [])
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assert_public_command_event(events[0], command="gra-audit", phase="goal")
+        self.assertIn("prompt.goal.md", events[0]["output_artifact_refs"])
+        self.assertIn("run-manifest.json", events[0]["output_artifact_refs"])
 
     def test_render_template_uses_allowlist_and_rejects_unknown_or_secret_placeholders(self) -> None:
         template = self.work_dir / "template.md"
@@ -209,6 +243,14 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
         codex_calls = self.read_codex_calls(codex_log)
         self.assertEqual(1, len(codex_calls), codex_calls)
         self.assert_codex_exec_approval_config(codex_calls[0])
+        events = self.read_command_events(run_dir)
+        audit_events = [event for event in events if event["command"] == "gra-audit"]
+        self.assertEqual(1, len(audit_events), events)
+        self.assert_public_command_event(audit_events[0], command="gra-audit", phase="audit")
+        self.assertIn("run-summary.txt", audit_events[0]["output_artifact_refs"])
+        self.assertIn("report-validation.txt", audit_events[0]["output_artifact_refs"])
+        post_event_validation = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("OK:", post_event_validation.stdout)
 
     def test_gra_audit_exec_keeps_adversarial_repository_content_untrusted(self) -> None:
         manifest_path = FIXTURES / "adversarial-repos" / "manifest.json"
@@ -470,6 +512,13 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
         self.assertIn(str(final_path), calls[0])
         self.assertIn('model_reasoning_effort="medium"', calls[0])
         self.assertIn("sandbox_workspace_write.network_access=false", calls[0])
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assert_public_command_event(events[0], command="gra-recon", phase="recon")
+        self.assertEqual("gpt-fixture", events[0]["model"])
+        self.assertEqual("medium", events[0]["effort"])
+        self.assertIn("reports/agent-surface.json", events[0]["output_artifact_refs"])
+        self.assertIn("codex-recon-final.md", events[0]["output_artifact_refs"])
 
     def test_gra_targets_generate_appends_agent_surface_targets(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -495,6 +544,11 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
 
         calls = self.read_codex_calls(codex_log)
         self.assertEqual(len(calls), 2, calls)
+        events = self.read_command_events(run_dir)
+        target_events = [event for event in events if event["command"] == "gra-targets"]
+        self.assertEqual(1, len(target_events), events)
+        self.assert_public_command_event(target_events[0], command="gra-targets", phase="target-generation")
+        self.assertIn("reports/targets.json", target_events[0]["output_artifact_refs"])
 
     def test_gra_targets_generate_normalizes_codex_written_review_depth_alias(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -1143,6 +1197,11 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
         calls = self.read_codex_calls(codex_log)
         self.assertEqual(len(calls), 1, calls)
         self.assertIn(str(final_path), calls[0])
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assert_public_command_event(events[0], command="gra-variant", phase="exec", subject_id="SEC-001")
+        self.assertIn("reports/variant-analysis/SEC-001.source.json", events[0]["output_artifact_refs"])
+        self.assertIn("codex-variant-SEC-001-final.md", events[0]["output_artifact_refs"])
 
     def test_gra_variant_goal_prepares_prompt_without_codex_exec(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -1166,6 +1225,37 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
         self.assertTrue(prompt.read_text(encoding="utf-8").startswith("/goal "))
         self.assertEqual(self.read_codex_calls(codex_log), [])
         self.assertFalse((run_dir / "codex-variant-SEC-001-final.md").exists())
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assert_public_command_event(events[0], command="gra-variant", phase="goal", subject_id="SEC-001")
+        self.assertIn("prompts/goal/variant-SEC-001.goal.md", events[0]["output_artifact_refs"])
+
+    def test_gra_variant_source_file_with_arbitrary_stem_omits_event_subject(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        source = run_dir / "reports" / "variant-analysis" / "root cause.md"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("Shared root cause note.\n", encoding="utf-8")
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-variant",
+                "--run",
+                run_dir,
+                "--source-file",
+                source,
+                "--mode",
+                "goal",
+            ],
+            check=True,
+        )
+        self.assertIn("Prepared supervised /goal variant-analysis run.", cp.stdout)
+        prompt = run_dir / "prompts" / "goal" / "variant-root cause.goal.md"
+        self.assertTrue(prompt.exists())
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events), events)
+        self.assert_public_command_event(events[0], command="gra-variant", phase="goal")
+        self.assertIsNone(events[0]["subject_id"])
+        self.assertIn("reports/variant-analysis/root cause.md", events[0]["input_artifact_refs"])
+        self.assertIn("prompts/goal/variant-root cause.goal.md", events[0]["output_artifact_refs"])
 
     def test_gra_targets_list_show_and_mark(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -1177,3 +1267,9 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
         self.assertIn("updated TGT-001 -> reviewed", cp_mark.stdout)
         targets = json.loads((run_dir / "reports" / "targets.json").read_text(encoding="utf-8"))["targets"]
         self.assertEqual(targets[0]["status"], "reviewed")
+        events = self.read_command_events(run_dir)
+        self.assertEqual(["list", "show", "mark"], [event["phase"] for event in events])
+        self.assert_public_command_event(events[0], command="gra-targets", phase="list")
+        self.assert_public_command_event(events[1], command="gra-targets", phase="show", target_id="TGT-001")
+        self.assert_public_command_event(events[2], command="gra-targets", phase="mark", target_id="TGT-001")
+        self.assertIn("reports/targets.json", events[2]["output_artifact_refs"])

@@ -10,6 +10,7 @@ LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
 from gralib import env_from_context, find_finding, load_context, render_template, run_codex_exec
+from run_events import append_command_event, start_command_event
 
 
 def main() -> int:
@@ -26,23 +27,59 @@ def main() -> int:
     args = p.parse_args()
 
     run_dir = Path(args.run).resolve()
+    started_at, started_perf = start_command_event()
+    input_artifacts = [run_dir / 'context.json', run_dir / 'reports' / 'findings.json']
+    output_artifacts: list[Path] = []
+    event_subject_id = args.finding
+
+    def add_input_if_under_run(path: Path) -> None:
+        try:
+            path.resolve(strict=False).relative_to(run_dir.resolve(strict=False))
+        except ValueError:
+            return
+        input_artifacts.append(path)
+
+    def finish(exit_code: int, *, error_category: str | None = None) -> int:
+        append_command_event(
+            run_dir,
+            command='gra-variant',
+            phase=args.mode,
+            subject_id=event_subject_id,
+            started_at=started_at,
+            started_perf=started_perf,
+            exit_code=exit_code,
+            error_category=error_category,
+            model=args.model,
+            effort=args.effort,
+            network_allowed=args.network,
+            sandbox_profile='workspace-write',
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=output_artifacts,
+            failure_mode='warn' if exit_code != 0 else 'block',
+        )
+        return exit_code
+
     ctx = load_context(run_dir)
     if args.finding:
         try:
             source = find_finding(run_dir, args.finding)
         except KeyError as e:
             print(str(e), file=sys.stderr)
-            return 2
+            return finish(2, error_category='input_validation')
         source_id = args.finding
+        event_subject_id = args.finding
         source_path = run_dir / 'reports' / 'variant-analysis' / f'{source_id}.source.json'
         source_path.parent.mkdir(parents=True, exist_ok=True)
         source_path.write_text(json.dumps(source, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+        output_artifacts.append(source_path)
     else:
         source_path = Path(args.source_file).resolve()
         if not source_path.exists():
             print(f'source file not found: {source_path}', file=sys.stderr)
-            return 2
+            return finish(2, error_category='input_validation')
         source_id = source_path.stem
+        event_subject_id = None
+        add_input_if_under_run(source_path)
 
     env = env_from_context(run_dir, {
         'FINDING_ID': source_id,
@@ -52,6 +89,7 @@ def main() -> int:
     if args.mode == 'goal':
         prompt = run_dir / 'prompts' / 'goal' / f'variant-{source_id}.goal.md'
         render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'goal' / 'variant-analysis.goal.md', prompt, env)
+        output_artifacts.append(prompt)
         print('Prepared supervised /goal variant-analysis run.')
         print(f'Run directory: {run_dir}')
         print(f'Variant source: {source_path}')
@@ -60,24 +98,29 @@ def main() -> int:
         print('\nStart Codex:')
         print(f'  codex --cd "{run_dir}" --skip-git-repo-check --model "{args.model}" --enable goals --sandbox workspace-write --ask-for-approval on-request -c \'model_reasoning_effort="{args.effort}"\' -c \'web_search="disabled"\' -c \'sandbox_workspace_write.network_access={network_value}\'')
         print('\nThen paste the contents of the goal prompt.')
-        return 0
+        return finish(0)
 
     prompt = run_dir / 'prompts' / 'exec' / f'variant-{source_id}.prompt.md'
     render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'variant-analysis.prompt.md', prompt, env)
+    output_artifacts.append(prompt)
     print(f'Running Codex variant analysis from {source_id}')
+    final_path = run_dir / f'codex-variant-{source_id}-final.md'
+    events_path = run_dir / f'codex-variant-{source_id}-events.jsonl'
+    stderr_path = run_dir / f'codex-variant-{source_id}-stderr.txt'
     status = run_codex_exec(
         run_dir=run_dir,
         prompt_file=prompt,
         model=args.model,
         effort=args.effort,
         network=args.network,
-        output_last=run_dir / f'codex-variant-{source_id}-final.md',
-        events_file=run_dir / f'codex-variant-{source_id}-events.jsonl',
-        stderr_file=run_dir / f'codex-variant-{source_id}-stderr.txt',
+        output_last=final_path,
+        events_file=events_path,
+        stderr_file=stderr_path,
     )
+    output_artifacts.extend([final_path, events_path, stderr_path, run_dir / 'reports' / 'variant-analysis' / (source_id + '.md')])
     print(f'Codex status: {status}')
     print(f'Variant report: {run_dir / "reports" / "variant-analysis" / (source_id + ".md")}')
-    return status
+    return finish(status)
 
 
 if __name__ == '__main__':

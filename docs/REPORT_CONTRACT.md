@@ -39,9 +39,11 @@ lead artifact として正規化する import artifact です。
 分類をローカルに記録する novelty artifact です。`issue-ledger.json` は
 `gra-issues` が生成・更新する canonical finding-to-Issue publication ledger
 です。`run-state.json` は `gra-run-state` が生成・更新する run-level pause /
-resume / blocked state artifact です。`command-events.jsonl` は target
-research、gapfill、report validation の実行時間・終了コード・関連 artifact
-を記録する structured observability artifact です。The run root also contains
+resume / blocked state artifact です。`command-events.jsonl` は audit entry
+point、recon、target queue、target research、gapfill、variant analysis、chain
+synthesis、safe proof、adversarial validation、remediation、trace reachability、
+report validation の実行時間・終了コード・関連 artifact を記録する structured
+observability artifact です。The run root also contains
 `run-manifest.json`, which is the bounded, run-relative artifact inventory for
 handoff and support diagnostics. It records each manifest artifact's retention
 category and, for files, size plus SHA-256 digest.
@@ -269,11 +271,15 @@ instrumented workflow commands. Each line is one JSON object. Version `1` record
 network-policy metadata, bounded `input_artifact_refs` /
 `output_artifact_refs`, `redaction_count`, and `error_category`. For backward
 compatibility, v2 writers also populate `artifact_paths` as an alias for output
-artifact references. New event producers should pass input and output artifact
+artifact references.
+
+Current v2 producers include `gra-audit`, `gra-recon`, `gra-targets`,
+`gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`,
+`gra-remediate`, `gra-adversarial-validate`, `gra-trace`, and
+`gra-validate-report`. New event producers should pass input and output artifact
 references explicitly rather than relying on the legacy `artifact_paths`
-fallback. `gra-metrics` uses these events to report per-execution
-durations, failures, reruns, validation retries, and target-level
-normalization counts.
+fallback. `gra-metrics` uses these events to report per-execution durations,
+failures, reruns, validation retries, and target-level normalization counts.
 
 Command-event writing is fail-closed by default: command-completion events use
 blocking write semantics so an unwritable or unsafe observability record cannot
@@ -342,11 +348,14 @@ Important constraints:
 - Optional `run-manifest.json` is validated when present. Artifact paths must be
   relative to the run directory, must not traverse through `..` or symlink
   components, and must exist with the declared `kind`. File artifacts must have
-  matching `size_bytes` and lowercase SHA-256 digest values. Completed
-  manifests must have a non-empty latest-status artifact list. Latest/archive
-  summary paths must be present in `artifacts[]`, must use the corresponding
-  retention category, must not overlap, and `by_retention` counts must match the
-  artifact list.
+  matching `size_bytes` and lowercase SHA-256 digest values. Because
+  `reports/command-events.jsonl` is append-only and later instrumented commands
+  may add records after a manifest snapshot, its manifest entry is validated as
+  a recorded prefix: the current file must be at least the recorded size and the
+  SHA-256 digest of that prefix must match. Completed manifests must have a
+  non-empty latest-status artifact list. Latest/archive summary paths must be
+  present in `artifacts[]`, must use the corresponding retention category, must
+  not overlap, and `by_retention` counts must match the artifact list.
 - Optional `reports/duplicate-decisions/*.json` records are validated when
   present. If `reports/issue-ledger.json` has `published` or `duplicate`
   entries, a matching duplicate decision record is required for each

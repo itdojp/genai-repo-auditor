@@ -19,12 +19,16 @@ Typical sequence:
 
 ```bash
 gra-audit --repo ORG/shared-lib --mode exec
-gra-audit --repo ORG/consumer-api --mode exec
+gra-trace \
+  --producer-run runs/ORG__shared-lib/PRODUCER_RUN_ID \
+  --finding SEC-001 \
+  --consumer-repo ORG/consumer-api \
+  --mode prepare
 
 gra-trace \
   --producer-run runs/ORG__shared-lib/PRODUCER_RUN_ID \
   --finding SEC-001 \
-  --consumer-run runs/ORG__consumer-api/CONSUMER_RUN_ID \
+  --consumer-run runs/ORG__shared-lib/PRODUCER_RUN_ID/trace-consumers/ORG__consumer-api \
   --mode exec
 
 gra-validate-report --run runs/ORG__shared-lib/PRODUCER_RUN_ID
@@ -62,16 +66,18 @@ runs/ORG__shared-lib/PRODUCER_RUN_ID/
 
 ## Exec and goal modes
 
-Use an existing consumer run for non-interactive exec or supervised goal mode.
-`exec` and `goal` mode require `--consumer-run`; `--consumer-repo` is accepted
-only for `prepare` mode so a trace execution cannot clone a repository by
-accident.
+Use the prepared consumer run under the producer run for non-interactive exec
+or supervised goal mode. `exec` and `goal` mode require `--consumer-run`;
+external consumer runs are rejected so producer trace artifacts do not persist
+absolute paths or depend on repositories outside the producer run boundary.
+`--consumer-repo` is accepted only for `prepare` mode so a trace execution
+cannot clone a repository by accident.
 
 ```bash
 gra-trace \
   --producer-run runs/ORG__shared-lib/PRODUCER_RUN_ID \
   --finding SEC-001 \
-  --consumer-run runs/ORG__consumer-api/CONSUMER_RUN_ID \
+  --consumer-run runs/ORG__shared-lib/PRODUCER_RUN_ID/trace-consumers/ORG__consumer-api \
   --mode exec
 ```
 
@@ -79,7 +85,7 @@ gra-trace \
 gra-trace \
   --producer-run runs/ORG__shared-lib/PRODUCER_RUN_ID \
   --finding SEC-001 \
-  --consumer-run runs/ORG__consumer-api/CONSUMER_RUN_ID \
+  --consumer-run runs/ORG__shared-lib/PRODUCER_RUN_ID/trace-consumers/ORG__consumer-api \
   --mode goal
 ```
 
@@ -123,7 +129,11 @@ Local path safety:
   `reports/TRACE.md` are written under the producer run directory.
 - `reports_dir` and target repository paths from `context.json` are treated as
   untrusted run metadata. Path traversal and symlink components are rejected.
-- A symlinked consumer run is rejected; use the real prepared run directory.
+- A symlinked or external consumer run is rejected; use the real prepared run
+  directory under `trace-consumers/` in the producer run.
+- Prepare mode records `network_allowed=true` in its command event because it
+  may run `gh repo clone`; exec and goal modes keep Codex network access
+  disabled.
 - There is no `--network` flag. Exec mode invokes Codex with
   `sandbox_workspace_write.network_access=false`.
 

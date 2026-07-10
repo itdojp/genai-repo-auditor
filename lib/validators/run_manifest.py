@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, List
 
 from .common import json_type_name, validate_generated_at, validate_schema
@@ -20,6 +20,23 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def sha256_file_prefix(path: Path, size_bytes: int) -> str:
+    digest = hashlib.sha256()
+    remaining = size_bytes
+    with path.open("rb") as handle:
+        while remaining > 0:
+            chunk = handle.read(min(1024 * 1024, remaining))
+            if not chunk:
+                break
+            digest.update(chunk)
+            remaining -= len(chunk)
+    return digest.hexdigest()
+
+
+def is_append_only_command_events_artifact(path: str) -> bool:
+    return PurePosixPath(path).name == "command-events.jsonl"
 
 
 def validate_manifest_artifact_path(
@@ -101,11 +118,22 @@ def validate_run_manifest(context: ValidationContext) -> bool:
             errors.append(f"{path}.kind: expected {expected_kind} for {artifact_path_text}")
         if target.is_file():
             size_bytes = artifact.get("size_bytes")
-            if not isinstance(size_bytes, int) or isinstance(size_bytes, bool) or size_bytes != target.stat().st_size:
-                errors.append(f"{path}.size_bytes: value does not match file size for {artifact_path_text}")
+            current_size = target.stat().st_size
             digest = artifact.get("sha256")
+            if not isinstance(size_bytes, int) or isinstance(size_bytes, bool):
+                errors.append(f"{path}.size_bytes: file artifacts must include integer size for {artifact_path_text}")
+            elif size_bytes < 0:
+                errors.append(f"{path}.size_bytes: file artifact size must be non-negative for {artifact_path_text}")
+            elif is_append_only_command_events_artifact(artifact_path_text):
+                if size_bytes > current_size:
+                    errors.append(f"{path}.size_bytes: value exceeds file size for append-only {artifact_path_text}")
+            elif size_bytes != current_size:
+                errors.append(f"{path}.size_bytes: value does not match file size for {artifact_path_text}")
             if not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest):
                 errors.append(f"{path}.sha256: file artifacts must include lowercase SHA-256")
+            elif isinstance(size_bytes, int) and not isinstance(size_bytes, bool) and is_append_only_command_events_artifact(artifact_path_text):
+                if size_bytes <= current_size and digest != sha256_file_prefix(target, size_bytes):
+                    errors.append(f"{path}.sha256: value does not match recorded append-only prefix digest for {artifact_path_text}")
             elif digest != sha256_file(target):
                 errors.append(f"{path}.sha256: value does not match file digest for {artifact_path_text}")
 

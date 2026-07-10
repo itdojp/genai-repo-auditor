@@ -105,7 +105,8 @@ gra-chains --run "$RUN"
 gra-proofs --run "$RUN" --all-critical-high
 gra-remediate --run "$RUN" --all-critical-high --mode goal
 # Optional for shared-library / producer findings:
-# gra-trace --producer-run "$RUN" --finding SEC-001 --consumer-run runs/OWNER__consumer/RUN_ID --mode goal
+# gra-trace --producer-run "$RUN" --finding SEC-001 --consumer-repo OWNER/consumer --mode prepare
+# gra-trace --producer-run "$RUN" --finding SEC-001 --consumer-run "$RUN/trace-consumers/OWNER__consumer" --mode goal
 gra-adversarial-validate --run "$RUN" --all-critical-high --votes 3 --policy human-review-on-split
 gra-validate-report --run "$RUN"
 ```

@@ -77,6 +77,7 @@ DENIED_EXECUTABLES = {
 }
 DENIED_TOKENS = {"install", "publish", "push", "upload", "deploy"}
 PYTHON_EXECUTABLE_RE = re.compile(r"^python(?:[0-9]+(?:\.[0-9]+)?)?$")
+PYTHON_GUARD_BYPASS_FLAGS = {"-E", "-I", "-S"}
 CREDENTIAL_ENV_NAMES = {
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
@@ -222,6 +223,26 @@ def diff_scope_status(*, diff_paths: set[str], declared_files: Iterable[Any], ta
     return "bounded", checks
 
 
+def python_interpreter_option_tokens(argv: list[str]) -> list[str]:
+    """Return argv tokens that Python treats as interpreter options.
+
+    Python stops parsing interpreter flags at ``-c``, ``-m``, ``--``, or the
+    first script/module argument. Guard-bypass flags after that point belong to
+    the script or module and do not disable sitecustomize loading.
+    """
+    option_tokens: list[str] = []
+    for token in argv[1:]:
+        if token == "--":
+            break
+        if token in {"-c", "-m"}:
+            option_tokens.append(token)
+            break
+        if not token.startswith("-"):
+            break
+        option_tokens.append(token)
+    return option_tokens
+
+
 def parse_operator_command(raw: str) -> list[str]:
     command = raw.strip()
     if not command:
@@ -241,6 +262,11 @@ def parse_operator_command(raw: str) -> list[str]:
         raise PatchValidationError(
             "local patch validation only runs Python commands with an injected no-network guard by default"
         )
+    for token in python_interpreter_option_tokens(argv):
+        if token in PYTHON_GUARD_BYPASS_FLAGS:
+            raise PatchValidationError("validation command disables the injected Python guard and is not allowed")
+        if token.startswith("-") and not token.startswith("--") and any(flag[1:] in token[1:] for flag in PYTHON_GUARD_BYPASS_FLAGS):
+            raise PatchValidationError("validation command disables the injected Python guard and is not allowed")
     lowered = {token.lower() for token in argv[1:]}
     if lowered & DENIED_TOKENS:
         raise PatchValidationError("validation command includes an unsafe install/publish/deploy token")
@@ -253,15 +279,219 @@ def parse_operator_command(raw: str) -> list[str]:
 def write_python_network_guard(workspace: Path) -> Path:
     guard_dir = workspace / ".gra-network-disabled"
     guard_dir.mkdir(parents=True, exist_ok=True)
+    denied_executables = repr(sorted(DENIED_EXECUTABLES))
+    bypass_flags = repr(sorted(PYTHON_GUARD_BYPASS_FLAGS))
     (guard_dir / "sitecustomize.py").write_text(
         "import socket\n"
+        "import os\n"
+        "import shlex\n"
+        "import subprocess\n"
+        "\n"
+        f"_GRA_DENIED_EXECUTABLES = set({denied_executables})\n"
+        f"_GRA_PYTHON_GUARD_BYPASS_FLAGS = set({bypass_flags})\n"
+        "_GRA_GUARD_DIR = os.path.dirname(__file__)\n"
         "\n"
         "def _gra_network_disabled(*args, **kwargs):\n"
         "    raise OSError('network access disabled by GenAI Repo Auditor patch validation')\n"
         "\n"
+        "def _gra_process_name(args):\n"
+        "    if isinstance(args, (list, tuple)):\n"
+        "        value = str(args[0]) if args else ''\n"
+        "    else:\n"
+        "        text = str(args or '')\n"
+        "        try:\n"
+        "            parts = shlex.split(text)\n"
+        "        except ValueError:\n"
+        "            parts = text.split()\n"
+        "        value = parts[0] if parts else ''\n"
+        "    return os.path.basename(value).lower()\n"
+        "\n"
+        "def _gra_tokens(args):\n"
+        "    if isinstance(args, (list, tuple)):\n"
+        "        return [str(item) for item in args]\n"
+        "    text = str(args or '')\n"
+        "    try:\n"
+        "        return shlex.split(text)\n"
+        "    except ValueError:\n"
+        "        return text.split()\n"
+        "\n"
+        "def _gra_env_has_guard(env):\n"
+        "    selected = os.environ if env is None else env\n"
+        "    value = selected.get('PYTHONPATH', '') if hasattr(selected, 'get') else ''\n"
+        "    return _GRA_GUARD_DIR in str(value).split(os.pathsep)\n"
+        "\n"
+        "def _gra_python_interpreter_tokens(tokens):\n"
+        "    selected = []\n"
+        "    for token in tokens[1:]:\n"
+        "        if token == '--':\n"
+        "            break\n"
+        "        if token in {'-c', '-m'}:\n"
+        "            selected.append(token)\n"
+        "            break\n"
+        "        if not token.startswith('-'):\n"
+        "            break\n"
+        "        selected.append(token)\n"
+        "    return selected\n"
+        "\n"
+        "def _gra_reject_process(args, env=None):\n"
+        "    name = _gra_process_name(args)\n"
+        "    if name in _GRA_DENIED_EXECUTABLES:\n"
+        "        raise OSError(f'external executable {name!r} is disabled by GenAI Repo Auditor patch validation')\n"
+        "    if name.startswith('python'):\n"
+        "        tokens = _gra_python_interpreter_tokens(_gra_tokens(args))\n"
+        "        for token in tokens:\n"
+        "            if token in _GRA_PYTHON_GUARD_BYPASS_FLAGS:\n"
+        "                raise OSError('Python guard bypass flags are disabled by GenAI Repo Auditor patch validation')\n"
+        "            if token.startswith('-') and not token.startswith('--'):\n"
+        "                for flag in _GRA_PYTHON_GUARD_BYPASS_FLAGS:\n"
+        "                    if flag[1:] in token[1:]:\n"
+        "                        raise OSError('Python guard bypass flags are disabled by GenAI Repo Auditor patch validation')\n"
+        "        if not _gra_env_has_guard(env):\n"
+        "            raise OSError('Python guard environment is required by GenAI Repo Auditor patch validation')\n"
+        "\n"
         "socket.socket = _gra_network_disabled\n"
         "socket.create_connection = _gra_network_disabled\n"
-        "socket.create_server = _gra_network_disabled\n",
+        "socket.create_server = _gra_network_disabled\n"
+        "\n"
+        "_gra_original_popen = subprocess.Popen\n"
+        "def _gra_guarded_popen(*popenargs, **kwargs):\n"
+        "    command = popenargs[0] if popenargs else kwargs.get('args')\n"
+        "    _gra_reject_process(command, kwargs.get('env'))\n"
+        "    return _gra_original_popen(*popenargs, **kwargs)\n"
+        "subprocess.Popen = _gra_guarded_popen\n"
+        "\n"
+        "_gra_original_system = os.system\n"
+        "def _gra_guarded_system(command):\n"
+        "    _gra_reject_process(command)\n"
+        "    return _gra_original_system(command)\n"
+        "os.system = _gra_guarded_system\n"
+        "\n"
+        "_gra_original_popen_os = os.popen\n"
+        "def _gra_guarded_popen_os(command, *args, **kwargs):\n"
+        "    _gra_reject_process(command)\n"
+        "    return _gra_original_popen_os(command, *args, **kwargs)\n"
+        "os.popen = _gra_guarded_popen_os\n"
+        "\n"
+        "def _gra_command(path, args):\n"
+        "    if isinstance(args, (list, tuple)) and args:\n"
+        "        return args\n"
+        "    return [path]\n"
+        "\n"
+        "_gra_original_execv = os.execv\n"
+        "def _gra_guarded_execv(path, args):\n"
+        "    _gra_reject_process(_gra_command(path, args))\n"
+        "    return _gra_original_execv(path, args)\n"
+        "os.execv = _gra_guarded_execv\n"
+        "\n"
+        "_gra_original_execve = os.execve\n"
+        "def _gra_guarded_execve(path, args, env):\n"
+        "    _gra_reject_process(_gra_command(path, args), env)\n"
+        "    return _gra_original_execve(path, args, env)\n"
+        "os.execve = _gra_guarded_execve\n"
+        "\n"
+        "if hasattr(os, 'execvp'):\n"
+        "    _gra_original_execvp = os.execvp\n"
+        "    def _gra_guarded_execvp(file, args):\n"
+        "        _gra_reject_process(_gra_command(file, args))\n"
+        "        return _gra_original_execvp(file, args)\n"
+        "    os.execvp = _gra_guarded_execvp\n"
+        "\n"
+        "if hasattr(os, 'execvpe'):\n"
+        "    _gra_original_execvpe = os.execvpe\n"
+        "    def _gra_guarded_execvpe(file, args, env):\n"
+        "        _gra_reject_process(_gra_command(file, args), env)\n"
+        "        return _gra_original_execvpe(file, args, env)\n"
+        "    os.execvpe = _gra_guarded_execvpe\n"
+        "\n"
+        "_gra_original_execl = os.execl\n"
+        "def _gra_guarded_execl(path, *args):\n"
+        "    _gra_reject_process(args or [path])\n"
+        "    return _gra_original_execl(path, *args)\n"
+        "os.execl = _gra_guarded_execl\n"
+        "\n"
+        "_gra_original_execle = os.execle\n"
+        "def _gra_guarded_execle(path, *args):\n"
+        "    env = args[-1] if args else None\n"
+        "    cmd_args = args[:-1] if args else []\n"
+        "    _gra_reject_process(cmd_args or [path], env)\n"
+        "    return _gra_original_execle(path, *args)\n"
+        "os.execle = _gra_guarded_execle\n"
+        "\n"
+        "if hasattr(os, 'execlp'):\n"
+        "    _gra_original_execlp = os.execlp\n"
+        "    def _gra_guarded_execlp(file, *args):\n"
+        "        _gra_reject_process(args or [file])\n"
+        "        return _gra_original_execlp(file, *args)\n"
+        "    os.execlp = _gra_guarded_execlp\n"
+        "\n"
+        "if hasattr(os, 'execlpe'):\n"
+        "    _gra_original_execlpe = os.execlpe\n"
+        "    def _gra_guarded_execlpe(file, *args):\n"
+        "        env = args[-1] if args else None\n"
+        "        cmd_args = args[:-1] if args else []\n"
+        "        _gra_reject_process(cmd_args or [file], env)\n"
+        "        return _gra_original_execlpe(file, *args)\n"
+        "    os.execlpe = _gra_guarded_execlpe\n"
+        "\n"
+        "if hasattr(os, 'spawnv'):\n"
+        "    _gra_original_spawnv = os.spawnv\n"
+        "    def _gra_guarded_spawnv(mode, path, args):\n"
+        "        _gra_reject_process(_gra_command(path, args))\n"
+        "        return _gra_original_spawnv(mode, path, args)\n"
+        "    os.spawnv = _gra_guarded_spawnv\n"
+        "\n"
+        "if hasattr(os, 'spawnve'):\n"
+        "    _gra_original_spawnve = os.spawnve\n"
+        "    def _gra_guarded_spawnve(mode, path, args, env):\n"
+        "        _gra_reject_process(_gra_command(path, args), env)\n"
+        "        return _gra_original_spawnve(mode, path, args, env)\n"
+        "    os.spawnve = _gra_guarded_spawnve\n"
+        "\n"
+        "if hasattr(os, 'spawnl'):\n"
+        "    _gra_original_spawnl = os.spawnl\n"
+        "    def _gra_guarded_spawnl(mode, path, *args):\n"
+        "        _gra_reject_process(args or [path])\n"
+        "        return _gra_original_spawnl(mode, path, *args)\n"
+        "    os.spawnl = _gra_guarded_spawnl\n"
+        "\n"
+        "if hasattr(os, 'spawnle'):\n"
+        "    _gra_original_spawnle = os.spawnle\n"
+        "    def _gra_guarded_spawnle(mode, path, *args):\n"
+        "        env = args[-1] if args else None\n"
+        "        cmd_args = args[:-1] if args else []\n"
+        "        _gra_reject_process(cmd_args or [path], env)\n"
+        "        return _gra_original_spawnle(mode, path, *args)\n"
+        "    os.spawnle = _gra_guarded_spawnle\n"
+        "\n"
+        "if hasattr(os, 'spawnlp'):\n"
+        "    _gra_original_spawnlp = os.spawnlp\n"
+        "    def _gra_guarded_spawnlp(mode, file, *args):\n"
+        "        _gra_reject_process(args or [file])\n"
+        "        return _gra_original_spawnlp(mode, file, *args)\n"
+        "    os.spawnlp = _gra_guarded_spawnlp\n"
+        "\n"
+        "if hasattr(os, 'spawnlpe'):\n"
+        "    _gra_original_spawnlpe = os.spawnlpe\n"
+        "    def _gra_guarded_spawnlpe(mode, file, *args):\n"
+        "        env = args[-1] if args else None\n"
+        "        cmd_args = args[:-1] if args else []\n"
+        "        _gra_reject_process(cmd_args or [file], env)\n"
+        "        return _gra_original_spawnlpe(mode, file, *args)\n"
+        "    os.spawnlpe = _gra_guarded_spawnlpe\n"
+        "\n"
+        "if hasattr(os, 'posix_spawn'):\n"
+        "    _gra_original_posix_spawn = os.posix_spawn\n"
+        "    def _gra_guarded_posix_spawn(path, argv, env, *args, **kwargs):\n"
+        "        _gra_reject_process(_gra_command(path, argv), env)\n"
+        "        return _gra_original_posix_spawn(path, argv, env, *args, **kwargs)\n"
+        "    os.posix_spawn = _gra_guarded_posix_spawn\n"
+        "\n"
+        "if hasattr(os, 'posix_spawnp'):\n"
+        "    _gra_original_posix_spawnp = os.posix_spawnp\n"
+        "    def _gra_guarded_posix_spawnp(path, argv, env, *args, **kwargs):\n"
+        "        _gra_reject_process(_gra_command(path, argv), env)\n"
+        "        return _gra_original_posix_spawnp(path, argv, env, *args, **kwargs)\n"
+        "    os.posix_spawnp = _gra_guarded_posix_spawnp\n",
         encoding="utf-8",
     )
     return guard_dir

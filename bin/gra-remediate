@@ -13,6 +13,7 @@ from version import auditor_version
 from gralib import env_from_context, find_finding, load_context, load_findings, load_json, render_template, run_codex_exec, slug, utc_now, write_json
 from patch_validation import PatchValidationError, validate_selected_patches
 from sandbox_profiles import PROFILE_IDS
+from run_events import append_command_event, start_command_event
 
 HIGH_SEVERITIES = {'Critical', 'High'}
 REMEDIABLE_STATUSES = {'Confirmed', 'Probable', 'Potential'}
@@ -175,22 +176,54 @@ def main() -> int:
     args = p.parse_args()
 
     run_dir = Path(args.run).resolve()
+    started_at, started_perf = start_command_event()
+    input_artifacts = [
+        run_dir / 'context.json',
+        run_dir / 'reports' / 'findings.json',
+        run_dir / REMEDIATION_JSON,
+    ]
+    output_artifacts: list[Path] = []
+    event_subject_id = args.finding or ('critical-high' if args.all_critical_high else None)
+    phase = 'patch-validate' if args.validate else 'goal' if args.mode == 'goal' else 'remediate'
+
+    def finish(exit_code: int, *, status: str | None = None, error_category: str | None = None) -> int:
+        append_command_event(
+            run_dir,
+            command='gra-remediate',
+            phase=phase,
+            subject_id=event_subject_id,
+            started_at=started_at,
+            started_perf=started_perf,
+            exit_code=exit_code,
+            status=status,
+            error_category=error_category,
+            model=args.model if not args.validate else None,
+            effort=args.effort if not args.validate else None,
+            network_allowed=None if args.validate else False,
+            sandbox_profile='best-effort-host-python-guard' if args.validate else 'workspace-write',
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=output_artifacts,
+            failure_mode='warn' if exit_code != 0 else 'block',
+        )
+        return exit_code
+
     if args.command_timeout <= 0:
         print('--command-timeout must be greater than zero', file=sys.stderr)
-        return 2
+        return finish(2, error_category='input_validation')
     if args.max_changed_paths <= 0:
         print('--max-changed-paths must be greater than zero', file=sys.stderr)
-        return 2
+        return finish(2, error_category='input_validation')
     ctx = load_context(run_dir)
     try:
         selection_id, selected_subjects = select_findings(run_dir, args)
     except (FileNotFoundError, KeyError) as exc:
         print(str(exc), file=sys.stderr)
-        return 2
+        return finish(2, error_category='input_validation')
+    event_subject_id = selection_id
 
     if not selected_subjects:
         print('No matching findings selected for remediation candidate workflow.')
-        return 0
+        return finish(0, status='skipped')
 
     if args.validate:
         try:
@@ -206,10 +239,11 @@ def main() -> int:
             )
         except PatchValidationError as exc:
             print(f'Patch validation failed to start: {exc}', file=sys.stderr)
-            return 2
+            return finish(2, error_category='patch_validation')
         failed = False
         print('Patch validation results:')
         for report, out_json, out_md in results:
+            output_artifacts.extend([out_json, out_md])
             if report.get('final_status') == 'failed':
                 failed = True
             print(
@@ -217,10 +251,12 @@ def main() -> int:
                 f"final_status={report.get('final_status')}, patch_applied={report.get('patch_applied')}, "
                 f"json={out_json}, markdown={out_md}"
             )
-        return 1 if failed else 0
+        return finish(1 if failed else 0, error_category='patch_validation_failed' if failed else None)
 
     selection_slug = slug(selection_id)
     subjects_path = write_subject_artifacts(run_dir, ctx, selection_id, selected_subjects)
+    output_artifacts.append(subjects_path)
+    output_artifacts.extend(run_dir / str(subject['subject_file']) for subject in selected_subjects)
 
     env = env_from_context(run_dir, {
         'REMEDIATION_SELECTION': selection_id,
@@ -233,6 +269,7 @@ def main() -> int:
     if args.mode == 'goal':
         prompt = run_dir / 'prompts' / 'goal' / f'remediate-{selection_slug}.goal.md'
         render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'goal' / 'remediate.goal.md', prompt, env)
+        output_artifacts.append(prompt)
         print('Prepared supervised /goal remediation candidate run.')
         print(f'Run directory: {run_dir}')
         print(f'Subjects file: {subjects_path}')
@@ -240,27 +277,32 @@ def main() -> int:
         print('\nStart Codex:')
         print(f'  codex --cd "{run_dir}" --skip-git-repo-check --model "{args.model}" --enable goals --sandbox workspace-write --ask-for-approval on-request -c \'model_reasoning_effort="{args.effort}"\' -c \'web_search="disabled"\' -c \'sandbox_workspace_write.network_access=false\'')
         print('\nThen paste the contents of the goal prompt.')
-        return 0
+        return finish(0)
 
     prompt = run_dir / 'prompts' / 'exec' / f'remediate-{selection_slug}.prompt.md'
     render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'remediate.prompt.md', prompt, env)
+    output_artifacts.append(prompt)
     print(f'Running Codex remediation candidate generation for {selection_id}')
+    final_path = run_dir / f'codex-remediate-{selection_slug}-final.md'
+    events_path = run_dir / f'codex-remediate-{selection_slug}-events.jsonl'
+    stderr_path = run_dir / f'codex-remediate-{selection_slug}-stderr.txt'
     status = run_codex_exec(
         run_dir=run_dir,
         prompt_file=prompt,
         model=args.model,
         effort=args.effort,
         network=False,
-        output_last=run_dir / f'codex-remediate-{selection_slug}-final.md',
-        events_file=run_dir / f'codex-remediate-{selection_slug}-events.jsonl',
-        stderr_file=run_dir / f'codex-remediate-{selection_slug}-stderr.txt',
+        output_last=final_path,
+        events_file=events_path,
+        stderr_file=stderr_path,
     )
     ensure_remediation_artifacts(run_dir, ctx)
+    output_artifacts.extend([final_path, events_path, stderr_path, run_dir / REMEDIATION_JSON, run_dir / REMEDIATION_MD])
     print(f'Codex status: {status}')
     print(f'Remediation subjects: {subjects_path}')
     print(f'Remediation report: {run_dir / REMEDIATION_MD}')
     print(f'Remediation JSON: {run_dir / REMEDIATION_JSON}')
-    return status
+    return finish(status)
 
 
 if __name__ == '__main__':

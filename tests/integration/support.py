@@ -148,6 +148,38 @@ class CliWorkflowTestCase(unittest.TestCase):
             return []
         return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
+    def assert_public_command_event(
+        self,
+        event: dict[str, Any],
+        *,
+        command: str,
+        phase: str,
+        exit_code: int = 0,
+        status: str = "succeeded",
+        subject_id: str | None = None,
+        target_id: str | None = None,
+    ) -> None:
+        schema = json.loads((REPO_ROOT / "templates" / "reports" / "command-event.schema.json").read_text(encoding="utf-8"))
+        allowed_fields = set(schema["properties"])
+        self.assertLessEqual(set(event), allowed_fields)
+        self.assertEqual("2", event["schema_version"])
+        self.assertRegex(event["event_id"], r"^[0-9a-f-]{36}$")
+        self.assertEqual(command, event["command"])
+        self.assertEqual(phase, event["phase"])
+        self.assertEqual(exit_code, event["exit_code"])
+        self.assertEqual(status, event["status"])
+        self.assertEqual(1, event["attempt"])
+        self.assertIsNone(event["retry_of"])
+        self.assertGreaterEqual(event["duration_ms"], 0)
+        self.assertEqual(subject_id if subject_id is not None else target_id, event["subject_id"])
+        self.assertEqual(target_id, event["target_id"])
+        self.assertEqual(event["output_artifact_refs"], event["artifact_paths"])
+        for field in ["input_artifact_refs", "output_artifact_refs", "artifact_paths"]:
+            self.assertIsInstance(event[field], list)
+            for ref in event[field]:
+                self.assertIsInstance(ref, str)
+                self.assertNotIn("..", Path(ref).parts)
+
     def assert_codex_exec_approval_config(self, call: list[Any]) -> None:
         self.assertEqual(["exec", "--cd"], call[:2])
         self.assertNotIn("--ask-for-approval", call)

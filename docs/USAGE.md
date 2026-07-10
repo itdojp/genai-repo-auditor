@@ -114,7 +114,8 @@ gra-chains --run runs/ORG__repo-a/RUN_ID
 gra-gapfill --run runs/ORG__repo-a/RUN_ID --generate
 gra-proofs --run runs/ORG__repo-a/RUN_ID --all-critical-high
 # Optional for shared-library / producer findings:
-# gra-trace --producer-run runs/ORG__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/ORG__repo-a/RUN_ID --mode exec
+# gra-trace --producer-run runs/ORG__shared-lib/RUN_ID --finding SEC-001 --consumer-repo ORG/repo-a --mode prepare
+# gra-trace --producer-run runs/ORG__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/ORG__shared-lib/RUN_ID/trace-consumers/ORG__repo-a --mode exec
 gra-adversarial-validate --run runs/ORG__repo-a/RUN_ID --all-critical-high --votes 3 --policy human-review-on-split
 gra-taxonomy-preflight --run runs/ORG__repo-a/RUN_ID --fix
 gra-validate-report --run runs/ORG__repo-a/RUN_ID
@@ -140,19 +141,20 @@ exploit proof ではありません。
 gra-trace \
   --producer-run runs/ORG__shared-lib/RUN_ID \
   --finding SEC-001 \
-  --consumer-run runs/ORG__consumer-api/RUN_ID \
-  --mode exec
+  --consumer-repo ORG/consumer-api \
+  --mode prepare
 ```
 
-consumer run が未作成の場合だけ、明示的な prepare mode で consumer repo を
-clone して goal prompt を準備できます。
+prepare mode で producer run 配下に作成された consumer run を指定して exec /
+goal mode を実行します。外部 consumer run は producer artifact に絶対パスを
+持ち込まないため拒否されます。
 
 ```bash
 gra-trace \
   --producer-run runs/ORG__shared-lib/RUN_ID \
   --finding SEC-001 \
-  --consumer-repo ORG/consumer-api \
-  --mode prepare
+  --consumer-run runs/ORG__shared-lib/RUN_ID/trace-consumers/ORG__consumer-api \
+  --mode exec
 ```
 
 No external scanning、no production/staging probing、no exploit payloads、
