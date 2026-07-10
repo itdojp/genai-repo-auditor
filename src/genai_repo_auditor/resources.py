@@ -54,16 +54,18 @@ def _distribution_resource_roots() -> Iterable[Path]:
     return roots
 
 
-def resource_root() -> Path:
+def resource_root(*, honor_env_override: bool = True) -> Path:
     """Return the root directory that owns packaged prompts and templates.
 
     Source checkouts resolve to the repository root. Installed wheels resolve to
     the distribution data directory (for example, ``share/genai-repo-auditor``)
-    and therefore do not depend on the original checkout path.
+    and therefore do not depend on the original checkout path.  Console-script
+    adapters that execute bundled code disable ``honor_env_override`` so a local
+    resource-root override cannot redirect executable helpers.
     """
 
     override = os.environ.get(ENV_RESOURCE_ROOT)
-    if override:
+    if honor_env_override and override:
         candidate = Path(override).expanduser().resolve()
         if _looks_like_resource_root(candidate):
             return candidate

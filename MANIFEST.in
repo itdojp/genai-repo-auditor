@@ -1,4 +1,6 @@
 include LICENSE NOTICE README.md VERSION
+recursive-include bin gra-*
+recursive-include lib *.py
 recursive-include prompts *.md
 recursive-include templates *
 prune .codex-local

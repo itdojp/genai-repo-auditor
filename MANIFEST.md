@@ -55,6 +55,9 @@ scripts/build_release.py
 MANIFEST.in
 pyproject.toml
 src/genai_repo_auditor/__init__.py
+src/genai_repo_auditor/audit_cli.py
+src/genai_repo_auditor/batch_cli.py
+src/genai_repo_auditor/cli.py
 src/genai_repo_auditor/resources.py
 src/genai_repo_auditor/version.py
 ```

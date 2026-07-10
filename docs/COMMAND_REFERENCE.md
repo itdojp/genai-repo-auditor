@@ -7,7 +7,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 
 ## General conventions
 
-- Run commands from a checked-out `genai-repo-auditor` repository with `bin/` on `PATH`, or call commands through `./bin/<command>`.
+- Run commands from a checked-out `genai-repo-auditor` repository with `bin/` on `PATH`, call commands through `./bin/<command>`, or use installed package console scripts after building/installing the Python package.
 - Every current `gra-*` command supports `--help` and `--version`. `--version` prints the command name and the canonical repository `VERSION` value without running an audit or invoking `gh`, `codex`, or other workflow tools.
 - Release archives preserve that canonical `VERSION` file. Release preparation and integrity verification are separate from the `gra-*` command surface and are documented in [`RELEASE_PROCESS.md`](RELEASE_PROCESS.md).
 - Most commands operate on a run directory such as `runs/OWNER__REPO/RUN_ID`.
@@ -16,7 +16,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 - Non-interactive `codex exec` invocations set approval behavior through `-c 'approval_policy="never"'` rather than the interactive-only `--ask-for-approval` flag, preserving compatibility with `codex-cli 0.135.0`.
 - Codex-driven commands derive the default executable name from the built-in `codex-cli` worker profile while preserving the tested `codex exec` argument construction in `lib/gralib.py`. `gra-agent-check` can list profiles and check whether the required local worker executable is available without running the worker.
 - Executable target-code validation should be gated by an explicit sandbox profile. `gra-sandbox-check` records readiness for `source-only`, `local-test`, `container`, `gvisor`, and `vm` profiles without executing target code.
-- Environment-variable defaults are limited to the Bash wrappers: `gra-audit` and `gra-batch` read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-trace`, `gra-no-findings`, `gra-workflow-profile`, `gra-metrics`, `gra-benchmark`, `gra-evidence-graph`, `gra-import-findings`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
+- Environment-variable model/effort defaults are limited to `gra-audit` and `gra-batch`, whether invoked from source-checkout wrappers or installed package console scripts. They read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-trace`, `gra-no-findings`, `gra-workflow-profile`, `gra-metrics`, `gra-benchmark`, `gra-evidence-graph`, `gra-import-findings`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
 - Python commands use `argparse`; missing required arguments or invalid choices normally exit with status `2`.
 - Generated audit artifacts, cloned target repositories, scanner raw outputs, issue drafts, and local stores should remain local and should not be committed.
 
