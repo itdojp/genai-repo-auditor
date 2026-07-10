@@ -3,6 +3,7 @@ runs/
 batches/
 locks/
 .test-tmp/
+dist/
 *.sqlite
 *.sqlite3
 

@@ -48,9 +48,13 @@ jobs:
       - name: Run local install smoke validation
         run: |
           scripts/validate-install-smoke.sh
+      - name: Validate release metadata and tracked artifact boundary
+        run: |
+          python3 scripts/build_release.py --dry-run
       - name: Check executable bits
         run: |
           test -x bin/gra-audit
           test -x bin/gra-batch
           test -x bin/gra-validate-report
+          test -x scripts/build_release.py
           test -x scripts/validate-install-smoke.sh

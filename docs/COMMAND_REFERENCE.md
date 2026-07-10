@@ -9,6 +9,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 
 - Run commands from a checked-out `genai-repo-auditor` repository with `bin/` on `PATH`, or call commands through `./bin/<command>`.
 - Every current `gra-*` command supports `--help` and `--version`. `--version` prints the command name and the canonical repository `VERSION` value without running an audit or invoking `gh`, `codex`, or other workflow tools.
+- Release archives preserve that canonical `VERSION` file. Release preparation and integrity verification are separate from the `gra-*` command surface and are documented in [`RELEASE_PROCESS.md`](RELEASE_PROCESS.md).
 - Most commands operate on a run directory such as `runs/OWNER__REPO/RUN_ID`.
 - `--network` enables network access inside the Codex sandbox for commands that call Codex. It is disabled by default and should remain disabled unless an approved workflow requires it.
 - `--model` defaults to `gpt-5.5` and `--effort` defaults to `xhigh` for Codex-driven commands. Command-line `--model` / `--effort` options are the portable override mechanism across Codex-driven commands.

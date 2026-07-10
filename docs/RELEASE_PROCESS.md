@@ -1,28 +1,48 @@
 # Release process
 
-This document defines the release, versioning, changelog, and GitHub Release process for GenAI Repo Auditor.
+This document defines the release, versioning, changelog, artifact, attestation,
+and GitHub Release process for GenAI Repo Auditor.
 
-## Scope
+## Scope and publication boundary
 
-A release publishes a tagged snapshot of the repository for external users. It is not an audit run, and it must not include generated audit artifacts, cloned target repositories, scanner output, credentials, tokens, private findings, or public disclosure content that has not been approved.
+A release is a tagged snapshot of public repository content. It is not an audit
+run. Release inputs and assets must not contain generated audit artifacts,
+cloned targets, scanner output, credentials, tokens, private findings, proof
+artifacts, remediation patches, Issue drafts, transcripts, or unapproved
+disclosure content.
+
+The canonical version is stored in [`VERSION`](../VERSION), while release notes
+come from the matching section of [`CHANGELOG.md`](../CHANGELOG.md). The guarded
+workflow is [`.github/workflows/release.yml`](../.github/workflows/release.yml),
+and reproducible local artifact construction is implemented by
+[`scripts/build_release.py`](../scripts/build_release.py).
+
+The workflow never creates or moves a tag. A maintainer must review and merge
+the release PR, confirm `main` CI, create and push the annotated tag, and then
+explicitly dispatch publication.
 
 ## Versioning policy
 
-The canonical version is stored in [`VERSION`](../VERSION). Tags and GitHub Releases use the same version with a leading `v`, for example `VERSION=0.1.0` and tag `v0.1.0`.
+Tags and GitHub Releases use the canonical version with a leading `v`, for
+example `VERSION=0.4.0` and tag `v0.4.0`.
 
 Until the project reaches `1.0.0`, use a conservative SemVer-style policy:
 
-- `0.MINOR.0`: user-visible workflow changes, CLI option changes, report contract changes, or documentation sets that materially change operator guidance.
-- `0.MINOR.PATCH`: bug fixes, documentation corrections, test-only changes, CI hardening, and release-process corrections that do not change user-facing contracts.
+- `0.MINOR.0`: user-visible workflow changes, CLI option changes, report
+  contract changes, or documentation sets that materially change operator
+  guidance.
+- `0.MINOR.PATCH`: bug fixes, documentation corrections, test-only changes, CI
+  hardening, and release-process corrections that do not change user-facing
+  contracts.
 - `1.0.0` and later: follow SemVer expectations for `MAJOR.MINOR.PATCH`.
 
-Do not update `VERSION` opportunistically in ordinary feature PRs. Update it in a dedicated release PR, or in a clearly identified release-preparation PR.
+Do not update `VERSION` opportunistically in ordinary feature PRs. Update it in
+a dedicated release-preparation PR.
 
 ## Changelog policy
 
-[`CHANGELOG.md`](../CHANGELOG.md) is updated in the same release PR that changes `VERSION`.
-
-Each release section should use this format:
+Update `CHANGELOG.md` in the same release PR that changes `VERSION`. Each
+section uses this format:
 
 ```markdown
 ## vX.Y.Z - YYYY-MM-DD
@@ -33,11 +53,49 @@ Each release section should use this format:
 - Security ...
 ```
 
-Changelog entries should describe user-visible behavior, operational impact, security posture changes, and migration notes. Avoid copying commit logs verbatim. Do not include sensitive audit details or private vulnerability information.
+Summarize user-visible behavior, operational impact, security posture, and
+migration requirements. Do not copy private findings or sensitive audit detail
+into release notes.
+
+## Release artifacts
+
+`scripts/build_release.py --build` creates the following files from a committed
+Git object:
+
+```text
+genai-repo-auditor-vX.Y.Z.tar.gz
+genai-repo-auditor-vX.Y.Z.zip
+genai-repo-auditor-vX.Y.Z.cdx.json
+release-manifest.json
+SHA256SUMS
+RELEASE_NOTES.md
+```
+
+The tar and ZIP archives are generated with `git archive`, so only tracked
+files in the selected commit are included. The gzip header uses a fixed
+timestamp. `release-manifest.json` binds artifact digests to the exact source
+commit, and `SHA256SUMS` covers the archives, CycloneDX SBOM, and release
+manifest. `RELEASE_NOTES.md` is workflow input derived from the reviewed
+changelog section; it is not uploaded as a separate release asset.
+
+The CycloneDX file describes this source distribution and its source revision.
+The v0.4.0 source tree has no mandatory third-party Python package dependency,
+so it does not invent dependency components. It is not an SBOM for audited
+targets, optional scanners, AI workers, containers, or operator environments.
+
+The release builder rejects tracked paths associated with local runs, target
+clones, scanner results, Issue drafts, transcripts, SQLite/SARIF output,
+remediation workspaces, and local agent state. Artifact creation rejects
+`WORKTREE`; it requires a committed Git ref.
+
+Repository-owned synthetic inputs under `tests/fixtures/` remain in the source
+archives because they are required to reproduce the test suite. They are
+public, non-production fixtures reviewed in Git, not artifacts copied from an
+operator run.
 
 ## Release PR checklist
 
-Create a release branch from current `main`.
+Create a dedicated branch from current `main`:
 
 ```bash
 git switch main
@@ -47,17 +105,43 @@ git switch -c release/vX.Y.Z
 
 In the release PR:
 
-- Update `VERSION`.
-- Update `CHANGELOG.md` with the release date and concise notes.
-- Confirm README and docs links are still correct.
-- Confirm security-sensitive docs are current: [`SECURITY.md`](../SECURITY.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md), [`docs/ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md), and [`docs/SCANNER_INTEGRATION.md`](SCANNER_INTEGRATION.md).
-- Confirm any CLI, schema, report contract, or workflow changes have matching documentation.
-- Request maintainer review and any configured automated code review.
-- Merge only after local validation and GitHub Actions are green.
+- update `VERSION` and add the matching dated `CHANGELOG.md` section;
+- run the non-mutating release input check;
+- confirm README, MANIFEST, command reference, report contract, and security
+  model are consistent with the release boundary;
+- confirm [`SECURITY.md`](../SECURITY.md),
+  [`SECURITY_MODEL.md`](SECURITY_MODEL.md),
+  [`ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md), and
+  [`SCANNER_INTEGRATION.md`](SCANNER_INTEGRATION.md) are current;
+- request maintainer and configured automated review;
+- merge only after local validation and GitHub Actions are green.
+
+Dry-run validation is the default and writes no artifacts:
+
+```bash
+python3 scripts/build_release.py --dry-run
+```
+
+After committing the release changes, verify deterministic artifact generation
+without committing the generated files:
+
+```bash
+rm -rf .codex-local/tmp/release-a .codex-local/tmp/release-b
+python3 scripts/build_release.py \
+  --build --source-ref HEAD --output-dir .codex-local/tmp/release-a
+python3 scripts/build_release.py \
+  --build --source-ref HEAD --output-dir .codex-local/tmp/release-b
+diff -ru .codex-local/tmp/release-a .codex-local/tmp/release-b
+python3 scripts/build_release.py \
+  --verify --output-dir .codex-local/tmp/release-a
+```
+
+Generated candidates belong under ignored `dist/` or `.codex-local/tmp/`
+paths and must not be committed.
 
 ## Required validation before tagging
 
-Run these local checks from the repository root before opening or merging the release PR:
+Run the repository checks from the release commit:
 
 ```bash
 for f in bin/gra-*; do
@@ -71,7 +155,7 @@ done
 python3 - <<'PY'
 import py_compile
 from pathlib import Path
-for base in ['lib', 'bin', 'tests']:
+for base in ['lib', 'bin', 'tests', 'scripts']:
     for path in sorted(Path(base).rglob('*.py')):
         py_compile.compile(str(path), doraise=True)
 for path in sorted(Path('bin').glob('gra-*')):
@@ -86,18 +170,42 @@ scripts/validate-install-smoke.sh
 scripts/validate-shellcheck.sh
 ruby -e 'require "yaml"; Dir[".github/workflows/*.yml"].each { |f| YAML.load_file(f); puts "ok #{f}" }'
 python3 -m unittest discover -s tests
+python3 scripts/build_release.py --dry-run
 git diff --check
 ```
 
-Before tagging, confirm the merged `main` commit has successful GitHub Actions runs for:
+Before tagging, confirm the merged `main` commit has successful GitHub Actions
+runs for `lint`, `self-validation`, and `codeql`.
 
-- `lint`
-- `self-validation`
-- `codeql`
+## Workflow dry run
+
+The `release` workflow defaults to validation only. This creates a short-lived
+workflow artifact for maintainer inspection but does not create a tag,
+attestation, or GitHub Release:
+
+```bash
+gh workflow run release.yml \
+  --ref main \
+  -f release_ref=main \
+  -f publish=false
+```
+
+Inspect the run and downloaded candidate before tagging:
+
+```bash
+gh run list --workflow release.yml --limit 5
+gh run watch RUN_ID
+gh run download RUN_ID --name release-candidate-RUN_ID \
+  --dir .codex-local/tmp/release-candidate
+python3 scripts/build_release.py \
+  --verify --output-dir .codex-local/tmp/release-candidate
+```
 
 ## Tagging
 
-After the release PR is merged and `main` is green, tag the exact release commit.
+After the release PR is merged and `main` is green, tag the exact release
+commit. The workflow requires an annotated tag and verifies that its commit is
+an ancestor of `origin/main`.
 
 ```bash
 git switch main
@@ -108,65 +216,92 @@ git tag -a "v$VERSION_VALUE" -m "Release v$VERSION_VALUE"
 git push origin "v$VERSION_VALUE"
 ```
 
-Use annotated tags for releases. Do not tag a local commit that has not been pushed to `origin/main`.
+Do not tag an unpushed commit or reuse/move an existing release tag.
 
-## GitHub Release creation
+## Attested GitHub Release publication
 
-Create the GitHub Release from the pushed tag. Use the corresponding `CHANGELOG.md` section as the release notes. The notes file is a local scratch artifact and must be created before `gh release create`.
+Publication is a separate explicit dispatch. Supply the existing tag and set
+`publish=true`:
 
 ```bash
 VERSION_VALUE="$(cat VERSION)"
-mkdir -p .codex-local/tmp
-RELEASE_NOTES=".codex-local/tmp/release-notes-v$VERSION_VALUE.md"
-VERSION_VALUE="$VERSION_VALUE" RELEASE_NOTES="$RELEASE_NOTES" python3 - <<'PY'
-import os
-from pathlib import Path
-
-version = os.environ["VERSION_VALUE"]
-output = Path(os.environ["RELEASE_NOTES"])
-heading = f"## v{version}"
-lines = Path("CHANGELOG.md").read_text(encoding="utf-8").splitlines()
-start = next((i for i, line in enumerate(lines) if line.startswith(heading)), None)
-if start is None:
-    raise SystemExit(f"missing changelog section: {heading}")
-end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
-notes = "\n".join(lines[start:end]).strip() + "\n"
-output.write_text(notes, encoding="utf-8")
-PY
-test -s "$RELEASE_NOTES"
+gh workflow run release.yml \
+  --ref main \
+  -f release_ref="v$VERSION_VALUE" \
+  -f publish=true
 ```
 
-Then create the GitHub Release.
+The elevated `publish` job runs only after the read-only candidate build job.
+It rechecks the tag and checksums, creates a GitHub/Sigstore build-provenance
+attestation for the release artifact set, creates a CycloneDX SBOM attestation for
+both source archives, and runs `gh release create --verify-tag`. The job does
+not create, move, or force-push tags. Configure protection/review requirements
+for the `release` GitHub environment when repository policy requires a second
+human approval.
+
+GitHub documents that `actions/attest` requires `id-token: write` and
+`attestations: write`; the workflow grants those permissions only to the
+conditional publication job. Artifact attestations are available for public
+repositories on current GitHub plans.
+
+The release workflow pins third-party action execution to reviewed commit SHAs;
+the adjacent version comments are maintained through reviewed dependency
+updates.
+
+References:
+
+- [Using artifact attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations)
+- [`actions/attest`](https://github.com/actions/attest)
+
+## Consumer verification
+
+Download the release assets into an otherwise empty directory, then verify the
+checksum list:
 
 ```bash
-gh release create "v$VERSION_VALUE" \
-  --repo itdojp/genai-repo-auditor \
-  --title "v$VERSION_VALUE" \
-  --notes-file "$RELEASE_NOTES"
+sha256sum -c SHA256SUMS
 ```
 
-Release assets are optional. If assets are added later, they must be generated from the tagged source and must not contain local audit outputs, scanner results, cloned repositories, secrets, or private findings.
+Verify GitHub attestations against this repository identity:
+
+```bash
+gh attestation verify genai-repo-auditor-vX.Y.Z.tar.gz \
+  --repo itdojp/genai-repo-auditor
+gh attestation verify genai-repo-auditor-vX.Y.Z.zip \
+  --repo itdojp/genai-repo-auditor
+```
+
+Checksum verification detects asset corruption or substitution relative to the
+downloaded checksum list. Attestation verification additionally binds artifact
+digests to the GitHub workflow identity. Consumers must still review release
+notes and use an appropriate trust policy.
 
 ## Security and disclosure review
 
-Before publishing a release, confirm:
+Before publication, confirm:
 
-- no secrets, tokens, credentials, or private findings are present in the diff;
-- no real audit run outputs, `runs/`, `batches/`, scanner output, or SQLite stores are included;
-- public disclosure language in docs and examples remains cautious and consistent with `--allow-public` safeguards;
-- any security fix with disclosure impact has an approved disclosure plan before public release notes are published.
+- no secrets, credentials, private findings, or unapproved disclosure content
+  are present in the release diff or notes;
+- no real `runs/`, `batches/`, `reports/`, `audits/`, scanner output, target
+  clones, SQLite stores, transcripts, proof artifacts, or remediation patches
+  are tracked;
+- public language remains consistent with `--allow-public` safeguards and the
+  [disclosure policy](DISCLOSURE_AND_PUBLICATION_POLICY.md);
+- any security fix with disclosure impact has an approved disclosure plan.
 
-If the release contains a security fix that should not be disclosed yet, coordinate privately and use appropriately limited changelog language until disclosure is approved.
+If a security fix cannot yet be disclosed, coordinate privately and use
+appropriately bounded changelog language until disclosure is approved.
 
-## Hotfix releases
+## Hotfixes and failed releases
 
-For urgent fixes, create a release branch from current `main`, include only the minimal fix plus `VERSION` and `CHANGELOG.md` updates, run the same validation checklist, and tag after merge. Do not bypass review or CI for hotfixes unless repository maintainers explicitly approve the exception in the release PR.
+For a hotfix, create a release branch from current `main`, include only the
+minimal fix and release metadata, run the same checks, and publish through the
+same guarded workflow. Do not bypass review or CI unless maintainers explicitly
+approve and document the exception.
 
-## Failed or withdrawn releases
+If a tag or GitHub Release is incorrect:
 
-If a tag or GitHub Release is published incorrectly:
-
-1. Stop further promotion of that version.
-2. Open an Issue describing the operational problem without exposing secrets or private findings.
-3. Prefer a follow-up patch release over rewriting public history.
-4. If deletion is unavoidable, document who approved it and why in the Issue or release notes.
+1. stop further promotion;
+2. record the operational problem without exposing private data;
+3. prefer a follow-up patch release over rewriting public history;
+4. if deletion is unavoidable, document the approver and reason.

@@ -1,0 +1,123 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_ref:
+        description: "Git ref to validate; publishing requires an existing annotated vX.Y.Z tag"
+        required: true
+        default: main
+        type: string
+      publish:
+        description: "Create attestations and a GitHub Release from release_ref"
+        required: true
+        default: false
+        type: boolean
+
+permissions: {}
+
+jobs:
+  build-candidate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout requested release source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.release_ref }}
+
+      - name: Validate release inputs without mutation
+        run: python3 scripts/build_release.py --dry-run --source-ref HEAD
+
+      - name: Build reproducible release candidate
+        run: python3 scripts/build_release.py --build --source-ref HEAD --output-dir dist
+
+      - name: Verify release candidate checksums
+        run: python3 scripts/build_release.py --verify --output-dir dist
+
+      - name: Upload release candidate for review
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-candidate-${{ github.run_id }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    if: ${{ inputs.publish }}
+    needs: build-candidate
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.release_ref }}
+
+      - name: Require an annotated version tag on main
+        env:
+          RELEASE_REF: ${{ inputs.release_ref }}
+        run: |
+          set -euo pipefail
+          version="$(cat VERSION)"
+          test "$RELEASE_REF" = "v$version"
+          test "$(git cat-file -t "$RELEASE_REF")" = "tag"
+          test "$(git rev-list -n 1 "$RELEASE_REF")" = "$(git rev-parse HEAD)"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor HEAD origin/main
+
+      - name: Download reviewed release candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-candidate-${{ github.run_id }}
+          path: dist
+
+      - name: Verify downloaded release candidate
+        run: python3 scripts/build_release.py --verify --output-dir dist
+
+      - name: Create build provenance attestation
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: |
+            dist/genai-repo-auditor-v*.tar.gz
+            dist/genai-repo-auditor-v*.zip
+            dist/genai-repo-auditor-v*.cdx.json
+            dist/release-manifest.json
+            dist/SHA256SUMS
+
+      - name: Create CycloneDX SBOM attestation for source archives
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: |
+            dist/genai-repo-auditor-v*.tar.gz
+            dist/genai-repo-auditor-v*.zip
+          sbom-path: dist/genai-repo-auditor-${{ inputs.release_ref }}.cdx.json
+
+      - name: Create GitHub Release without creating or moving tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REF: ${{ inputs.release_ref }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_REF" >/dev/null 2>&1; then
+            echo "release already exists: $RELEASE_REF" >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_REF" \
+            dist/genai-repo-auditor-v*.tar.gz \
+            dist/genai-repo-auditor-v*.zip \
+            dist/genai-repo-auditor-v*.cdx.json \
+            dist/release-manifest.json \
+            dist/SHA256SUMS \
+            --verify-tag \
+            --title "$RELEASE_REF" \
+            --notes-file dist/RELEASE_NOTES.md
