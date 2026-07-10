@@ -72,6 +72,9 @@ Compatibility invariants:
 - Console-script wrappers that execute bundled code must ignore
   `GENAI_REPO_AUDITOR_RESOURCE_ROOT` for executable helper discovery; that
   override is for data resource lookup only.
+- Package-install validation must continue to exercise installed console
+  scripts and resources across the supported Ubuntu, macOS, and Windows Python
+  matrix.
 - Package builds must not include local runs, cloned repositories, scanner
   output, stores, credentials, Codex transcripts, or agent-local artifacts.
 

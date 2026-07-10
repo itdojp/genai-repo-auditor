@@ -51,7 +51,7 @@ class ConsoleScriptTests(unittest.TestCase):
 
     def test_console_script_registry_matches_current_command_surface(self) -> None:
         commands = self.command_names()
-        self.assertEqual(32, len(commands))
+        self.assertEqual(33, len(commands))
         self.assertEqual(commands, list(cli.COMMANDS))
 
         scripts = pyproject_scripts((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
@@ -63,7 +63,7 @@ class ConsoleScriptTests(unittest.TestCase):
 
     def test_packaged_python_dispatch_preserves_help_and_version_contracts(self) -> None:
         expected_version = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").splitlines()[0].strip()
-        for command in ("gra-agent-check", "gra-validate-report", "gra-audit", "gra-batch"):
+        for command in ("gra-agent-check", "gra-doctor", "gra-validate-report", "gra-audit", "gra-batch"):
             with self.subTest(command=command):
                 status, stdout, stderr = self.capture_dispatch(command, ["--version"])
                 self.assertEqual(0, status, stderr)

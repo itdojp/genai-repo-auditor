@@ -42,6 +42,19 @@ sqlite3
 
 ## ローカルインストール
 
+以下のいずれかの方式を選択してください。
+
+| 方式 | 用途 | コマンド形式 |
+|---|---|---|
+| Source checkout | リポジトリを編集し、local scripts や開発用 validation を実行する場合。 | `git clone`, `PATH=$GRA_HOME/bin:$PATH` |
+| `pipx` | checkout または release archive から、分離された user-level console scripts として使う場合。 | `pipx install .` |
+| `uv tool` | `uv` で isolated tool install を管理する場合。 | `uv tool install .` |
+| Virtual environment | `pipx` / `uv` を使わない CI や制約のある workstation で固定的に使う場合。 | `python -m venv`, `pip install .` |
+
+package install matrix は、Ubuntu、macOS、Windows と Python 3.10、3.11、3.12 の組み合わせで CI 検証します。開発用途では source checkout wrapper、編集を伴わない運用用途では packaged console scripts を推奨します。
+
+### Source checkout install
+
 ユーザーが書き込めるインストール先を決めます。この例では `$HOME/.local/opt` を使います。以降の例で current directory に依存しないよう、`GRA_HOME` を設定して絶対パスで扱います。
 
 ```bash
@@ -61,12 +74,75 @@ export PATH="$GRA_HOME/bin:$PATH"
 
 今後の shell でも有効にする場合は、`export GRA_HOME=...` と `export PATH=...` の両方を `~/.profile`、`~/.bashrc`、`~/.zshrc` などに追加してください。
 
+### `pipx` install
+
+checkout 済み repository または展開済み release archive から実行します。
+
+```bash
+cd genai-repo-auditor
+python3 -m pip install --user pipx
+python3 -m pipx ensurepath
+python3 -m pipx install . --force
+```
+
+Windows PowerShell:
+
+```powershell
+cd genai-repo-auditor
+py -m pip install --user pipx
+py -m pipx ensurepath
+py -m pipx install . --force
+```
+
+`ensurepath` が `PATH` を更新した場合は、新しい shell を開いてください。
+
+### `uv tool` install
+
+checkout 済み repository または展開済み release archive から実行します。
+
+```bash
+cd genai-repo-auditor
+uv tool install .
+```
+
+Windows PowerShell:
+
+```powershell
+cd genai-repo-auditor
+uv tool install .
+```
+
+更新時は、更新済み checkout または release archive から再インストールしてください。
+
+### Virtual environment install
+
+macOS/Linux:
+
+```bash
+cd genai-repo-auditor
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install .
+```
+
+Windows PowerShell:
+
+```powershell
+cd genai-repo-auditor
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install .
+```
+
 ## インストール確認
 
 任意のディレクトリから、コマンドが解決できることを確認します。
 
 ```bash
 gra-audit --help
+gra-doctor --help
 gra-validate-report --help
 gra-audit --version
 ```
@@ -77,6 +153,32 @@ gra-audit --version
 
 ```bash
 "$GRA_HOME/scripts/validate-install-smoke.sh"
+```
+
+packaged install の場合は、資格情報を出力しない readiness diagnostic を実行します。
+
+```bash
+gra-doctor --json --runs-dir "$HOME/.local/state/genai-repo-auditor/runs"
+```
+
+Windows PowerShell:
+
+```powershell
+gra-doctor --json --runs-dir "$env:LOCALAPPDATA\genai-repo-auditor\runs"
+```
+
+`gra-doctor` は Python version、Git/GitHub CLI の有無、設定済み worker executable、任意の sandbox runtime、書き込み可能な run directory、packaged resources、GenAI Repo Auditor の version を確認します。既定では `git`、`gh`、audit、worker、repository clone は実行せず、GitHub state の変更や credential value の出力も行いません。run directory の確認では、`--runs-dir` 配下に一時 probe file を作成して削除します。CI で必須 readiness error を失敗として扱う場合は `--strict` を追加してください。
+
+`PATH` 上の `git` と `gh` が信頼できる local binary であることを確認した後、外部ツールの version と GitHub 認証状態を含める場合は opt-in probe を使います。この probe は credential-like environment variables を child process に渡さず、`gh auth status` の出力を破棄し、redacted diagnostics だけを記録します。
+
+```bash
+gra-doctor --probe-external-tools --json --runs-dir "$HOME/.local/state/genai-repo-auditor/runs"
+```
+
+Windows PowerShell:
+
+```powershell
+gra-doctor --probe-external-tools --json --runs-dir "$env:LOCALAPPDATA\genai-repo-auditor\runs"
 ```
 
 外部ツールを確認します。

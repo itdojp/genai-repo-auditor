@@ -1,0 +1,162 @@
+name: install-matrix
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-install:
+    name: Package install (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Build wheel
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dist = Join-Path $env:RUNNER_TEMP "gra-dist"
+          python -m pip install --upgrade build
+          python -m build --wheel --outdir $dist
+        shell: pwsh
+      - name: Validate installed wheel console scripts and resources
+        run: |
+          $ErrorActionPreference = "Stop"
+          $venv = Join-Path $env:RUNNER_TEMP "gra-package-venv"
+          $dist = Join-Path $env:RUNNER_TEMP "gra-dist"
+          $mockBin = Join-Path $env:RUNNER_TEMP "gra-mock-bin"
+          $runs = Join-Path $env:RUNNER_TEMP "gra-doctor-runs"
+          $fixture = Join-Path $env:RUNNER_TEMP "gra-minimal-run"
+          $auditRuns = Join-Path $env:RUNNER_TEMP "gra-installed-runs"
+          $batchRuns = Join-Path $env:RUNNER_TEMP "gra-installed-batch-runs"
+          $repoList = Join-Path $env:RUNNER_TEMP "gra-package-repos.txt"
+          New-Item -ItemType Directory -Force -Path $mockBin | Out-Null
+          python -m venv $venv
+          if ($IsWindows) {
+            $python = Join-Path $venv "Scripts/python.exe"
+            $bin = Join-Path $venv "Scripts"
+          } else {
+            $python = Join-Path $venv "bin/python"
+            $bin = Join-Path $venv "bin"
+          }
+          & $python -m pip install --no-index --find-links $dist genai-repo-auditor
+          $mockBuilder = @'
+          from pathlib import Path
+          import os
+          import stat
+          import sys
+
+          root = Path(os.environ["GRA_MOCK_BIN"])
+          root.mkdir(parents=True, exist_ok=True)
+          script = r'''
+          from pathlib import Path
+          import sys
+
+          tool = sys.argv[1]
+          args = sys.argv[2:]
+          if tool == "gh":
+              if args[:2] == ["repo", "clone"] and len(args) >= 4:
+                  Path(args[3]).mkdir(parents=True, exist_ok=True)
+                  raise SystemExit(0)
+              if args[:2] == ["repo", "view"]:
+                  print("PUBLIC")
+                  raise SystemExit(0)
+              print("unexpected gh invocation: " + " ".join(args), file=sys.stderr)
+              raise SystemExit(97)
+          if tool == "git":
+              if args[:1] == ["--version"]:
+                  print("git version 9.9.9")
+                  raise SystemExit(0)
+              if len(args) >= 4 and args[0] == "-C" and args[2:4] == ["rev-parse", "HEAD"]:
+                  print("0123456789abcdef0123456789abcdef01234567")
+                  raise SystemExit(0)
+              if len(args) >= 4 and args[0] == "-C" and args[2:4] == ["branch", "--show-current"]:
+                  print("main")
+                  raise SystemExit(0)
+              print("unexpected git invocation: " + " ".join(args), file=sys.stderr)
+              raise SystemExit(97)
+          if tool == "codex":
+              if args[:1] == ["--help"]:
+                  print("codex help")
+                  raise SystemExit(0)
+              print("codex mock should not be executed", file=sys.stderr)
+              raise SystemExit(97)
+          raise SystemExit(98)
+          '''
+          (root / "mock_tool.py").write_text(script, encoding="utf-8")
+          for tool in ["gh", "git", "codex"]:
+              if os.name == "nt":
+                  (root / f"{tool}.cmd").write_text(f'@echo off\r\npython "%~dp0mock_tool.py" {tool} %*\r\n', encoding="ascii")
+              else:
+                  wrapper = root / tool
+                  wrapper.write_text(f'#!/bin/sh\nexec python "{root / "mock_tool.py"}" {tool} "$@"\n', encoding="utf-8")
+                  wrapper.chmod(wrapper.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+          '@
+          $env:GRA_MOCK_BIN = $mockBin
+          $mockBuilder | python
+          $env:PATH = "$bin$([System.IO.Path]::PathSeparator)$mockBin$([System.IO.Path]::PathSeparator)$env:PATH"
+          $probe = @'
+          from pathlib import Path
+          import genai_repo_auditor as gra
+          from genai_repo_auditor.cli import COMMANDS
+
+          assert len(COMMANDS) == 33, COMMANDS
+          assert Path(gra.resource_path("VERSION")).is_file()
+          assert Path(gra.resource_path("bin", "gra-doctor")).is_file()
+          assert Path(gra.resource_path("lib", "agent_worker.py")).is_file()
+          assert Path(gra.prompt_path("exec", "full-audit.prompt.md")).is_file()
+          assert Path(gra.report_schema_path("findings.schema.json")).is_file()
+          assert Path(gra.taxonomy_path("owasp-llm-2025.json")).is_file()
+          assert Path(gra.agent_worker_profile_path("codex-cli.json")).is_file()
+          '@
+          $probe | & $python
+          $commands = (& $python -c "from genai_repo_auditor.cli import COMMANDS; print(chr(10).join(COMMANDS))") -split "`n" | Where-Object { $_ }
+          if ($commands.Count -ne 33) { throw "Expected 33 commands, got $($commands.Count): $commands" }
+          $version = (Get-Content VERSION -TotalCount 1).Trim()
+          foreach ($command in $commands) {
+            & $command --help | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "$command --help failed with $LASTEXITCODE" }
+            $output = (& $command --version | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0) { throw "$command --version failed with $LASTEXITCODE" }
+            if ($output -ne "$command $version") { throw "$command --version output '$output', expected '$command $version'" }
+          }
+          gra-doctor --json --runs-dir $runs | Out-Null
+          gra-agent-check --list --json | Out-Null
+          Copy-Item -Recurse tests/fixtures/minimal-run $fixture
+          gra-validate-report --run $fixture | Out-Null
+          if (-not $IsWindows) {
+            gra-audit --repo acme/api --mode prepare --runs-dir $auditRuns --run-id installed-prepare | Out-Null
+            if (-not (Test-Path (Join-Path $auditRuns "acme__api/installed-prepare/run-manifest.json"))) { throw "missing installed gra-audit run manifest" }
+            Set-Content -Path $repoList -Value "acme/api"
+            gra-batch --repo-list $repoList --mode goal --runs-dir $batchRuns --batch-id installed-batch | Out-Null
+            if (-not (Test-Path (Join-Path $batchRuns "_batches/installed-batch/batch-results.json"))) { throw "missing installed gra-batch results" }
+          }
+        shell: pwsh
+      - name: pipx install smoke (Linux)
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        run: |
+          python -m pip install --upgrade pipx
+          python -m pipx install . --force --python "$(command -v python)"
+          for bin_dir in "${PIPX_BIN_DIR:-}" "$HOME/.local/bin" /opt/pipx_bin; do
+            if [ -n "$bin_dir" ] && [ -x "$bin_dir/gra-doctor" ]; then
+              "$bin_dir/gra-doctor" --json --runs-dir "$RUNNER_TEMP/gra-pipx-doctor-runs" >/dev/null
+              exit 0
+            fi
+          done
+          echo "gra-doctor was not found in the expected pipx bin directories" >&2
+          exit 1

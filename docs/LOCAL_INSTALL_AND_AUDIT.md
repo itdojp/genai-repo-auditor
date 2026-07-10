@@ -40,6 +40,19 @@ Notes:
 
 ## Install locally
 
+Choose one of the installation modes below.
+
+| Mode | When to use it | Command style |
+|---|---|---|
+| Source checkout | You want editable repository files, local scripts, and development validation commands. | `git clone`, `PATH=$GRA_HOME/bin:$PATH` |
+| `pipx` | You want isolated user-level console scripts from a checkout or release archive. | `pipx install .` |
+| `uv tool` | You use `uv` for isolated tool installs. | `uv tool install .` |
+| Virtual environment | You need deterministic CI or locked-down workstation setup without `pipx`/`uv`. | `python -m venv`, `pip install .` |
+
+The packaging install matrix is exercised in CI on Ubuntu, macOS, and Windows with Python 3.10, 3.11, and 3.12. The source-checkout wrappers remain the preferred development workflow; packaged console scripts are the preferred operator workflow when you do not need to edit repository files.
+
+### Source checkout install
+
 Choose a user-owned install directory. This example uses `$HOME/.local/opt`. Keep `GRA_HOME` set when following the examples so run paths are absolute and do not depend on your current directory.
 
 ```bash
@@ -59,12 +72,75 @@ export PATH="$GRA_HOME/bin:$PATH"
 
 To make the path persistent for future shells, add both `export GRA_HOME=...` and `export PATH=...` lines to your shell startup file, such as `~/.profile`, `~/.bashrc`, or `~/.zshrc`.
 
+### `pipx` install
+
+From a checked-out repository or unpacked release archive:
+
+```bash
+cd genai-repo-auditor
+python3 -m pip install --user pipx
+python3 -m pipx ensurepath
+python3 -m pipx install . --force
+```
+
+On Windows PowerShell:
+
+```powershell
+cd genai-repo-auditor
+py -m pip install --user pipx
+py -m pipx ensurepath
+py -m pipx install . --force
+```
+
+Open a new shell if `ensurepath` updated your `PATH`.
+
+### `uv tool` install
+
+From a checked-out repository or unpacked release archive:
+
+```bash
+cd genai-repo-auditor
+uv tool install .
+```
+
+On Windows PowerShell:
+
+```powershell
+cd genai-repo-auditor
+uv tool install .
+```
+
+Reinstall from the updated checkout or release archive when you need to update the installed console scripts.
+
+### Virtual environment install
+
+macOS/Linux:
+
+```bash
+cd genai-repo-auditor
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install .
+```
+
+Windows PowerShell:
+
+```powershell
+cd genai-repo-auditor
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install .
+```
+
 ## Verify the installation
 
 From any directory, verify that the commands resolve:
 
 ```bash
 gra-audit --help
+gra-doctor --help
 gra-validate-report --help
 gra-audit --version
 ```
@@ -76,6 +152,32 @@ For a deterministic local install smoke check that does not require `gh`,
 
 ```bash
 "$GRA_HOME/scripts/validate-install-smoke.sh"
+```
+
+For packaged installs, run the redacted readiness diagnostic instead:
+
+```bash
+gra-doctor --json --runs-dir "$HOME/.local/state/genai-repo-auditor/runs"
+```
+
+On Windows PowerShell:
+
+```powershell
+gra-doctor --json --runs-dir "$env:LOCALAPPDATA\genai-repo-auditor\runs"
+```
+
+`gra-doctor` checks Python version, Git/GitHub CLI availability, the configured worker executable, optional sandbox runtimes, a writable run directory, packaged resources, and the installed GenAI Repo Auditor version. By default it does not execute `git`, `gh`, audits, workers, clone repositories, modify GitHub state, or print credential values. The run-directory check only creates and removes a temporary local probe file under `--runs-dir`. Add `--strict` when CI should fail on required readiness errors.
+
+After confirming that `PATH` resolves `git` and `gh` to trusted local binaries, use the opt-in external probe to include tool versions and GitHub authentication state. The probe does not pass credential-like environment variables to child processes, discards `gh auth status` output, and records only redacted diagnostics.
+
+```bash
+gra-doctor --probe-external-tools --json --runs-dir "$HOME/.local/state/genai-repo-auditor/runs"
+```
+
+On Windows PowerShell:
+
+```powershell
+gra-doctor --probe-external-tools --json --runs-dir "$env:LOCALAPPDATA\genai-repo-auditor\runs"
 ```
 
 Verify required external tools:

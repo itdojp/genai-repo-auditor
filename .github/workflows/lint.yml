@@ -110,7 +110,7 @@ jobs:
           PY
           )"
           count="$(printf '%s\n' "$commands" | sed '/^$/d' | wc -l | tr -d ' ')"
-          test "$count" = "32"
+          test "$count" = "33"
           version="$(sed -n '1p' VERSION)"
           while IFS= read -r command; do
             test -n "$command"
@@ -120,6 +120,7 @@ jobs:
           done <<< "$commands"
           cp -R tests/fixtures/minimal-run "$RUNNER_TEMP/gra-minimal-run"
           (cd "$RUNNER_TEMP" && "$RUNNER_TEMP/gra-package-venv/bin/gra-agent-check" --list --json >/dev/null)
+          (cd "$RUNNER_TEMP" && "$RUNNER_TEMP/gra-package-venv/bin/gra-doctor" --json --runs-dir "$RUNNER_TEMP/gra-doctor-runs" >/dev/null)
           (cd "$RUNNER_TEMP" && "$RUNNER_TEMP/gra-package-venv/bin/gra-validate-report" --run "$RUNNER_TEMP/gra-minimal-run" >/dev/null)
           (cd "$RUNNER_TEMP" && PATH="$mock_bin:$PATH" "$RUNNER_TEMP/gra-package-venv/bin/gra-audit" --repo acme/api --mode prepare --runs-dir "$RUNNER_TEMP/gra-installed-runs" --run-id installed-prepare >/dev/null)
           test -f "$RUNNER_TEMP/gra-installed-runs/acme__api/installed-prepare/run-manifest.json"
