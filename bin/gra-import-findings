@@ -78,8 +78,8 @@ def main() -> int:
         output_artifacts.append(reports / "findings.json")
 
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
-    print("Wrote imported findings -> reports/imported-findings.json")
-    print("Wrote imported findings summary -> reports/IMPORTED_FINDINGS.md")
+    print(f"Wrote imported findings -> {reports / 'imported-findings.json'}")
+    print(f"Wrote imported findings summary -> {reports / 'IMPORTED_FINDINGS.md'}")
     print(
         "Imported findings: "
         f"valid={summary.get('valid_count', 0)} "
@@ -88,7 +88,10 @@ def main() -> int:
         f"duplicate_skipped={summary.get('duplicate_skipped_count', 0)}"
     )
     if not args.append_findings:
-        print("Review-only mode: reports/findings.json was not modified. Use --append-findings to append normalized records.")
+        print(
+            f"Review-only mode: {reports / 'findings.json'} was not modified. "
+            "Use --append-findings to append normalized records."
+        )
     return finish(0)
 
 

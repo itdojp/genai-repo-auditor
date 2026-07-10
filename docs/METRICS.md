@@ -81,7 +81,7 @@ local paths into public material.
 ## Observability metrics
 
 Instrumented workflow commands append structured JSONL command events to
-`reports/command-events.jsonl`. Producers cover the audit entry point, recon,
+`<reports_dir>/command-events.jsonl`. Producers cover the audit entry point, recon,
 target queue operations, target research, gapfill, variant analysis, chain
 synthesis, safe proofs, adversarial validation, remediation, trace reachability,
 scanner ingestion, external finding import, scanner triage, Issue publication
