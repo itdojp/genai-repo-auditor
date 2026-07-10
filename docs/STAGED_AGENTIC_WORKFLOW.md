@@ -412,7 +412,7 @@ and manifest hygiene warnings without copying artifact contents.
 The normal Python integration suite includes an offline staged workflow fixture:
 
 ```bash
-python3 -m unittest tests.integration.test_cli_workflows.CliWorkflowTests.test_offline_staged_posture_workflow_fixture -v
+python3 -m unittest tests.integration.test_audit_research_workflows.AuditResearchWorkflowTests.test_offline_staged_posture_workflow_fixture -v
 ```
 
 The fixture uses a mocked `gh` clone, mocked `codex exec`, and local Scorecard /
@@ -426,7 +426,7 @@ The suite also includes an advanced local-only chain / proof / adversarial
 validation regression fixture:
 
 ```bash
-python3 -m unittest tests.integration.test_cli_workflows.CliWorkflowTests.test_advanced_chain_proof_validation_workflow_fixture -v
+python3 -m unittest tests.integration.test_remediation_workflows.RemediationWorkflowTests.test_advanced_chain_proof_validation_workflow_fixture -v
 ```
 
 Input run artifacts live under `tests/fixtures/advanced-workflow-run/`. They

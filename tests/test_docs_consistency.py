@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 import unittest
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -12,6 +13,7 @@ MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]\n]+\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\
 GRA_COMMAND_RE = re.compile(r"(?<![A-Za-z0-9_/-])(gra-[A-Za-z0-9_-]+)\b")
 PROMPT_PATH_RE = re.compile(r"(?<![A-Za-z0-9_/-])(prompts/(?:exec|goal)/[A-Za-z0-9_.-]+(?:\.prompt|\.goal)\.md)")
 STALE_PROMPT_PATH_RE = re.compile(r"(?<![A-Za-z0-9_/-])(prompts/(?!exec/|goal/)[A-Za-z0-9_.-]+(?:\.prompt|\.goal)\.md)")
+UNITTEST_COMMAND_RE = re.compile(r"^\s*python3\s+-m\s+unittest\s+([^\n`]+)", re.MULTILINE)
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 
 
@@ -96,6 +98,28 @@ class DocsConsistencyTests(unittest.TestCase):
         ]
         if missing_goal_prompts:
             failures.append(f"docs/GOAL_PROMPT_LIBRARY.md: missing goal prompt docs: {', '.join(missing_goal_prompts)}")
+        self.assertEqual([], failures)
+
+    def test_documented_unittest_targets_resolve(self) -> None:
+        failures = []
+        for path in DOC_FILES:
+            text = path.read_text(encoding="utf-8")
+            for raw_args in UNITTEST_COMMAND_RE.findall(text):
+                try:
+                    tokens = shlex.split(raw_args)
+                except ValueError as exc:
+                    failures.append(f"{path.relative_to(REPO_ROOT)}: could not parse unittest command: {exc}")
+                    continue
+                if not tokens or tokens[0] == "discover":
+                    continue
+                targets = [token for token in tokens if not token.startswith("-")]
+                for target in targets:
+                    loader = unittest.TestLoader()
+                    suite = loader.loadTestsFromName(target)
+                    if loader.errors:
+                        failures.append(f"{path.relative_to(REPO_ROOT)}: unresolved unittest target {target}: {loader.errors[0]}")
+                    elif suite.countTestCases() == 0:
+                        failures.append(f"{path.relative_to(REPO_ROOT)}: unittest target {target} resolved to zero tests")
         self.assertEqual([], failures)
 
     def test_readme_links_to_key_documentation(self) -> None:

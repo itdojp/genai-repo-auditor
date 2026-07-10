@@ -60,7 +60,7 @@ mode and asserts that:
 5. Run:
 
 ```bash
-python3 -m unittest tests.integration.test_cli_workflows.CliWorkflowTests.test_gra_audit_exec_keeps_adversarial_repository_content_untrusted -v
+python3 -m unittest tests.integration.test_audit_research_workflows.AuditResearchWorkflowTests.test_gra_audit_exec_keeps_adversarial_repository_content_untrusted -v
 ```
 
 For broad validation, run the standard test suite:
