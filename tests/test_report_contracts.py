@@ -20,6 +20,8 @@ VALIDATOR_PATH = REPO_ROOT / "bin" / "gra-validate-report"
 SCHEMAS = REPO_ROOT / "templates" / "reports"
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 from benchmark import validate_benchmark_payload as validate_benchmark_payload_internal  # noqa: E402
+from validators.findings import REQUIRED_FINDING, REQUIRED_TOP  # noqa: E402
+from validators.targets import REQUIRED_TARGET  # noqa: E402
 
 
 def load_validator() -> types.ModuleType:
@@ -182,9 +184,9 @@ class ReportContractTests(unittest.TestCase):
         run_state_schema = self.load_json(SCHEMAS / "run-state.schema.json")
         command_event_schema = self.load_json(SCHEMAS / "command-event.schema.json")
 
-        self.assertTrue(set(VALIDATOR.REQUIRED_TOP).issubset(findings_schema["required"]))
+        self.assertTrue(set(REQUIRED_TOP).issubset(findings_schema["required"]))
         finding_required = findings_schema["properties"]["findings"]["items"]["required"]
-        self.assertTrue(set(VALIDATOR.REQUIRED_FINDING).issubset(finding_required))
+        self.assertTrue(set(REQUIRED_FINDING).issubset(finding_required))
         finding_properties = findings_schema["properties"]["findings"]["items"]["properties"]
         self.assertIn("artifact_retention", manifest_schema["required"])
         artifact_item = manifest_schema["properties"]["artifacts"]["items"]
@@ -235,7 +237,7 @@ class ReportContractTests(unittest.TestCase):
             set(finding_properties["external_source"]["required"]),
         )
         target_required = target_schema["properties"]["targets"]["items"]["required"]
-        self.assertTrue(set(VALIDATOR.REQUIRED_TARGET).issubset(target_required))
+        self.assertTrue(set(REQUIRED_TARGET).issubset(target_required))
         target_properties = target_schema["properties"]["targets"]["items"]["properties"]
         self.assertEqual("^TGT-(?:[A-Z][A-Z0-9]*-)?[0-9]{3,}$", target_properties["id"]["pattern"])
         self.assertEqual("integer", target_properties["max_files"]["type"])
