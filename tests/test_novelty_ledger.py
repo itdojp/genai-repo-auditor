@@ -67,6 +67,12 @@ class NoveltyLedgerTests(unittest.TestCase):
         self.assertEqual(plan.returncode, 0, plan.stderr)
         issue_plan = json.loads((run_dir / "reports" / "issue-publication-plan.json").read_text(encoding="utf-8"))
         self.assertEqual([], issue_plan["selected_findings"])
+        issue_ledger = json.loads((run_dir / "reports" / "issue-ledger.json").read_text(encoding="utf-8"))
+        self.assertEqual("not-selected", issue_ledger["findings"][0]["publication_status"])
+        self.assertEqual(
+            "novelty status duplicate suppresses publication",
+            issue_ledger["findings"][0]["selection_reason"],
+        )
 
         validate = self.run_cmd(REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir)
         self.assertEqual(validate.returncode, 0, validate.stderr)
