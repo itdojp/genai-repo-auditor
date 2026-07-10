@@ -304,7 +304,7 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-metrics` | Generate local advanced workflow metrics without raw evidence |
 | `gra-benchmark` | Score local dogfood quality gates from metrics or fixture runs |
 | `gra-evidence-graph` | Generate a local bounded evidence graph across report artifacts |
-| `gra-scan` | List and plan approved local scanner adapters without executing them |
+| `gra-scan` | List/plan adapters or explicitly execute approved offline scanners in a bounded local container |
 | `gra-ingest` | Ingest scanner outputs |
 | `gra-import-findings` | Normalize generic external finding JSON into review-only local artifacts, with explicit append mode |
 | `gra-scanner-triage` | Triage scanner leads in repository context |

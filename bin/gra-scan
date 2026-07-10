@@ -16,17 +16,19 @@ from scanner_adapters import (  # noqa: E402
     planning_environment_path,
     validate_run_directory,
 )
+from scanner_runner import execute_scan  # noqa: E402
 from sandbox_profiles import PROFILE_IDS  # noqa: E402
 from version import auditor_version  # noqa: E402
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="List and safely plan approved local scanner adapters")
+    parser = argparse.ArgumentParser(description="List, plan, and explicitly execute approved local scanner adapters")
     parser.add_argument("--version", action="version", version=f"%(prog)s {auditor_version(LAB_ROOT)}")
     parser.add_argument("--run", required=True, type=Path, help="Run directory")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--list", action="store_true", help="List adapter capabilities and local binary readiness")
     mode.add_argument("--plan", action="store_true", help="Plan only; this is the default and never executes a scanner")
+    mode.add_argument("--execute", action="store_true", help="Execute in an approved offline container sandbox")
     parser.add_argument("--tool", help="Registered scanner adapter id")
     parser.add_argument("--sandbox-profile", choices=PROFILE_IDS, default="container", help="Declared execution sandbox for the plan")
     parser.add_argument("--network-policy", choices=NETWORK_POLICIES, default="disabled", help="Declared network policy; disabled by default")
@@ -46,6 +48,14 @@ def main() -> int:
         run_dir = validate_run_directory(args.run)
         if args.list:
             payload = list_adapters(path_env=planning_environment_path())
+        elif args.execute:
+            payload = execute_scan(
+                run_dir,
+                adapter_id=args.tool,
+                sandbox_profile=args.sandbox_profile,
+                network_policy=args.network_policy,
+                path_env=planning_environment_path(),
+            )
         else:
             payload = build_scan_plan(
                 run_dir,
@@ -70,7 +80,7 @@ def main() -> int:
                 f"network={'required' if adapter['network_required'] else 'disabled'} "
                 f"classification={adapter['result_classification']}"
             )
-    else:
+    elif not args.execute:
         print("Scanner plan (scanner not executed):")
         print(f"Tool: {payload['adapter']['id']}")
         print(f"Sandbox profile: {payload['sandbox_profile']}")
@@ -81,7 +91,12 @@ def main() -> int:
             "Binary readiness: "
             + ("available" if payload["adapter"]["readiness"]["executable_available"] else "missing")
         )
-    return 0
+    else:
+        print(f"Scanner status: {payload['status']}")
+        print(f"Tool: {payload['adapter_id']}")
+        print(f"Sandbox profile: {payload['sandbox_profile']}")
+        print(f"Raw output: {payload['raw_output_path'] or 'not retained'}")
+    return 1 if args.execute and payload["raw_output_path"] is None else 0
 
 
 if __name__ == "__main__":

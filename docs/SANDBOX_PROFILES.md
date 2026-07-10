@@ -10,8 +10,8 @@ Source review and report generation remain local-first and source-only. They do 
 |---|---:|---|---|
 | `source-only` | No | Supported | Recon, target planning, report validation, issue planning, and other read-only/source-only workflows. |
 | `local-test` | Yes | Diagnostic contract | Local disposable workspace patch validation and test runs. Does not require Docker/Podman, but reports readiness warnings. |
-| `container` | Yes | Diagnostic contract | Future containerized build/test validation. Requires Docker or Podman. |
-| `gvisor` | Yes | Diagnostic contract | Future hardened container profile. Requires Docker/Podman plus `runsc`. |
+| `container` | Yes | Scanner execution supported; target-code validation diagnostic | Bounded offline `gra-scan --execute`; future containerized build/test validation. Requires local Docker or Podman. |
+| `gvisor` | Yes | Scanner execution supported when configured; target-code validation diagnostic | Bounded offline `gra-scan --execute` with `runsc`; future hardened build/test validation. |
 | `vm` | Yes | Contract only | Future VM isolation. VM orchestration is not implemented in this release. |
 
 ## Phase separation
@@ -38,7 +38,7 @@ Check a local executable profile:
 gra-sandbox-check --run runs/OWNER__REPO/RUN_ID --profile local-test
 ```
 
-Check a future container profile and fail closed when Docker/Podman is unavailable:
+Check container-profile readiness and fail closed when Docker/Podman is unavailable:
 
 ```bash
 gra-sandbox-check --run runs/OWNER__REPO/RUN_ID --profile container

@@ -134,6 +134,13 @@ Imported scanner outputs are not automatically true findings. They are leads tha
 
 This prevents scanner noise from becoming GitHub Issues without review.
 
+Explicit local scanner execution is limited to registered offline Gitleaks and
+Syft adapters in digest-pinned, pre-pulled container images. `gra-scan
+--execute` denies network, mounts the target read-only, exposes only a dedicated
+output directory, applies runtime/resource bounds, and discards failed output.
+It does not execute target code, accept arbitrary scanner arguments, pull
+images, scan hosts/services, or promote output beyond review-only evidence.
+
 ## Repository CI hardening
 
 The repository's own GitHub Actions workflows are part of the security

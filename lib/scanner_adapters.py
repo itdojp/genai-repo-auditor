@@ -68,6 +68,8 @@ ADAPTERS: dict[str, ScannerAdapter] = {
             "--no-banner",
             "--no-color",
             "--redact=100",
+            "--exit-code",
+            "10",
             "--report-format",
             "json",
             "--report-path",
@@ -80,7 +82,7 @@ ADAPTERS: dict[str, ScannerAdapter] = {
         ingest_tool="gitleaks",
         result_classification="scanner-leads",
         secret_handling="full tool redaction plus gra-ingest normalization redaction",
-        exit_semantics=(("0", "completed-no-leads"), ("1", "completed-with-leads"), ("other", "scanner-failure")),
+        exit_semantics=(("0", "completed-no-leads"), ("10", "completed-with-leads"), ("other", "scanner-failure")),
     ),
     "syft": ScannerAdapter(
         id="syft",

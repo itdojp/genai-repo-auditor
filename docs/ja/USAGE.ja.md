@@ -141,9 +141,13 @@ output limit を確認できます。
 ```bash
 gra-scan --run "$RUN_DIR" --list
 gra-scan --run "$RUN_DIR" --tool gitleaks --plan
+gra-scan --run "$RUN_DIR" --tool gitleaks --execute --sandbox-profile container --json
 ```
 
-現在の `gra-scan` は list/plan 専用で scanner を実行しません。別途取得済みの scanner output を run directory に取り込み、redacted normalized lead として triage します。
+list/plan は scanner を実行しません。`--execute` は事前取得した digest 固定 image を
+network 無効・read-only target mount の local container で明示実行し、成功した raw
+JSON のみ run directory に保持します。raw output は未確認の `review-only` evidence です。
+normalized lead の生成には次の ingest/triage stage を使用します。
 
 ```bash
 gra-ingest --run "$RUN_DIR" --tool semgrep --file semgrep.json --format json

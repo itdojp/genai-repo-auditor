@@ -1,0 +1,90 @@
+from __future__ import annotations
+
+import re
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT / "lib"))
+
+from scanner_adapters import ADAPTERS  # noqa: E402
+from scanner_runner import (  # noqa: E402
+    CONTAINER_IMAGES,
+    ScannerExecutionError,
+    _container_command,
+    _publish_output,
+    _runtime_prefix,
+    _safe_runtime_environment,
+)
+
+
+class ScannerRunnerTests(unittest.TestCase):
+    def test_every_adapter_uses_an_immutable_container_digest(self) -> None:
+        self.assertEqual(set(ADAPTERS), set(CONTAINER_IMAGES))
+        for image in CONTAINER_IMAGES.values():
+            self.assertRegex(image, re.compile(r"^[a-z0-9.-]+/[a-z0-9./-]+@sha256:[a-f0-9]{64}$"))
+            self.assertNotIn(":latest", image)
+
+    def test_runtime_environment_removes_remote_and_credential_configuration(self) -> None:
+        safe = _safe_runtime_environment(
+            {
+                "PATH": "/safe/bin",
+                "HOME": "/safe/home",
+                "LANG": "C.UTF-8",
+                "GH_TOKEN": "sensitive",
+                "DOCKER_HOST": "tcp://external.example:2376",
+                "CONTAINER_HOST": "ssh://external.example/run/podman.sock",
+                "HTTPS_PROXY": "https://proxy.example",
+                "OPENAI_API_KEY": "sensitive",
+            }
+        )
+        self.assertEqual({"PATH": "/safe/bin", "HOME": "/safe/home", "LANG": "C.UTF-8"}, safe)
+
+    def test_missing_local_runtime_fails_closed(self) -> None:
+        with mock.patch("scanner_runner.shutil.which", return_value=None):
+            with self.assertRaisesRegex(ScannerExecutionError, "Podman or Docker"):
+                _runtime_prefix("/missing", {})
+
+    def test_runtime_specific_user_mapping_is_safe_for_rootless_podman(self) -> None:
+        common = {
+            "profile": "container",
+            "name": "gra-scan-test",
+            "image": next(iter(CONTAINER_IMAGES.values())),
+            "target": Path("/run/repo"),
+            "staging": Path("/run/output"),
+            "adapter_args": ["/target", "/output/result.json"],
+        }
+        podman = _container_command(prefix=["podman"], runtime="podman", selinux_enforcing=True, **common)
+        docker = _container_command(prefix=["docker"], runtime="docker", **common)
+        self.assertIn("--userns=keep-id", podman)
+        self.assertIn("label=disable", podman)
+        self.assertNotIn("--userns=keep-id", docker)
+        self.assertNotIn("--user", docker)
+
+    def test_output_publication_is_exclusive_and_does_not_replace_races(self) -> None:
+        tmp_parent = REPO_ROOT / ".test-tmp"
+        tmp_parent.mkdir(exist_ok=True)
+        try:
+            with tempfile.TemporaryDirectory(dir=tmp_parent) as tmp:
+                root = Path(tmp)
+                source = root / "source.json"
+                destination = root / "result.json"
+                source.write_text("[]\n", encoding="utf-8")
+                _publish_output(source, destination)
+                self.assertEqual("[]\n", destination.read_text(encoding="utf-8"))
+                destination.write_text("existing\n", encoding="utf-8")
+                with self.assertRaisesRegex(ScannerExecutionError, "publish"):
+                    _publish_output(source, destination)
+                self.assertEqual("existing\n", destination.read_text(encoding="utf-8"))
+        finally:
+            try:
+                tmp_parent.rmdir()
+            except OSError:
+                pass
+
+
+if __name__ == "__main__":
+    unittest.main()

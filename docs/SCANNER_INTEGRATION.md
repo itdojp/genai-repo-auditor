@@ -1,9 +1,9 @@
 # Scanner Integration
 
-## Safe local scanner planning
+## Safe local scanner planning and execution
 
 `gra-scan` provides a versioned, static registry for approved local scanner
-adapters. Its current `--list` and default `--plan` modes are non-executing:
+adapters. Its `--list` and default `--plan` modes are non-executing:
 they do not run scanners or version commands, read target contents, access the
 network, create output directories, or ingest results. Planning inspects only
 run context and path metadata needed for containment and symlink checks.
@@ -13,6 +13,7 @@ gra-scan --run runs/OWNER__REPO/RUN_ID --list
 gra-scan --run runs/OWNER__REPO/RUN_ID --list --json
 gra-scan --run runs/OWNER__REPO/RUN_ID --tool gitleaks
 gra-scan --run runs/OWNER__REPO/RUN_ID --tool syft --plan --sandbox-profile container --json
+gra-scan --run runs/OWNER__REPO/RUN_ID --tool gitleaks --execute --sandbox-profile container --json
 ```
 
 The initial offline-capable definitions are:
@@ -34,9 +35,34 @@ Machine-readable plans use
 
 Plans reject unknown adapters, source-only/local-test execution profiles, path
 traversal, symlinked run paths, undeclared network access, and arbitrary shell
-arguments. All planned paths are run-relative. A valid plan is not sandbox
-readiness approval and does not authorize execution; executable scanner support
-must enforce the selected profile before running a tool.
+arguments. All planned paths are run-relative. A valid plan is not execution
+approval. `--execute` is explicit and supports only the enforced `container` and
+`gvisor` profiles. Execution uses local Docker or Podman, a read-only target bind
+mount, a dedicated output mount, a read-only container root, dropped
+capabilities, `no-new-privileges`, bounded CPU/memory/PIDs, and `--network=none`.
+It never pulls an image. The operator must pre-pull the immutable image digest
+during a separately authorized setup phase.
+
+On an enforcing SELinux host, execution uses `label=disable` instead of
+recursively relabeling the audited target. This preserves target filesystem
+metadata; isolation continues to rely on the read-only target/root mounts,
+dropped capabilities, default seccomp, `no-new-privileges`, resource limits,
+and disabled network.
+
+The execution images are pinned by multi-platform digest:
+
+- Gitleaks: `ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f`;
+- Syft: `ghcr.io/anchore/syft@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb`.
+
+Execution rejects remote runtime environment configuration, missing runtimes or
+images, unsupported profiles, any network allowance, existing/symlinked output,
+timeouts, oversized output/logs, excess result counts, unexpected files, and
+scanner failures. A timed-out container is force-removed. Successful raw JSON is
+atomically moved to `reports/scanner-results/raw/`; timeout, SIGTERM/SIGHUP,
+keyboard interruption, and failed output trigger container/staging cleanup.
+The result remains `review-only` and is never a confirmed or issue-recommended
+finding. Normalization and ingestion are added by the next workflow stage; until
+then, do not send the raw file to a model or public report.
 
 Approved scope is local repository SAST/SCA/secret scanning and SBOM generation.
 DAST, live endpoint probing, external-host scanning, brute force, credential

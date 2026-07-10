@@ -2,7 +2,7 @@
 
 英語版は [`docs/SCANNER_INTEGRATION.md`](../SCANNER_INTEGRATION.md) を参照してください。この文書では、既存 scanner output を GenAI Repo Auditor の run directory に取り込む際の日本語運用指針をまとめます。
 
-## local scanner の安全な計画
+## local scanner の安全な計画と実行
 
 `gra-scan` は、承認対象の local scanner adapter を列挙し、実行予定の
 argument array を確認するための command です。現在の `--list` と既定の
@@ -14,6 +14,7 @@ check に必要な run context と path metadata のみ確認します。
 gra-scan --run runs/OWNER__REPO/RUN_ID --list
 gra-scan --run runs/OWNER__REPO/RUN_ID --tool gitleaks
 gra-scan --run runs/OWNER__REPO/RUN_ID --tool syft --plan --sandbox-profile container --json
+gra-scan --run runs/OWNER__REPO/RUN_ID --tool gitleaks --execute --sandbox-profile container --json
 ```
 
 初期 adapter は offline-capable な `gitleaks` と `syft` です。plan は executable
@@ -25,6 +26,16 @@ path traversal、symlink、未宣言の network access、任意 shell string は
 対象範囲は local repository の SAST/SCA/secret scan と SBOM generation です。
 DAST、live endpoint probing、external-host scan、brute force、credential use、
 production/staging access は禁止です。
+
+`--execute` は明示指定が必要で、実行 profile は `container` または `gvisor`
+に限定されます。local Docker/Podman の digest 固定済み image を
+`--pull=never`、`--network=none`、read-only target mount/root filesystem、
+capability drop、resource limit 付きで起動します。image pull は実行時に行わず、
+別途承認した setup phase で operator が事前取得します。remote runtime 設定、
+network allowance、未取得 image、timeout、output/result 上限超過、symlink または
+unexpected output、scanner failure は fail-closed です。成功時のみ raw JSON を
+`reports/scanner-results/raw/` に移動します。この raw result は `review-only` であり、
+confirmed finding や Issue 推奨には自動昇格しません。
 
 ## 既存 scanner output の取り込み
 
