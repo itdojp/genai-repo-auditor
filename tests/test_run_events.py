@@ -305,6 +305,26 @@ class RunEventsTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertIn("WARNING: command event was not written", stderr.getvalue())
 
+    def test_broken_symlink_artifact_component_is_rejected(self) -> None:
+        run_dir = self.make_run()
+        broken_link = run_dir / "reports" / "broken-link"
+        try:
+            broken_link.symlink_to("/nonexistent/target")
+        except (NotImplementedError, OSError) as exc:
+            self.skipTest(f"symlink not available: {exc}")
+
+        started_at, started_perf = start_command_event()
+        with self.assertRaises(EventWriteError):
+            append_command_event(
+                run_dir,
+                command="gra-research",
+                phase="exec",
+                started_at=started_at,
+                started_perf=started_perf,
+                exit_code=0,
+                output_artifact_paths=[broken_link],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -347,7 +347,7 @@ def _safe_run_relative_ref(run_dir: Path, value: Path | str, field_path: str) ->
     current = run_dir
     for part in rel.parts:
         current = current / part
-        if current.exists() and current.is_symlink():
+        if current.is_symlink():
             raise EventValidationError(f"{field_path}: artifact path must not contain symlink components")
     ref = rel.as_posix()
     _reject_secret_like_value(ref, field_path)
