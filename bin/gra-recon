@@ -11,6 +11,7 @@ from version import auditor_version
 from gralib import env_from_context, load_context, render_template, run_codex_exec
 from agent_surface import write_agent_surface_artifacts
 from provenance_posture import write_provenance_posture_artifacts
+from run_events import append_command_event, start_command_event
 
 
 def main() -> int:
@@ -23,29 +24,58 @@ def main() -> int:
     args = p.parse_args()
 
     run_dir = Path(args.run).resolve()
+    started_at, started_perf = start_command_event()
+    input_artifacts = [run_dir / 'context.json']
+    output_artifacts: list[Path] = []
+
+    def finish(exit_code: int) -> int:
+        append_command_event(
+            run_dir,
+            command='gra-recon',
+            phase='recon',
+            started_at=started_at,
+            started_perf=started_perf,
+            exit_code=exit_code,
+            model=args.model,
+            effort=args.effort,
+            network_allowed=args.network,
+            sandbox_profile='workspace-write',
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=output_artifacts,
+            failure_mode='warn' if exit_code != 0 else 'block',
+        )
+        return exit_code
+
     ctx = load_context(run_dir)
     reports = run_dir / ctx.get('reports_dir', 'reports')
     surfaces = write_agent_surface_artifacts(run_dir)
     if surfaces:
         print(f'Agent surfaces: {len(surfaces)} -> {reports / "agent-surface.json"}')
+    output_artifacts.append(reports / 'agent-surface.json')
     provenance = write_provenance_posture_artifacts(run_dir)
     print(f'Provenance posture: {provenance.get("status")} -> {reports / "provenance-posture.json"}')
+    output_artifacts.append(reports / 'provenance-posture.json')
     env = env_from_context(run_dir)
     prompt = run_dir / 'prompts' / 'exec' / 'recon.prompt.md'
     render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'recon.prompt.md', prompt, env)
+    output_artifacts.append(prompt)
     print(f'Running Codex recon for {ctx.get("repo", "")}')
+    final_path = run_dir / 'codex-recon-final.md'
+    events_path = run_dir / 'codex-recon-events.jsonl'
+    stderr_path = run_dir / 'codex-recon-stderr.txt'
     status = run_codex_exec(
         run_dir=run_dir,
         prompt_file=prompt,
         model=args.model,
         effort=args.effort,
         network=args.network,
-        output_last=run_dir / 'codex-recon-final.md',
-        events_file=run_dir / 'codex-recon-events.jsonl',
-        stderr_file=run_dir / 'codex-recon-stderr.txt',
+        output_last=final_path,
+        events_file=events_path,
+        stderr_file=stderr_path,
     )
+    output_artifacts.extend([final_path, events_path, stderr_path])
     print(f'Codex status: {status}')
-    return status
+    return finish(status)
 
 
 if __name__ == '__main__':

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import importlib.machinery
 import importlib.util
 import json
@@ -20,7 +21,7 @@ VALIDATOR_PATH = REPO_ROOT / "bin" / "gra-validate-report"
 SCHEMAS = REPO_ROOT / "templates" / "reports"
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 from benchmark import validate_benchmark_payload as validate_benchmark_payload_internal  # noqa: E402
-from run_events import COMMAND_EVENT_COMMANDS, COMMAND_EVENT_PHASES, COMMAND_EVENT_STATUSES  # noqa: E402
+from run_events import COMMAND_EVENT_COMMANDS, COMMAND_EVENT_PHASES, COMMAND_EVENT_STATUSES, append_command_event, start_command_event  # noqa: E402
 from validators.advanced import IMPORTED_FINDING_APPEND_STATUSES  # noqa: E402
 from validators.common import load_schema as load_schema_from_root, validate_schema  # noqa: E402
 from validators.findings import REQUIRED_FINDING, REQUIRED_TOP  # noqa: E402
@@ -1545,6 +1546,52 @@ class ReportContractTests(unittest.TestCase):
         cp = self.run_validator(run_dir)
         self.assertEqual(cp.returncode, 0, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
         self.assertIn("Run manifest: validated", cp.stdout)
+
+    def test_run_manifest_allows_append_only_command_events_after_snapshot(self) -> None:
+        run_dir = self.copy_run()
+        events_path = run_dir / "reports" / "command-events.jsonl"
+        started_at, started_perf = start_command_event()
+        append_command_event(
+            run_dir,
+            command="gra-audit",
+            phase="audit",
+            started_at=started_at,
+            started_perf=started_perf,
+            exit_code=0,
+            output_artifact_paths=[run_dir / "reports" / "findings.json"],
+        )
+        manifest = self.write_run_manifest(run_dir)
+        recorded = next(item for item in manifest["artifacts"] if item["path"] == "reports/command-events.jsonl")
+        recorded_size = recorded["size_bytes"]
+        recorded_digest = recorded["sha256"]
+
+        started_at, started_perf = start_command_event()
+        append_command_event(
+            run_dir,
+            command="gra-validate-report",
+            phase="validate",
+            started_at=started_at,
+            started_perf=started_perf,
+            exit_code=0,
+            input_artifact_paths=[run_dir / "reports" / "findings.json"],
+            output_artifact_paths=[],
+        )
+
+        self.assertGreater(events_path.stat().st_size, recorded_size)
+        with events_path.open("rb") as handle:
+            self.assertEqual(recorded_digest, hashlib.sha256(handle.read(recorded_size)).hexdigest())
+        cp = self.run_validator(run_dir)
+        self.assertEqual(cp.returncode, 0, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
+        self.assertIn("Run manifest: validated", cp.stdout)
+
+        manifest["artifacts"] = [dict(item) for item in manifest["artifacts"]]
+        negative_record = next(item for item in manifest["artifacts"] if item["path"] == "reports/command-events.jsonl")
+        negative_record["size_bytes"] = -1
+        negative_record["sha256"] = hashlib.sha256(b"").hexdigest()
+        self.write_json(run_dir / "run-manifest.json", manifest)
+        cp = self.run_validator(run_dir)
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("file artifact size must be non-negative", cp.stderr)
 
     def test_run_manifest_hygiene_rejects_stale_retention_and_digest(self) -> None:
         run_dir = self.copy_run()

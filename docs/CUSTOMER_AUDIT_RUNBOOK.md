@@ -103,7 +103,12 @@ as exploit proof.
 gra-trace \
   --producer-run runs/OWNER__shared-lib/RUN_ID \
   --finding SEC-001 \
-  --consumer-run runs/OWNER__consumer/RUN_ID \
+  --consumer-repo OWNER/consumer \
+  --mode prepare
+gra-trace \
+  --producer-run runs/OWNER__shared-lib/RUN_ID \
+  --finding SEC-001 \
+  --consumer-run runs/OWNER__shared-lib/RUN_ID/trace-consumers/OWNER__consumer \
   --mode exec
 ```
 

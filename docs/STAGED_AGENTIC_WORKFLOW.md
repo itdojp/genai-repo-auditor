@@ -292,7 +292,7 @@ Use `gra-trace` when a producer finding, such as a shared-library flaw, may be
 consumed by another repository. This stage is experimental/P3 and records
 reachability evidence only; it is not exploit proof.
 
-Prepare a consumer workspace when a consumer run does not already exist:
+Prepare a consumer workspace under the producer run:
 
 ```bash
 gra-trace \
@@ -302,13 +302,15 @@ gra-trace \
   --mode prepare
 ```
 
-Trace against an existing consumer run:
+Trace against the prepared consumer run. External consumer runs are rejected so
+producer trace artifacts do not persist absolute paths outside the producer run
+boundary:
 
 ```bash
 gra-trace \
   --producer-run runs/ORG__shared-lib/RUN_ID \
   --finding SEC-001 \
-  --consumer-run runs/ORG__consumer-api/RUN_ID \
+  --consumer-run runs/ORG__shared-lib/RUN_ID/trace-consumers/ORG__consumer-api \
   --mode exec \
   --model gpt-5.5 \
   --effort xhigh

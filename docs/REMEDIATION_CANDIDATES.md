@@ -99,9 +99,19 @@ Validation checks that:
 2. copies the target checkout to a disposable workspace under the run directory;
 3. reviews the patch diff paths against the target repository prefix and the candidate `files_touched` list, rejecting VCS metadata paths such as `repo/.git/`;
 4. applies the patch to the disposable copy only;
-5. runs explicitly supplied Python build and targeted test commands with an injected Python no-network guard;
+5. runs explicitly supplied Python build and targeted test commands with an
+   injected Python no-network guard and denied-executable guard for common
+   network, package-manager, shell, VCS, and deployment tools; Python guard
+   bypass flags such as `-S`, `-E`, and `-I` are rejected;
 6. records safe proof replay and adversarial review status as not applicable / not run unless an explicit replay stage is added in a later workflow;
 7. removes the disposable workspace and writes `patch-validation.json` plus `patch-validation.md`.
+
+The selected `--sandbox-profile` is a readiness gate recorded in the patch
+validation report. Command events for patch validation use the
+`best-effort-host-python-guard` sandbox label and `network_allowed=null` so
+observability data does not imply that the selected readiness profile was
+itself the runtime sandbox or that network blocking is enforced below the
+Python guard layer.
 
 The patch validation report includes:
 

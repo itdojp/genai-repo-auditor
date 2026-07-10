@@ -119,6 +119,15 @@ REPORT_DIR="$RUN_DIR/reports"
 TARGET_REPO_DIR="repo"
 REPORTS_DIR="reports"
 
+read -r COMMAND_EVENT_STARTED_AT COMMAND_EVENT_STARTED_PERF < <(
+  PYTHONPATH="$LAB_ROOT/lib" python3 - <<'PY'
+from run_events import start_command_event
+
+started_at, started_perf = start_command_event()
+print(started_at, started_perf)
+PY
+)
+
 mkdir -p "$RUNS_DIR" "$RUN_DIR" "$REPORT_DIR" "$RUN_DIR/prompts"
 
 if [[ "$USE_LOCK" == "1" ]]; then
@@ -291,6 +300,94 @@ write_run_manifest() {
     --final-status "$final_status"
 }
 
+write_command_event() {
+  local event_exit_code="$1"
+  local event_phase="$2"
+  if PYTHONPATH="$LAB_ROOT/lib" python3 - "$RUN_DIR" "$event_phase" "$event_exit_code" "$COMMAND_EVENT_STARTED_AT" "$COMMAND_EVENT_STARTED_PERF" "$MODEL" "$EFFORT" "$NETWORK_VALUE" <<'PY'
+import sys
+from pathlib import Path
+
+from run_events import append_command_event
+
+run_dir = Path(sys.argv[1])
+phase = sys.argv[2]
+exit_code = int(sys.argv[3])
+started_at = sys.argv[4]
+started_perf = float(sys.argv[5])
+model = sys.argv[6]
+effort = sys.argv[7]
+network_allowed = sys.argv[8] == "true"
+
+outputs_by_phase = {
+    "prepare": [
+        "prompt.exec.md",
+        "prompt.goal.md",
+        "prompts",
+        "run-manifest.json",
+    ],
+    "goal": [
+        "prompt.exec.md",
+        "prompt.goal.md",
+        "prompts",
+        "run-manifest.json",
+    ],
+    "audit": [
+        "codex-final.md",
+        "codex-events.jsonl",
+        "codex-stderr.txt",
+        "codex-transcript.txt",
+        "taxonomy-preflight.txt",
+        "report-validation.txt",
+        "run-summary.txt",
+        "run-manifest.json",
+        "reports/findings.json",
+        "reports/FINDINGS.md",
+    ],
+}
+append_command_event(
+    run_dir,
+    command="gra-audit",
+    phase=phase,
+    started_at=started_at,
+    started_perf=started_perf,
+    exit_code=exit_code,
+    model=model,
+    effort=effort,
+    network_allowed=network_allowed,
+    sandbox_profile="workspace-write",
+    input_artifact_paths=[run_dir / "context.json"],
+    output_artifact_paths=[run_dir / item for item in outputs_by_phase.get(phase, [])],
+)
+PY
+  then
+    return "$event_exit_code"
+  fi
+  if [[ "$event_exit_code" -eq 0 ]]; then
+    return 1
+  fi
+  return "$event_exit_code"
+}
+
+write_run_summary() {
+  cat > "$RUN_DIR/run-summary.txt" <<EOF_SUMMARY
+run_id=$RUN_ID
+repo=$REPO
+branch=$BRANCH
+commit=$COMMIT
+visibility=$VISIBILITY
+mode=$MODE
+model=$MODEL
+effort=$EFFORT
+codex_status=$CODEX_STATUS
+validation_status=$VALIDATION_STATUS
+taxonomy_preflight_status=$TAXONOMY_PREFLIGHT_STATUS
+allow_invalid_report=$ALLOW_INVALID_REPORT
+final_status=$FINAL_STATUS
+repo_dir=$REPO_DIR
+reports_dir=$REPORT_DIR
+EOF_SUMMARY
+}
+
 if [[ "$MODE" == "prepare" ]]; then
   write_run_manifest "prepared"
   cat <<EOF_PREPARE
@@ -317,7 +414,13 @@ Suggested staged agentic workflow:
 For a supervised deep dive, use:
   gra-research --run "$RUN_DIR" --target TGT-001 --mode goal --model "$MODEL" --effort "$EFFORT"
 EOF_PREPARE
-  exit 0
+  EVENT_STATUS="0"
+  set +e
+  write_command_event 0 "prepare"
+  EVENT_STATUS="$?"
+  set -e
+  write_run_manifest "prepared"
+  exit "$EVENT_STATUS"
 fi
 
 if [[ "$MODE" == "goal" ]]; then
@@ -351,7 +454,13 @@ Then inspect:
   $REPORT_DIR/FINDINGS.md
   $REPORT_DIR/findings.json
 EOF2
-  exit 0
+  EVENT_STATUS="0"
+  set +e
+  write_command_event 0 "goal"
+  EVENT_STATUS="$?"
+  set -e
+  write_run_manifest "goal-prepared"
+  exit "$EVENT_STATUS"
 fi
 
 printf 'Running Codex non-interactively from run directory...\n'
@@ -418,24 +527,17 @@ if [[ "$CODEX_STATUS" -eq 0 && "$VALIDATION_STATUS" != "0" ]]; then
   fi
 fi
 
-cat > "$RUN_DIR/run-summary.txt" <<EOF3
-run_id=$RUN_ID
-repo=$REPO
-branch=$BRANCH
-commit=$COMMIT
-visibility=$VISIBILITY
-mode=$MODE
-model=$MODEL
-effort=$EFFORT
-codex_status=$CODEX_STATUS
-validation_status=$VALIDATION_STATUS
-taxonomy_preflight_status=$TAXONOMY_PREFLIGHT_STATUS
-allow_invalid_report=$ALLOW_INVALID_REPORT
-final_status=$FINAL_STATUS
-repo_dir=$REPO_DIR
-reports_dir=$REPORT_DIR
-EOF3
-
+write_run_summary
+write_run_manifest "completed" "$CODEX_STATUS" "$VALIDATION_STATUS" "$FINAL_STATUS"
+EVENT_STATUS="$FINAL_STATUS"
+set +e
+write_command_event "$FINAL_STATUS" "audit"
+EVENT_STATUS="$?"
+set -e
+if [[ "$EVENT_STATUS" != "$FINAL_STATUS" ]]; then
+  FINAL_STATUS="$EVENT_STATUS"
+  write_run_summary
+fi
 write_run_manifest "completed" "$CODEX_STATUS" "$VALIDATION_STATUS" "$FINAL_STATUS"
 
 printf '\nRun complete. Codex status: %s\n' "$CODEX_STATUS"

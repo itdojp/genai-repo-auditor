@@ -82,19 +82,8 @@ gra-issues --run runs/OWNER__repo-a/RUN_ID --apply
 ## Cross-repo trace reachability
 
 共有 library や producer repository の finding が consumer repository から
-到達可能かを確認する場合は、各 repository の通常 audit run を先に作成し、
-producer run から `gra-trace` を実行します。
-
-```bash
-gra-trace \
-  --producer-run runs/ORG__shared-lib/PRODUCER_RUN_ID \
-  --finding SEC-001 \
-  --consumer-run runs/ORG__consumer-api/CONSUMER_RUN_ID \
-  --mode exec
-```
-
-consumer run がまだない場合だけ、明示的な prepare mode で GitHub clone を
-行えます。
+到達可能かを確認する場合は、まず producer run から明示的な prepare mode を
+実行し、consumer workspace を producer run 配下に作成します。
 
 ```bash
 gra-trace \
@@ -102,6 +91,18 @@ gra-trace \
   --finding SEC-001 \
   --consumer-repo ORG/consumer-api \
   --mode prepare
+```
+
+その後、prepare mode で作成された producer run 配下の consumer run を使って
+exec / goal mode を実行します。外部 consumer run は producer artifact に絶対
+パスを持ち込まないため拒否されます。
+
+```bash
+gra-trace \
+  --producer-run runs/ORG__shared-lib/PRODUCER_RUN_ID \
+  --finding SEC-001 \
+  --consumer-run runs/ORG__shared-lib/PRODUCER_RUN_ID/trace-consumers/ORG__consumer-api \
+  --mode exec
 ```
 
 `gra-trace` は experimental/P3 です。`reports/traces.json` と

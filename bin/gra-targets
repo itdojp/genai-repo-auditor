@@ -26,6 +26,7 @@ from provenance_posture import append_provenance_posture_targets
 from scorecard_posture import append_scorecard_posture_targets
 from target_coverage_guardrails import CoverageSerializationError
 from run_state import paused_error
+from run_events import append_command_event, start_command_event
 
 
 def run_taxonomy_preflight(run_dir: Path) -> int:
@@ -70,30 +71,57 @@ def main() -> int:
     if not (run_dir / 'context.json').exists():
         print(f'context.json not found under {run_dir}', file=sys.stderr)
         return 2
+    started_at, started_perf = start_command_event()
+    phase = 'target-generation' if args.generate else 'list' if args.list else 'show' if args.show else 'mark'
+    ctx = load_context(run_dir)
+    reports = run_dir / ctx.get('reports_dir', 'reports')
+    input_artifacts = [run_dir / 'context.json', reports / 'targets.json']
+    output_artifacts: list[Path] = []
+
+    def finish(exit_code: int, *, status: str | None = None, error_category: str | None = None) -> int:
+        append_command_event(
+            run_dir,
+            command='gra-targets',
+            phase=phase,
+            target_id=args.show or (args.mark[0] if args.mark else None),
+            started_at=started_at,
+            started_perf=started_perf,
+            exit_code=exit_code,
+            status=status,
+            error_category=error_category,
+            model=args.model if args.generate else None,
+            effort=args.effort if args.generate else None,
+            network_allowed=args.network if args.generate else None,
+            sandbox_profile='workspace-write' if args.generate else None,
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=output_artifacts,
+            failure_mode='warn' if exit_code != 0 else 'block',
+        )
+        return exit_code
 
     if args.list:
         print_table(load_targets(run_dir))
-        return 0
+        return finish(0)
 
     if args.show:
         try:
             print(json.dumps(find_target(run_dir, args.show), indent=2, ensure_ascii=False))
-            return 0
+            return finish(0)
         except KeyError as e:
             print(str(e), file=sys.stderr)
-            return 2
+            return finish(2, error_category='input_validation')
 
     pause_message = paused_error(run_dir, action="target queue mutation or generation")
     if pause_message:
         print(pause_message, file=sys.stderr)
-        return 5
+        return finish(5, status='blocked', error_category='run_paused')
 
     if args.mark:
         target_id, status = args.mark
         valid = {'queued', 'in_progress', 'reviewed', 'skipped', 'needs_human_review'}
         if status not in valid:
             print(f'invalid status {status}; choose one of {sorted(valid)}', file=sys.stderr)
-            return 2
+            return finish(2, error_category='input_validation')
         targets = load_targets(run_dir)
         found = False
         for t in targets:
@@ -103,15 +131,14 @@ def main() -> int:
                 break
         if not found:
             print(f'target not found: {target_id}', file=sys.stderr)
-            return 2
+            return finish(2, error_category='input_validation')
         write_targets(run_dir, targets)
+        output_artifacts.append(reports / 'targets.json')
         print(f'updated {target_id} -> {status}')
-        return 0
+        return finish(0)
 
     # generate
-    ctx = load_context(run_dir)
     ensure_taxonomy_templates(LAB_ROOT, run_dir)
-    reports = run_dir / ctx.get('reports_dir', 'reports')
     reports.mkdir(parents=True, exist_ok=True)
     (run_dir / 'prompts' / 'exec').mkdir(parents=True, exist_ok=True)
     env = env_from_context(run_dir)
@@ -119,30 +146,37 @@ def main() -> int:
     schema_src = LAB_ROOT / 'templates' / 'reports' / 'targets.schema.json'
     if schema_src.exists():
         (run_dir / 'targets.schema.json').write_text(schema_src.read_text(encoding='utf-8'), encoding='utf-8')
+        output_artifacts.append(run_dir / 'targets.schema.json')
     prompt = run_dir / 'prompts' / 'exec' / 'generate-targets.prompt.md'
     render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'generate-targets.prompt.md', prompt, env)
+    output_artifacts.append(prompt)
     print(f'Running Codex target generation for {ctx.get("repo", "")}')
+    final_path = run_dir / 'codex-targets-final.md'
+    events_path = run_dir / 'codex-targets-events.jsonl'
+    stderr_path = run_dir / 'codex-targets-stderr.txt'
     status = run_codex_exec(
         run_dir=run_dir,
         prompt_file=prompt,
         model=args.model,
         effort=args.effort,
         network=args.network,
-        output_last=run_dir / 'codex-targets-final.md',
-        events_file=run_dir / 'codex-targets-events.jsonl',
-        stderr_file=run_dir / 'codex-targets-stderr.txt',
+        output_last=final_path,
+        events_file=events_path,
+        stderr_file=stderr_path,
     )
+    output_artifacts.extend([final_path, events_path, stderr_path])
     if status != 0:
         print(f'Codex exited with status {status}', file=sys.stderr)
-        return status
+        return finish(status)
     if not (reports / 'targets.json').exists():
         print('Codex completed but reports/targets.json is missing', file=sys.stderr)
-        return 1
+        return finish(1, error_category='missing_output')
     try:
         write_targets(run_dir, load_targets(run_dir))
     except CoverageSerializationError as exc:
         print(str(exc), file=sys.stderr)
-        return 1
+        return finish(1, error_category='output_validation')
+    output_artifacts.append(reports / 'targets.json')
     added_agent_targets = append_agent_surface_targets(run_dir)
     if added_agent_targets:
         print(f'Added {len(added_agent_targets)} agent-surface target(s)')
@@ -157,10 +191,12 @@ def main() -> int:
         print(f'Added {len(added_dependency_targets)} dependency-posture target(s)')
     preflight_status = run_taxonomy_preflight(run_dir)
     if preflight_status != 0:
-        return preflight_status
+        output_artifacts.append(run_dir / "taxonomy-preflight-targets.txt")
+        return finish(preflight_status, error_category='taxonomy_preflight')
+    output_artifacts.append(run_dir / "taxonomy-preflight-targets.txt")
     print(f'Wrote {reports / "targets.json"}')
     print_table(load_targets(run_dir))
-    return 0
+    return finish(0)
 
 
 if __name__ == '__main__':
