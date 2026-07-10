@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import datetime as dt
-import hashlib
 import json
 import re
 import sys
@@ -16,7 +14,6 @@ from version import auditor_version
 from report_safety import (  # noqa: E402
     ReportSafetyError,
     iter_secret_findings,
-    safe_issue_body_path,
     validate_relative_repo_path,
 )
 from taxonomies import (  # noqa: E402
@@ -25,20 +22,27 @@ from taxonomies import (  # noqa: E402
     load_taxonomy_aliases,
     load_taxonomy_profiles,
     taxonomy_label_map,
-    validate_taxonomy_refs,
 )
 from run_events import append_command_event, start_command_event  # noqa: E402
 from workflow_profile import validate_workflow_profile_payload  # noqa: E402
+from validators.common import (  # noqa: E402
+    json_type_name,
+    load_schema as load_schema_from_root,
+    parse_event_time,
+    validate_generated_at,
+    validate_no_symlink_components,
+    validate_schema,
+    validate_schema_shape,
+    validate_string_list,
+)
+from validators.findings import (  # noqa: E402
+    ASSESSMENT_STATUSES,
+    CONFIDENCES,
+    SEVERITIES,
+)
+from validators.registry import ValidationContext, core_validator_registry  # noqa: E402
+from validators.scanner import SCANNER_RESULTS_DIR  # noqa: E402
 
-SEVERITIES = {"Critical", "High", "Medium", "Low", "Informational"}
-CONFIDENCES = {"High", "Medium", "Low"}
-STATUSES = {"Confirmed", "Probable", "Potential", "Informational", "Invalid", "Needs human review"}
-ASSESSMENT_STATUSES = {"Confirmed", "Probable", "Potential", "Invalid", "Not assessed"}
-TARGET_STATUSES = {"queued", "in_progress", "reviewed", "skipped", "needs_human_review"}
-TARGET_RISKS = {"critical", "high", "medium", "low", "informational"}
-TARGET_REVIEW_DEPTHS = {"none", "shallow", "medium", "deep"}
-SCANNER_RESULTS_DIR = Path("reports/scanner-results")
-NORMALIZED_SCANNER_RESULTS_DIR = SCANNER_RESULTS_DIR / "normalized"
 DEPENDENCIES_PATH = Path("reports/dependencies.json")
 VALIDATION_PATH = Path("reports/validation.json")
 CHAINS_PATH = Path("reports/chains.json")
@@ -58,8 +62,6 @@ ISSUE_LEDGER_PATH = Path("reports/issue-ledger.json")
 DUPLICATE_DECISIONS_DIR = Path("reports/duplicate-decisions")
 RUN_STATE_PATH = Path("reports/run-state.json")
 COMMAND_EVENTS_PATH = Path("reports/command-events.jsonl")
-RUN_MANIFEST_PATH = Path("run-manifest.json")
-ARTIFACT_RETENTIONS = {"latest", "supporting", "archive"}
 VALIDATION_DECISIONS = {"confirm", "downgrade", "invalidate", "needs-human-review"}
 VALIDATION_SUBJECT_TYPES = {"finding", "chain"}
 VALIDATION_SEVERITIES = SEVERITIES | {"Unknown"}
@@ -173,18 +175,6 @@ BENCHMARK_FORBIDDEN_KEYS = {
     "token",
     "credential",
 }
-REQUIRED_TOP = ["run_id", "repo", "commit", "generated_at", "findings"]
-REQUIRED_FINDING = [
-    "id", "fingerprint", "title", "severity", "confidence", "status", "category",
-    "affected_locations", "entry_point", "trust_boundary", "source_to_sink",
-    "root_cause", "evidence", "impact", "validation_status", "minimal_remediation",
-    "regression_test_idea", "issue_title", "issue_body_file", "issue_recommended", "labels",
-]
-REQUIRED_TARGET = [
-    "id", "category", "title", "risk", "priority", "status", "scope",
-    "entry_points", "trust_boundaries", "sinks", "review_questions", "recommended_mode",
-]
-PLACEHOLDER_FINGERPRINTS = {"", "n/a", "na", "none", "null", "unknown", "todo", "tbd", "placeholder", "fingerprint", "fingerprint-001"}
 
 
 def find_findings(run: Path) -> Path:
@@ -196,150 +186,9 @@ def find_findings(run: Path) -> Path:
 
 
 def load_schema(name: str) -> Dict[str, Any]:
-    return json.loads((LAB_ROOT / "templates" / "reports" / name).read_text(encoding="utf-8"))
+    """Backward-compatible schema loader for remaining in-file validators."""
 
-
-def json_type_name(value: Any) -> str:
-    if value is None:
-        return "null"
-    if isinstance(value, bool):
-        return "boolean"
-    if isinstance(value, int):
-        return "integer"
-    if isinstance(value, float):
-        return "number"
-    if isinstance(value, str):
-        return "string"
-    if isinstance(value, list):
-        return "array"
-    if isinstance(value, dict):
-        return "object"
-    return type(value).__name__
-
-
-def matches_json_type(value: Any, expected: str) -> bool:
-    if expected == "null":
-        return value is None
-    if expected == "boolean":
-        return isinstance(value, bool)
-    if expected == "integer":
-        return isinstance(value, int) and not isinstance(value, bool)
-    if expected == "number":
-        return (isinstance(value, int) or isinstance(value, float)) and not isinstance(value, bool)
-    if expected == "string":
-        return isinstance(value, str)
-    if expected == "array":
-        return isinstance(value, list)
-    if expected == "object":
-        return isinstance(value, dict)
-    return True
-
-
-def validate_schema(value: Any, schema: Dict[str, Any], path: str, errors: List[str]) -> None:
-    expected_type = schema.get("type")
-    if expected_type is not None:
-        expected_types = expected_type if isinstance(expected_type, list) else [expected_type]
-        if not any(matches_json_type(value, t) for t in expected_types):
-            errors.append(f"{path}: expected type {'/'.join(expected_types)}, got {json_type_name(value)}")
-            return
-
-    if "enum" in schema and value not in schema["enum"]:
-        errors.append(f"{path}: value {value!r} is not one of {schema['enum']}")
-    if "const" in schema and value != schema["const"]:
-        errors.append(f"{path}: value {value!r} does not match required constant {schema['const']!r}")
-
-    if isinstance(value, dict):
-        for key in schema.get("required", []):
-            if key not in value:
-                errors.append(f"{path}.{key}: missing required field")
-        properties = schema.get("properties", {})
-        for key, subschema in properties.items():
-            if key in value:
-                validate_schema(value[key], subschema, f"{path}.{key}", errors)
-
-    if isinstance(value, list) and "items" in schema:
-        for index, item in enumerate(value):
-            validate_schema(item, schema["items"], f"{path}[{index}]", errors)
-
-    if isinstance(value, str) and "pattern" in schema:
-        if not re.search(schema["pattern"], value):
-            errors.append(f"{path}: value {value!r} does not match pattern {schema['pattern']}")
-
-    if isinstance(value, int) and not isinstance(value, bool):
-        if "minimum" in schema and value < schema["minimum"]:
-            errors.append(f"{path}: value {value} is below minimum {schema['minimum']}")
-        if "maximum" in schema and value > schema["maximum"]:
-            errors.append(f"{path}: value {value} is above maximum {schema['maximum']}")
-
-
-def validate_schema_shape(value: Any, schema: Dict[str, Any], path: str, errors: List[str]) -> None:
-    """Validate a schema subset without echoing untrusted values in messages."""
-
-    expected_type = schema.get("type")
-    if expected_type is not None:
-        expected_types = expected_type if isinstance(expected_type, list) else [expected_type]
-        if not any(matches_json_type(value, t) for t in expected_types):
-            errors.append(f"{path}: expected type {'/'.join(expected_types)}")
-            return
-
-    if "enum" in schema and value not in schema["enum"]:
-        errors.append(f"{path}: value is not allowed")
-    if "const" in schema and value != schema["const"]:
-        errors.append(f"{path}: value does not match required constant")
-
-    if isinstance(value, dict):
-        for key in schema.get("required", []):
-            if key not in value:
-                errors.append(f"{path}.{key}: missing required field")
-        properties = schema.get("properties", {})
-        for key, subschema in properties.items():
-            if key in value:
-                validate_schema_shape(value[key], subschema, f"{path}.{key}", errors)
-
-    if isinstance(value, list) and "items" in schema:
-        for index, item in enumerate(value):
-            validate_schema_shape(item, schema["items"], f"{path}[{index}]", errors)
-
-    if isinstance(value, str) and "pattern" in schema:
-        if not re.search(schema["pattern"], value):
-            errors.append(f"{path}: value does not match required pattern")
-
-    if isinstance(value, int) and not isinstance(value, bool):
-        if "minimum" in schema and value < schema["minimum"]:
-            errors.append(f"{path}: value is below minimum {schema['minimum']}")
-        if "maximum" in schema and value > schema["maximum"]:
-            errors.append(f"{path}: value is above maximum {schema['maximum']}")
-
-
-def validate_generated_at(value: Any, path: str, errors: List[str]) -> None:
-    if not isinstance(value, str):
-        return
-    raw = value.strip()
-    if not raw:
-        errors.append(f"{path}: generated_at must not be empty")
-        return
-    try:
-        dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
-    except ValueError:
-        errors.append(f"{path}: generated_at must be valid ISO-8601 datetime")
-
-
-def parse_event_time(value: Any) -> dt.datetime | None:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    try:
-        return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-
-def validate_string_list(value: Any, path: str, errors: List[str]) -> None:
-    if not isinstance(value, list):
-        errors.append(f"{path}: must be list")
-        return
-    for index, item in enumerate(value):
-        if not isinstance(item, str):
-            errors.append(f"{path}[{index}]: expected type string, got {json_type_name(item)}")
+    return load_schema_from_root(LAB_ROOT, name)
 
 
 def validate_no_private_reasoning_keys(value: Any, field_path: str, errors: List[str]) -> None:
@@ -375,227 +224,12 @@ def expected_vote_decision(vote_decisions: list[str], policy: str) -> str:
     return "needs-human-review"
 
 
-def validate_targets(
-    run_dir: Path,
-    errors: List[str],
-    taxonomy_profiles: dict[str, dict[str, Any]],
-    taxonomy_labels: dict[tuple[str, str], str],
-    taxonomy_aliases: dict[str, Any],
-    taxonomy_profiles_loaded: bool,
-) -> None:
-    targets_path = run_dir / "reports" / "targets.json"
-    if not targets_path.exists():
-        return
-    try:
-        targets_data = json.loads(targets_path.read_text(encoding="utf-8"))
-    except Exception as e:
-        errors.append(f"targets.json invalid JSON: {e}")
-        return
-
-    validate_schema(targets_data, load_schema("targets.schema.json"), "targets", errors)
-    validate_generated_at(targets_data.get("generated_at"), "targets.generated_at", errors)
-
-    targets = targets_data.get("targets")
-    if not isinstance(targets, list):
-        errors.append("targets.targets: targets must be a list")
-        return
-    seen = set()
-    for i, t in enumerate(targets):
-        path = f"targets.targets[{i}]"
-        if not isinstance(t, dict):
-            errors.append(f"{path}: target must be an object")
-            continue
-        tid = str(t.get("id") or f"index-{i}")
-        for key in REQUIRED_TARGET:
-            if key not in t:
-                errors.append(f"{path}.{key}: missing target key")
-        if not re.fullmatch(r"TGT-(?:[A-Z][A-Z0-9]*-)?[0-9]{3,}", tid):
-            errors.append(f"{path}.id: target id must match ^TGT-(?:[A-Z][A-Z0-9]*-)?[0-9]{{3,}}$ (got {tid})")
-        if tid in seen:
-            errors.append(f"{path}.id: duplicate target id {tid}")
-        seen.add(tid)
-        if t.get("risk") not in TARGET_RISKS:
-            errors.append(f"{path}.risk: invalid risk {t.get('risk')}")
-        if t.get("status") not in TARGET_STATUSES:
-            errors.append(f"{path}.status: invalid status {t.get('status')}")
-        if not isinstance(t.get("priority"), int) or isinstance(t.get("priority"), bool):
-            errors.append(f"{path}.priority: priority must be integer")
-        elif not 0 <= int(t["priority"]) <= 100:
-            errors.append(f"{path}.priority: priority must be between 0 and 100")
-        for key in [
-            "entry_points",
-            "trust_boundaries",
-            "sinks",
-            "security_invariants",
-            "review_questions",
-            "candidate_files",
-        ]:
-            if key in t:
-                validate_string_list(t.get(key), f"{path}.{key}", errors)
-        if "max_files" in t:
-            max_files = t.get("max_files")
-            if not isinstance(max_files, int) or isinstance(max_files, bool):
-                errors.append(f"{path}.max_files: max_files must be integer")
-            elif not 1 <= int(max_files) <= 20:
-                errors.append(f"{path}.max_files: max_files must be between 1 and 20")
-        if "coverage" in t:
-            coverage = t.get("coverage")
-            coverage_path = f"{path}.coverage"
-            if not isinstance(coverage, dict):
-                errors.append(f"{coverage_path}: coverage must be an object")
-            else:
-                if "review_depth" in coverage and coverage.get("review_depth") not in TARGET_REVIEW_DEPTHS:
-                    errors.append(f"{coverage_path}.review_depth: invalid review depth {coverage.get('review_depth')}")
-                for key in ["files_reviewed", "files_skipped", "commands_run", "unresolved_questions"]:
-                    if key in coverage:
-                        validate_string_list(coverage.get(key), f"{coverage_path}.{key}", errors)
-                if "gapfill_recommended" in coverage and not isinstance(coverage.get("gapfill_recommended"), bool):
-                    errors.append(f"{coverage_path}.gapfill_recommended: expected type boolean, got {json_type_name(coverage.get('gapfill_recommended'))}")
-                if "gapfill_reason" in coverage and not isinstance(coverage.get("gapfill_reason"), str):
-                    errors.append(f"{coverage_path}.gapfill_reason: expected type string, got {json_type_name(coverage.get('gapfill_reason'))}")
-        if taxonomy_profiles_loaded:
-            validate_taxonomy_refs(t.get("taxonomies"), f"{path}.taxonomies", errors, taxonomy_profiles, taxonomy_labels, taxonomy_aliases)
 
 
-def validate_run_artifact_path(
-    run_dir: Path,
-    value: Any,
-    *,
-    field_path: str,
-    required_root: Path,
-    require_json: bool = False,
-    missing_label: str = "artifact",
-) -> Path:
-    if not isinstance(value, str) or not value.strip():
-        raise ReportSafetyError(f"{field_path}: path must be a non-empty string")
-    rel = Path(value)
-    if rel.is_absolute():
-        raise ReportSafetyError(f"{field_path}: scanner artifact path must be relative to the run directory")
-    if ".." in rel.parts:
-        raise ReportSafetyError(f"{field_path}: scanner artifact path must not contain '..'")
-    if rel == required_root or required_root not in (rel, *rel.parents):
-        raise ReportSafetyError(f"{field_path}: scanner artifact path must stay under {required_root.as_posix()}")
-    if require_json and rel.suffix.lower() != ".json":
-        raise ReportSafetyError(f"{field_path}: normalized scanner artifact must be a .json file")
-
-    target = run_dir / rel
-    current = run_dir
-    for part in rel.parts:
-        current = current / part
-        if current.is_symlink():
-            raise ReportSafetyError(f"{field_path}: proof artifact path must not contain symlink components: {rel.as_posix()}")
-    expected_root = (run_dir / required_root).resolve(strict=False)
-    resolved_target = target.resolve(strict=False)
-    try:
-        resolved_target.relative_to(expected_root)
-    except ValueError as exc:
-        raise ReportSafetyError(f"{field_path}: scanner artifact path must not escape {required_root.as_posix()}") from exc
-    if not target.exists():
-        raise ReportSafetyError(f"{field_path}: {missing_label} not found: {rel.as_posix()}")
-    if not target.is_file():
-        raise ReportSafetyError(f"{field_path}: {missing_label} must be a regular file: {rel.as_posix()}")
-    return target
 
 
-def validate_no_symlink_components(run_dir: Path, rel: Path, *, field_path: str) -> None:
-    current = run_dir
-    for part in rel.parts:
-        current = current / part
-        if current.is_symlink():
-            raise ReportSafetyError(f"{field_path}: scanner artifact path must not contain symlink components: {rel.as_posix()}")
 
 
-def validate_scanner_index(run_dir: Path, errors: List[str]) -> bool:
-    index_path = run_dir / SCANNER_RESULTS_DIR / "scanner-index.json"
-    if not index_path.exists():
-        return False
-    try:
-        validate_no_symlink_components(run_dir, SCANNER_RESULTS_DIR / "scanner-index.json", field_path="scanner_index")
-    except ReportSafetyError as exc:
-        errors.append(str(exc))
-        return True
-    try:
-        scanner_index = json.loads(index_path.read_text(encoding="utf-8"))
-    except Exception as e:
-        errors.append(f"scanner-index.json invalid JSON: {e}")
-        return True
-
-    validate_schema(scanner_index, load_schema("scanner-index.schema.json"), "scanner_index", errors)
-    validate_generated_at(scanner_index.get("generated_at"), "scanner_index.generated_at", errors)
-
-    results = scanner_index.get("results")
-    if not isinstance(results, list):
-        errors.append("scanner_index.results: results must be a list")
-        return True
-
-    for index, entry in enumerate(results):
-        path = f"scanner_index.results[{index}]"
-        if not isinstance(entry, dict):
-            errors.append(f"{path}: scanner index entry must be an object")
-            continue
-        validate_generated_at(entry.get("imported_at"), f"{path}.imported_at", errors)
-        try:
-            validate_run_artifact_path(
-                run_dir,
-                entry.get("path"),
-                field_path=f"{path}.path",
-                required_root=SCANNER_RESULTS_DIR,
-                missing_label="raw scanner artifact",
-            )
-        except ReportSafetyError as exc:
-            errors.append(str(exc))
-
-        normalized_path = entry.get("normalized_path")
-        if normalized_path is None:
-            errors.append(f"{path}.normalized_path: missing normalized artifact reference")
-            continue
-        try:
-            normalized_file = validate_run_artifact_path(
-                run_dir,
-                normalized_path,
-                field_path=f"{path}.normalized_path",
-                required_root=NORMALIZED_SCANNER_RESULTS_DIR,
-                require_json=True,
-                missing_label="normalized scanner artifact",
-            )
-        except ReportSafetyError as exc:
-            errors.append(str(exc))
-            continue
-
-        try:
-            normalized = json.loads(normalized_file.read_text(encoding="utf-8"))
-        except Exception as e:
-            errors.append(f"{path}.normalized_path: invalid normalized scanner JSON: {e}")
-            continue
-        if not isinstance(normalized, dict):
-            errors.append(f"{path}.normalized_path: normalized scanner artifact must be an object")
-            continue
-
-        leads = normalized.get("leads")
-        if not isinstance(leads, list):
-            errors.append(f"{path}.normalized_path.leads: leads must be a list")
-        elif "normalized_leads_count" not in entry:
-            errors.append(f"{path}.normalized_leads_count: missing normalized lead count")
-        else:
-            lead_count = entry.get("normalized_leads_count")
-            if isinstance(lead_count, int) and not isinstance(lead_count, bool) and lead_count != len(leads):
-                errors.append(
-                    f"{path}.normalized_leads_count: value {lead_count} "
-                    f"does not match normalized leads length {len(leads)}"
-                )
-
-        if not isinstance(normalized.get("normalization"), dict):
-            errors.append(f"{path}.normalized_path.normalization: normalization must be an object")
-        elif "normalization" not in entry:
-            errors.append(f"{path}.normalization: missing normalization metadata")
-        elif "normalization" in entry and entry.get("normalization") != normalized.get("normalization"):
-            errors.append(f"{path}.normalization: value does not match normalized artifact metadata")
-
-        if isinstance(entry.get("raw_bytes"), int) and not isinstance(entry.get("raw_bytes"), bool):
-            if entry.get("raw_bytes") != normalized.get("raw_bytes"):
-                errors.append(f"{path}.raw_bytes: value does not match normalized artifact raw_bytes")
-
-    return True
 
 
 def validate_dependencies(run_dir: Path, errors: List[str]) -> bool:
@@ -1558,155 +1192,10 @@ def validate_traces(run_dir: Path, findings: list[dict[str, Any]], errors: List[
 
 
 
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
-def validate_manifest_artifact_path(run_dir: Path, value: Any, field_path: str, errors: List[str]) -> Path | None:
-    if not isinstance(value, str) or not value.strip():
-        errors.append(f"{field_path}: path must be a non-empty string")
-        return None
-    rel = Path(value)
-    if rel.is_absolute():
-        errors.append(f"{field_path}: artifact path must be relative to the run directory")
-        return None
-    if ".." in rel.parts:
-        errors.append(f"{field_path}: artifact path must not contain '..'")
-        return None
-    current = run_dir
-    for part in rel.parts:
-        current = current / part
-        if current.is_symlink():
-            errors.append(f"{field_path}: artifact path must not contain symlink components: {rel.as_posix()}")
-            return None
-    target = run_dir / rel
-    if not target.exists():
-        errors.append(f"{field_path}: manifest artifact not found: {rel.as_posix()}")
-        return None
-    return target
 
 
-def validate_run_manifest(run_dir: Path, errors: List[str]) -> bool:
-    manifest_path = run_dir / RUN_MANIFEST_PATH
-    if not manifest_path.exists():
-        return False
-    try:
-        manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        errors.append(f"run-manifest.json invalid JSON: {exc}")
-        return True
-    if not isinstance(manifest_data, dict):
-        errors.append(f"run_manifest: expected type object, got {json_type_name(manifest_data)}")
-        return True
-    validate_schema(manifest_data, load_schema("run-manifest.schema.json"), "run_manifest", errors)
-    validate_generated_at(manifest_data.get("generated_at"), "run_manifest.generated_at", errors)
-
-    artifacts = manifest_data.get("artifacts")
-    if not isinstance(artifacts, list):
-        errors.append("run_manifest.artifacts: artifacts must be a list")
-        artifacts = []
-    artifact_by_path: dict[str, dict[str, Any]] = {}
-    retention_counts: dict[str, int] = {name: 0 for name in ARTIFACT_RETENTIONS}
-    retention_counts["unknown"] = 0
-    for index, artifact in enumerate(artifacts):
-        path = f"run_manifest.artifacts[{index}]"
-        if not isinstance(artifact, dict):
-            errors.append(f"{path}: artifact must be an object")
-            continue
-        artifact_path = artifact.get("path")
-        artifact_path_text = str(artifact_path or "")
-        if artifact_path_text in artifact_by_path:
-            errors.append(f"{path}.path: duplicate manifest artifact path {artifact_path_text}")
-        if artifact_path_text:
-            artifact_by_path[artifact_path_text] = artifact
-        retention = artifact.get("retention")
-        if retention not in ARTIFACT_RETENTIONS:
-            errors.append(f"{path}.retention: invalid retention {retention!r}")
-            retention_counts["unknown"] += 1
-        else:
-            retention_counts[str(retention)] = retention_counts.get(str(retention), 0) + 1
-        target = validate_manifest_artifact_path(run_dir, artifact_path, f"{path}.path", errors)
-        if target is None:
-            continue
-        expected_kind = "dir" if target.is_dir() else "file"
-        if artifact.get("kind") != expected_kind:
-            errors.append(f"{path}.kind: expected {expected_kind} for {artifact_path_text}")
-        if target.is_file():
-            size_bytes = artifact.get("size_bytes")
-            if not isinstance(size_bytes, int) or isinstance(size_bytes, bool) or size_bytes != target.stat().st_size:
-                errors.append(f"{path}.size_bytes: value does not match file size for {artifact_path_text}")
-            sha256 = artifact.get("sha256")
-            if not isinstance(sha256, str) or not re.fullmatch(r"[a-f0-9]{64}", sha256):
-                errors.append(f"{path}.sha256: file artifacts must include lowercase SHA-256")
-            elif sha256 != sha256_file(target):
-                errors.append(f"{path}.sha256: value does not match file digest for {artifact_path_text}")
-
-    retention_summary = manifest_data.get("artifact_retention") if isinstance(manifest_data.get("artifact_retention"), dict) else {}
-    latest_paths = retention_summary.get("latest_status_artifacts")
-    supporting_paths = retention_summary.get("supporting_artifacts")
-    archive_paths = retention_summary.get("archive_artifacts")
-    execution = manifest_data.get("execution") if isinstance(manifest_data.get("execution"), dict) else {}
-    completed_manifest = execution.get("phase") == "completed"
-    if not isinstance(latest_paths, list) or (completed_manifest and not latest_paths):
-        errors.append("run_manifest.artifact_retention.latest_status_artifacts: must be a non-empty list for completed manifests")
-        latest_paths = []
-    if not isinstance(supporting_paths, list):
-        errors.append("run_manifest.artifact_retention.supporting_artifacts: must be a list")
-        supporting_paths = []
-    if not isinstance(archive_paths, list):
-        errors.append("run_manifest.artifact_retention.archive_artifacts: must be a list")
-        archive_paths = []
-
-    latest_set = {str(path) for path in latest_paths if isinstance(path, str)}
-    supporting_set = {str(path) for path in supporting_paths if isinstance(path, str)}
-    archive_set = {str(path) for path in archive_paths if isinstance(path, str)}
-    for left_name, left_set, right_name, right_set in [
-        ("latest", latest_set, "supporting", supporting_set),
-        ("latest", latest_set, "archive", archive_set),
-        ("supporting", supporting_set, "archive", archive_set),
-    ]:
-        overlap = sorted(left_set & right_set)
-        if overlap:
-            errors.append(
-                f"run_manifest.artifact_retention: {left_name} and {right_name} artifacts overlap: {', '.join(overlap)}"
-            )
-    for path in sorted(latest_set):
-        artifact = artifact_by_path.get(path)
-        if artifact is None:
-            errors.append(f"run_manifest.artifact_retention.latest_status_artifacts: path is not listed in artifacts: {path}")
-        elif artifact.get("retention") != "latest":
-            errors.append(f"run_manifest.artifact_retention.latest_status_artifacts: {path} must have retention 'latest'")
-    for path in sorted(supporting_set):
-        artifact = artifact_by_path.get(path)
-        if artifact is None:
-            errors.append(f"run_manifest.artifact_retention.supporting_artifacts: path is not listed in artifacts: {path}")
-        elif artifact.get("retention") != "supporting":
-            errors.append(f"run_manifest.artifact_retention.supporting_artifacts: {path} must have retention 'supporting'")
-    for path in sorted(archive_set):
-        artifact = artifact_by_path.get(path)
-        if artifact is None:
-            errors.append(f"run_manifest.artifact_retention.archive_artifacts: path is not listed in artifacts: {path}")
-        elif artifact.get("retention") != "archive":
-            errors.append(f"run_manifest.artifact_retention.archive_artifacts: {path} must have retention 'archive'")
-    summary_sets = {
-        "latest": ("latest_status_artifacts", latest_set),
-        "supporting": ("supporting_artifacts", supporting_set),
-        "archive": ("archive_artifacts", archive_set),
-    }
-    for path, artifact in sorted(artifact_by_path.items()):
-        retention = artifact.get("retention")
-        if retention in summary_sets and path not in summary_sets[retention][1]:
-            field_name = summary_sets[retention][0]
-            errors.append(f"run_manifest.artifact_retention.{field_name}: missing {retention} artifact from summary: {path}")
-    by_retention = retention_summary.get("by_retention") if isinstance(retention_summary.get("by_retention"), dict) else {}
-    for key in ["latest", "supporting", "archive"]:
-        if by_retention.get(key) != retention_counts.get(key, 0):
-            errors.append(f"run_manifest.artifact_retention.by_retention.{key}: value does not match artifact list")
-    return True
 
 def validate_metrics_payload(value: Any, path: str, errors: List[str]) -> None:
     if isinstance(value, dict):
@@ -2369,63 +1858,10 @@ def validate_command_events(run_dir: Path, errors: List[str]) -> bool:
     return True
 
 
-def validate_affected_locations(finding: Dict[str, Any], path: str, errors: List[str]) -> None:
-    locs = finding.get("affected_locations")
-    if not isinstance(locs, list):
-        errors.append(f"{path}.affected_locations: affected_locations must be list")
-        return
-    for index, loc in enumerate(locs):
-        loc_path = f"{path}.affected_locations[{index}]"
-        if not isinstance(loc, dict):
-            errors.append(f"{loc_path}: location must be object")
-            continue
-        try:
-            validate_relative_repo_path(loc.get("file"), field_path=f"{loc_path}.file")
-        except ReportSafetyError as exc:
-            errors.append(str(exc))
-        for key in ("line", "end_line"):
-            if key in loc and loc.get(key) is not None:
-                if not isinstance(loc.get(key), int) or isinstance(loc.get(key), bool):
-                    errors.append(f"{loc_path}.{key}: {key} must be a positive integer or null")
-                elif int(loc[key]) < 1:
-                    errors.append(f"{loc_path}.{key}: {key} must be a positive integer")
-        if isinstance(loc.get("line"), int) and isinstance(loc.get("end_line"), int) and loc["end_line"] < loc["line"]:
-            errors.append(f"{loc_path}.end_line: end_line must be greater than or equal to line")
 
 
-def validate_fingerprint(finding: Dict[str, Any], path: str, fingerprints: set[str], errors: List[str]) -> None:
-    fp = str(finding.get("fingerprint") or "").strip()
-    if not fp:
-        errors.append(f"{path}.fingerprint: empty fingerprint")
-    elif fp.lower() in PLACEHOLDER_FINGERPRINTS or "placeholder" in fp.lower():
-        errors.append(f"{path}.fingerprint: fingerprint must not be a placeholder")
-    elif len(fp) < 8:
-        errors.append(f"{path}.fingerprint: fingerprint must be at least 8 characters")
-    elif fp in fingerprints:
-        errors.append(f"{path}.fingerprint: duplicate fingerprint {fp}")
-    fingerprints.add(fp)
 
 
-def validate_finding_assessments(finding: Dict[str, Any], path: str, errors: List[str]) -> None:
-    for key in ["bug_existence", "attacker_reachability", "boundary_crossing", "impact_assessment"]:
-        if key in finding and finding.get(key) not in ASSESSMENT_STATUSES:
-            errors.append(f"{path}.{key}: invalid assessment value {finding.get(key)}")
-
-    if "chain_membership" in finding:
-        validate_string_list(finding.get("chain_membership"), f"{path}.chain_membership", errors)
-        if isinstance(finding.get("chain_membership"), list):
-            for index, chain_id in enumerate(finding["chain_membership"]):
-                if isinstance(chain_id, str) and not re.fullmatch(r"CHAIN-[0-9]{3,}", chain_id):
-                    errors.append(f"{path}.chain_membership[{index}]: chain id must match ^CHAIN-[0-9]{{3,}}$")
-
-    if "assessment_notes" in finding:
-        notes = finding.get("assessment_notes")
-        if not isinstance(notes, dict):
-            errors.append(f"{path}.assessment_notes: assessment_notes must be object")
-            return
-        for key in ["bug_existence", "attacker_reachability", "boundary_crossing", "impact_assessment"]:
-            if key in notes and not isinstance(notes.get(key), str):
-                errors.append(f"{path}.assessment_notes.{key}: expected type string, got {json_type_name(notes.get(key))}")
 
 
 def main() -> int:
@@ -2474,59 +1910,24 @@ def main() -> int:
         taxonomy_profiles_loaded = False
         errors.append(f"taxonomy profiles/aliases: {exc}")
 
-    validate_schema(data, load_schema("findings.schema.json"), "findings", errors)
-    validate_generated_at(data.get("generated_at"), "findings.generated_at", errors)
-    for secret_error in iter_secret_findings(data, field_path="findings"):
-        errors.append(secret_error)
-
-    for key in REQUIRED_TOP:
-        if key not in data:
-            errors.append(f"findings.{key}: missing top-level key")
-    if not isinstance(data.get("findings"), list):
-        errors.append("findings.findings: findings must be a list")
-
-    findings = data.get("findings") if isinstance(data.get("findings"), list) else []
-    fingerprints: set[str] = set()
-    for i, f in enumerate(findings):
-        path_prefix = f"findings.findings[{i}]"
-        if not isinstance(f, dict):
-            errors.append(f"{path_prefix}: finding must be an object")
-            continue
-        for key in REQUIRED_FINDING:
-            if key not in f:
-                errors.append(f"{path_prefix}.{key}: missing key")
-        if f.get("severity") not in SEVERITIES:
-            errors.append(f"{path_prefix}.severity: invalid severity {f.get('severity')}")
-        if f.get("confidence") not in CONFIDENCES:
-            errors.append(f"{path_prefix}.confidence: invalid confidence {f.get('confidence')}")
-        if f.get("status") not in STATUSES:
-            errors.append(f"{path_prefix}.status: invalid status {f.get('status')}")
-        validate_fingerprint(f, path_prefix, fingerprints, errors)
-        validate_affected_locations(f, path_prefix, errors)
-        validate_finding_assessments(f, path_prefix, errors)
-        if not isinstance(f.get("labels"), list):
-            errors.append(f"{path_prefix}.labels: labels must be list")
-        if not isinstance(f.get("issue_recommended"), bool):
-            errors.append(f"{path_prefix}.issue_recommended: issue_recommended must be boolean")
-        if taxonomy_profiles_loaded:
-            validate_taxonomy_refs(f.get("taxonomies"), f"{path_prefix}.taxonomies", errors, taxonomy_profiles, taxonomy_labels, taxonomy_aliases)
-        if f.get("issue_recommended"):
-            if "public_disclosure_risk" not in f:
-                errors.append(f"{path_prefix}.public_disclosure_risk: required when issue_recommended is true")
-            body_file = str(f.get("issue_body_file") or "")
-            if body_file:
-                try:
-                    safe_issue_body_path(run_dir, body_file, field_path=f"{path_prefix}.issue_body_file")
-                except ReportSafetyError as exc:
-                    errors.append(str(exc))
-        elif f.get("issue_body_file"):
-            try:
-                safe_issue_body_path(run_dir, f.get("issue_body_file"), field_path=f"{path_prefix}.issue_body_file")
-            except ReportSafetyError as exc:
-                errors.append(str(exc))
-
-    validate_targets(run_dir, errors, taxonomy_profiles, taxonomy_labels, taxonomy_aliases, taxonomy_profiles_loaded)
-    scanner_index_validated = validate_scanner_index(run_dir, errors)
+    validation_context = ValidationContext(
+        lab_root=LAB_ROOT,
+        run_dir=run_dir,
+        findings_path=path,
+        findings_data=data,
+        errors=errors,
+        taxonomy_profiles=taxonomy_profiles,
+        taxonomy_labels=taxonomy_labels,
+        taxonomy_aliases=taxonomy_aliases,
+        taxonomy_profiles_loaded=taxonomy_profiles_loaded,
+    )
+    validator_registry = core_validator_registry()
+    core_results = validator_registry.run(
+        validation_context,
+        ["findings", "targets", "scanner_index"],
+    )
+    findings = validation_context.findings
+    scanner_index_validated = core_results["scanner_index"]
     dependencies_validated = validate_dependencies(run_dir, errors)
     chains_validated = validate_chains(run_dir, findings, errors)
     adversarial_validation_validated = validate_adversarial_validation(run_dir, findings, errors)
@@ -2544,7 +1945,7 @@ def main() -> int:
     duplicate_decisions_validated = validate_duplicate_decisions(run_dir, errors)
     run_state_validated = validate_run_state(run_dir, errors)
     command_events_validated = validate_command_events(run_dir, errors)
-    run_manifest_validated = validate_run_manifest(run_dir, errors)
+    run_manifest_validated = validator_registry.run(validation_context, ["run_manifest"])["run_manifest"]
 
     if errors:
         for e in errors:
@@ -2554,7 +1955,7 @@ def main() -> int:
 
     print(f"OK: {path}")
     print(f"Findings: {len(findings)}")
-    if (run_dir / "reports" / "targets.json").exists():
+    if core_results["targets"]:
         print("Targets: validated")
     if scanner_index_validated:
         print("Scanner index: validated")
