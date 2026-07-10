@@ -1337,6 +1337,33 @@ class ReportContractTests(unittest.TestCase):
         self.assertIn("affected_locations[0].file", cp.stderr)
         self.assertIn("issue_body_file must not contain", cp.stderr)
 
+    def test_core_artifact_validators_reject_non_object_json_without_crashing(self) -> None:
+        run_dir = self.copy_run()
+
+        (run_dir / "reports" / "findings.json").write_text("[]\n", encoding="utf-8")
+        cp = self.run_validator(run_dir)
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("findings: expected type object, got array", cp.stderr)
+        self.assertNotIn("Traceback", cp.stderr)
+
+        shutil.rmtree(run_dir)
+        run_dir = self.copy_run()
+        (run_dir / "reports" / "targets.json").write_text("[]\n", encoding="utf-8")
+        cp = self.run_validator(run_dir)
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("targets: expected type object, got array", cp.stderr)
+        self.assertNotIn("Traceback", cp.stderr)
+
+        shutil.rmtree(run_dir)
+        run_dir = self.copy_run()
+        scanner_dir = run_dir / "reports" / "scanner-results"
+        scanner_dir.mkdir(parents=True, exist_ok=True)
+        (scanner_dir / "scanner-index.json").write_text("[]\n", encoding="utf-8")
+        cp = self.run_validator(run_dir)
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("scanner_index: expected type object, got array", cp.stderr)
+        self.assertNotIn("Traceback", cp.stderr)
+
     def test_run_manifest_retention_hygiene_validates_latest_and_archive_artifacts(self) -> None:
         run_dir = self.copy_run()
         (run_dir / "run-summary.txt").write_text("final_status=0\n", encoding="utf-8")

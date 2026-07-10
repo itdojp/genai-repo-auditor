@@ -16,7 +16,7 @@ from validators.scanner import validate_scanner_index  # noqa: E402
 from validators.targets import validate_targets  # noqa: E402
 
 
-def context_for(run_dir: Path, findings_data: dict | None = None) -> ValidationContext:
+def context_for(run_dir: Path, findings_data: object | None = None) -> ValidationContext:
     findings_path = run_dir / "reports" / "findings.json"
     if findings_data is None and findings_path.exists():
         findings_data = json.loads(findings_path.read_text(encoding="utf-8"))
@@ -66,6 +66,10 @@ class ValidatorRegistryTests(unittest.TestCase):
                     ["run_manifest.artifacts[0].path: artifact path must be relative to the run directory"],
                     errors,
                 )
+
+    def test_context_findings_returns_empty_for_non_object_payload(self) -> None:
+        context = context_for(REPO_ROOT / "tests" / "fixtures" / "minimal-run", [])
+        self.assertEqual([], context.findings)
 
     def test_core_registry_has_stable_names_and_extracted_implementations(self) -> None:
         registry = core_validator_registry()

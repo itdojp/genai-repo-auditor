@@ -40,6 +40,8 @@ def validate_targets(context: ValidationContext) -> bool:
         return True
 
     validate_schema(targets_data, context.schema("targets.schema.json"), "targets", errors)
+    if not isinstance(targets_data, dict):
+        return True
     validate_generated_at(targets_data.get("generated_at"), "targets.generated_at", errors)
 
     targets = targets_data.get("targets")

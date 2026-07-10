@@ -182,7 +182,7 @@ def validate_run_artifact_path(
     for part in rel.parts:
         current = current / part
         if current.is_symlink():
-            raise ReportSafetyError(f"{field_path}: proof artifact path must not contain symlink components: {rel.as_posix()}")
+            raise ReportSafetyError(f"{field_path}: scanner artifact path must not contain symlink components: {rel.as_posix()}")
     expected_root = (run_dir / required_root).resolve(strict=False)
     resolved_target = target.resolve(strict=False)
     try:

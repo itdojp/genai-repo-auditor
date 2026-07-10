@@ -14,7 +14,7 @@ class ValidationContext:
     lab_root: Path
     run_dir: Path
     findings_path: Path
-    findings_data: dict[str, Any]
+    findings_data: Any
     errors: list[str]
     taxonomy_profiles: dict[str, dict[str, Any]] = field(default_factory=dict)
     taxonomy_labels: dict[tuple[str, str], str] = field(default_factory=dict)
@@ -23,6 +23,8 @@ class ValidationContext:
 
     @property
     def findings(self) -> list[Any]:
+        if not isinstance(self.findings_data, dict):
+            return []
         value = self.findings_data.get("findings")
         return value if isinstance(value, list) else []
 

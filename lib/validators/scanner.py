@@ -40,6 +40,8 @@ def validate_scanner_index(context: ValidationContext) -> bool:
         return True
 
     validate_schema(scanner_index, context.schema("scanner-index.schema.json"), "scanner_index", errors)
+    if not isinstance(scanner_index, dict):
+        return True
     validate_generated_at(scanner_index.get("generated_at"), "scanner_index.generated_at", errors)
 
     results = scanner_index.get("results")

@@ -121,6 +121,8 @@ def validate_findings(context: ValidationContext) -> bool:
     data = context.findings_data
     errors = context.errors
     validate_schema(data, context.schema("findings.schema.json"), "findings", errors)
+    if not isinstance(data, dict):
+        return True
     validate_generated_at(data.get("generated_at"), "findings.generated_at", errors)
     for secret_error in iter_secret_findings(data, field_path="findings"):
         errors.append(secret_error)
