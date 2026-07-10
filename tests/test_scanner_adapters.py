@@ -69,6 +69,10 @@ class ScannerAdapterTests(unittest.TestCase):
             validate_adapter(replace(ADAPTERS["gitleaks"], argument_template=("{target}", "|", "{output}")))
         with self.assertRaisesRegex(ScannerAdapterError, "unknown placeholder"):
             validate_adapter(replace(ADAPTERS["gitleaks"], argument_template=("{target}", "{secret}", "{output}")))
+        with self.assertRaisesRegex(ScannerAdapterError, "sandbox profile"):
+            validate_adapter(replace(ADAPTERS["gitleaks"], approved_sandbox_profiles=()))
+        with self.assertRaisesRegex(ScannerAdapterError, "operating system"):
+            validate_adapter(replace(ADAPTERS["gitleaks"], supported_operating_systems=()))
 
     def test_plan_is_run_relative_non_executing_and_machine_readable(self) -> None:
         plan = build_scan_plan(

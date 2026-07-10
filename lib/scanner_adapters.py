@@ -131,6 +131,8 @@ def validate_adapter(adapter: ScannerAdapter) -> None:
         raise ScannerAdapterError("adapter id is invalid")
     if not _SAFE_EXECUTABLE_RE.fullmatch(adapter.executable):
         raise ScannerAdapterError("adapter executable must be a bare executable name")
+    if not adapter.display_name.strip():
+        raise ScannerAdapterError("adapter display name must not be empty")
     if not adapter.version_args:
         raise ScannerAdapterError("adapter version check must use an argument array")
     for token in (*adapter.version_args, *adapter.argument_template):
@@ -139,12 +141,18 @@ def validate_adapter(adapter: ScannerAdapter) -> None:
         raise ScannerAdapterError("adapter command must declare a target placeholder")
     if "{output}" not in " ".join(adapter.argument_template):
         raise ScannerAdapterError("adapter command must declare an output placeholder")
-    if not set(adapter.approved_sandbox_profiles).issubset(PROFILE_IDS):
+    if not adapter.supported_operating_systems or not set(adapter.supported_operating_systems).issubset(
+        {"linux", "darwin", "windows"}
+    ):
+        raise ScannerAdapterError("adapter must declare at least one supported operating system")
+    if not adapter.approved_sandbox_profiles or not set(adapter.approved_sandbox_profiles).issubset(PROFILE_IDS):
         raise ScannerAdapterError("adapter declares an unknown sandbox profile")
     if adapter.result_classification not in RESULT_CLASSIFICATIONS:
         raise ScannerAdapterError("adapter result classification is invalid")
     if min(adapter.timeout_seconds, adapter.max_output_bytes, adapter.max_results) <= 0:
         raise ScannerAdapterError("adapter limits must be positive")
+    if not all(value.strip() for value in (adapter.output_format, adapter.ingest_tool, adapter.secret_handling)):
+        raise ScannerAdapterError("adapter output, ingest, and secret-handling metadata must not be empty")
     if not adapter.exit_semantics:
         raise ScannerAdapterError("adapter exit semantics must not be empty")
 
