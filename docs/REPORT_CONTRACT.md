@@ -208,9 +208,12 @@ installation, or producer/consumer repository modification.
 `gra-metrics`. It records counts and rates for findings, adversarial validation
 decisions, chains, proofs, gapfill, traces, Issue publication plan warnings,
 Issue ledger publication states, workflow-profile scoped skips, duplicate
-decision counts, artifact counts, and run duration when local metadata is
-available. It must not copy raw finding evidence, issue body text,
-proof evidence, trace evidence, scanner lead bodies, or secret values.
+decision counts, artifact counts, run duration when local metadata is
+available, and structured command-event observability aggregates such as status,
+duration, failure, retry, execution-configuration, artifact-reference, stage,
+and producer-coverage summaries. It must not copy raw finding evidence, issue
+body text, proof evidence, trace evidence, scanner lead bodies, or secret
+values.
 
 `workflow-profile.json` is a local-only workflow scope artifact produced by
 `gra-workflow-profile`. The initial `recon-only` profile records completed
@@ -276,28 +279,59 @@ artifact references.
 Current v2 producers include `gra-audit`, `gra-recon`, `gra-targets`,
 `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`,
 `gra-remediate`, `gra-adversarial-validate`, `gra-trace`, `gra-ingest`,
-`gra-import-findings`, `gra-scanner-triage`, `gra-issues`, and
-`gra-validate-report`. Ingestion and publication events contain only bounded
+`gra-import-findings`, `gra-scanner-triage`, `gra-issues`,
+`gra-validate-report`, `gra-metrics`, `gra-benchmark`,
+`gra-evidence-graph`, `gra-dashboard`, `gra-sarif`, and `gra-store`.
+Ingestion, publication, reporting, and store events contain only bounded
 phase/status metadata and run-relative artifact references; scanner bodies,
-external finding evidence, credentials, and Issue body text are excluded. New
-event producers should pass input and output artifact
-references explicitly rather than relying on the legacy `artifact_paths`
-fallback. `gra-metrics` uses these events to report per-execution durations,
-failures, reruns, validation retries, and target-level normalization counts.
+external finding evidence, credentials, Issue body text, absolute output paths,
+and SQLite paths outside the run directory are excluded. New event producers
+should pass input and output artifact references explicitly rather than relying
+on the legacy `artifact_paths` fallback. Failed reporting events include only
+output files that were actually written before the failure; planned but absent
+outputs are not counted as produced artifacts. `gra-metrics` uses these events to
+report per-execution status counts, duration summaries, failures, reruns,
+explicit retries, validation retries, configuration coverage, artifact-ref
+production counts, stage-group coverage, producer coverage, and target-level
+normalization counts.
+
+Producer coverage uses the current completion-event producer set as its
+denominator, not the broader `COMMAND_EVENT_COMMANDS` allowlist. The following
+14 command names are accepted by the schema/reader as utility, orchestrator, or
+reserved command names but are intentionally excluded from producer coverage
+because they do not currently emit completion events: `gra-agent-check`,
+`gra-batch`, `gra-doctor`, <code>gra&#45;efficacy-benchmark</code>, `gra-index`,
+`gra-no-findings`, `gra-novelty`, <code>gra&#45;run</code>, `gra-run-state`,
+`gra-sandbox-check`, <code>gra&#45;scan</code>, `gra-taxonomy-preflight`,
+`gra-workflow-profile`, and `gra-worktree-check`. This is an acceptance/coverage
+exception only; it does not imply those command names are invalid in the shared
+event contract.
 
 Commands that copy scanner bodies, invoke a worker, or mutate GitHub state
 preflight the event append target and planned artifact references before those
-side effects. A preflight creates an empty regular event file when needed but
-does not append a record; the completion event is appended after the command
-outcome is known.
+side effects. Most side-effecting commands reserve the append target during
+preflight. The reporting/persistence commands `gra-metrics`, `gra-benchmark`,
+`gra-evidence-graph`, `gra-dashboard`, `gra-sarif`, and `gra-store` use
+non-reserving preflight: it validates local artifact references and append
+safety, including the planned event payload and context-derived identifiers,
+without leaving behind a new empty `command-events.jsonl` file when no log
+existed yet. The existence check and any removal of a newly created empty file
+occur under the same append lock, so a concurrent writer's event file is not
+removed. In all cases the completion event is appended after the
+command outcome is known, so a report produced by the current invocation does
+not include its own completion event and that event becomes observable on the
+next `gra-metrics` execution; a later `gra-dashboard` run can then display the updated metrics.
 
-Command-event writing is fail-closed by default: command-completion events use
-blocking write semantics so an unwritable or unsafe observability record cannot
-silently turn a command into a successful-but-untracked execution. A future
-producer may explicitly use warning-only semantics only for non-critical status
-events. Event payloads must not contain raw prompts, environment variables,
-credentials, finding evidence, Issue body text, proof payloads, private
-reasoning, scanner bodies, or remediation patch content.
+Command-event writing is fail-closed by default: successful command-completion
+events use blocking write semantics so an unwritable or unsafe observability
+record cannot silently turn a command into a successful-but-untracked
+execution. The six reporting/persistence producers use warning-only append
+semantics only when they are already returning a non-zero status
+(`reporting_failure` or benchmark `quality_gate`) so the original failure code
+is preserved. Event payloads must not contain raw
+prompts, environment variables, credentials, finding evidence, Issue body
+text, proof payloads, private reasoning, scanner bodies, or remediation patch
+content.
 
 `run-manifest.json` is a run-root support artifact produced by `gra-audit`.
 Its `artifacts[]` entries use run-relative paths and include `kind`,

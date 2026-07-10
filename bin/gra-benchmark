@@ -8,6 +8,14 @@ from pathlib import Path
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
 from benchmark import BenchmarkError, copy_fixture_run, write_benchmark, DEFAULT_MAX_CHAINS  # noqa: E402
+from metrics import MetricsError, reports_dir  # noqa: E402
+from run_events import (  # noqa: E402
+    EventWriteError,
+    append_command_event,
+    local_artifact_paths,
+    preflight_command_event,
+    start_command_event,
+)
 from version import auditor_version  # noqa: E402
 
 
@@ -34,7 +42,60 @@ def main() -> int:
             if args.out_run:
                 parser.error("--out-run can only be used with --fixture")
             run_dir = Path(args.run).resolve()
+            if not run_dir.is_dir():
+                raise BenchmarkError(f"benchmark run directory not found: {run_dir}")
+            if not (run_dir / "context.json").is_file():
+                raise BenchmarkError(f"benchmark run context not found: {run_dir / 'context.json'}")
             fixture = None
+    except (OSError, ValueError, BenchmarkError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    started_at, started_perf = start_command_event()
+    try:
+        reports = reports_dir(run_dir)
+    except MetricsError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    expected_json = Path(args.out_json).resolve() if args.out_json else reports / "benchmark.json"
+    expected_md = Path(args.out_md).resolve() if args.out_md else reports / "BENCHMARK.md"
+    input_artifacts = [run_dir / "context.json", reports]
+    output_artifacts = local_artifact_paths(run_dir, [expected_json, expected_md])
+
+    def finish(exit_code: int, *, error_category: str | None = None) -> int:
+        event_outputs = (
+            output_artifacts
+            if exit_code == 0
+            else [path for path in output_artifacts if path.is_file() and not path.is_symlink()]
+        )
+        append_command_event(
+            run_dir,
+            command="gra-benchmark",
+            phase="benchmark",
+            started_at=started_at,
+            started_perf=started_perf,
+            exit_code=exit_code,
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=event_outputs,
+            error_category=error_category,
+            failure_mode="warn" if exit_code != 0 else "block",
+        )
+        return exit_code
+
+    try:
+        preflight_command_event(
+            run_dir,
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=output_artifacts,
+            event_fields={
+                "command": "gra-benchmark",
+                "phase": "benchmark",
+                "started_at": started_at,
+                "started_perf": started_perf,
+                "exit_code": 0,
+            },
+            reserve_file=False,
+        )
         json_path, md_path, benchmark = write_benchmark(
             lab_root=LAB_ROOT,
             run_dir=run_dir,
@@ -44,9 +105,12 @@ def main() -> int:
             out_md=Path(args.out_md) if args.out_md else None,
             validate_reports=not args.skip_validation,
         )
-    except (OSError, ValueError, BenchmarkError) as exc:
+    except EventWriteError as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    except (OSError, ValueError, BenchmarkError) as exc:
+        print(str(exc), file=sys.stderr)
+        return finish(2, error_category="reporting_failure")
 
     summary = benchmark["summary"]
     metrics_summary = benchmark["metrics"]["summary"]
@@ -61,7 +125,8 @@ def main() -> int:
     print(f"Chains: {metrics_summary['chain_count']}")
     print(f"Issue plan warnings: {metrics_summary['issue_plan_warning_count']}")
     print(f"Workflow skipped by scope: {metrics_summary.get('workflow_skipped_by_scope_count', 0)}")
-    return 1 if summary["failed"] else 0
+    exit_code = 1 if summary["failed"] else 0
+    return finish(exit_code, error_category="quality_gate" if exit_code else None)
 
 
 if __name__ == "__main__":

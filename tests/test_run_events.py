@@ -19,6 +19,7 @@ import run_events  # noqa: E402
 
 EventValidationError = run_events.EventValidationError
 EventWriteError = run_events.EventWriteError
+COMMAND_EVENT_PRODUCERS = run_events.COMMAND_EVENT_PRODUCERS
 append_command_event = run_events.append_command_event
 build_command_event = run_events.build_command_event
 load_command_events = run_events.load_command_events
@@ -321,6 +322,20 @@ class RunEventsTests(unittest.TestCase):
         self.assertTrue(path.is_file())
         self.assertEqual(b"", path.read_bytes())
 
+        path.unlink()
+        non_reserved_path = preflight_command_event(
+            run_dir,
+            input_artifact_paths=[run_dir / "context.json"],
+            reserve_file=False,
+        )
+        self.assertEqual(path, non_reserved_path)
+        self.assertFalse(path.exists())
+
+        # Existing logs are never removed by the non-reserving reporting mode.
+        path.write_text("existing\n", encoding="utf-8")
+        preflight_command_event(run_dir, reserve_file=False)
+        self.assertEqual("existing\n", path.read_text(encoding="utf-8"))
+
         with self.assertRaises(EventWriteError):
             preflight_command_event(run_dir, output_artifact_paths=[self.work_dir / "outside.json"])
 
@@ -328,6 +343,103 @@ class RunEventsTests(unittest.TestCase):
         path.symlink_to(self.work_dir / "outside-events.jsonl")
         with self.assertRaises(EventWriteError):
             preflight_command_event(run_dir)
+
+    def test_declared_event_producers_have_instrumented_entry_points(self) -> None:
+        expected_producers = {
+            "gra-adversarial-validate",
+            "gra-audit",
+            "gra-benchmark",
+            "gra-chains",
+            "gra-dashboard",
+            "gra-evidence-graph",
+            "gra-gapfill",
+            "gra-import-findings",
+            "gra-ingest",
+            "gra-issues",
+            "gra-metrics",
+            "gra-proofs",
+            "gra-recon",
+            "gra-remediate",
+            "gra-research",
+            "gra-sarif",
+            "gra-scanner-triage",
+            "gra-store",
+            "gra-targets",
+            "gra-trace",
+            "gra-validate-report",
+            "gra-variant",
+        }
+        self.assertEqual(expected_producers, set(COMMAND_EVENT_PRODUCERS))
+        for command in COMMAND_EVENT_PRODUCERS:
+            entry_point = REPO_ROOT / "bin" / command
+            self.assertTrue(entry_point.is_file(), command)
+            self.assertIn("append_command_event", entry_point.read_text(encoding="utf-8"), command)
+
+    def test_non_reserving_preflight_does_not_delete_a_concurrent_append(self) -> None:
+        run_dir = self.make_run()
+        preflight_waiting = threading.Event()
+        append_finished = threading.Event()
+        real_acquire = run_events._acquire_event_append_lock
+        main_thread = threading.current_thread()
+
+        def delayed_acquire(path: Path, *, timeout_seconds: float = 10.0) -> Path:
+            if threading.current_thread() is main_thread:
+                preflight_waiting.set()
+                self.assertTrue(append_finished.wait(timeout=5))
+            return real_acquire(path, timeout_seconds=timeout_seconds)
+
+        def append_worker() -> None:
+            self.assertTrue(preflight_waiting.wait(timeout=5))
+            started_at, started_perf = start_command_event()
+            append_command_event(
+                run_dir,
+                command="gra-research",
+                phase="exec",
+                target_id="TGT-001",
+                started_at=started_at,
+                started_perf=started_perf,
+                exit_code=0,
+            )
+            append_finished.set()
+
+        worker = threading.Thread(target=append_worker)
+        original_acquire = run_events._acquire_event_append_lock
+        try:
+            run_events._acquire_event_append_lock = delayed_acquire
+            worker.start()
+            preflight_command_event(run_dir, reserve_file=False)
+            worker.join(timeout=5)
+        finally:
+            run_events._acquire_event_append_lock = original_acquire
+
+        self.assertFalse(worker.is_alive())
+        events = load_command_events(run_dir)
+        self.assertEqual(1, len(events))
+        self.assertEqual("gra-research", events[0]["command"])
+
+    def test_full_event_preflight_rejects_invalid_context_before_reserving_file(self) -> None:
+        run_dir = self.make_run()
+        context_path = run_dir / "context.json"
+        context = json.loads(context_path.read_text(encoding="utf-8"))
+        context["repo"] = "invalid repo with spaces"
+        context_path.write_text(json.dumps(context) + "\n", encoding="utf-8")
+        started_at, started_perf = start_command_event()
+
+        with self.assertRaisesRegex(EventWriteError, "event.repo"):
+            preflight_command_event(
+                run_dir,
+                input_artifact_paths=[context_path],
+                event_fields={
+                    "command": "gra-store",
+                    "phase": "store",
+                    "started_at": started_at,
+                    "started_perf": started_perf,
+                    "exit_code": 0,
+                },
+                reserve_file=False,
+            )
+
+        self.assertFalse((run_dir / "reports" / "command-events.jsonl").exists())
 
     def test_broken_symlink_artifact_component_is_rejected(self) -> None:
         run_dir = self.make_run()

@@ -7,7 +7,14 @@ from pathlib import Path
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
-from metrics import MetricsError, write_metrics  # noqa: E402
+from metrics import MetricsError, reports_dir, write_metrics  # noqa: E402
+from run_events import (  # noqa: E402
+    EventWriteError,
+    append_command_event,
+    local_artifact_paths,
+    preflight_command_event,
+    start_command_event,
+)
 from version import auditor_version  # noqa: E402
 
 
@@ -20,6 +27,54 @@ def main() -> int:
     args = parser.parse_args()
 
     run_dir = Path(args.run).resolve()
+    started_at, started_perf = start_command_event()
+    try:
+        reports = reports_dir(run_dir)
+    except MetricsError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    json_path = Path(args.out_json).resolve() if args.out_json else reports / "metrics.json"
+    md_path = Path(args.out_md).resolve() if args.out_md else reports / "METRICS.md"
+    input_artifacts = [run_dir / "context.json", reports]
+    output_artifacts = local_artifact_paths(run_dir, [json_path, md_path])
+
+    def finish(exit_code: int, *, error_category: str | None = None) -> int:
+        event_outputs = (
+            output_artifacts
+            if exit_code == 0
+            else [path for path in output_artifacts if path.is_file() and not path.is_symlink()]
+        )
+        append_command_event(
+            run_dir,
+            command="gra-metrics",
+            phase="metrics",
+            started_at=started_at,
+            started_perf=started_perf,
+            exit_code=exit_code,
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=event_outputs,
+            error_category=error_category,
+            failure_mode="warn" if exit_code != 0 else "block",
+        )
+        return exit_code
+
+    try:
+        preflight_command_event(
+            run_dir,
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=output_artifacts,
+            event_fields={
+                "command": "gra-metrics",
+                "phase": "metrics",
+                "started_at": started_at,
+                "started_perf": started_perf,
+                "exit_code": 0,
+            },
+            reserve_file=False,
+        )
+    except EventWriteError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     try:
         json_path, md_path, metrics = write_metrics(
             run_dir,
@@ -28,7 +83,7 @@ def main() -> int:
         )
     except (OSError, ValueError, MetricsError) as exc:
         print(str(exc), file=sys.stderr)
-        return 2
+        return finish(2, error_category="reporting_failure")
 
     print(f"Wrote {json_path}")
     print(f"Wrote {md_path}")
@@ -46,7 +101,7 @@ def main() -> int:
     print(f"Latest status artifacts: {metrics['artifacts']['latest_status_artifact_count']}")
     print(f"Archive artifacts: {metrics['artifacts']['archive_artifact_count']}")
     print(f"Manifest hygiene warnings: {metrics['artifacts']['manifest_hygiene_warnings']}")
-    return 0
+    return finish(0)
 
 
 if __name__ == "__main__":

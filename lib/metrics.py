@@ -8,7 +8,12 @@ from pathlib import Path
 from typing import Any
 
 from gralib import load_context, utc_now, write_json
-from run_events import COMMAND_EVENT_COMMANDS, COMMAND_EVENT_PHASES
+from run_events import (
+    COMMAND_EVENT_COMMANDS,
+    COMMAND_EVENT_PHASES,
+    COMMAND_EVENT_PRODUCERS,
+    COMMAND_EVENT_STATUSES,
+)
 from duplicate_decisions import duplicate_decision_metrics
 from issue_ledger import ledger_metrics
 from workflow_profile import summarize_workflow_profile
@@ -43,6 +48,15 @@ OBSERVABILITY_PHASES = [*COMMAND_EVENT_PHASES, "unknown"]
 RUN_TARGET_ID = "__run__"
 UNKNOWN_TARGET_ID = "__unknown__"
 TARGET_ID_RE = re.compile(r"^TGT-(?:[A-Z][A-Z0-9]*-)?[0-9]{3,}$")
+EVENT_METADATA_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.:/@+=-]{0,127}$")
+SCANNER_EVENT_COMMANDS = {"gra-import-findings", "gra-ingest", "gra-scan", "gra-scanner-triage"}
+REMEDIATION_EVENT_COMMANDS = {
+    "gra-adversarial-validate",
+    "gra-chains",
+    "gra-proofs",
+    "gra-remediate",
+    "gra-trace",
+}
 
 
 class MetricsError(RuntimeError):
@@ -283,6 +297,23 @@ def safe_duration_ms(value: Any) -> int:
     return 0
 
 
+def safe_event_metadata(value: Any, default: str = "not-recorded") -> str:
+    if isinstance(value, str) and EVENT_METADATA_RE.fullmatch(value):
+        return value
+    return default
+
+
+def event_subject_id(event: dict[str, Any]) -> str:
+    value = event.get("subject_id") or event.get("target_id")
+    return safe_event_metadata(value, RUN_TARGET_ID)
+
+
+def event_ref_count(value: Any) -> int:
+    if not isinstance(value, list):
+        return 0
+    return sum(1 for item in value if isinstance(item, str))
+
+
 def target_ids_by_index(targets: list[dict[str, Any]]) -> dict[int, str]:
     mapping: dict[int, str] = {}
     for index, target in enumerate(targets):
@@ -314,33 +345,85 @@ def observability_metrics(
     phase_counts: Counter[str] = Counter()
     exit_counts: Counter[str] = Counter()
     target_counts: Counter[str] = Counter()
+    subject_counts: Counter[str] = Counter()
     failures_by_target: Counter[str] = Counter()
+    failures_by_subject: Counter[str] = Counter()
     grouped_event_counts: Counter[tuple[str, str, str]] = Counter()
+    grouped_subject_counts: Counter[tuple[str, str, str]] = Counter()
     validation_counts: Counter[str] = Counter()
+    status_counts: Counter[str] = Counter()
+    retries_by_subject: Counter[str] = Counter()
+    worker_counts: Counter[str] = Counter()
+    model_counts: Counter[str] = Counter()
+    effort_counts: Counter[str] = Counter()
+    sandbox_counts: Counter[str] = Counter()
+    network_counts: Counter[str] = Counter()
+    output_artifacts_by_command: Counter[str] = Counter()
+    scanner_phase_counts: Counter[str] = Counter()
+    remediation_phase_counts: Counter[str] = Counter()
+    issue_publication_phase_counts: Counter[str] = Counter()
+    input_artifact_ref_count = 0
+    output_artifact_ref_count = 0
+    retry_count = 0
 
     for event in command_events:
         command = safe_label(event.get("command"), OBSERVABILITY_COMMANDS, "unknown")
         phase = safe_label(event.get("phase"), OBSERVABILITY_PHASES, "unknown")
         target_id = safe_target_id(event.get("target_id"))
+        subject_id = event_subject_id(event)
         duration_ms = safe_duration_ms(event.get("duration_ms"))
         exit_code = safe_exit_code(event.get("exit_code"))
+        raw_status = event.get("status")
+        status = safe_label(
+            raw_status,
+            COMMAND_EVENT_STATUSES,
+            "succeeded" if exit_code == 0 else "failed",
+        )
         duration_record = {
             "target_id": target_id,
+            "subject_id": subject_id,
             "command": command,
             "phase": phase,
             "duration_ms": duration_ms,
             "exit_code": exit_code,
+            "status": status,
         }
         durations.append(duration_record)
         command_counts[command] += 1
         phase_counts[phase] += 1
         exit_counts[str(exit_code)] += 1
         target_counts[target_id] += 1
+        subject_counts[subject_id] += 1
         grouped_event_counts[(target_id, command, phase)] += 1
+        grouped_subject_counts[(subject_id, command, phase)] += 1
+        status_counts[status] += 1
+        worker_counts[safe_event_metadata(event.get("worker_profile"))] += 1
+        model_counts[safe_event_metadata(event.get("model"))] += 1
+        effort_counts[safe_event_metadata(event.get("effort"))] += 1
+        sandbox_counts[safe_event_metadata(event.get("sandbox_profile"))] += 1
+        network_allowed = event.get("network_allowed")
+        network_counts["allowed" if network_allowed is True else "denied" if network_allowed is False else "not-recorded"] += 1
+        input_count = event_ref_count(event.get("input_artifact_refs"))
+        output_count = event_ref_count(event.get("output_artifact_refs") or event.get("artifact_paths"))
+        input_artifact_ref_count += input_count
+        output_artifact_ref_count += output_count
+        output_artifacts_by_command[command] += output_count
+        attempt = event.get("attempt")
+        is_retry = (isinstance(attempt, int) and not isinstance(attempt, bool) and attempt > 1) or bool(event.get("retry_of"))
+        if is_retry:
+            retry_count += 1
+            retries_by_subject[subject_id] += 1
         if exit_code != 0:
             failures_by_target[target_id] += 1
+            failures_by_subject[subject_id] += 1
         if command == "gra-validate-report":
             validation_counts[target_id] += 1
+        if command in SCANNER_EVENT_COMMANDS:
+            scanner_phase_counts[phase] += 1
+        if command in REMEDIATION_EVENT_COMMANDS:
+            remediation_phase_counts[phase] += 1
+        if command == "gra-issues":
+            issue_publication_phase_counts[phase] += 1
 
     durations.sort(key=lambda item: (-int(item["duration_ms"]), str(item["target_id"]), str(item["command"])))
 
@@ -348,6 +431,11 @@ def observability_metrics(
     for (target_id, _command, _phase), count in grouped_event_counts.items():
         if count > 1:
             reruns_by_target[target_id] += count - 1
+
+    reruns_by_subject: Counter[str] = Counter()
+    for (subject_id, _command, _phase), count in grouped_subject_counts.items():
+        if count > 1:
+            reruns_by_subject[subject_id] += count - 1
 
     validation_retries_by_target = {
         target_id: count - 1
@@ -361,16 +449,57 @@ def observability_metrics(
         for event in taxonomy_normalizations
     )
 
+    total_duration_ms = sum(int(item["duration_ms"]) for item in durations)
+    observed_producers = sorted(command for command in command_counts if command in COMMAND_EVENT_PRODUCERS)
+    not_observed_producers = sorted(set(COMMAND_EVENT_PRODUCERS) - set(observed_producers))
+
     return {
         "command_events_present": command_events_present,
         "total_events": len(command_events),
         "by_command": counter_dict(command_counts, OBSERVABILITY_COMMANDS),
         "by_phase": counter_dict(phase_counts, OBSERVABILITY_PHASES),
         "by_exit_code": counter_dict(exit_counts),
+        "by_status": counter_dict(status_counts, COMMAND_EVENT_STATUSES),
         "execution_durations": durations,
+        "duration_summary": {
+            "total_ms": total_duration_ms,
+            "average_ms": round(total_duration_ms / len(durations), 3) if durations else 0.0,
+            "maximum_ms": int(durations[0]["duration_ms"]) if durations else 0,
+        },
+        "slow_subjects": durations[:10],
+        "failure_count": sum(failures_by_subject.values()),
         "failures_by_target": counter_dict(failures_by_target),
+        "failures_by_subject": counter_dict(failures_by_subject),
         "reruns_by_target": counter_dict(reruns_by_target),
+        "reruns_by_subject": counter_dict(reruns_by_subject),
         "events_by_target": counter_dict(target_counts),
+        "events_by_subject": counter_dict(subject_counts),
+        "retry_count": retry_count,
+        "retries_by_subject": counter_dict(retries_by_subject),
+        "configuration": {
+            "by_worker_profile": counter_dict(worker_counts),
+            "by_model": counter_dict(model_counts),
+            "by_effort": counter_dict(effort_counts),
+            "by_sandbox_profile": counter_dict(sandbox_counts),
+            "by_network_policy": counter_dict(network_counts, ["allowed", "denied", "not-recorded"]),
+        },
+        "artifact_production": {
+            "input_ref_count": input_artifact_ref_count,
+            "output_ref_count": output_artifact_ref_count,
+            "output_refs_by_command": counter_dict(output_artifacts_by_command),
+        },
+        "stage_groups": {
+            "scanner_phases": counter_dict(scanner_phase_counts),
+            "remediation_phases": counter_dict(remediation_phase_counts),
+            "issue_publication_phases": counter_dict(issue_publication_phase_counts),
+        },
+        "producer_coverage": {
+            "expected_count": len(COMMAND_EVENT_PRODUCERS),
+            "observed_count": len(observed_producers),
+            "observed_in_run": observed_producers,
+            "not_observed_in_run": not_observed_producers,
+            "coverage_percent": round((len(observed_producers) / len(COMMAND_EVENT_PRODUCERS)) * 100, 2),
+        },
         "validation_retry_count": sum(validation_retries_by_target.values()),
         "validation_retries_by_target": validation_retries_by_target,
         "taxonomy_normalizations_present": taxonomy_normalizations_present,
@@ -767,6 +896,9 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
         f"| Workflow profile stages skipped by scope | {metrics['workflow_profile']['skipped_by_scope_count']} |",
         f"| Duplicate decisions | {metrics['duplicate_decisions']['total']} |",
         f"| Command events | {metrics['observability']['total_events']} |",
+        f"| Command failures | {metrics['observability']['failure_count']} |",
+        f"| Explicit retries | {metrics['observability']['retry_count']} |",
+        f"| Produced artifact refs | {metrics['observability']['artifact_production']['output_ref_count']} |",
         f"| Validation retries | {metrics['observability']['validation_retry_count']} |",
         f"| Taxonomy normalizations | {metrics['observability']['taxonomy_normalization_count']} |",
         f"| Report files | {metrics['artifacts']['reports_file_count']} |",
@@ -824,23 +956,53 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
     lines.extend(markdown_counts("Decision", metrics["duplicate_decisions"]["by_decision"]))
     lines.extend(["## Observability", "", "| Metric | Count |", "|---|---:|"])
     lines.append(f"| Command events | {metrics['observability']['total_events']} |")
+    lines.append(f"| Command failures | {metrics['observability']['failure_count']} |")
+    lines.append(f"| Explicit retries | {metrics['observability']['retry_count']} |")
+    lines.append(f"| Input artifact refs | {metrics['observability']['artifact_production']['input_ref_count']} |")
+    lines.append(f"| Output artifact refs | {metrics['observability']['artifact_production']['output_ref_count']} |")
+    lines.append(f"| Expected event producers | {metrics['observability']['producer_coverage']['expected_count']} |")
+    lines.append(f"| Producers observed in this run | {metrics['observability']['producer_coverage']['observed_count']} |")
     lines.append(f"| Validation retries | {metrics['observability']['validation_retry_count']} |")
     lines.append(f"| Taxonomy normalizations | {metrics['observability']['taxonomy_normalization_count']} |")
     lines.append("")
     lines.extend(markdown_counts("Command events by command", metrics["observability"]["by_command"]))
     lines.extend(markdown_counts("Command events by phase", metrics["observability"]["by_phase"]))
+    lines.extend(markdown_counts("Command events by status", metrics["observability"]["by_status"]))
     lines.extend(markdown_counts("Failures by target", metrics["observability"]["failures_by_target"]))
+    lines.extend(markdown_counts("Failures by subject", metrics["observability"]["failures_by_subject"]))
     lines.extend(markdown_counts("Reruns by target", metrics["observability"]["reruns_by_target"]))
+    lines.extend(markdown_counts("Explicit retries by subject", metrics["observability"]["retries_by_subject"]))
     lines.extend(markdown_counts("Validation retries by target", metrics["observability"]["validation_retries_by_target"]))
+    lines.extend(markdown_counts("Worker profiles", metrics["observability"]["configuration"]["by_worker_profile"]))
+    lines.extend(markdown_counts("Models", metrics["observability"]["configuration"]["by_model"]))
+    lines.extend(markdown_counts("Effort levels", metrics["observability"]["configuration"]["by_effort"]))
+    lines.extend(markdown_counts("Sandbox profiles", metrics["observability"]["configuration"]["by_sandbox_profile"]))
+    lines.extend(markdown_counts("Network policy", metrics["observability"]["configuration"]["by_network_policy"]))
+    lines.extend(markdown_counts("Produced artifact refs by command", metrics["observability"]["artifact_production"]["output_refs_by_command"]))
+    lines.extend(markdown_counts("Scanner phases", metrics["observability"]["stage_groups"]["scanner_phases"]))
+    lines.extend(markdown_counts("Remediation phases", metrics["observability"]["stage_groups"]["remediation_phases"]))
+    lines.extend(markdown_counts("Issue publication phases", metrics["observability"]["stage_groups"]["issue_publication_phases"]))
     lines.extend(markdown_counts("Taxonomy normalizations by target", metrics["observability"]["taxonomy_normalizations_by_target"]))
-    lines.extend(["### Execution durations", "", "| Target | Command | Phase | Duration ms | Exit code |", "|---|---|---|---:|---:|"])
+    lines.extend(["### Execution durations", "", "| Subject | Command | Phase | Status | Duration ms | Exit code |", "|---|---|---|---|---:|---:|"])
     for record in metrics["observability"]["execution_durations"]:
         lines.append(
-            f"| {record['target_id']} | {record['command']} | {record['phase']} | "
+            f"| {record['subject_id']} | {record['command']} | {record['phase']} | {record['status']} | "
             f"{record['duration_ms']} | {record['exit_code']} |"
         )
     if not metrics["observability"]["execution_durations"]:
-        lines.append("| - | - | - | 0 | 0 |")
+        lines.append("| - | - | - | - | 0 | 0 |")
+    lines.extend(
+        [
+            "",
+            "### Producer coverage",
+            "",
+            "`not_observed_in_run` means the command was not executed in this run; it is not an instrumentation defect.",
+            "",
+            f"- Coverage: `{metrics['observability']['producer_coverage']['coverage_percent']}`%",
+            f"- Observed: `{', '.join(metrics['observability']['producer_coverage']['observed_in_run']) or 'none'}`",
+            f"- Not observed in run: `{', '.join(metrics['observability']['producer_coverage']['not_observed_in_run']) or 'none'}`",
+        ]
+    )
     lines.append("")
     lines.extend(["## Artifacts", "", "| Metric | Count |", "|---|---:|"])
     lines.append(f"| Manifest artifacts | {metrics['artifacts']['manifest_artifact_total']} |")

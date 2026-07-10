@@ -285,6 +285,7 @@
         "by_command": {"type": "object"},
         "by_phase": {"type": "object"},
         "by_exit_code": {"type": "object"},
+        "by_status": {"type": "object"},
         "execution_durations": {
           "type": "array",
           "items": {
@@ -292,16 +293,30 @@
             "required": ["target_id", "command", "phase", "duration_ms", "exit_code"],
             "properties": {
               "target_id": {"type": "string"},
+              "subject_id": {"type": "string"},
               "command": {"type": "string"},
               "phase": {"type": "string"},
               "duration_ms": {"type": "integer", "minimum": 0},
-              "exit_code": {"type": "integer"}
+              "exit_code": {"type": "integer"},
+              "status": {"type": "string"}
             }
           }
         },
+        "duration_summary": {"type": "object"},
+        "slow_subjects": {"type": "array"},
+        "failure_count": {"type": "integer", "minimum": 0},
         "failures_by_target": {"type": "object"},
+        "failures_by_subject": {"type": "object"},
         "reruns_by_target": {"type": "object"},
+        "reruns_by_subject": {"type": "object"},
         "events_by_target": {"type": "object"},
+        "events_by_subject": {"type": "object"},
+        "retry_count": {"type": "integer", "minimum": 0},
+        "retries_by_subject": {"type": "object"},
+        "configuration": {"type": "object"},
+        "artifact_production": {"type": "object"},
+        "stage_groups": {"type": "object"},
+        "producer_coverage": {"type": "object"},
         "validation_retry_count": {"type": "integer", "minimum": 0},
         "validation_retries_by_target": {"type": "object"},
         "taxonomy_normalizations_present": {"type": "boolean"},

@@ -99,6 +99,34 @@ COMMAND_EVENT_PHASES = [
 COMMAND_EVENT_STATUSES = ["succeeded", "failed", "blocked", "skipped", "warning"]
 EVENT_WRITE_FAILURE_MODES = ["block", "warn"]
 
+# Major workflow commands that currently emit completion events. This is
+# intentionally narrower than COMMAND_EVENT_COMMANDS, which also reserves names
+# for planned or utility commands.
+COMMAND_EVENT_PRODUCERS = [
+    "gra-adversarial-validate",
+    "gra-audit",
+    "gra-benchmark",
+    "gra-chains",
+    "gra-dashboard",
+    "gra-evidence-graph",
+    "gra-gapfill",
+    "gra-import-findings",
+    "gra-ingest",
+    "gra-issues",
+    "gra-metrics",
+    "gra-proofs",
+    "gra-recon",
+    "gra-remediate",
+    "gra-research",
+    "gra-sarif",
+    "gra-scanner-triage",
+    "gra-store",
+    "gra-targets",
+    "gra-trace",
+    "gra-validate-report",
+    "gra-variant",
+]
+
 _ALLOWED_EVENT_KEYS = {
     "schema_version",
     "event_id",
@@ -219,6 +247,23 @@ def rel_to_run(run_dir: Path, path: Path | str) -> str:
         return candidate.resolve().relative_to(run_dir.resolve()).as_posix()
     except (OSError, ValueError):
         return str(path)
+
+
+def local_artifact_paths(run_dir: Path, values: Iterable[Path | str]) -> list[Path]:
+    """Return only artifact paths contained by the run for event recording."""
+
+    local: list[Path] = []
+    run_root = run_dir.resolve(strict=False)
+    for value in values:
+        candidate = Path(value)
+        if not candidate.is_absolute():
+            candidate = run_dir / candidate
+        try:
+            candidate.resolve(strict=False).relative_to(run_root)
+        except (OSError, ValueError):
+            continue
+        local.append(candidate)
+    return local
 
 
 def _normalize_key(key: Any) -> str:
@@ -485,18 +530,37 @@ def preflight_command_event(
     *,
     input_artifact_paths: Iterable[Path | str] | None = None,
     output_artifact_paths: Iterable[Path | str] | None = None,
+    event_fields: Mapping[str, Any] | None = None,
+    reserve_file: bool = True,
 ) -> Path:
-    """Validate event refs and reserve a safe append target before side effects."""
+    """Validate a planned event and reserve a safe append target before side effects."""
 
     try:
-        _safe_run_relative_refs(run_dir, input_artifact_paths, "input_artifact_refs")
-        _safe_run_relative_refs(run_dir, output_artifact_paths, "output_artifact_refs")
+        if event_fields is None:
+            _safe_run_relative_refs(run_dir, input_artifact_paths, "input_artifact_refs")
+            _safe_run_relative_refs(run_dir, output_artifact_paths, "output_artifact_refs")
+        else:
+            fields = dict(event_fields)
+            conflicting = {"artifact_paths", "input_artifact_paths", "output_artifact_paths"}.intersection(fields)
+            if conflicting:
+                raise EventValidationError("event_fields: artifact paths must use the dedicated preflight arguments")
+            build_command_event(
+                run_dir,
+                input_artifact_paths=input_artifact_paths,
+                output_artifact_paths=output_artifact_paths,
+                **fields,
+            )
         path = command_events_path(run_dir)
         path.parent.mkdir(parents=True, exist_ok=True)
         lock_path = _acquire_event_append_lock(path)
         try:
+            # Check existence while holding the same lock used by appenders. A
+            # writer may create and populate the file while preflight waits.
+            existed_before = path.exists() or path.is_symlink()
             fd = _open_event_append_fd(path)
             os.close(fd)
+            if not reserve_file and not existed_before:
+                path.unlink()
         finally:
             try:
                 os.rmdir(lock_path)

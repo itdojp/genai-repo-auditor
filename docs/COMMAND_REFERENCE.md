@@ -575,11 +575,11 @@ gra-validate-report --findings runs/OWNER__REPO/RUN_ID/reports/findings.json
 |---|---|
 | Purpose | Generate local advanced workflow metrics from one run without copying raw evidence or secrets. |
 | Workflow category | Reporting workflow. |
-| Required inputs | `--run RUN_DIR`. |
-| Key options | `--out-json OUT` and `--out-md OUT` to override the default `reports/metrics.json` and `reports/METRICS.md`. |
-| Generated outputs | `reports/metrics.json` and `reports/METRICS.md` with counts for findings, adversarial validation decisions, downgrade/invalidate rate, chains, proofs, gapfill current/cumulative queue state, traces, issue publication plan warnings, workflow-profile scoped skips, duplicate decisions, command-event durations, failures, reruns, validation retries, taxonomy normalizations, artifact counts, manifest retention buckets, manifest hygiene warning counts, and run duration when available. |
-| Exit status behavior | `0` when metrics are written; parser status `2` for usage errors; unsafe `reports_dir` or unreadable local artifacts return `2`. |
-| Security / disclosure cautions | Metrics are generated from local report artifacts only and intentionally omit raw finding evidence, issue body text, proof evidence, trace evidence, scanner lead bodies, and secret values. Keep metrics local unless aggregate repository risk information is approved for sharing. |
+| Required inputs | `--run RUN_DIR` (`<reports_dir>` defaults to `reports/` and follows `context.json` when customized). |
+| Key options | `--out-json OUT` and `--out-md OUT` to override the default `<reports_dir>/metrics.json` and `<reports_dir>/METRICS.md`. |
+| Generated outputs | `<reports_dir>/metrics.json` and `<reports_dir>/METRICS.md` with counts for findings, adversarial validation decisions, downgrade/invalidate rate, chains, proofs, gapfill current/cumulative queue state, traces, issue publication plan warnings, workflow-profile scoped skips, duplicate decisions, command-event status/duration/failure/retry/config/artifact/stage/producer-coverage aggregates, taxonomy normalizations, artifact counts, manifest retention buckets, manifest hygiene warning counts, and run duration when available. After those files are written, one v2 `metrics` completion event is appended to `<reports_dir>/command-events.jsonl`. |
+| Exit status behavior | `0` when metrics are written. Parser status `2` covers usage errors; unsafe `reports_dir` or unreadable local artifacts also return `2`. Successful completion-event writes are blocking; if metrics generation is already failing, the follow-up event write is warning-only so the original non-zero exit is preserved. |
+| Security / disclosure cautions | Metrics are generated from local report artifacts only and intentionally omit raw finding evidence, issue body text, proof evidence, trace evidence, scanner lead bodies, and secret values. External `--out-json` / `--out-md` destinations outside the run directory are intentionally omitted from event artifact refs. The current metrics artifact does not include its own `gra-metrics` completion event; that self-observation appears on the next `gra-metrics` execution; a later `gra-dashboard` run can then display the updated metrics. Keep metrics local unless aggregate repository risk information is approved for sharing. |
 | Related docs | [`docs/METRICS.md`](METRICS.md), [`docs/REPORTING_AND_STORE.md`](REPORTING_AND_STORE.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
 
 Example:
@@ -594,11 +594,11 @@ gra-metrics --run runs/OWNER__REPO/RUN_ID
 |---|---|
 | Purpose | Generate local v0.4 dogfood benchmark quality gates for an existing run or a built-in fixture without copying raw evidence. |
 | Workflow category | Reporting / quality-gate workflow. |
-| Required inputs | Either `--run RUN_DIR` for an existing run or `--fixture minimal\|advanced` to copy a built-in local fixture into an ignored `runs/benchmark-fixtures/` directory. |
+| Required inputs | Either `--run RUN_DIR` for an existing run or `--fixture minimal\|advanced` to copy a built-in local fixture into an ignored `runs/benchmark-fixtures/` directory. Existing-run mode resolves `<reports_dir>` from `context.json` when present. |
 | Key options | `--out-run DIR` for fixture destination, `--max-chains N` to tune the chain-count bound, `--out-json OUT`, `--out-md OUT`, and `--skip-validation` for diagnostic runs that should not execute `gra-validate-report`. |
-| Generated outputs | `reports/benchmark.json` and `reports/BENCHMARK.md` with bounded metric summaries, workflow-profile scoped-skip counts, gate statuses, and follow-up actions. The benchmark consumes `reports/metrics.json` when present and computes in-memory fallback counts when it is absent. |
-| Exit status behavior | `0` when no quality gate fails, even if warning gates need human review; `1` when one or more gates fail; parser/status `2` for usage errors, missing runs, unsafe report paths, invalid fixtures, or unreadable local artifacts. |
-| Security / disclosure cautions | The benchmark is local-only, does not call Codex, does not contact external networks, and never calls `gra-issues --apply`. It records counts, rates, and local artifact paths only; raw finding evidence, issue bodies, proof payloads, scanner lead bodies, and secret values are excluded. |
+| Generated outputs | `<reports_dir>/benchmark.json` and `<reports_dir>/BENCHMARK.md` by default, with bounded metric summaries, workflow-profile scoped-skip counts, gate statuses, and follow-up actions. The benchmark consumes `<reports_dir>/metrics.json` when present and computes in-memory fallback counts when it is absent. After those files are written, one v2 `benchmark` completion event is appended to `<reports_dir>/command-events.jsonl`. |
+| Exit status behavior | `0` when no quality gate fails, even if warning gates need human review; `1` when one or more gates fail; parser/status `2` for usage errors, missing runs, unsafe report paths, invalid fixtures, or unreadable local artifacts. Successful completion-event writes are blocking; if the benchmark is already returning `1` or `2`, any follow-up event-write failure is downgraded to a warning so the original exit code is preserved. |
+| Security / disclosure cautions | The benchmark is local-only, does not call Codex, does not contact external networks, and never calls `gra-issues --apply`. It records counts, rates, and local artifact paths only; raw finding evidence, issue bodies, proof payloads, scanner lead bodies, and secret values are excluded. External `--out-json` / `--out-md` destinations outside the run directory are intentionally omitted from event artifact refs, and the current benchmark invocation's completion event becomes visible only after the next `gra-metrics` execution; a later `gra-dashboard` run can then display the updated metrics. |
 | Related docs | [`docs/BENCHMARKING.md`](BENCHMARKING.md), [`docs/METRICS.md`](METRICS.md), [`docs/REPORTING_AND_STORE.md`](REPORTING_AND_STORE.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
 
 Examples:
@@ -615,11 +615,11 @@ gra-benchmark --run runs/OWNER__REPO/RUN_ID --max-chains 10
 |---|---|
 | Purpose | Generate a local graph that links findings to supporting and challenging artifacts across targets, scanner leads, chains, safe proofs, adversarial validation, traces, remediation candidates, patch validation, Issue publication plans, workflow profiles, and metrics. |
 | Workflow category | Reporting / evidence handoff workflow. |
-| Required inputs | `--run RUN_DIR` with `reports/findings.json`; all other artifacts are optional and missing optional artifacts are recorded in the graph summary instead of causing failure. |
+| Required inputs | `--run RUN_DIR` with `<reports_dir>/findings.json` (`reports/` by default, or the run's configured `reports_dir`); all other artifacts are optional and missing optional artifacts are recorded in the graph summary instead of causing failure. |
 | Key options | `--run RUN_DIR`. |
-| Generated outputs | `reports/evidence-graph.json` and `reports/EVIDENCE_GRAPH.md` with bounded node/edge summaries, workflow-profile scoped-skip status, artifact references, high/Critical issue-recommended coverage counts, and missing optional artifact metadata. |
-| Exit status behavior | `0` when the graph is written; parser status `2` for usage errors. |
-| Security / disclosure cautions | The graph is local-only and intentionally avoids raw finding evidence, root cause text, remediation text, proof payloads, issue bodies, and secret values. Keep it local unless repository-risk metadata sharing is approved. |
+| Generated outputs | `<reports_dir>/evidence-graph.json` and `<reports_dir>/EVIDENCE_GRAPH.md` with bounded node/edge summaries, workflow-profile scoped-skip status, artifact references, high/Critical issue-recommended coverage counts, and missing optional artifact metadata. After those files are written, one v2 `evidence-graph` completion event is appended to `<reports_dir>/command-events.jsonl`. |
+| Exit status behavior | `0` when the graph is written; parser status `2` for usage errors. Successful completion-event writes are blocking; if graph generation is already failing after preflight, any follow-up event-write failure is downgraded to a warning so the original non-zero exit is preserved. |
+| Security / disclosure cautions | The graph is local-only and intentionally avoids raw finding evidence, root cause text, remediation text, proof payloads, issue bodies, and secret values. The current graph invocation's completion event becomes visible only after the next `gra-metrics` execution; a later `gra-dashboard` run can then display the updated metrics. Keep it local unless repository-risk metadata sharing is approved. |
 | Related docs | [`docs/EVIDENCE_GRAPH.md`](EVIDENCE_GRAPH.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
 
 Example:
@@ -655,11 +655,11 @@ gra-novelty --run runs/OWNER__REPO/RUN_ID --accepted-risk SEC-001 --accepted-ris
 |---|---|
 | Purpose | Generate a local HTML dashboard summarizing a run's findings, structured finding assessment dimensions, target queue, gapfill current/cumulative queue state, remediation candidates, known-finding novelty status, dogfood benchmark gates, evidence graph, advanced workflow metrics, artifact retention, and observability when present, Scorecard supply-chain posture, dependency risk posture, and scanner result index. |
 | Workflow category | Reporting workflow. |
-| Required inputs | `--run RUN_DIR`. |
-| Key options | `--out OUT` to override the default `reports/dashboard.html`. |
-| Generated outputs | HTML dashboard file with links to `metrics.json` / `METRICS.md`, `benchmark.json` / `BENCHMARK.md`, `evidence-graph.json` / `EVIDENCE_GRAPH.md`, `imported-findings.json` / `IMPORTED_FINDINGS.md`, and `known-findings.json` / `NOVELTY.md` when those artifacts exist, including current source-to-gapfill relationships, prioritized next gapfill targets, remediation candidate summary, imported finding counts, benchmark gate status, evidence graph node/edge counts, novelty status counts, latest/archive artifact retention counts, manifest hygiene warnings, longest command durations, and high retry / rerun targets from observability metrics. |
-| Exit status behavior | `0` when the dashboard is written; parser status `2` for usage errors. Unexpected unreadable input or write failures surface as non-zero Python errors. |
-| Security / disclosure cautions | The dashboard can contain finding titles, locations, and evidence. Keep it local unless disclosure has been approved. |
+| Required inputs | `--run RUN_DIR` (`<reports_dir>` defaults to `reports/` and follows `context.json` when customized). |
+| Key options | `--out OUT` to override the default `<reports_dir>/dashboard.html`. |
+| Generated outputs | HTML dashboard file with links to `metrics.json` / `METRICS.md`, `benchmark.json` / `BENCHMARK.md`, `evidence-graph.json` / `EVIDENCE_GRAPH.md`, `imported-findings.json` / `IMPORTED_FINDINGS.md`, and `known-findings.json` / `NOVELTY.md` when those artifacts exist, including current source-to-gapfill relationships, prioritized next gapfill targets, remediation candidate summary, imported finding counts, benchmark gate status, evidence graph node/edge counts, novelty status counts, latest/archive artifact retention counts, manifest hygiene warnings, slow command subjects, execution-configuration coverage, workflow stage-group counts, and high retry / rerun targets from observability metrics. After the HTML file is written, one v2 `dashboard` completion event is appended to `<reports_dir>/command-events.jsonl`. |
+| Exit status behavior | `0` when the dashboard and completion event are written; parser status `2` for usage errors. A post-preflight input, output, or completion-event failure returns `2` and attempts a warning-only failed `dashboard` event so the original failure remains visible. An unsafe or unwritable event target fails during preflight before dashboard output is written. |
+| Security / disclosure cautions | The dashboard can contain finding titles, locations, and evidence. External `--out` destinations outside the run directory are intentionally omitted from event artifact refs, and the current dashboard invocation's completion event becomes visible only after the next `gra-metrics` execution; a later `gra-dashboard` run can then display the updated metrics. Keep it local unless disclosure has been approved. |
 | Related docs | [`docs/REPORTING_AND_STORE.md`](REPORTING_AND_STORE.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
 
 Example:
@@ -674,11 +674,11 @@ gra-dashboard --run runs/OWNER__REPO/RUN_ID
 |---|---|
 | Purpose | Convert `reports/findings.json` to SARIF 2.1.0 for local review or compatible tooling, including structured assessment properties when present. |
 | Workflow category | Reporting workflow. |
-| Required inputs | `--run RUN_DIR`. |
-| Key options | `--out OUT` to override the default `reports/findings.sarif`. |
-| Generated outputs | SARIF JSON file. |
-| Exit status behavior | `0` when SARIF is written; parser status `2` for usage errors. Unexpected input or write failures surface as non-zero Python errors. |
-| Security / disclosure cautions | SARIF may include evidence, file paths, and finding metadata. Do not upload it to third-party systems unless approved for the target repository. |
+| Required inputs | `--run RUN_DIR` with `<reports_dir>/findings.json` (`reports/` by default, or the run's configured `reports_dir`). |
+| Key options | `--out OUT` to override the default `<reports_dir>/findings.sarif`. |
+| Generated outputs | SARIF JSON file plus one v2 `sarif` completion event appended to `<reports_dir>/command-events.jsonl` after the SARIF file is written. |
+| Exit status behavior | `0` when SARIF and its completion event are written; parser status `2` for usage errors. A post-preflight input, output, or completion-event failure returns `2` and attempts a warning-only failed `sarif` event. An unsafe or unwritable event target fails during preflight before SARIF is written. |
+| Security / disclosure cautions | SARIF may include evidence, file paths, and finding metadata. External `--out` destinations outside the run directory are intentionally omitted from event artifact refs, and the current SARIF export is observed only after a later `gra-metrics` execution; a subsequent `gra-dashboard` run can then display the updated metrics. Do not upload it to third-party systems unless approved for the target repository. |
 | Related docs | [`docs/REPORTING_AND_STORE.md`](REPORTING_AND_STORE.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
 
 Example:
@@ -693,11 +693,11 @@ gra-sarif --run runs/OWNER__REPO/RUN_ID --out runs/OWNER__REPO/RUN_ID/reports/fi
 |---|---|
 | Purpose | Import run metadata, targets, findings, scanner results, created issue records, and optional posture artifacts into a local SQLite database. |
 | Workflow category | Reporting / persistence workflow. |
-| Required inputs | `--run RUN_DIR`. |
+| Required inputs | `--run RUN_DIR` (`<reports_dir>` defaults to `reports/` and follows `context.json` when customized). |
 | Key options | `--db DB` to override the default `<lab>/runs/security-audit.sqlite`. |
-| Generated outputs | SQLite database with `runs`, `targets`, `findings`, `scanner_results`, `issues`, and `posture_artifacts` tables. `posture_artifacts` records run manifests, agent-surface discovery, Scorecard posture, provenance posture, and dependency posture when those artifacts exist. |
-| Exit status behavior | `0` when import completes; parser status `2` for usage errors. SQLite or filesystem failures surface as non-zero Python errors. |
-| Security / disclosure cautions | The SQLite store can aggregate sensitive audit data across repositories. Keep it local, restrict access, and avoid committing it. |
+| Generated outputs | SQLite database with `runs`, `targets`, `findings`, `scanner_results`, `issues`, and `posture_artifacts` tables. `posture_artifacts` records run manifests, agent-surface discovery, Scorecard posture, provenance posture, and dependency posture when those artifacts exist. After the import completes, one v2 `store` completion event is appended to `<reports_dir>/command-events.jsonl`. |
+| Exit status behavior | `0` when import and its completion event complete; parser status `2` for usage errors. A post-preflight SQLite, filesystem, or completion-event failure returns `2` and attempts a warning-only failed `store` event. Full event metadata is validated before database mutation, and an unsafe, unwritable, or invalid event fails preflight before SQLite is opened. |
+| Security / disclosure cautions | The SQLite store can aggregate sensitive audit data across repositories. External `--db` destinations outside the run directory are intentionally omitted from event artifact refs, and the current import is observed only after a later `gra-metrics` execution; a subsequent `gra-dashboard` run can then display the updated metrics. Keep it local, restrict access, and avoid committing it. |
 | Related docs | [`docs/REPORTING_AND_STORE.md`](REPORTING_AND_STORE.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
 
 Example:

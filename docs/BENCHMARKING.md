@@ -7,15 +7,19 @@ turning audit output into follow-up work.
 Outputs:
 
 ```text
-reports/benchmark.json
-reports/BENCHMARK.md
+<reports_dir>/benchmark.json
+<reports_dir>/BENCHMARK.md
 ```
 
 The benchmark is local-only. It does not call Codex, does not contact external
 networks, and does not run `gra-issues --apply`. It records bounded counts,
 rates, status values, and run-relative artifact paths only. It intentionally
 excludes raw finding evidence, issue body text, proof payloads, scanner lead
-bodies, and secret values.
+bodies, and secret values. The command appends one v2 `benchmark` completion
+event to `<reports_dir>/command-events.jsonl` after the benchmark files are
+written. That completion event becomes visible on the next
+`gra-metrics` execution, after which a later `gra-dashboard` run can
+display the updated metrics.
 
 ## Quick fixture run
 
@@ -51,10 +55,11 @@ gra-benchmark --run runs/OWNER__REPO/RUN_ID
 gra-dashboard --run runs/OWNER__REPO/RUN_ID
 ```
 
-`gra-benchmark` consumes `reports/metrics.json` when it exists. If metrics are
-absent, it computes the same evidence-light counts in memory and records
-`metrics.source: computed-fallback` in `benchmark.json`. Use that fallback for
-ad-hoc review, then run `gra-metrics` before comparing trends across runs.
+`gra-benchmark` consumes `<reports_dir>/metrics.json` when it exists. If
+metrics are absent, it computes the same evidence-light counts in memory and
+records `metrics.source: computed-fallback` in `benchmark.json`. Use that
+fallback for ad-hoc review, then run `gra-metrics` before comparing trends
+across runs.
 
 ## Gates
 
@@ -74,11 +79,15 @@ Warnings produce `overall_status: needs-review` but keep the command exit status
 at `0`. Failed gates produce `overall_status: failed` and exit status `1`.
 `benchmark.json` also includes a compact `summary` object with
 `overall_status`, gate count, passed gates, warnings, and failures. When
-`reports/benchmark.json` is present, `gra-metrics` copies those gate totals into
-`metrics.summary.benchmark` so dogfood reports do not need to scrape
+`<reports_dir>/benchmark.json` is present, `gra-metrics` copies those gate totals
+into `metrics.summary.benchmark` so dogfood reports do not need to scrape
 `BENCHMARK.md` tables manually. The benchmark metrics summary also carries the
 workflow profile name and `workflow_skipped_by_scope_count` when
-`reports/workflow-profile.json` is present.
+`<reports_dir>/workflow-profile.json` is present. Successful completion-event
+writes are blocking; when the benchmark is already returning `1` or `2`, any
+follow-up event-write failure is downgraded to a warning so the original exit
+code is preserved. External `--out-json` / `--out-md` destinations outside the
+run directory are intentionally omitted from event artifact refs.
 
 Tune the chain bound for a specific dogfood run:
 
