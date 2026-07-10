@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import contextlib
 import os
 import platform
 import shutil
@@ -132,7 +133,7 @@ def _bounded_file_size(path: Path) -> int:
 
 
 def _cleanup_container(prefix: list[str], name: str, env: dict[str, str]) -> None:
-    try:
+    with contextlib.suppress(OSError, subprocess.SubprocessError):
         subprocess.run(
             [*prefix, "rm", "-f", name],
             stdin=subprocess.DEVNULL,
@@ -142,16 +143,12 @@ def _cleanup_container(prefix: list[str], name: str, env: dict[str, str]) -> Non
             check=False,
             env=env,
         )
-    except (OSError, subprocess.SubprocessError):
-        pass
 
 
 def _remove_staging(staging: Path, staging_root: Path) -> None:
     shutil.rmtree(staging, ignore_errors=True)
-    try:
+    with contextlib.suppress(OSError):
         staging_root.rmdir()
-    except OSError:
-        pass
 
 
 def _exit_status(adapter: ScannerAdapter, returncode: int) -> str:
@@ -259,10 +256,8 @@ def _publish_output(source: Path, destination: Path) -> None:
     finally:
         if fd is not None:
             os.close(fd)
-        try:
+        with contextlib.suppress(OSError):
             temporary.unlink()
-        except OSError:
-            pass
 
 
 def execute_scan(
@@ -358,7 +353,6 @@ def execute_scan(
     log_err = staging / ".stderr"
     started = time.monotonic()
     failure: str | None = None
-    returncode = -1
     previous_handlers: dict[int, Any] = {}
     if threading.current_thread() is threading.main_thread():
         for signal_number in (signal.SIGTERM, getattr(signal, "SIGHUP", signal.SIGTERM)):
@@ -411,13 +405,11 @@ def execute_scan(
         if failure:
             status = failure
         elif status == "scanner-failure":
-            failure = "scanner-failure"
+            pass
         elif staged_output.is_symlink() or not staged_output.is_file():
-            failure = "missing-output"
-            status = failure
+            status = "missing-output"
         elif staged_output.stat().st_size > adapter.max_output_bytes:
-            failure = "output-limit-exceeded"
-            status = failure
+            status = "output-limit-exceeded"
         else:
             unexpected = [
                 item.name
@@ -425,45 +417,40 @@ def execute_scan(
                 if item.name not in {staged_output.name, log_out.name, log_err.name}
             ]
             if unexpected:
-                failure = "unexpected-output"
-                status = failure
+                status = "unexpected-output"
             else:
                 try:
                     count = _result_count(adapter, staged_output)
                 except ScannerExecutionError:
-                    failure = "invalid-output"
-                    status = failure
-                if failure:
-                    pass
-                elif count > adapter.max_results:
-                    failure = "result-limit-exceeded"
-                    status = failure
+                    status = "invalid-output"
                 else:
-                    try:
-                        _publish_output(staged_output, output)
-                    except ScannerExecutionError:
-                        failure = "output-publication-failed"
-                        status = failure
+                    if count > adapter.max_results:
+                        status = "result-limit-exceeded"
                     else:
-                        return {
-                            "schema_version": "1",
-                            "mode": "execute",
-                            "scanner_executed": True,
-                            "network_accessed": False,
-                            "run_id": plan["run_id"],
-                            "adapter_id": adapter.id,
-                            "sandbox_profile": sandbox_profile,
-                            "network_policy": network_policy,
-                            "runtime": runtime,
-                            "image": image,
-                            "status": status,
-                            "exit_code": returncode,
-                            "duration_ms": duration_ms,
-                            "result_count": count,
-                            "raw_output_path": plan["raw_output_path"],
-                            "result_classification": adapter.result_classification,
-                            "finding_status": "review-only",
-                        }
+                        try:
+                            _publish_output(staged_output, output)
+                        except ScannerExecutionError:
+                            status = "output-publication-failed"
+                        else:
+                            return {
+                                "schema_version": "1",
+                                "mode": "execute",
+                                "scanner_executed": True,
+                                "network_accessed": False,
+                                "run_id": plan["run_id"],
+                                "adapter_id": adapter.id,
+                                "sandbox_profile": sandbox_profile,
+                                "network_policy": network_policy,
+                                "runtime": runtime,
+                                "image": image,
+                                "status": status,
+                                "exit_code": returncode,
+                                "duration_ms": duration_ms,
+                                "result_count": count,
+                                "raw_output_path": plan["raw_output_path"],
+                                "result_classification": adapter.result_classification,
+                                "finding_status": "review-only",
+                            }
     finally:
         _remove_staging(staging, staging_root)
 

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import contextlib
 import re
 import sys
 import tempfile
-import unittest
 from pathlib import Path
-from unittest import mock
+from unittest import TestCase, main, mock
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -21,7 +21,7 @@ from scanner_runner import (  # noqa: E402
 )
 
 
-class ScannerRunnerTests(unittest.TestCase):
+class ScannerRunnerTests(TestCase):
     def test_every_adapter_uses_an_immutable_container_digest(self) -> None:
         self.assertEqual(set(ADAPTERS), set(CONTAINER_IMAGES))
         for image in CONTAINER_IMAGES.values():
@@ -80,11 +80,9 @@ class ScannerRunnerTests(unittest.TestCase):
                     _publish_output(source, destination)
                 self.assertEqual("existing\n", destination.read_text(encoding="utf-8"))
         finally:
-            try:
+            with contextlib.suppress(OSError):
                 tmp_parent.rmdir()
-            except OSError:
-                pass
 
 
 if __name__ == "__main__":
-    unittest.main()
+    main()
