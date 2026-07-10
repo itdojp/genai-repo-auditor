@@ -22,7 +22,6 @@ from .common import (
     validate_schema_shape,
     validate_string_list,
 )
-from .context import ValidationContext
 from .findings import ASSESSMENT_STATUSES, CONFIDENCES, SEVERITIES
 from .scanner import SCANNER_RESULTS_DIR
 
