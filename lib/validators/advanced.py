@@ -11,6 +11,12 @@ from report_safety import (
     iter_secret_findings,
     validate_relative_repo_path,
 )
+from run_events import (
+    COMMAND_EVENT_COMMANDS,
+    COMMAND_EVENT_PHASES,
+    EventValidationError,
+    validate_command_event_payload,
+)
 from workflow_profile import validate_workflow_profile_payload
 
 from .common import (
@@ -95,8 +101,6 @@ NOVELTY_STATUSES = {
 }
 NOVELTY_SUPPRESSED_PUBLICATION_STATUSES = {"duplicate", "accepted-risk", "invalid-known"}
 TRACE_STATUSES = {"Confirmed", "Probable", "Potential", "Invalid", "Needs human review"}
-COMMAND_EVENT_COMMANDS = {"gra-research", "gra-gapfill", "gra-validate-report"}
-COMMAND_EVENT_PHASES = {"exec", "goal", "generate", "validate", "list"}
 METRICS_FORBIDDEN_KEYS = {
     "evidence",
     "root_cause",
@@ -1775,7 +1779,7 @@ def validate_run_state(run_dir: Path, errors: List[str]) -> bool:
     return True
 
 
-def validate_command_event_artifact_path(value: Any, *, field_path: str, errors: List[str]) -> None:
+def validate_command_event_artifact_path(run_dir: Path, value: Any, *, field_path: str, errors: List[str]) -> None:
     if not isinstance(value, str) or not value.strip():
         errors.append(f"{field_path}: artifact path must be a non-empty string")
         return
@@ -1784,6 +1788,12 @@ def validate_command_event_artifact_path(value: Any, *, field_path: str, errors:
         errors.append(f"{field_path}: artifact path must be relative to the run directory")
     if ".." in rel.parts:
         errors.append(f"{field_path}: artifact path must not contain '..'")
+    current = run_dir
+    for part in rel.parts:
+        current = current / part
+        if current.is_symlink():
+            errors.append(f"{field_path}: artifact path must not contain symlink components")
+            break
 
 
 def validate_command_events(run_dir: Path, errors: List[str]) -> bool:
@@ -1816,11 +1826,26 @@ def validate_command_events(run_dir: Path, errors: List[str]) -> bool:
         if not isinstance(event, dict):
             errors.append(f"{path}: expected type object, got {json_type_name(event)}")
             continue
-        validate_schema(event, load_schema("command-event.schema.json"), path, errors)
+        validate_schema_shape(event, load_schema("command-event.schema.json"), path, errors)
+        try:
+            validate_command_event_payload(event)
+        except EventValidationError as exc:
+            errors.append(f"{path}: {exc}")
+        schema_version = str(event.get("schema_version") or "")
+        if schema_version not in {"1", "2"}:
+            errors.append(f"{path}.schema_version: invalid command-event schema version")
+        elif schema_version == "1":
+            for key in ["repo", "target_id", "model", "effort", "artifact_paths"]:
+                if key not in event:
+                    errors.append(f"{path}.{key}: missing required v1 field")
+        else:
+            for key in ["event_id", "status", "attempt", "input_artifact_refs", "output_artifact_refs"]:
+                if key not in event:
+                    errors.append(f"{path}.{key}: missing required v2 field")
         if event.get("command") not in COMMAND_EVENT_COMMANDS:
-            errors.append(f"{path}.command: invalid command {event.get('command')}")
+            errors.append(f"{path}.command: invalid command")
         if event.get("phase") not in COMMAND_EVENT_PHASES:
-            errors.append(f"{path}.phase: invalid phase {event.get('phase')}")
+            errors.append(f"{path}.phase: invalid phase")
         validate_generated_at(event.get("started_at"), f"{path}.started_at", errors)
         validate_generated_at(event.get("ended_at"), f"{path}.ended_at", errors)
         started = parse_event_time(event.get("started_at"))
@@ -1833,13 +1858,16 @@ def validate_command_events(run_dir: Path, errors: List[str]) -> bool:
             errors.append(f"{path}.repo: does not match run context")
         target_id = event.get("target_id")
         if target_id is not None and not re.fullmatch(r"TGT-(?:[A-Z][A-Z0-9]*-)?[0-9]{3,}", str(target_id)):
-            errors.append(f"{path}.target_id: invalid target id {target_id}")
-        artifacts = event.get("artifact_paths")
-        if isinstance(artifacts, list):
+            errors.append(f"{path}.target_id: invalid target id")
+        for artifact_field in ["artifact_paths", "input_artifact_refs", "output_artifact_refs"]:
+            artifacts = event.get(artifact_field)
+            if not isinstance(artifacts, list):
+                continue
             for artifact_index, artifact in enumerate(artifacts):
                 validate_command_event_artifact_path(
+                    run_dir,
                     artifact,
-                    field_path=f"{path}.artifact_paths[{artifact_index}]",
+                    field_path=f"{path}.{artifact_field}[{artifact_index}]",
                     errors=errors,
                 )
     return True

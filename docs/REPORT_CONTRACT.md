@@ -263,11 +263,25 @@ means an impasse that needs external input or state change. Paused runs should
 only perform read-only status checks until the pause is cleared.
 
 `command-events.jsonl` is a local structured observability artifact appended by
-`gra-research`, `gra-gapfill`, and `gra-validate-report`. Each line is one JSON
-object with `target_id`, `command`, `phase`, `started_at`, `ended_at`,
-`duration_ms`, `exit_code`, `model`, `effort`, and `artifact_paths`.
-`gra-metrics` uses these events to report per-execution durations, failures,
-reruns, validation retries, and target-level normalization counts.
+instrumented workflow commands. Each line is one JSON object. Version `1` records from Issue
+#116 remain readable. Version `2` records add `event_id`, `status`, `attempt`,
+`retry_of`, `subject_id`, optional worker/model/effort metadata, sandbox and
+network-policy metadata, bounded `input_artifact_refs` /
+`output_artifact_refs`, `redaction_count`, and `error_category`. For backward
+compatibility, v2 writers also populate `artifact_paths` as an alias for output
+artifact references. New event producers should pass input and output artifact
+references explicitly rather than relying on the legacy `artifact_paths`
+fallback. `gra-metrics` uses these events to report per-execution
+durations, failures, reruns, validation retries, and target-level
+normalization counts.
+
+Command-event writing is fail-closed by default: command-completion events use
+blocking write semantics so an unwritable or unsafe observability record cannot
+silently turn a command into a successful-but-untracked execution. A future
+producer may explicitly use warning-only semantics only for non-critical status
+events. Event payloads must not contain raw prompts, environment variables,
+credentials, finding evidence, Issue body text, proof payloads, private
+reasoning, scanner bodies, or remediation patch content.
 
 `run-manifest.json` is a run-root support artifact produced by `gra-audit`.
 Its `artifacts[]` entries use run-relative paths and include `kind`,
@@ -318,9 +332,13 @@ Important constraints:
   `block_reason` is required for `blocked`; and `paused_at`, `blocked_at`, and
   `resumed_at` must be parseable ISO-8601 timestamps when present.
 - Optional `reports/command-events.jsonl` records are validated when present.
-  Each line must match `templates/reports/command-event.schema.json`, use a
-  known command/phase, keep artifact paths relative to the run directory, and
-  use non-negative durations with `ended_at` not earlier than `started_at`.
+  Each line must match `templates/reports/command-event.schema.json`, use
+  schema version `1` or `2`, use a known command/phase, keep `artifact_paths`,
+  `input_artifact_refs`, and `output_artifact_refs` relative to the run
+  directory, and use non-negative durations with `ended_at` not earlier than
+  `started_at`. Version `2` records must include a UUID `event_id`, `status`,
+  `attempt`, and bounded input/output artifact reference arrays. Forbidden raw
+  or private fields are rejected without echoing their values in diagnostics.
 - Optional `run-manifest.json` is validated when present. Artifact paths must be
   relative to the run directory, must not traverse through `..` or symlink
   components, and must exist with the declared `kind`. File artifacts must have

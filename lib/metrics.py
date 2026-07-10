@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from gralib import load_context, utc_now, write_json
+from run_events import COMMAND_EVENT_COMMANDS, COMMAND_EVENT_PHASES
 from duplicate_decisions import duplicate_decision_metrics
 from issue_ledger import ledger_metrics
 from workflow_profile import summarize_workflow_profile
@@ -37,8 +38,8 @@ PROOF_STATUSES = ["confirmed", "failed", "not-run", "needs-human-review", "unkno
 TARGET_STATUSES = ["queued", "in_progress", "reviewed", "skipped", "needs_human_review", "unknown"]
 ARTIFACT_KINDS = ["file", "dir", "unknown"]
 ARTIFACT_RETENTIONS = ["latest", "supporting", "archive", "unknown"]
-OBSERVABILITY_COMMANDS = ["gra-research", "gra-gapfill", "gra-validate-report", "unknown"]
-OBSERVABILITY_PHASES = ["exec", "goal", "generate", "validate", "list", "unknown"]
+OBSERVABILITY_COMMANDS = [*COMMAND_EVENT_COMMANDS, "unknown"]
+OBSERVABILITY_PHASES = [*COMMAND_EVENT_PHASES, "unknown"]
 RUN_TARGET_ID = "__run__"
 UNKNOWN_TARGET_ID = "__unknown__"
 TARGET_ID_RE = re.compile(r"^TGT-(?:[A-Z][A-Z0-9]*-)?[0-9]{3,}$")

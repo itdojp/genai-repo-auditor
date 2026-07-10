@@ -76,7 +76,8 @@ def main() -> int:
     run_dir = Path(args.run).resolve()
     started_at, started_perf = start_command_event()
     phase = "list" if args.list else "generate" if args.generate else args.mode
-    artifacts: list[Path] = []
+    input_artifacts: list[Path] = []
+    output_artifacts: list[Path] = []
 
     def finish(exit_code: int) -> int:
         append_command_event(
@@ -89,7 +90,8 @@ def main() -> int:
             exit_code=exit_code,
             model=args.model if args.target else None,
             effort=args.effort if args.target else None,
-            artifact_paths=artifacts,
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=output_artifacts,
         )
         return exit_code
 
@@ -97,6 +99,8 @@ def main() -> int:
         print(f"context.json not found under {run_dir}", file=sys.stderr)
         return 2
     ctx = load_context(run_dir)
+    reports_root = run_dir / ctx.get("reports_dir", "reports")
+    input_artifacts.extend([run_dir / "context.json", reports_root / "targets.json"])
     ensure_taxonomy_templates(LAB_ROOT, run_dir)
 
     if args.list:
@@ -111,7 +115,7 @@ def main() -> int:
     if args.generate:
         payload = generate_gapfill_artifacts(run_dir)
         reports = run_dir / ctx.get('reports_dir', 'reports')
-        artifacts.extend([reports / "COVERAGE.md", reports / "gapfill-targets.json", reports / "targets.json"])
+        output_artifacts.extend([reports / "COVERAGE.md", reports / "gapfill-targets.json", reports / "targets.json"])
         print(f"Wrote {run_dir / ctx.get('reports_dir', 'reports') / 'COVERAGE.md'}")
         print(f"Wrote {run_dir / ctx.get('reports_dir', 'reports') / 'gapfill-targets.json'}")
         print_candidates(gapfill_candidates(load_targets(run_dir)))
@@ -125,9 +129,11 @@ def main() -> int:
         return finish(2)
 
     target_seed = write_target_seed(run_dir, target)
-    artifacts.append(target_seed)
+    output_artifacts.append(target_seed)
     reports_dir = run_dir / ctx.get("reports_dir", "reports")
     coverage_file = reports_dir / "COVERAGE.md"
+    if coverage_file.exists():
+        input_artifacts.append(coverage_file)
     output_md = reports_dir / "target-research" / f"{args.target}-gapfill.md"
     env = env_from_context(
         run_dir,
@@ -145,7 +151,7 @@ def main() -> int:
     if args.mode == "goal":
         prompt = run_dir / "prompts" / "goal" / f"gapfill-{args.target}.goal.md"
         render_template(LAB_ROOT, LAB_ROOT / "prompts" / "goal" / "gapfill-target.goal.md", prompt, env)
-        artifacts.append(prompt)
+        output_artifacts.append(prompt)
         print("Prepared supervised /goal gapfill review run.")
         print(f"Run directory: {run_dir}")
         print(f"Target file: {target_seed}")
@@ -158,7 +164,7 @@ def main() -> int:
 
     prompt = run_dir / "prompts" / "exec" / f"gapfill-{args.target}.prompt.md"
     render_template(LAB_ROOT, LAB_ROOT / "prompts" / "exec" / "gapfill-target.prompt.md", prompt, env)
-    artifacts.append(prompt)
+    output_artifacts.append(prompt)
     print(f"Running Codex gapfill review for {args.target}: {target.get('title', '')}".strip())
     final_path = run_dir / f"codex-gapfill-{args.target}-final.md"
     events_path = run_dir / f"codex-gapfill-{args.target}-events.jsonl"
@@ -173,7 +179,7 @@ def main() -> int:
         events_file=events_path,
         stderr_file=stderr_path,
     )
-    artifacts.extend([final_path, events_path, stderr_path, output_md])
+    output_artifacts.extend([final_path, events_path, stderr_path, output_md])
     print(f"Codex status: {status}")
     print(f"Gapfill report: {output_md}")
     return finish(status)

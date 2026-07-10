@@ -44,6 +44,21 @@ class ValidationWorkflowTests(CliWorkflowTestCase):
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
 
         self.assertIn("Metrics: validated", cp_validate.stdout)
+        events = self.read_command_events(run_dir)
+        self.assertTrue(events, "gra-validate-report should append a command event")
+        event = events[-1]
+        self.assertEqual("2", event["schema_version"])
+        self.assertRegex(event["event_id"], r"^[0-9a-f-]{36}$")
+        self.assertEqual("gra-validate-report", event["command"])
+        self.assertEqual("validate", event["phase"])
+        self.assertIsNone(event["target_id"])
+        self.assertEqual(0, event["exit_code"])
+        self.assertEqual("succeeded", event["status"])
+        self.assertEqual(1, event["attempt"])
+        self.assertIsNone(event["retry_of"])
+        self.assertIn("reports/findings.json", event["input_artifact_refs"])
+        self.assertEqual([], event["output_artifact_refs"])
+        self.assertEqual([], event["artifact_paths"])
 
     def test_validate_report_trace_reachability_contract(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
