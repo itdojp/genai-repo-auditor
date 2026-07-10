@@ -11,7 +11,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-
 COMMAND_EVENTS_REL_PATH = Path("reports") / "command-events.jsonl"
 SOURCE = "genai-repo-auditor"
 SCHEMA_VERSION = "2"
@@ -233,8 +232,12 @@ def _validate_json_safe(value: Any, field_path: str) -> None:
         for key, child in value.items():
             key_text = str(key)
             normalized = _normalize_key(key_text)
-            if normalized in _FORBIDDEN_KEY_NAMES or key_text not in _ALLOWED_EVENT_KEYS:
+            if normalized in _FORBIDDEN_KEY_NAMES:
+                raise EventValidationError(f"{field_path}.{key_text}: field is explicitly forbidden in command events")
+            if normalized not in _ALLOWED_EVENT_KEYS:
                 raise EventValidationError(f"{field_path}.{key_text}: field is not allowed in command events")
+            if key_text != normalized:
+                raise EventValidationError(f"{field_path}.{key_text}: field name must use canonical snake_case")
             _validate_json_safe(child, f"{field_path}.{key_text}")
     elif isinstance(value, list):
         for index, child in enumerate(value):

@@ -206,6 +206,11 @@ class RunEventsTests(unittest.TestCase):
         event["model"] = "ghp_" + "1" * 36
         with self.assertRaisesRegex(EventValidationError, "secret-like"):
             validate_command_event_payload(event)
+        event.pop("model")
+        # Alias-style keys must be rejected; only canonical snake_case keys are allowed.
+        event["prompt hash"] = "sha256:" + "a" * 64
+        with self.assertRaisesRegex(EventValidationError, "prompt hash"):
+            validate_command_event_payload(event)
 
 
     def test_leaf_symlink_event_file_is_rejected(self) -> None:

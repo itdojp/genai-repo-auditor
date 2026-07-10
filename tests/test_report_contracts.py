@@ -886,7 +886,7 @@ class ReportContractTests(unittest.TestCase):
         events_path.write_text(json.dumps(forbidden_payload_event, sort_keys=True) + "\n", encoding="utf-8")
         cp_secret = self.run_validator(run_dir)
         self.assertNotEqual(cp_secret.returncode, 0)
-        self.assertIn("command_events[1]: event.raw_prompt: field is not allowed in command events", cp_secret.stderr)
+        self.assertIn("command_events[1]: event.raw_prompt: field is explicitly forbidden in command events", cp_secret.stderr)
 
         bad_event = dict(event)
         bad_event["ended_at"] = "2026-05-15T23:59:59Z"
