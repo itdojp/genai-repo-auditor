@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import re
+from contextvars import ContextVar
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List
 
 from report_safety import (
     ReportSafetyError,
@@ -22,10 +23,12 @@ from .common import (
     validate_schema_shape,
     validate_string_list,
 )
+from .context import ValidationContext
 from .findings import ASSESSMENT_STATUSES, CONFIDENCES, SEVERITIES
 from .scanner import SCANNER_RESULTS_DIR
 
-LAB_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_LAB_ROOT = Path(__file__).resolve().parents[2]
+_SCHEMA_LAB_ROOT: ContextVar[Path] = ContextVar("advanced_validator_schema_lab_root", default=DEFAULT_LAB_ROOT)
 
 DEPENDENCIES_PATH = Path("reports/dependencies.json")
 VALIDATION_PATH = Path("reports/validation.json")
@@ -164,7 +167,7 @@ BENCHMARK_FORBIDDEN_KEYS = {
 def load_schema(name: str) -> Dict[str, Any]:
     """Backward-compatible schema loader for remaining in-file validators."""
 
-    return load_schema_from_root(LAB_ROOT, name)
+    return load_schema_from_root(_SCHEMA_LAB_ROOT.get(), name)
 
 
 def validate_no_private_reasoning_keys(value: Any, field_path: str, errors: List[str]) -> None:
@@ -219,6 +222,8 @@ def validate_dependencies(run_dir: Path, errors: List[str]) -> bool:
         return False
 
     validate_schema(dependencies_data, load_schema("dependencies.schema.json"), "dependencies", errors)
+    if not isinstance(dependencies_data, dict):
+        return True
     validate_generated_at(dependencies_data.get("generated_at"), "dependencies.generated_at", errors)
 
     components = dependencies_data.get("components")
@@ -372,6 +377,8 @@ def validate_chains(run_dir: Path, findings: list[dict[str, Any]], errors: List[
         return True
 
     validate_schema(chains_data, load_schema("chains.schema.json"), "chains", errors)
+    if not isinstance(chains_data, dict):
+        return True
     validate_generated_at(chains_data.get("generated_at"), "chains.generated_at", errors)
 
     chains = chains_data.get("chains")
@@ -459,6 +466,8 @@ def validate_adversarial_validation(run_dir: Path, findings: list[dict[str, Any]
         return True
 
     validate_schema(validation_data, load_schema("validation.schema.json"), "validation", errors)
+    if not isinstance(validation_data, dict):
+        return True
     validate_generated_at(validation_data.get("generated_at"), "validation.generated_at", errors)
     validate_no_private_reasoning_keys(validation_data, "validation", errors)
 
@@ -1558,6 +1567,8 @@ def validate_imported_findings(run_dir: Path, findings: list[dict[str, Any]], er
         return True
 
     validate_schema_shape(data, load_schema("imported-findings.schema.json"), "imported_findings", errors)
+    if not isinstance(data, dict):
+        return True
     validate_generated_at(data.get("generated_at"), "imported_findings.generated_at", errors)
     append_imported_secret_error(data, errors)
 
@@ -1854,36 +1865,40 @@ ADVANCED_VALIDATOR_ORDER = (
 )
 
 
+def _run_with_context(context: ValidationContext, callback: Callable[[], bool]) -> bool:
+    token = _SCHEMA_LAB_ROOT.set(context.lab_root)
+    try:
+        return callback()
+    finally:
+        _SCHEMA_LAB_ROOT.reset(token)
+
+
+def _run_without_findings(context: ValidationContext, validator: Callable[[Path, List[str]], bool]) -> bool:
+    return _run_with_context(context, lambda: validator(context.run_dir, context.errors))
+
+
+def _run_with_findings(
+    context: ValidationContext,
+    validator: Callable[[Path, list[dict[str, Any]], List[str]], bool],
+) -> bool:
+    return _run_with_context(context, lambda: validator(context.run_dir, context.findings, context.errors))
+
+
 def register_advanced_validators(registry: Any) -> None:
-    registry.register("dependencies", lambda context: validate_dependencies(context.run_dir, context.errors))
-    registry.register("chains", lambda context: validate_chains(context.run_dir, context.findings, context.errors))
-    registry.register(
-        "adversarial_validation",
-        lambda context: validate_adversarial_validation(context.run_dir, context.findings, context.errors),
-    )
-    registry.register("proofs", lambda context: validate_proofs(context.run_dir, context.findings, context.errors))
-    registry.register(
-        "remediation_candidates",
-        lambda context: validate_remediation_candidates(context.run_dir, context.findings, context.errors),
-    )
-    registry.register(
-        "patch_validations",
-        lambda context: validate_patch_validations(context.run_dir, context.findings, context.errors),
-    )
-    registry.register(
-        "novelty_ledger",
-        lambda context: validate_novelty_ledger(context.run_dir, context.findings, context.errors),
-    )
-    registry.register("traces", lambda context: validate_traces(context.run_dir, context.findings, context.errors))
-    registry.register("metrics", lambda context: validate_metrics(context.run_dir, context.errors))
-    registry.register("workflow_profile", lambda context: validate_workflow_profile(context.run_dir, context.errors))
-    registry.register("benchmark", lambda context: validate_benchmark(context.run_dir, context.errors))
-    registry.register("evidence_graph", lambda context: validate_evidence_graph(context.run_dir, context.errors))
-    registry.register(
-        "imported_findings",
-        lambda context: validate_imported_findings(context.run_dir, context.findings, context.errors),
-    )
-    registry.register("issue_ledger", lambda context: validate_issue_ledger(context.run_dir, context.errors))
-    registry.register("duplicate_decisions", lambda context: validate_duplicate_decisions(context.run_dir, context.errors))
-    registry.register("run_state", lambda context: validate_run_state(context.run_dir, context.errors))
-    registry.register("command_events", lambda context: validate_command_events(context.run_dir, context.errors))
+    registry.register("dependencies", lambda context: _run_without_findings(context, validate_dependencies))
+    registry.register("chains", lambda context: _run_with_findings(context, validate_chains))
+    registry.register("adversarial_validation", lambda context: _run_with_findings(context, validate_adversarial_validation))
+    registry.register("proofs", lambda context: _run_with_findings(context, validate_proofs))
+    registry.register("remediation_candidates", lambda context: _run_with_findings(context, validate_remediation_candidates))
+    registry.register("patch_validations", lambda context: _run_with_findings(context, validate_patch_validations))
+    registry.register("novelty_ledger", lambda context: _run_with_findings(context, validate_novelty_ledger))
+    registry.register("traces", lambda context: _run_with_findings(context, validate_traces))
+    registry.register("metrics", lambda context: _run_without_findings(context, validate_metrics))
+    registry.register("workflow_profile", lambda context: _run_without_findings(context, validate_workflow_profile))
+    registry.register("benchmark", lambda context: _run_without_findings(context, validate_benchmark))
+    registry.register("evidence_graph", lambda context: _run_without_findings(context, validate_evidence_graph))
+    registry.register("imported_findings", lambda context: _run_with_findings(context, validate_imported_findings))
+    registry.register("issue_ledger", lambda context: _run_without_findings(context, validate_issue_ledger))
+    registry.register("duplicate_decisions", lambda context: _run_without_findings(context, validate_duplicate_decisions))
+    registry.register("run_state", lambda context: _run_without_findings(context, validate_run_state))
+    registry.register("command_events", lambda context: _run_without_findings(context, validate_command_events))
