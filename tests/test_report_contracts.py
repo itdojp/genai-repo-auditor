@@ -20,6 +20,8 @@ VALIDATOR_PATH = REPO_ROOT / "bin" / "gra-validate-report"
 SCHEMAS = REPO_ROOT / "templates" / "reports"
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 from benchmark import validate_benchmark_payload as validate_benchmark_payload_internal  # noqa: E402
+from validators.advanced import IMPORTED_FINDING_APPEND_STATUSES  # noqa: E402
+from validators.common import load_schema as load_schema_from_root, validate_schema  # noqa: E402
 from validators.findings import REQUIRED_FINDING, REQUIRED_TOP  # noqa: E402
 from validators.targets import REQUIRED_TARGET  # noqa: E402
 
@@ -692,7 +694,7 @@ class ReportContractTests(unittest.TestCase):
             set(imported_item["required"]),
         )
         self.assertEqual(
-            sorted(VALIDATOR.IMPORTED_FINDING_APPEND_STATUSES),
+            sorted(IMPORTED_FINDING_APPEND_STATUSES),
             sorted(imported_item["properties"]["append_status"]["enum"]),
         )
         self.assertEqual(
@@ -1459,7 +1461,7 @@ class ReportContractTests(unittest.TestCase):
             ],
         }
         errors: list[str] = []
-        VALIDATOR.validate_schema(scanner_index, VALIDATOR.load_schema("scanner-index.schema.json"), "scanner_index", errors)
+        validate_schema(scanner_index, load_schema_from_root(REPO_ROOT, "scanner-index.schema.json"), "scanner_index", errors)
         self.assertEqual([], errors)
 
         invalid = json.loads(json.dumps(scanner_index))
@@ -1467,7 +1469,7 @@ class ReportContractTests(unittest.TestCase):
         invalid["results"][0]["raw_bytes"] = -1
         invalid["results"][0]["normalized_leads_count"] = -1
         errors = []
-        VALIDATOR.validate_schema(invalid, VALIDATOR.load_schema("scanner-index.schema.json"), "scanner_index", errors)
+        validate_schema(invalid, load_schema_from_root(REPO_ROOT, "scanner-index.schema.json"), "scanner_index", errors)
         joined = "\n".join(errors)
         self.assertIn("scanner_index.results[0].path: missing required field", joined)
         self.assertIn("scanner_index.results[0].raw_bytes: value -1 is below minimum 0", joined)

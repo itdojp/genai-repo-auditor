@@ -10,7 +10,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 from validators.findings import validate_findings  # noqa: E402
-from validators.registry import ValidationContext, ValidatorRegistry, core_validator_registry  # noqa: E402
+from validators.advanced import ADVANCED_VALIDATOR_ORDER  # noqa: E402
+from validators.registry import (  # noqa: E402
+    ValidationContext,
+    ValidatorRegistry,
+    core_validator_registry,
+    report_validator_registry,
+)
 from validators.run_manifest import validate_manifest_artifact_path, validate_run_manifest  # noqa: E402
 from validators.scanner import validate_scanner_index  # noqa: E402
 from validators.targets import validate_targets  # noqa: E402
@@ -78,6 +84,13 @@ class ValidatorRegistryTests(unittest.TestCase):
         self.assertEqual("validators.targets", validate_targets.__module__)
         self.assertEqual("validators.scanner", validate_scanner_index.__module__)
         self.assertEqual("validators.run_manifest", validate_run_manifest.__module__)
+
+    def test_report_registry_registers_all_artifact_validators_in_execution_order(self) -> None:
+        registry = report_validator_registry()
+        self.assertEqual(
+            ("findings", "targets", "scanner_index", *ADVANCED_VALIDATOR_ORDER, "run_manifest"),
+            registry.names,
+        )
 
     def test_findings_and_targets_dispatch_for_valid_fixture(self) -> None:
         run_dir = REPO_ROOT / "tests" / "fixtures" / "minimal-run"
