@@ -9,6 +9,49 @@ except ImportError:
 
 
 class ScannerStoreWorkflowTests(CliWorkflowTestCase):
+    def test_reporting_failures_emit_events_after_successful_preflight(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        dashboard_out = run_dir / "reports" / "dashboard-output"
+        sarif_out = run_dir / "reports" / "sarif-output"
+        database_out = run_dir / "reports" / "database-output"
+        for path in [dashboard_out, sarif_out, database_out]:
+            path.mkdir()
+
+        commands = [
+            ([REPO_ROOT / "bin" / "gra-dashboard", "--run", run_dir, "--out", dashboard_out], "gra-dashboard", "dashboard"),
+            ([REPO_ROOT / "bin" / "gra-sarif", "--run", run_dir, "--out", sarif_out], "gra-sarif", "sarif"),
+            ([REPO_ROOT / "bin" / "gra-store", "--run", run_dir, "--db", database_out], "gra-store", "store"),
+        ]
+        for command, expected_command, expected_phase in commands:
+            cp = self.run_cmd(command)
+            self.assertEqual(2, cp.returncode, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
+            self.assertNotIn("Traceback", cp.stderr)
+            event = self.read_command_events(run_dir)[-1]
+            self.assert_public_command_event(
+                event,
+                command=expected_command,
+                phase=expected_phase,
+                exit_code=2,
+                status="failed",
+            )
+            self.assertEqual("reporting_failure", event["error_category"])
+            self.assertEqual([], event["output_artifact_refs"])
+
+    def test_store_rejects_invalid_event_context_before_database_mutation(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        context_path = run_dir / "context.json"
+        context = json.loads(context_path.read_text(encoding="utf-8"))
+        context["repo"] = "invalid repo with spaces"
+        context_path.write_text(json.dumps(context, indent=2) + "\n", encoding="utf-8")
+        database = self.work_dir / "must-not-exist.sqlite"
+
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-store", "--run", run_dir, "--db", database])
+
+        self.assertEqual(2, cp.returncode)
+        self.assertIn("event.repo", cp.stderr)
+        self.assertFalse(database.exists())
+        self.assertFalse((run_dir / "reports" / "command-events.jsonl").exists())
+
     def test_ingest_and_import_events_respect_custom_reports_dir(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         (run_dir / "reports").rename(run_dir / "custom-reports")
@@ -83,6 +126,9 @@ class ScannerStoreWorkflowTests(CliWorkflowTestCase):
         self.assertTrue(metrics["summary"]["scanner"]["artifact_present"])
         self.assertEqual(1, metrics["summary"]["scanner"]["result_count"])
         self.assertEqual(len(normalized["leads"]), metrics["summary"]["scanner"]["normalized_leads_count"])
+        events = self.read_command_events(run_dir)
+        self.assertEqual(2, len(events))
+        self.assert_public_command_event(events[1], command="gra-metrics", phase="metrics")
 
         cp_triage = self.run_cmd([REPO_ROOT / "bin" / "gra-scanner-triage", "--run", run_dir], check=True)
         self.assertIn("Codex status: 0", cp_triage.stdout)
@@ -90,13 +136,13 @@ class ScannerStoreWorkflowTests(CliWorkflowTestCase):
         self.assertIn("reports/scanner-results/scanner-index.json", triage_prompt.read_text(encoding="utf-8"))
         self.assertIn("Normalized lead files", triage_prompt.read_text(encoding="utf-8"))
         events = self.read_command_events(run_dir)
-        self.assertEqual(2, len(events))
-        self.assert_public_command_event(events[1], command="gra-scanner-triage", phase="scanner-triage")
-        self.assertEqual("gpt-5.5", events[1]["model"])
-        self.assertEqual("xhigh", events[1]["effort"])
-        self.assertFalse(events[1]["network_allowed"])
-        self.assertIn("reports/scanner-results/scanner-index.json", events[1]["input_artifact_refs"])
-        self.assertIn("prompts/exec/scanner-triage.prompt.md", events[1]["output_artifact_refs"])
+        self.assertEqual(3, len(events))
+        self.assert_public_command_event(events[2], command="gra-scanner-triage", phase="scanner-triage")
+        self.assertEqual("gpt-5.5", events[2]["model"])
+        self.assertEqual("xhigh", events[2]["effort"])
+        self.assertFalse(events[2]["network_allowed"])
+        self.assertIn("reports/scanner-results/scanner-index.json", events[2]["input_artifact_refs"])
+        self.assertIn("prompts/exec/scanner-triage.prompt.md", events[2]["output_artifact_refs"])
 
         cp_dashboard = self.run_cmd([REPO_ROOT / "bin" / "gra-dashboard", "--run", run_dir], check=True)
         self.assertIn("dashboard.html", cp_dashboard.stdout)
@@ -116,6 +162,15 @@ class ScannerStoreWorkflowTests(CliWorkflowTestCase):
             posture_count = conn.execute("select count(*) from posture_artifacts").fetchone()[0]
         self.assertEqual(count, 1)
         self.assertEqual(posture_count, 0)
+        events = self.read_command_events(run_dir)
+        self.assertEqual(
+            ["gra-ingest", "gra-metrics", "gra-scanner-triage", "gra-dashboard", "gra-sarif", "gra-store"],
+            [event["command"] for event in events],
+        )
+        self.assert_public_command_event(events[3], command="gra-dashboard", phase="dashboard")
+        self.assert_public_command_event(events[4], command="gra-sarif", phase="sarif")
+        self.assert_public_command_event(events[5], command="gra-store", phase="store")
+        self.assertNotIn(str(db_path), json.dumps(events[5]))
 
     def test_gra_store_and_index_persist_optional_posture_artifacts(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

@@ -7,7 +7,8 @@ from pathlib import Path
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
-from evidence_graph import EvidenceGraphSafetyError, build_evidence_graph, write_evidence_graph  # noqa: E402
+from evidence_graph import EvidenceGraphSafetyError, build_evidence_graph, reports_dir, write_evidence_graph  # noqa: E402
+from run_events import EventWriteError, append_command_event, preflight_command_event, start_command_event  # noqa: E402
 from version import auditor_version  # noqa: E402
 
 
@@ -18,18 +19,58 @@ def main() -> int:
     args = parser.parse_args()
 
     run_dir = Path(args.run).resolve()
+    started_at, started_perf = start_command_event()
     try:
-        graph = build_evidence_graph(run_dir)
-        json_path, md_path = write_evidence_graph(run_dir, graph)
+        reports = reports_dir(run_dir)
     except EvidenceGraphSafetyError as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    input_artifacts = [run_dir / "context.json", reports]
+    output_artifacts = [reports / "evidence-graph.json", reports / "EVIDENCE_GRAPH.md"]
+
+    def finish(exit_code: int, *, error_category: str | None = None) -> int:
+        append_command_event(
+            run_dir,
+            command="gra-evidence-graph",
+            phase="evidence-graph",
+            started_at=started_at,
+            started_perf=started_perf,
+            exit_code=exit_code,
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=output_artifacts,
+            error_category=error_category,
+            failure_mode="warn" if exit_code != 0 else "block",
+        )
+        return exit_code
+
+    try:
+        preflight_command_event(
+            run_dir,
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=output_artifacts,
+            event_fields={
+                "command": "gra-evidence-graph",
+                "phase": "evidence-graph",
+                "started_at": started_at,
+                "started_perf": started_perf,
+                "exit_code": 0,
+            },
+            reserve_file=False,
+        )
+        graph = build_evidence_graph(run_dir)
+        json_path, md_path = write_evidence_graph(run_dir, graph)
+    except EventWriteError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except EvidenceGraphSafetyError as exc:
+        print(str(exc), file=sys.stderr)
+        return finish(2, error_category="reporting_failure")
     summary = graph.get("summary") if isinstance(graph.get("summary"), dict) else {}
     print(f"Evidence graph JSON: {json_path}")
     print(f"Evidence graph Markdown: {md_path}")
     print(f"Nodes: {summary.get('node_count', 0)}")
     print(f"Edges: {summary.get('edge_count', 0)}")
-    return 0
+    return finish(0)
 
 
 if __name__ == "__main__":

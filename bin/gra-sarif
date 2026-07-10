@@ -9,6 +9,14 @@ LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
 from gralib import load_context, load_json, utc_now, write_json
+from run_events import (
+    EventWriteError,
+    append_command_event,
+    local_artifact_paths,
+    preflight_command_event,
+    reports_dir,
+    start_command_event,
+)
 
 LEVEL_MAP = {
     'Critical': 'error',
@@ -23,9 +31,12 @@ ASSESSMENT_FIELDS = [
     'boundary_crossing',
     'impact_assessment',
 ]
+_failure_event: tuple[Path, str, float, list[Path], list[Path]] | None = None
 
 
 def main() -> int:
+    global _failure_event
+    _failure_event = None
     p = argparse.ArgumentParser(description='Convert findings.json to SARIF 2.1.0')
     p.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
     p.add_argument('--run', required=True, help='Run directory')
@@ -33,8 +44,36 @@ def main() -> int:
     args = p.parse_args()
 
     run_dir = Path(args.run).resolve()
+    started_at, started_perf = start_command_event()
     ctx = load_context(run_dir)
-    findings_data = load_json(run_dir / 'reports' / 'findings.json', {}) or {}
+    try:
+        reports = reports_dir(run_dir)
+    except OSError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    findings_path = reports / 'findings.json'
+    out = Path(args.out).resolve() if args.out else reports / 'findings.sarif'
+    input_artifacts = [run_dir / 'context.json', findings_path]
+    output_artifacts = local_artifact_paths(run_dir, [out])
+    try:
+        preflight_command_event(
+            run_dir,
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=output_artifacts,
+            event_fields={
+                'command': 'gra-sarif',
+                'phase': 'sarif',
+                'started_at': started_at,
+                'started_perf': started_perf,
+                'exit_code': 0,
+            },
+            reserve_file=False,
+        )
+    except EventWriteError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    _failure_event = (run_dir, started_at, started_perf, input_artifacts, output_artifacts)
+    findings_data = load_json(findings_path, {}) or {}
     findings = [f for f in findings_data.get('findings', []) if isinstance(f, dict)]
     rules = []
     results = []
@@ -122,11 +161,43 @@ def main() -> int:
             'results': results,
         }],
     }
-    out = Path(args.out).resolve() if args.out else run_dir / 'reports' / 'findings.sarif'
     write_json(out, sarif)
     print(f'Wrote {out}')
+    append_command_event(
+        run_dir,
+        command='gra-sarif',
+        phase='sarif',
+        started_at=started_at,
+        started_perf=started_perf,
+        exit_code=0,
+        input_artifact_paths=input_artifacts,
+        output_artifact_paths=output_artifacts,
+    )
+    _failure_event = None
     return 0
 
 
+def run_cli() -> int:
+    try:
+        return main()
+    except Exception as exc:  # noqa: BLE001 - convert post-preflight failures into structured events.
+        if _failure_event is not None:
+            run_dir, started_at, started_perf, input_artifacts, output_artifacts = _failure_event
+            append_command_event(
+                run_dir,
+                command='gra-sarif',
+                phase='sarif',
+                started_at=started_at,
+                started_perf=started_perf,
+                exit_code=2,
+                input_artifact_paths=input_artifacts,
+                output_artifact_paths=[path for path in output_artifacts if path.is_file() and not path.is_symlink()],
+                error_category='reporting_failure',
+                failure_mode='warn',
+            )
+        print(str(exc), file=sys.stderr)
+        return 2
+
+
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(run_cli())

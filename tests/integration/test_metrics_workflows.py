@@ -5,8 +5,64 @@ try:
 except ImportError:
     from support import *  # noqa: F401,F403
 
+from run_events import append_command_event, start_command_event  # noqa: E402
+
 
 class MetricsWorkflowTests(CliWorkflowTestCase):
+    def test_reporting_commands_support_custom_reports_dir_and_emit_completion_events(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        (run_dir / "reports").rename(run_dir / "custom-reports")
+        context_path = run_dir / "context.json"
+        context = json.loads(context_path.read_text(encoding="utf-8"))
+        context["reports_dir"] = "custom-reports"
+        context_path.write_text(json.dumps(context, indent=2) + "\n", encoding="utf-8")
+        database = self.work_dir / "reporting.sqlite"
+
+        for command in [
+            [REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir],
+            [REPO_ROOT / "bin" / "gra-benchmark", "--run", run_dir, "--skip-validation"],
+            [REPO_ROOT / "bin" / "gra-evidence-graph", "--run", run_dir],
+            [REPO_ROOT / "bin" / "gra-dashboard", "--run", run_dir],
+            [REPO_ROOT / "bin" / "gra-sarif", "--run", run_dir],
+            [REPO_ROOT / "bin" / "gra-store", "--run", run_dir, "--db", database],
+        ]:
+            self.run_cmd(command, check=True)
+
+        reports = run_dir / "custom-reports"
+        for relative in [
+            "metrics.json",
+            "METRICS.md",
+            "benchmark.json",
+            "BENCHMARK.md",
+            "evidence-graph.json",
+            "EVIDENCE_GRAPH.md",
+            "dashboard.html",
+            "findings.sarif",
+            "command-events.jsonl",
+        ]:
+            self.assertTrue((reports / relative).is_file(), relative)
+        events = self.read_command_events(run_dir)
+        self.assertEqual(
+            [
+                "gra-metrics",
+                "gra-benchmark",
+                "gra-evidence-graph",
+                "gra-dashboard",
+                "gra-sarif",
+                "gra-store",
+            ],
+            [event["command"] for event in events],
+        )
+        for event in events:
+            self.assertTrue(
+                all(
+                    ref in {"context.json", "custom-reports"} or ref.startswith("custom-reports/")
+                    for ref in event["input_artifact_refs"] + event["output_artifact_refs"]
+                ),
+                event,
+            )
+        self.assertEqual([], events[-1]["output_artifact_refs"])
+
     def test_gra_metrics_generates_advanced_workflow_counts_without_evidence(self) -> None:
         run_dir = self.copy_fixture_run("advanced-workflow-run")
         self.copy_advanced_workflow_outputs(run_dir)
@@ -136,6 +192,52 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
                 },
             ]:
                 handle.write(json.dumps(event, sort_keys=True) + "\n")
+        for event_kwargs in [
+            {
+                "command": "gra-ingest",
+                "phase": "ingest",
+                "subject_id": "semgrep",
+                "exit_code": 0,
+                "sandbox_profile": "local-read-only",
+                "network_allowed": False,
+                "input_artifact_paths": [run_dir / "context.json"],
+                "output_artifact_paths": [
+                    run_dir / "reports" / "scanner-results" / "scanner-index.json",
+                    run_dir / "reports" / "scanner-results" / "normalized" / "fixture.json",
+                ],
+            },
+            {
+                "command": "gra-remediate",
+                "phase": "patch-validate",
+                "subject_id": "SEC-101",
+                "exit_code": 7,
+                "status": "failed",
+                "attempt": 2,
+                "retry_of": "11111111-2222-3333-4444-555555555555",
+                "worker_profile": "profiles/codex-cli.json",
+                "model": "gpt-5.5",
+                "effort": "xhigh",
+                "sandbox_profile": "best-effort-host-python-guard",
+                "network_allowed": None,
+                "input_artifact_paths": [run_dir / "reports" / "findings.json"],
+                "output_artifact_paths": [run_dir / "reports" / "remediation" / "SEC-101" / "patch-validation.json"],
+                "error_category": "validation_failed",
+            },
+            {
+                "command": "gra-issues",
+                "phase": "plan",
+                "exit_code": 0,
+                "input_artifact_paths": [run_dir / "reports" / "findings.json"],
+                "output_artifact_paths": [run_dir / "reports" / "issue-publication-plan.json"],
+            },
+        ]:
+            started_at, started_perf = start_command_event()
+            append_command_event(
+                run_dir,
+                started_at=started_at,
+                started_perf=started_perf,
+                **event_kwargs,
+            )
         taxonomy_log = run_dir / "reports" / "taxonomy-normalizations.jsonl"
         taxonomy_log.write_text(
             json.dumps(
@@ -163,12 +265,17 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
         self.assertIn("Traces: 1", cp_metrics.stdout)
         self.assertIn("Gapfill current candidates: 3", cp_metrics.stdout)
         self.assertIn("Gapfill cumulative targets: 3", cp_metrics.stdout)
-        self.assertIn("Command events: 5", cp_metrics.stdout)
+        self.assertIn("Command events: 8", cp_metrics.stdout)
         self.assertIn("Validation retries: 1", cp_metrics.stdout)
         self.assertIn("Taxonomy normalizations: 1", cp_metrics.stdout)
         self.assertIn("Latest status artifacts:", cp_metrics.stdout)
         self.assertIn("Archive artifacts:", cp_metrics.stdout)
         self.assertIn("Manifest hygiene warnings:", cp_metrics.stdout)
+        events_after_metrics = self.read_command_events(run_dir)
+        self.assertEqual(9, len(events_after_metrics))
+        self.assert_public_command_event(events_after_metrics[-1], command="gra-metrics", phase="metrics")
+        self.assertIn("reports/metrics.json", events_after_metrics[-1]["output_artifact_refs"])
+        self.assertIn("reports/METRICS.md", events_after_metrics[-1]["output_artifact_refs"])
 
         metrics_text = (run_dir / "reports" / "metrics.json").read_text(encoding="utf-8")
         metrics_md = (run_dir / "reports" / "METRICS.md").read_text(encoding="utf-8")
@@ -202,14 +309,24 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
         self.assertEqual(3, metrics["gapfill"]["targets_generated"])
         self.assertEqual(1, metrics["traces"]["total"])
         self.assertEqual(2, metrics["issue_publication_plan"]["warning_count"])
-        self.assertEqual(5, metrics["observability"]["total_events"])
+        self.assertEqual(8, metrics["observability"]["total_events"])
         self.assertEqual(1, metrics["observability"]["by_command"]["gra-gapfill"])
         self.assertEqual(1, metrics["observability"]["by_phase"]["generate"])
         self.assertEqual(1, metrics["observability"]["failures_by_target"]["TGT-101"])
-        self.assertEqual(1, metrics["observability"]["failures_by_target"]["__run__"])
+        self.assertEqual(2, metrics["observability"]["failures_by_target"]["__run__"])
         self.assertEqual(1, metrics["observability"]["reruns_by_target"]["TGT-101"])
         self.assertEqual(1, metrics["observability"]["validation_retry_count"])
         self.assertEqual(1, metrics["observability"]["validation_retries_by_target"]["__run__"])
+        self.assertEqual(1, metrics["observability"]["retry_count"])
+        self.assertEqual(1, metrics["observability"]["retries_by_subject"]["SEC-101"])
+        self.assertEqual(1, metrics["observability"]["stage_groups"]["scanner_phases"]["ingest"])
+        self.assertEqual(1, metrics["observability"]["stage_groups"]["remediation_phases"]["patch-validate"])
+        self.assertEqual(1, metrics["observability"]["stage_groups"]["issue_publication_phases"]["plan"])
+        self.assertEqual(1, metrics["observability"]["configuration"]["by_worker_profile"]["profiles/codex-cli.json"])
+        self.assertEqual(1, metrics["observability"]["configuration"]["by_network_policy"]["denied"])
+        self.assertGreaterEqual(metrics["observability"]["artifact_production"]["output_ref_count"], 4)
+        self.assertIn("gra-metrics", metrics["observability"]["producer_coverage"]["not_observed_in_run"])
+        self.assertEqual(0, metrics["observability"]["by_command"]["gra-metrics"])
         self.assertEqual(1, metrics["observability"]["taxonomy_normalization_count"])
         self.assertEqual(1, metrics["observability"]["taxonomy_normalizations_by_target"]["TGT-101"])
         self.assertEqual("TGT-101", metrics["observability"]["execution_durations"][0]["target_id"])
@@ -231,8 +348,10 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
         self.assertIn("metrics.json", dashboard)
         self.assertIn("METRICS.md", dashboard)
         self.assertIn("Downgrade/invalidate rate", dashboard)
-        self.assertIn("Long-running target executions", dashboard)
+        self.assertIn("Slow command subjects", dashboard)
         self.assertIn("High retry / rerun targets", dashboard)
+        self.assertIn("Execution configuration", dashboard)
+        self.assertIn("Workflow stage groups", dashboard)
         self.assertIn("Taxonomy normalizations", dashboard)
         self.assertIn("TGT-101", dashboard)
         self.assertIn("Gapfill current and cumulative queue", dashboard)
@@ -241,6 +360,9 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
         self.assertIn("Artifact retention", dashboard)
         self.assertIn("Latest status artifacts", dashboard)
         self.assertIn("Archive artifacts", dashboard)
+        reporting_events = self.read_command_events(run_dir)
+        self.assertEqual("gra-dashboard", reporting_events[-1]["command"])
+        self.assertEqual("dashboard", reporting_events[-1]["phase"])
 
     def test_gra_benchmark_fixture_advanced_runs_without_network_or_raw_evidence(self) -> None:
         out_run = self.work_dir / "advanced-benchmark"
@@ -288,6 +410,10 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
         self.assertEqual("pass", gates["report-validation"]["status"])
         self.assertEqual("pass", gates["secret-scan"]["status"])
         self.assertEqual("pass", gates["no-public-issue-apply"]["status"])
+        events = self.read_command_events(out_run)
+        self.assert_public_command_event(events[-1], command="gra-benchmark", phase="benchmark")
+        self.assertIn("reports/benchmark.json", events[-1]["output_artifact_refs"])
+        self.assertIn("reports/BENCHMARK.md", events[-1]["output_artifact_refs"])
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", out_run], check=True)
         self.assertIn("Benchmark: validated", cp_validate.stdout)
@@ -310,6 +436,12 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
         self.assertFalse(benchmark["metrics"]["degraded"])
         self.assertEqual("metrics.json", benchmark["metrics"]["source"])
         self.assertEqual(1, benchmark["metrics"]["summary"]["findings_total"])
+        events = self.read_command_events(run_dir)
+        self.assertEqual(
+            ["gra-metrics", "gra-validate-report", "gra-benchmark"],
+            [event["command"] for event in events],
+        )
+        self.assert_public_command_event(events[-1], command="gra-benchmark", phase="benchmark")
 
     def test_gra_benchmark_rejects_missing_context_without_creating_reports(self) -> None:
         missing_run = self.work_dir / "missing-run"
@@ -367,6 +499,15 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
         self.assertEqual("fail", gates["secret-scan"]["status"])
         self.assertEqual(1, gates["secret-scan"]["value"])
         self.assertEqual(["reports/generated-secret.txt"], gates["secret-scan"]["artifact_paths"])
+        event = self.read_command_events(run_dir)[-1]
+        self.assert_public_command_event(
+            event,
+            command="gra-benchmark",
+            phase="benchmark",
+            exit_code=1,
+            status="failed",
+        )
+        self.assertEqual("quality_gate", event["error_category"])
 
     def test_gra_evidence_graph_links_advanced_artifacts_without_raw_payloads(self) -> None:
         run_dir = self.copy_fixture_run("advanced-workflow-run")
@@ -490,6 +631,10 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
             self.assertNotIn(forbidden, graph_md)
 
         graph = json.loads(graph_text)
+        graph_event = self.read_command_events(run_dir)[-1]
+        self.assert_public_command_event(graph_event, command="gra-evidence-graph", phase="evidence-graph")
+        self.assertIn("reports/evidence-graph.json", graph_event["output_artifact_refs"])
+        self.assertIn("reports/EVIDENCE_GRAPH.md", graph_event["output_artifact_refs"])
         node_types = {node["type"] for node in graph["nodes"]}
         self.assertTrue(
             {

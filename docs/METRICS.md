@@ -36,7 +36,9 @@ Metrics are computed from local report artifacts only:
 - issue publication plan selected findings and warning counts
 - issue ledger tracked, published, status, and drift-warning counts
 - duplicate decision total, exact-match count, candidate Issue references, and decision buckets
-- command event counts, execution durations, failures, reruns, and validation retries
+- command event counts, status/duration summaries, failures, reruns, retries,
+  execution-configuration coverage, artifact-reference production counts,
+  stage-group counts, and producer coverage
 - taxonomy normalization counts by target when normalization logs can be mapped to target IDs
 - run artifact counts, manifest retention buckets, latest-status artifact count,
   archive artifact count, and manifest hygiene warning count
@@ -81,36 +83,66 @@ local paths into public material.
 ## Observability metrics
 
 Instrumented workflow commands append structured JSONL command events to
-`<reports_dir>/command-events.jsonl`. Producers cover the audit entry point, recon,
-target queue operations, target research, gapfill, variant analysis, chain
-synthesis, safe proofs, adversarial validation, remediation, trace reachability,
-scanner ingestion, external finding import, scanner triage, Issue publication
-preview/planning, and report validation. `gra-metrics` accepts both Issue #116 version `1` records
-and the version `2` event contract. Version `2` adds unique `event_id` values,
-retry/attempt metadata, bounded input/output artifact references,
-worker/model/effort metadata when available, sandbox/network policy fields, and
-sanitized error categories. `gra-metrics` turns those events into an
-`observability` section with:
+`<reports_dir>/command-events.jsonl`, where `<reports_dir>` comes from
+`context.json` and defaults to `reports/`. Producers cover the audit entry
+point, recon, target queue operations, target research, gapfill, variant
+analysis, chain synthesis, safe proofs, adversarial validation, remediation,
+trace reachability, scanner ingestion, external finding import, scanner triage,
+Issue publication preview/planning, report validation, metrics generation,
+dogfood benchmarking, evidence-graph generation, dashboard rendering, SARIF
+export, and SQLite store import. `gra-metrics` accepts both Issue #116 version
+`1` records and the version `2` event contract. Version `2` adds unique
+`event_id` values, explicit `status`, retry/attempt metadata, bounded
+input/output artifact references, worker/model/effort metadata when available,
+sandbox/network policy fields, and sanitized error categories. `gra-metrics`
+turns those events into an `observability` section with:
 
-- command counts by command, phase, and exit code
-- one sanitized duration record per command event
-- failures by target ID, with run-level validation failures grouped under
-  `__run__`
-- reruns by target ID, computed from repeated command/phase execution for the
-  same target
+- command counts by command, phase, exit code, and status
+- one sanitized duration record per command event plus
+  `duration_summary.total_ms`, `average_ms`, and `maximum_ms`
+- `slow_subjects`, the longest-duration subject/command/phase records
+- failures by target ID and subject ID, with run-level validation or reporting
+  failures grouped under `__run__`
+- reruns by target ID and subject ID, computed from repeated command/phase
+  execution for the same target or subject
+- explicit retry counts from `attempt > 1` or `retry_of`, plus per-subject
+  retry buckets
 - validation retry counts from repeated `gra-validate-report` executions
+- execution-configuration coverage for worker profile, model, effort, sandbox
+  profile, and network policy metadata
+- artifact-reference production counts for total input/output refs and output
+  refs by command
+- stage-group coverage for scanner phases, remediation phases, and Issue
+  publication phases
+- producer coverage with expected producer count, observed count, observed and
+  not-observed command lists, and coverage percentage
 - taxonomy normalization totals and per-target counts from
   `reports/taxonomy-normalizations.jsonl`
 
 Command-event records are intentionally summary-only. They must not contain raw
 prompts, environment variables, credentials, finding evidence, Issue bodies,
 proof payloads, scanner bodies, private reasoning, or remediation patch
-content. Command-completion event writes are blocking by default so operators
-do not receive a successful command exit with missing execution evidence; any
-warning-only event producer must be explicitly documented as non-critical.
+content. When a reporting or persistence command writes outside the run
+directory via `--out`, `--out-json`, `--out-md`, or `--db`, the external path
+is intentionally omitted from `output_artifact_refs`; only run-contained
+artifact references are recorded. Successful command-completion event writes are
+blocking by default so operators do not receive a successful command exit with
+missing execution evidence. The six reporting/persistence producers preserve
+an already non-zero exit by downgrading any follow-up failure-event write to a
+warning.
 
-`gra-dashboard` renders the longest target executions and the highest retry /
-rerun targets from the same metrics artifact.
+Because `gra-metrics` writes `metrics.json` / `METRICS.md` before appending its
+own completion event, the current metrics artifact does not count that
+invocation's `gra-metrics` event. The same post-write completion policy applies
+to `gra-benchmark`, `gra-evidence-graph`, `gra-dashboard`, `gra-sarif`, and
+`gra-store`; their new events become visible on the next `gra-metrics`
+execution, after which a later `gra-dashboard` run can display the
+updated metrics.
+
+`gra-dashboard` renders the longest target executions, producer coverage,
+execution-configuration coverage, workflow stage-group counts, artifact
+retention, and the highest retry / rerun targets from the same metrics
+artifact.
 
 ## Gapfill current versus cumulative metrics
 

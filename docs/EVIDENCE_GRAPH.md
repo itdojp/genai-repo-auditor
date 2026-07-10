@@ -16,34 +16,40 @@ gra-dashboard --run runs/OWNER__REPO/RUN_ID
 The command writes:
 
 ```text
-reports/evidence-graph.json
-reports/EVIDENCE_GRAPH.md
+<reports_dir>/evidence-graph.json
+<reports_dir>/EVIDENCE_GRAPH.md
 ```
 
 `gra-validate-report` validates the graph shape when
-`reports/evidence-graph.json` exists. `gra-dashboard` links and summarizes the
-graph when present.
+`<reports_dir>/evidence-graph.json` exists. `gra-dashboard` links and
+summarizes the graph when present. After the graph files are written,
+`gra-evidence-graph` appends one v2 `evidence-graph` completion event to
+`<reports_dir>/command-events.jsonl`; that event becomes visible on the
+next `gra-metrics` execution, after which a later `gra-dashboard` run
+can display the updated metrics.
 
 ## Inputs
 
 The graph is generated from local run artifacts only:
 
-- `reports/findings.json`
-- `reports/targets.json`
-- `reports/scanner-results/scanner-index.json`
-- `reports/chains.json`
-- `reports/proofs.json`
-- `reports/validation.json`
-- `reports/traces.json`
-- `reports/remediation/remediation-candidates.json`
-- `reports/remediation/**/patch-validation.json`
-- `reports/issue-publication-plan.json`
-- `reports/metrics.json`
-- `reports/workflow-profile.json`
+- `<reports_dir>/findings.json`
+- `<reports_dir>/targets.json`
+- `<reports_dir>/scanner-results/scanner-index.json`
+- `<reports_dir>/chains.json`
+- `<reports_dir>/proofs.json`
+- `<reports_dir>/validation.json`
+- `<reports_dir>/traces.json`
+- `<reports_dir>/remediation/remediation-candidates.json`
+- `<reports_dir>/remediation/**/patch-validation.json`
+- `<reports_dir>/issue-publication-plan.json`
+- `<reports_dir>/metrics.json`
+- `<reports_dir>/workflow-profile.json`
 
 Only `findings.json` is expected for a useful graph. All other inputs are
 optional; missing optional artifacts are recorded under
 `summary.missing_optional_artifacts` rather than causing the command to fail.
+The command resolves `<reports_dir>` from `context.json` and rejects unsafe
+custom report paths.
 
 ## Node and edge model
 
@@ -76,7 +82,7 @@ Edge types:
 - `not_applicable`
 
 The graph keeps run-relative artifact references such as
-`reports/findings.json#/findings/0`. High/Critical issue-recommended findings
+`<reports_dir>/findings.json#/findings/0`. High/Critical issue-recommended findings
 are summarized with counts for inbound supporting and challenging evidence so a
 reviewer can identify where evidence is strong, incomplete, or disputed.
 
@@ -94,7 +100,9 @@ It must not copy raw finding evidence, root cause text, impact text, remediation
 text, proof payloads, full Issue bodies, or secret values. The validator rejects
 forbidden raw-payload field names, secret-like values, unsafe artifact paths,
 unknown node references, duplicate node/edge identifiers, and inconsistent
-summary counts.
+summary counts. Successful completion-event writes are blocking; if the graph is
+already failing after preflight, any follow-up event-write failure is degraded
+to a warning so the original non-zero exit is preserved.
 
 ## Recommended placement in the workflow
 
