@@ -287,7 +287,9 @@ phase/status metadata and run-relative artifact references; scanner bodies,
 external finding evidence, credentials, Issue body text, absolute output paths,
 and SQLite paths outside the run directory are excluded. New event producers
 should pass input and output artifact references explicitly rather than relying
-on the legacy `artifact_paths` fallback. `gra-metrics` uses these events to
+on the legacy `artifact_paths` fallback. Failed reporting events include only
+output files that were actually written before the failure; planned but absent
+outputs are not counted as produced artifacts. `gra-metrics` uses these events to
 report per-execution status counts, duration summaries, failures, reruns,
 explicit retries, validation retries, configuration coverage, artifact-ref
 production counts, stage-group coverage, producer coverage, and target-level

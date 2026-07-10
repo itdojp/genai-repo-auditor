@@ -102,7 +102,9 @@ forbidden raw-payload field names, secret-like values, unsafe artifact paths,
 unknown node references, duplicate node/edge identifiers, and inconsistent
 summary counts. Successful completion-event writes are blocking; if the graph is
 already failing after preflight, any follow-up event-write failure is degraded
-to a warning so the original non-zero exit is preserved.
+to a warning so the original non-zero exit is preserved. Malformed input and
+output write failures after preflight return `2`, emit a sanitized failed
+`evidence-graph` event, and list only graph files that were actually written.
 
 ## Recommended placement in the workflow
 

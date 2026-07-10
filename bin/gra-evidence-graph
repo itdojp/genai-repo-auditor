@@ -29,6 +29,11 @@ def main() -> int:
     output_artifacts = [reports / "evidence-graph.json", reports / "EVIDENCE_GRAPH.md"]
 
     def finish(exit_code: int, *, error_category: str | None = None) -> int:
+        event_outputs = (
+            output_artifacts
+            if exit_code == 0
+            else [path for path in output_artifacts if path.is_file() and not path.is_symlink()]
+        )
         append_command_event(
             run_dir,
             command="gra-evidence-graph",
@@ -37,7 +42,7 @@ def main() -> int:
             started_perf=started_perf,
             exit_code=exit_code,
             input_artifact_paths=input_artifacts,
-            output_artifact_paths=output_artifacts,
+            output_artifact_paths=event_outputs,
             error_category=error_category,
             failure_mode="warn" if exit_code != 0 else "block",
         )
@@ -62,7 +67,7 @@ def main() -> int:
     except EventWriteError as exc:
         print(str(exc), file=sys.stderr)
         return 2
-    except EvidenceGraphSafetyError as exc:
+    except (OSError, ValueError, EvidenceGraphSafetyError) as exc:
         print(str(exc), file=sys.stderr)
         return finish(2, error_category="reporting_failure")
     summary = graph.get("summary") if isinstance(graph.get("summary"), dict) else {}

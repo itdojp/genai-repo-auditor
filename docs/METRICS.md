@@ -125,7 +125,9 @@ proof payloads, scanner bodies, private reasoning, or remediation patch
 content. When a reporting or persistence command writes outside the run
 directory via `--out`, `--out-json`, `--out-md`, or `--db`, the external path
 is intentionally omitted from `output_artifact_refs`; only run-contained
-artifact references are recorded. Successful command-completion event writes are
+artifact references are recorded. Failed reporting events retain only output
+files that actually exist, so planned but unwritten outputs do not inflate
+artifact-production metrics. Successful command-completion event writes are
 blocking by default so operators do not receive a successful command exit with
 missing execution evidence. The six reporting/persistence producers preserve
 an already non-zero exit by downgrading any follow-up failure-event write to a

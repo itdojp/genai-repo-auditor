@@ -9,6 +9,42 @@ from run_events import append_command_event, start_command_event  # noqa: E402
 
 
 class MetricsWorkflowTests(CliWorkflowTestCase):
+    def test_metrics_and_evidence_graph_failures_record_only_written_outputs(self) -> None:
+        metrics_run = self.copy_fixture_run("minimal-run")
+        (metrics_run / "reports" / "findings.json").write_text("{invalid-json\n", encoding="utf-8")
+
+        cp_metrics = self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", metrics_run])
+
+        self.assertEqual(2, cp_metrics.returncode)
+        metrics_event = self.read_command_events(metrics_run)[-1]
+        self.assert_public_command_event(
+            metrics_event,
+            command="gra-metrics",
+            phase="metrics",
+            exit_code=2,
+            status="failed",
+        )
+        self.assertEqual("reporting_failure", metrics_event["error_category"])
+        self.assertEqual([], metrics_event["output_artifact_refs"])
+
+        graph_run = self.copy_fixture_run("minimal-run")
+        (graph_run / "reports" / "evidence-graph.json").mkdir()
+
+        cp_graph = self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", graph_run])
+
+        self.assertEqual(2, cp_graph.returncode)
+        self.assertNotIn("Traceback", cp_graph.stderr)
+        graph_event = self.read_command_events(graph_run)[-1]
+        self.assert_public_command_event(
+            graph_event,
+            command="gra-evidence-graph",
+            phase="evidence-graph",
+            exit_code=2,
+            status="failed",
+        )
+        self.assertEqual("reporting_failure", graph_event["error_category"])
+        self.assertEqual([], graph_event["output_artifact_refs"])
+
     def test_reporting_commands_support_custom_reports_dir_and_emit_completion_events(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         (run_dir / "reports").rename(run_dir / "custom-reports")
