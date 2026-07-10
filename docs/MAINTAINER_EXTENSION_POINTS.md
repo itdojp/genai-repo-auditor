@@ -43,9 +43,10 @@ When adding integration coverage:
 Package metadata is declared in [`pyproject.toml`](../pyproject.toml), with
 source files under [`src/genai_repo_auditor/`](../src/genai_repo_auditor/).
 The package intentionally has no runtime third-party dependencies. The
-declared build backend packages the prompt and template resource families under
-`share/genai-repo-auditor/` so installed code can locate them without relying
-on a source checkout.
+declared build backend installs all public `gra-*` console scripts and packages
+the legacy `bin/` command surface, `lib/` helper modules, prompt families, and
+template resource families under `share/genai-repo-auditor/` so installed code
+can locate them without relying on a source checkout.
 
 Use the canonical resource API for new package-aware code:
 
@@ -61,8 +62,16 @@ Compatibility invariants:
 
 - Source-checkout commands under `bin/` must continue to work while packaging
   support is introduced incrementally.
-- Packaged resources must include prompts, report schemas/templates,
-  taxonomies, and agent worker profiles.
+- Every current `bin/gra-*` command must have a matching `[project.scripts]`
+  entry point in `pyproject.toml` and a callable in
+  `genai_repo_auditor.cli.COMMANDS`.
+- Packaged resources must include `VERSION`, `bin/`, `lib/`, prompts, report
+  schemas/templates, taxonomies, and agent worker profiles.
+- Console-script wrappers must preserve public command names in `--help` and
+  `--version` output, including when executed outside the source checkout.
+- Console-script wrappers that execute bundled code must ignore
+  `GENAI_REPO_AUDITOR_RESOURCE_ROOT` for executable helper discovery; that
+  override is for data resource lookup only.
 - Package builds must not include local runs, cloned repositories, scanner
   output, stores, credentials, Codex transcripts, or agent-local artifacts.
 

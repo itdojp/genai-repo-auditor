@@ -33,6 +33,41 @@ Homepage = "https://github.com/itdojp/genai-repo-auditor"
 Repository = "https://github.com/itdojp/genai-repo-auditor"
 Issues = "https://github.com/itdojp/genai-repo-auditor/issues"
 
+[project.scripts]
+gra-adversarial-validate = "genai_repo_auditor.cli:gra_adversarial_validate"
+gra-agent-check = "genai_repo_auditor.cli:gra_agent_check"
+gra-audit = "genai_repo_auditor.cli:gra_audit"
+gra-batch = "genai_repo_auditor.cli:gra_batch"
+gra-benchmark = "genai_repo_auditor.cli:gra_benchmark"
+gra-chains = "genai_repo_auditor.cli:gra_chains"
+gra-dashboard = "genai_repo_auditor.cli:gra_dashboard"
+gra-evidence-graph = "genai_repo_auditor.cli:gra_evidence_graph"
+gra-gapfill = "genai_repo_auditor.cli:gra_gapfill"
+gra-import-findings = "genai_repo_auditor.cli:gra_import_findings"
+gra-index = "genai_repo_auditor.cli:gra_index"
+gra-ingest = "genai_repo_auditor.cli:gra_ingest"
+gra-issues = "genai_repo_auditor.cli:gra_issues"
+gra-metrics = "genai_repo_auditor.cli:gra_metrics"
+gra-no-findings = "genai_repo_auditor.cli:gra_no_findings"
+gra-novelty = "genai_repo_auditor.cli:gra_novelty"
+gra-proofs = "genai_repo_auditor.cli:gra_proofs"
+gra-recon = "genai_repo_auditor.cli:gra_recon"
+gra-remediate = "genai_repo_auditor.cli:gra_remediate"
+gra-research = "genai_repo_auditor.cli:gra_research"
+gra-run-state = "genai_repo_auditor.cli:gra_run_state"
+gra-sandbox-check = "genai_repo_auditor.cli:gra_sandbox_check"
+gra-sarif = "genai_repo_auditor.cli:gra_sarif"
+gra-scanner-triage = "genai_repo_auditor.cli:gra_scanner_triage"
+gra-store = "genai_repo_auditor.cli:gra_store"
+gra-targets = "genai_repo_auditor.cli:gra_targets"
+gra-taxonomy-preflight = "genai_repo_auditor.cli:gra_taxonomy_preflight"
+gra-trace = "genai_repo_auditor.cli:gra_trace"
+gra-validate-report = "genai_repo_auditor.cli:gra_validate_report"
+gra-variant = "genai_repo_auditor.cli:gra_variant"
+gra-workflow-profile = "genai_repo_auditor.cli:gra_workflow_profile"
+gra-worktree-check = "genai_repo_auditor.cli:gra_worktree_check"
+
+
 [tool.setuptools]
 package-dir = { "" = "src" }
 packages = ["genai_repo_auditor"]
@@ -42,6 +77,11 @@ include-package-data = true
 version = { file = "VERSION" }
 
 [tool.setuptools.data-files]
+"share/genai-repo-auditor" = ["VERSION"]
+"share/genai-repo-auditor/bin" = ["bin/gra-*"]
+"share/genai-repo-auditor/lib" = ["lib/*.py"]
+"share/genai-repo-auditor/lib/publication" = ["lib/publication/*.py"]
+"share/genai-repo-auditor/lib/validators" = ["lib/validators/*.py"]
 "share/genai-repo-auditor/prompts" = ["prompts/*.md"]
 "share/genai-repo-auditor/prompts/codex" = ["prompts/codex/*.md"]
 "share/genai-repo-auditor/prompts/exec" = ["prompts/exec/*.md"]

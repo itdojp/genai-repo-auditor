@@ -32,7 +32,7 @@ def run_taxonomy_preflight(run_dir: Path, target_id: str) -> int:
     log = run_dir / f"taxonomy-preflight-{target_id}.txt"
     with log.open("w", encoding="utf-8") as stdout:
         proc = subprocess.run(
-            [str(LAB_ROOT / "bin" / "gra-taxonomy-preflight"), "--run", str(run_dir), "--fix"],
+            [sys.executable, str(LAB_ROOT / "bin" / "gra-taxonomy-preflight"), "--run", str(run_dir), "--fix"],
             stdout=stdout,
             stderr=subprocess.STDOUT,
             text=True,

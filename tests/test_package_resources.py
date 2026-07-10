@@ -194,6 +194,11 @@ class PackageResourceTests(unittest.TestCase):
 
         data_files = pyproject_data_file_destinations(pyproject)
         expected_destinations = {
+            "share/genai-repo-auditor",
+            "share/genai-repo-auditor/bin",
+            "share/genai-repo-auditor/lib",
+            "share/genai-repo-auditor/lib/publication",
+            "share/genai-repo-auditor/lib/validators",
             "share/genai-repo-auditor/prompts",
             "share/genai-repo-auditor/prompts/codex",
             "share/genai-repo-auditor/prompts/exec",
@@ -231,6 +236,8 @@ class PackageResourceTests(unittest.TestCase):
     def test_sdist_manifest_prunes_local_and_generated_artifact_roots(self) -> None:
         manifest = (REPO_ROOT / "MANIFEST.in").read_text(encoding="utf-8")
         for directive in [
+            "recursive-include bin gra-*",
+            "recursive-include lib *.py",
             "prune .codex-local",
             "prune .test-tmp",
             "prune audits",
