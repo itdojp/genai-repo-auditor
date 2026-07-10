@@ -56,6 +56,18 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
         cp_gapfill = self.run_cmd([REPO_ROOT / "bin" / "gra-gapfill", "--run", run_dir, "--generate"], check=True)
         self.assertIn("Generated or reused 3 gapfill target(s)", cp_gapfill.stdout)
         command_events = run_dir / "reports" / "command-events.jsonl"
+        generated_event = self.read_command_events(run_dir)[0]
+        self.assertEqual("2", generated_event["schema_version"])
+        self.assertRegex(generated_event["event_id"], r"^[0-9a-f-]{36}$")
+        self.assertEqual("gra-gapfill", generated_event["command"])
+        self.assertEqual("generate", generated_event["phase"])
+        self.assertEqual("succeeded", generated_event["status"])
+        self.assertIn("context.json", generated_event["input_artifact_refs"])
+        self.assertIn("reports/targets.json", generated_event["input_artifact_refs"])
+        self.assertIn("reports/COVERAGE.md", generated_event["output_artifact_refs"])
+        self.assertIn("reports/gapfill-targets.json", generated_event["output_artifact_refs"])
+        self.assertIn("reports/targets.json", generated_event["output_artifact_refs"])
+        self.assertEqual(generated_event["output_artifact_refs"], generated_event["artifact_paths"])
         with command_events.open("a", encoding="utf-8") as handle:
             for event in [
                 {
@@ -191,6 +203,8 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
         self.assertEqual(1, metrics["traces"]["total"])
         self.assertEqual(2, metrics["issue_publication_plan"]["warning_count"])
         self.assertEqual(5, metrics["observability"]["total_events"])
+        self.assertEqual(1, metrics["observability"]["by_command"]["gra-gapfill"])
+        self.assertEqual(1, metrics["observability"]["by_phase"]["generate"])
         self.assertEqual(1, metrics["observability"]["failures_by_target"]["TGT-101"])
         self.assertEqual(1, metrics["observability"]["failures_by_target"]["__run__"])
         self.assertEqual(1, metrics["observability"]["reruns_by_target"]["TGT-101"])

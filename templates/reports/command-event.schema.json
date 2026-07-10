@@ -5,33 +5,234 @@
   "required": [
     "schema_version",
     "run_id",
-    "repo",
     "command",
     "phase",
-    "target_id",
     "started_at",
     "ended_at",
     "duration_ms",
     "exit_code",
-    "model",
-    "effort",
-    "artifact_paths",
     "source"
   ],
   "properties": {
-    "schema_version": {"type": "string"},
-    "run_id": {"type": "string"},
-    "repo": {"type": "string"},
-    "command": {"enum": ["gra-research", "gra-gapfill", "gra-validate-report"]},
-    "phase": {"enum": ["exec", "goal", "generate", "validate", "list"]},
-    "target_id": {"type": ["string", "null"]},
-    "started_at": {"type": "string"},
-    "ended_at": {"type": "string"},
-    "duration_ms": {"type": "integer", "minimum": 0},
-    "exit_code": {"type": "integer"},
-    "model": {"type": ["string", "null"]},
-    "effort": {"type": ["string", "null"]},
-    "artifact_paths": {"type": "array", "items": {"type": "string"}},
-    "source": {"enum": ["genai-repo-auditor"]}
+    "schema_version": {
+      "enum": [
+        "1",
+        "2"
+      ]
+    },
+    "event_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "repo": {
+      "type": "string"
+    },
+    "command": {
+      "enum": [
+        "gra-adversarial-validate",
+        "gra-agent-check",
+        "gra-audit",
+        "gra-batch",
+        "gra-benchmark",
+        "gra-chains",
+        "gra-dashboard",
+        "gra-doctor",
+        "gra-efficacy-benchmark",
+        "gra-evidence-graph",
+        "gra-gapfill",
+        "gra-import-findings",
+        "gra-index",
+        "gra-ingest",
+        "gra-issues",
+        "gra-metrics",
+        "gra-no-findings",
+        "gra-novelty",
+        "gra-proofs",
+        "gra-recon",
+        "gra-remediate",
+        "gra-research",
+        "gra-run",
+        "gra-run-state",
+        "gra-sandbox-check",
+        "gra-sarif",
+        "gra-scan",
+        "gra-scanner-triage",
+        "gra-store",
+        "gra-targets",
+        "gra-taxonomy-preflight",
+        "gra-trace",
+        "gra-validate-report",
+        "gra-variant",
+        "gra-workflow-profile",
+        "gra-worktree-check"
+      ]
+    },
+    "phase": {
+      "enum": [
+        "adversarial-validate",
+        "apply-plan",
+        "audit",
+        "benchmark",
+        "chain",
+        "check",
+        "dashboard",
+        "dry-run",
+        "evidence-graph",
+        "exec",
+        "execute",
+        "gapfill",
+        "generate",
+        "goal",
+        "import",
+        "ingest",
+        "list",
+        "metrics",
+        "patch-validate",
+        "plan",
+        "prepare",
+        "preview",
+        "proof",
+        "recon",
+        "remediate",
+        "resume",
+        "run-state",
+        "sarif",
+        "scan",
+        "scanner-triage",
+        "store",
+        "target-generation",
+        "trace",
+        "validate",
+        "verify-plan"
+      ]
+    },
+    "subject_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "target_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "ended_at": {
+      "type": "string"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "exit_code": {
+      "type": "integer"
+    },
+    "status": {
+      "enum": [
+        "succeeded",
+        "failed",
+        "blocked",
+        "skipped",
+        "warning",
+        null
+      ]
+    },
+    "attempt": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "retry_of": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "worker_profile": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "model": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "effort": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sandbox_profile": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "network_allowed": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "prompt_hash": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^(?:sha256:)?[0-9a-f]{64}$"
+    },
+    "input_artifact_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "output_artifact_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "artifact_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "redaction_count": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "error_category": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+    },
+    "source": {
+      "enum": [
+        "genai-repo-auditor"
+      ]
+    }
   }
 }

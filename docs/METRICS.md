@@ -80,9 +80,13 @@ local paths into public material.
 
 ## Observability metrics
 
-`gra-research`, `gra-gapfill`, and `gra-validate-report` append structured
-JSONL command events to `reports/command-events.jsonl`. `gra-metrics` turns
-those events into an `observability` section with:
+Instrumented workflow commands append structured JSONL command events to
+`reports/command-events.jsonl`. `gra-metrics` accepts both Issue #116 version
+`1` records and the version `2` event contract. Version `2` adds unique
+`event_id` values, retry/attempt metadata, bounded input/output artifact
+references, worker/model/effort metadata when available, sandbox/network
+policy fields, and sanitized error categories. `gra-metrics` turns those events
+into an `observability` section with:
 
 - command counts by command, phase, and exit code
 - one sanitized duration record per command event
@@ -93,6 +97,13 @@ those events into an `observability` section with:
 - validation retry counts from repeated `gra-validate-report` executions
 - taxonomy normalization totals and per-target counts from
   `reports/taxonomy-normalizations.jsonl`
+
+Command-event records are intentionally summary-only. They must not contain raw
+prompts, environment variables, credentials, finding evidence, Issue bodies,
+proof payloads, scanner bodies, private reasoning, or remediation patch
+content. Command-completion event writes are blocking by default so operators
+do not receive a successful command exit with missing execution evidence; any
+warning-only event producer must be explicitly documented as non-critical.
 
 `gra-dashboard` renders the longest target executions and the highest retry /
 rerun targets from the same metrics artifact.

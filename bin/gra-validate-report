@@ -59,7 +59,8 @@ def main() -> int:
             started_at=started_at,
             started_perf=started_perf,
             exit_code=exit_code,
-            artifact_paths=["reports/findings.json"],
+            input_artifact_paths=[path],
+            output_artifact_paths=[],
         )
         return exit_code
 

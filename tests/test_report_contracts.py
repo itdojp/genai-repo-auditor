@@ -20,6 +20,7 @@ VALIDATOR_PATH = REPO_ROOT / "bin" / "gra-validate-report"
 SCHEMAS = REPO_ROOT / "templates" / "reports"
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 from benchmark import validate_benchmark_payload as validate_benchmark_payload_internal  # noqa: E402
+from run_events import COMMAND_EVENT_COMMANDS, COMMAND_EVENT_PHASES, COMMAND_EVENT_STATUSES  # noqa: E402
 from validators.advanced import IMPORTED_FINDING_APPEND_STATUSES  # noqa: E402
 from validators.common import load_schema as load_schema_from_root, validate_schema  # noqa: E402
 from validators.findings import REQUIRED_FINDING, REQUIRED_TOP  # noqa: E402
@@ -785,25 +786,23 @@ class ReportContractTests(unittest.TestCase):
             {
                 "schema_version",
                 "run_id",
-                "repo",
                 "command",
                 "phase",
-                "target_id",
                 "started_at",
                 "ended_at",
                 "duration_ms",
                 "exit_code",
-                "model",
-                "effort",
-                "artifact_paths",
                 "source",
             },
             set(command_event_schema["required"]),
         )
-        self.assertEqual(
-            ["gra-research", "gra-gapfill", "gra-validate-report"],
-            command_event_schema["properties"]["command"]["enum"],
-        )
+        self.assertEqual(COMMAND_EVENT_COMMANDS, command_event_schema["properties"]["command"]["enum"])
+        self.assertEqual(COMMAND_EVENT_PHASES, command_event_schema["properties"]["phase"]["enum"])
+        self.assertEqual([*COMMAND_EVENT_STATUSES, None], command_event_schema["properties"]["status"]["enum"])
+        self.assertIn("2", command_event_schema["properties"]["schema_version"]["enum"])
+        self.assertIn("event_id", command_event_schema["properties"])
+        self.assertIn("input_artifact_refs", command_event_schema["properties"])
+        self.assertIn("output_artifact_refs", command_event_schema["properties"])
         self.assertEqual(["genai-repo-auditor"], command_event_schema["properties"]["source"]["enum"])
 
     def test_valid_minimal_fixture_passes_validator(self) -> None:
@@ -847,6 +846,48 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual(cp.returncode, 0, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
         self.assertIn("Command events: validated", cp.stdout)
 
+        v2_event = {
+            "schema_version": "2",
+            "event_id": "11111111-2222-3333-4444-555555555555",
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "command": "gra-audit",
+            "phase": "prepare",
+            "subject_id": "__run__",
+            "target_id": None,
+            "started_at": "2026-05-16T00:00:00Z",
+            "ended_at": "2026-05-16T00:00:03Z",
+            "duration_ms": 3000,
+            "exit_code": 0,
+            "status": "succeeded",
+            "attempt": 1,
+            "retry_of": None,
+            "worker_profile": None,
+            "model": None,
+            "effort": None,
+            "sandbox_profile": "none",
+            "network_allowed": False,
+            "prompt_hash": None,
+            "input_artifact_refs": ["context.json"],
+            "output_artifact_refs": ["reports/findings.json"],
+            "artifact_paths": ["reports/findings.json"],
+            "redaction_count": 0,
+            "error_category": None,
+            "source": "genai-repo-auditor",
+        }
+        events_path.write_text(json.dumps(v2_event, sort_keys=True) + "\n", encoding="utf-8")
+        cp_v2 = self.run_validator(run_dir)
+        self.assertEqual(cp_v2.returncode, 0, f"stdout:\n{cp_v2.stdout}\nstderr:\n{cp_v2.stderr}")
+        self.assertIn("Command events: validated", cp_v2.stdout)
+
+        forbidden_payload_event = dict(v2_event)
+        forbidden_key = "raw_" + "prompt"
+        forbidden_payload_event[forbidden_key] = "review this"
+        events_path.write_text(json.dumps(forbidden_payload_event, sort_keys=True) + "\n", encoding="utf-8")
+        cp_secret = self.run_validator(run_dir)
+        self.assertNotEqual(cp_secret.returncode, 0)
+        self.assertIn("command_events[1]: event.raw_prompt: field is explicitly forbidden in command events", cp_secret.stderr)
+
         bad_event = dict(event)
         bad_event["ended_at"] = "2026-05-15T23:59:59Z"
         bad_event["artifact_paths"] = ["../outside.txt"]
@@ -855,6 +896,51 @@ class ReportContractTests(unittest.TestCase):
         self.assertNotEqual(cp_bad.returncode, 0)
         self.assertIn("command_events[1].ended_at: must not be earlier than started_at", cp_bad.stderr)
         self.assertIn("command_events[1].artifact_paths[0]: artifact path must not contain '..'", cp_bad.stderr)
+
+    def test_command_event_artifact_refs_reject_symlink_components(self) -> None:
+        run_dir = self.copy_run()
+        outside = self.work_dir / "outside-artifacts"
+        outside.mkdir()
+        link = run_dir / "reports" / "linked-artifacts"
+        try:
+            link.symlink_to(outside, target_is_directory=True)
+        except (NotImplementedError, OSError) as exc:
+            self.skipTest(f"symlink not available: {exc}")
+        events_path = run_dir / "reports" / "command-events.jsonl"
+        event = {
+            "schema_version": "2",
+            "event_id": "11111111-2222-3333-4444-555555555555",
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "command": "gra-audit",
+            "phase": "prepare",
+            "subject_id": "__run__",
+            "target_id": None,
+            "started_at": "2026-05-16T00:00:00Z",
+            "ended_at": "2026-05-16T00:00:03Z",
+            "duration_ms": 3000,
+            "exit_code": 0,
+            "status": "succeeded",
+            "attempt": 1,
+            "retry_of": None,
+            "worker_profile": None,
+            "model": None,
+            "effort": None,
+            "sandbox_profile": "none",
+            "network_allowed": False,
+            "prompt_hash": None,
+            "input_artifact_refs": [],
+            "output_artifact_refs": ["reports/linked-artifacts/outside.md"],
+            "artifact_paths": ["reports/linked-artifacts/outside.md"],
+            "redaction_count": 0,
+            "error_category": None,
+            "source": "genai-repo-auditor",
+        }
+        events_path.write_text(json.dumps(event, sort_keys=True) + "\n", encoding="utf-8")
+
+        cp = self.run_validator(run_dir)
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("artifact path must not contain symlink components", cp.stderr)
 
     def test_metrics_rejects_raw_evidence_fields_and_safety_flag_drift(self) -> None:
         run_dir = self.copy_run()

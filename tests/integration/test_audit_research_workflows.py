@@ -796,13 +796,21 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
         events = self.read_command_events(run_dir)
         self.assertEqual(1, len(events), events)
         event = events[0]
+        self.assertEqual("2", event["schema_version"])
+        self.assertRegex(event["event_id"], r"^[0-9a-f-]{36}$")
         self.assertEqual("gra-research", event["command"])
         self.assertEqual("exec", event["phase"])
         self.assertEqual("TGT-001", event["target_id"])
         self.assertEqual(0, event["exit_code"])
+        self.assertEqual("succeeded", event["status"])
+        self.assertEqual(1, event["attempt"])
+        self.assertIsNone(event["retry_of"])
         self.assertGreaterEqual(event["duration_ms"], 0)
         self.assertEqual("gpt-5.5", event["model"])
         self.assertEqual("xhigh", event["effort"])
+        self.assertIn("context.json", event["input_artifact_refs"])
+        self.assertIn("reports/targets.json", event["input_artifact_refs"])
+        self.assertEqual(event["output_artifact_refs"], event["artifact_paths"])
         self.assertIn("reports/target-research/TGT-001.target.json", event["artifact_paths"])
         self.assertIn("codex-research-TGT-001-final.md", event["artifact_paths"])
 
@@ -843,6 +851,10 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
         self.assertEqual("gra-research", events[0]["command"])
         self.assertEqual("TGT-001", events[0]["target_id"])
         self.assertEqual(42, events[0]["exit_code"])
+        self.assertEqual("2", events[0]["schema_version"])
+        self.assertEqual("failed", events[0]["status"])
+        self.assertIn("context.json", events[0]["input_artifact_refs"])
+        self.assertIn("reports/targets.json", events[0]["input_artifact_refs"])
 
     def test_gra_research_goal_prepares_prompt_without_codex_exec(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -965,6 +977,12 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
         self.assertEqual(["list", "generate", "generate", "goal"], [event["phase"] for event in events])
         self.assertTrue(all(event["command"] == "gra-gapfill" for event in events))
         self.assertEqual("TGT-001", events[-1]["target_id"])
+        self.assertEqual("2", events[-1]["schema_version"])
+        self.assertEqual("succeeded", events[-1]["status"])
+        self.assertIn("context.json", events[-1]["input_artifact_refs"])
+        self.assertIn("reports/targets.json", events[-1]["input_artifact_refs"])
+        self.assertEqual(events[-1]["output_artifact_refs"], events[-1]["artifact_paths"])
+        self.assertIn("reports/target-research/TGT-001-gapfill.target.json", events[-1]["output_artifact_refs"])
 
         self.run_cmd(
             [
@@ -1024,6 +1042,15 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
         self.assertEqual("exec", events[0]["phase"])
         self.assertEqual("TGT-001", events[0]["target_id"])
         self.assertEqual(0, events[0]["exit_code"])
+        self.assertEqual("2", events[0]["schema_version"])
+        self.assertRegex(events[0]["event_id"], r"^[0-9a-f-]{36}$")
+        self.assertEqual("succeeded", events[0]["status"])
+        self.assertEqual(1, events[0]["attempt"])
+        self.assertIsNone(events[0]["retry_of"])
+        self.assertIn("context.json", events[0]["input_artifact_refs"])
+        self.assertIn("reports/targets.json", events[0]["input_artifact_refs"])
+        self.assertEqual(events[0]["output_artifact_refs"], events[0]["artifact_paths"])
+        self.assertIn("reports/target-research/TGT-001-gapfill.target.json", events[0]["output_artifact_refs"])
         self.assertIn("codex-gapfill-TGT-001-final.md", events[0]["artifact_paths"])
 
     def test_gra_gapfill_respects_configured_reports_dir(self) -> None:
