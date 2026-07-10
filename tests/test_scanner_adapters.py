@@ -71,6 +71,8 @@ class ScannerAdapterTests(unittest.TestCase):
             validate_adapter(replace(ADAPTERS["gitleaks"], argument_template=("{target}", "{secret}", "{output}")))
         with self.assertRaisesRegex(ScannerAdapterError, "sandbox profile"):
             validate_adapter(replace(ADAPTERS["gitleaks"], approved_sandbox_profiles=()))
+        with self.assertRaisesRegex(ScannerAdapterError, "planning-safe sandbox profiles"):
+            validate_adapter(replace(ADAPTERS["gitleaks"], approved_sandbox_profiles=("source-only",)))
         with self.assertRaisesRegex(ScannerAdapterError, "operating system"):
             validate_adapter(replace(ADAPTERS["gitleaks"], supported_operating_systems=()))
 
@@ -130,6 +132,21 @@ class ScannerAdapterTests(unittest.TestCase):
                 sandbox_profile="container",
                 network_policy="explicit-allow",
             )
+
+    def test_plan_rejects_leading_dash_path_components(self) -> None:
+        context_path = self.run_dir / "context.json"
+        context = json.loads(context_path.read_text(encoding="utf-8"))
+        for field, value in [
+            ("target_repo_dir", "--config=outside"),
+            ("target_repo_dir", "nested/-config"),
+            ("reports_dir", "-reports"),
+        ]:
+            with self.subTest(field=field, value=value):
+                candidate = dict(context)
+                candidate[field] = value
+                context_path.write_text(json.dumps(candidate) + "\n", encoding="utf-8")
+                with self.assertRaisesRegex(ScannerAdapterError, "leading-dash path components"):
+                    build_scan_plan(self.run_dir, adapter_id="gitleaks", sandbox_profile="container")
 
     def test_plan_rejects_symlinked_target_path(self) -> None:
         outside = self.work_dir / "outside-repo"

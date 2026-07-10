@@ -102,6 +102,13 @@ class ScannerRunnerWorkflowTests(CliWorkflowTestCase):
         self.assertIn("reports directory", cp_path.stderr)
         self.assertFalse((run_dir.parent / "outside").exists())
 
+        context["reports_dir"] = "reports"
+        context["target_repo_dir"] = "--config=outside"
+        context_path.write_text(json.dumps(context, indent=2) + "\n", encoding="utf-8")
+        cp_dash_path = self.run_cmd([REPO_ROOT / "bin" / "gra-scan", "--run", run_dir, "--tool", "gitleaks"])
+        self.assertEqual(2, cp_dash_path.returncode)
+        self.assertIn("leading-dash path components", cp_dash_path.stderr)
+
     def test_list_requires_existing_run_and_rejects_tool_combination(self) -> None:
         cp_missing = self.run_cmd([REPO_ROOT / "bin" / "gra-scan", "--run", self.work_dir / "missing", "--list"])
         self.assertEqual(2, cp_missing.returncode)

@@ -36,7 +36,7 @@
     "command_template": {"type": "array", "minItems": 2, "items": {"type": "string", "minLength": 1}},
     "supported_operating_systems": {"type": "array", "minItems": 1, "items": {"enum": ["linux", "darwin", "windows"]}},
     "network_required": {"type": "boolean"},
-    "approved_sandbox_profiles": {"type": "array", "minItems": 1, "items": {"enum": ["source-only", "local-test", "container", "gvisor", "vm"]}},
+    "approved_sandbox_profiles": {"type": "array", "minItems": 1, "items": {"enum": ["container", "gvisor", "vm"]}},
     "target_access": {"const": "read-only"},
     "read_path_templates": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
     "write_path_templates": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},

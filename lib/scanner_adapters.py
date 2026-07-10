@@ -16,6 +16,7 @@ from sandbox_profiles import PROFILE_IDS
 SCHEMA_VERSION = "1"
 NETWORK_POLICIES = ("disabled", "explicit-allow")
 RESULT_CLASSIFICATIONS = ("scanner-leads", "posture-evidence", "sbom-data")
+PLANNING_SANDBOX_PROFILES = ("container", "gvisor", "vm")
 _SAFE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _SAFE_EXECUTABLE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$")
 _SAFE_METADATA_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.:/@+=-]{0,127}$")
@@ -145,8 +146,10 @@ def validate_adapter(adapter: ScannerAdapter) -> None:
         {"linux", "darwin", "windows"}
     ):
         raise ScannerAdapterError("adapter must declare at least one supported operating system")
-    if not adapter.approved_sandbox_profiles or not set(adapter.approved_sandbox_profiles).issubset(PROFILE_IDS):
-        raise ScannerAdapterError("adapter declares an unknown sandbox profile")
+    if not adapter.approved_sandbox_profiles or not set(adapter.approved_sandbox_profiles).issubset(
+        PLANNING_SANDBOX_PROFILES
+    ):
+        raise ScannerAdapterError("adapter must use planning-safe sandbox profiles")
     if adapter.result_classification not in RESULT_CLASSIFICATIONS:
         raise ScannerAdapterError("adapter result classification is invalid")
     if min(adapter.timeout_seconds, adapter.max_output_bytes, adapter.max_results) <= 0:
@@ -228,6 +231,8 @@ def _safe_run_relative_path(run_dir: Path, value: object, *, field: str, require
     else:
         lexical_relative = raw
         candidate = run_dir / raw
+    if any(part.startswith("-") for part in lexical_relative.parts):
+        raise ScannerAdapterError(f"{field} must not contain leading-dash path components")
     run_root = run_dir.resolve(strict=False)
     try:
         candidate.resolve(strict=False).relative_to(run_root)
