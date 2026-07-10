@@ -302,7 +302,7 @@ reserved command names but are intentionally excluded from producer coverage
 because they do not currently emit completion events: `gra-agent-check`,
 `gra-batch`, `gra-doctor`, <code>gra&#45;efficacy-benchmark</code>, `gra-index`,
 `gra-no-findings`, `gra-novelty`, <code>gra&#45;run</code>, `gra-run-state`,
-`gra-sandbox-check`, <code>gra&#45;scan</code>, `gra-taxonomy-preflight`,
+`gra-sandbox-check`, `gra-scan`, `gra-taxonomy-preflight`,
 `gra-workflow-profile`, and `gra-worktree-check`. This is an acceptance/coverage
 exception only; it does not imply those command names are invalid in the shared
 event contract.

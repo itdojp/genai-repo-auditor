@@ -110,7 +110,7 @@ jobs:
           PY
           )"
           count="$(printf '%s\n' "$commands" | sed '/^$/d' | wc -l | tr -d ' ')"
-          test "$count" = "33"
+          test "$count" = "34"
           version="$(sed -n '1p' VERSION)"
           while IFS= read -r command; do
             test -n "$command"

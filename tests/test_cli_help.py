@@ -83,7 +83,7 @@ class CliHelpTests(unittest.TestCase):
 
     def test_every_gra_command_exposes_help_without_external_tools(self) -> None:
         commands = self.command_paths()
-        self.assertEqual(33, len(commands))
+        self.assertEqual(34, len(commands))
         for path in commands:
             with self.subTest(command=path.name):
                 cp = self.invoke(path, ["--help"])
@@ -100,7 +100,7 @@ class CliHelpTests(unittest.TestCase):
         expected_version = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").splitlines()[0].strip()
 
         commands = self.command_paths()
-        self.assertEqual(33, len(commands))
+        self.assertEqual(34, len(commands))
         for path in commands:
             with self.subTest(command=path.name):
                 cp = self.invoke(path, ["--version"])

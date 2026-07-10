@@ -38,7 +38,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Safe local proofs | `gra-proofs` | Benign proof prompt, subject seed JSON, `reports/proofs.json`, `reports/PROOFS.md`, `reports/proofs/` |
 | Remediation candidates | `gra-remediate` | Draft-only remediation prompt, subject seed JSON, `reports/remediation/remediation-candidates.json`, local patch drafts |
 | Cross-repo trace reachability | `gra-trace` | Experimental/P3 trace prompt, subject seed JSON, `reports/traces.json`, `reports/TRACE.md` |
-| Scanner / external finding import | `gra-ingest`, `gra-import-findings`, `gra-scanner-triage` | Raw scanner copies, redacted normalized leads, scanner index, review-only imported finding artifacts, Scorecard posture artifacts, dependency posture artifacts, triage output |
+| Scanner planning / external finding import | `gra-scan`, `gra-ingest`, `gra-import-findings`, `gra-scanner-triage` | Non-executing adapter inventory/plans, raw scanner copies, redacted normalized leads, scanner index, review-only imported finding artifacts, Scorecard posture artifacts, dependency posture artifacts, triage output |
 | Validation | `gra-no-findings`, `gra-workflow-profile`, `gra-taxonomy-preflight`, `gra-validate-report` | Explicit no-confirmed-finding artifact, workflow scope profile, controlled taxonomy preflight, report contract validation result |
 | Reporting / persistence | `gra-metrics`, `gra-benchmark`, `gra-evidence-graph`, `gra-dashboard`, `gra-sarif`, `gra-store`, `gra-index` | Local metrics, dogfood benchmark gates, evidence graph, HTML dashboard, SARIF, SQLite store, run index |
 | Issue workflow | `gra-issues` | Dry-run previews, canonical issue ledger, duplicate decision records, ledger verification, or GitHub Issues after human review |
@@ -411,6 +411,27 @@ Examples:
 gra-trace --producer-run runs/ORG__shared-lib/RUN_ID --finding SEC-001 --consumer-repo ORG/consumer-api --mode prepare
 gra-trace --producer-run runs/ORG__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/ORG__shared-lib/RUN_ID/trace-consumers/ORG__consumer-api --mode exec
 gra-trace --producer-run runs/ORG__shared-lib/RUN_ID --finding SEC-001 --consumer-run runs/ORG__shared-lib/RUN_ID/trace-consumers/ORG__consumer-api --mode goal
+```
+
+## `gra-scan`
+
+| Field | Details |
+|---|---|
+| Purpose | List versioned local scanner adapter capabilities and produce an exact, sanitized execution plan without running a scanner. |
+| Workflow category | Scanner planning workflow. |
+| Required inputs | `--run RUN_DIR`; planning also requires `--tool gitleaks\|syft`. |
+| Key options | `--list` lists adapters. `--plan` is explicit but optional because planning is the default. `--sandbox-profile container\|gvisor\|vm` declares the intended isolation boundary (`container` by default). `--network-policy disabled\|explicit-allow` defaults to `disabled`; current offline adapters reject undeclared network access. `--json` prints the machine-readable v1 contract. |
+| Generated outputs | Standard output only. List/plan mode does not create scanner output, reports, command events, or directories. Adapter definitions declare version-check arrays, OS/network/sandbox capabilities, read/write paths, argument arrays, timeout/output/result limits, ingest format, secret handling, result classification, and exit semantics. |
+| Exit status behavior | `0` for a valid list or plan; parser/status `2` for missing/unknown tools, invalid mode combinations, unsafe or symlinked paths, unsupported sandbox profiles, or undeclared network policy. Missing scanner binaries are reported as `readiness.executable_available=false` and do not make planning fail. |
+| Security / disclosure cautions | List/plan never executes a scanner or version command, reads target contents, or accesses the network; planning inspects only run context and path metadata needed for containment/symlink checks. Commands are immutable argument arrays; arbitrary shell strings and extra scanner arguments are not accepted. Plans use run-relative read/write paths, reject path traversal and symlinks, declare read-only target access, and classify outputs as review-only scanner leads or SBOM data. `gra-scan` does not perform DAST, endpoint probing, external-host scanning, brute force, or credential use. Execution is intentionally outside this planning increment. |
+| Related docs | [`docs/SCANNER_INTEGRATION.md`](SCANNER_INTEGRATION.md), [`docs/SANDBOX_PROFILES.md`](SANDBOX_PROFILES.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md). |
+
+Examples:
+
+```bash
+gra-scan --run runs/OWNER__REPO/RUN_ID --list
+gra-scan --run runs/OWNER__REPO/RUN_ID --tool gitleaks
+gra-scan --run runs/OWNER__REPO/RUN_ID --tool syft --plan --sandbox-profile container --json
 ```
 
 ## `gra-ingest`
