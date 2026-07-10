@@ -1,33 +1,19 @@
 #!/usr/bin/env python3
 import argparse
-import contextlib
-import hashlib
 import json
-import os
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
 from version import auditor_version
 from report_safety import ReportSafetyError  # noqa: E402
-from duplicate_decisions import (  # noqa: E402
-    decision_for as duplicate_decision_for,
-    rel_to_run as duplicate_decision_rel_to_run,
-    verify_ledger_decisions as verify_duplicate_decisions_for_ledger,
-    write_duplicate_decision,
-)
 from publication.policy import (  # noqa: E402
     DEFAULT_LABELS,
     SEVERITY_RANK,
     advanced_validation_errors,
-    finding_selection_reason,
     load_advanced_artifacts,
-    normalize_labels,
-    issue_title,
     plan_visibility,
     select_findings,
 )
@@ -37,31 +23,38 @@ from publication.planning import (  # noqa: E402
     plan_entry_key,
     verify_plan_against_findings,
 )
+from publication.plan_store import default_plan_path, load_plan, plan_hash, write_plan  # noqa: E402
 from publication.rendering import sha256_text, stable_fingerprint  # noqa: E402
+from publication.ledger import (  # noqa: E402
+    ledger_entry_from_plan_entry,
+    record_duplicate_decision,
+    write_issue_ledger_snapshot,
+)
+from publication.github import (  # noqa: E402
+    GhCliClient,
+    GitHubClient,
+    create_default_labels,
+    ensure_custom_labels,
+    verify_ledger_against_github,
+)
 from novelty_ledger import (  # noqa: E402
     novelty_by_finding_id,
 )
 from issue_ledger import (  # noqa: E402
-    base_entry as ledger_base_entry,
     default_ledger_path,
     load_ledger,
     mark_dry_run as ledger_mark_dry_run,
     mark_published as ledger_mark_published,
-    merge_current_entries,
-    plan_source as ledger_plan_source,
     published_entry as ledger_published_entry,
     published_entry_by_finding_id as ledger_published_entry_by_finding_id,
     utc_now as ledger_utc_now,
-    write_ledger,
+)
+from duplicate_decisions import (  # noqa: E402
+    verify_ledger_decisions as verify_duplicate_decisions_for_ledger,
 )
 
-PLAN_REL_PATH = Path("reports") / "issue-publication-plan.json"
 
-def run(cmd: List[str], *, check: bool = True, capture: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, check=check, text=True, stdout=subprocess.PIPE if capture else None, stderr=subprocess.PIPE if capture else None)
-
-
-def load_json(path: Path) -> Dict[str, Any]:
+def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -79,72 +72,6 @@ def load_findings(run_dir: Path) -> Dict[str, Any]:
         if p.exists():
             return load_json(p)
     raise FileNotFoundError(f"findings.json not found under {run_dir}")
-
-
-def sha256_file(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def default_plan_path(run_dir: Path) -> Path:
-    return run_dir / PLAN_REL_PATH
-
-
-def gh_repo_visibility(repo: str) -> str:
-    try:
-        cp = run(["gh", "repo", "view", repo, "--json", "visibility", "--jq", ".visibility"], check=True)
-        return cp.stdout.strip().upper() or "UNKNOWN"
-    except Exception:
-        return "UNKNOWN"
-
-
-def issue_exists(repo: str, fingerprint: str) -> Optional[str]:
-    marker = f"genai-repo-auditor:fingerprint={fingerprint}"
-    try:
-        cp = run([
-            "gh", "issue", "list",
-            "-R", repo,
-            "--state", "open",
-            "--search", f"{marker} in:body",
-            "--json", "number,title,url",
-            "--jq", ".[0].url // ''",
-        ], check=True)
-        return cp.stdout.strip() or None
-    except subprocess.CalledProcessError:
-        return None
-
-
-def ensure_label(repo: str, name: str, color: str = "ededed", desc: str = "GenAI Repo Auditor label") -> None:
-    subprocess.run([
-        "gh", "label", "create", name,
-        "-R", repo,
-        "--color", color,
-        "--description", desc,
-        "--force",
-    ], check=False)
-
-
-def create_default_labels(repo: str) -> None:
-    for name, (color, desc) in DEFAULT_LABELS.items():
-        ensure_label(repo, name, color, desc)
-
-
-def write_plan(plan_path: Path, plan: Dict[str, Any]) -> None:
-    plan_path.parent.mkdir(parents=True, exist_ok=True)
-    plan_path.write_text(json.dumps(plan, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-
-
-def load_plan(plan_path: Path) -> Dict[str, Any]:
-    plan = load_json(plan_path)
-    if not isinstance(plan.get("selected_findings"), list):
-        raise ValueError("issue publication plan must contain selected_findings array")
-    for index, entry in enumerate(plan["selected_findings"]):
-        if not isinstance(entry, dict):
-            raise ValueError(f"selected_findings[{index}] must be an object")
-    return plan
-
-
-def plan_hash(plan_path: Path) -> str:
-    return sha256_file(plan_path)
 
 
 def print_plan_summary(plan_path: Optional[Path], plan: Dict[str, Any], *, prefix: str = "Plan") -> None:
@@ -205,189 +132,9 @@ def print_dry_run_preview_summary(preview_plan_path: Path, plan: Dict[str, Any])
 
 
 
-def ledger_entry_from_plan_entry(
-    entry: Dict[str, Any],
-    body: str,
-    *,
-    publication_status: str,
-    run_dir: Path,
-    plan_path: Optional[Path],
-    plan_sha256: Optional[str],
-) -> Dict[str, Any]:
-    return ledger_base_entry(
-        finding_id=str(entry.get("id") or "SEC-UNKNOWN"),
-        fingerprint=str(entry.get("fingerprint") or ""),
-        title=str(entry.get("title") or ""),
-        labels=[str(label) for label in entry.get("labels") or []],
-        body_hash=str(entry.get("issue_body_sha256") or sha256_text(body)),
-        publication_status=publication_status,
-        source_plan=ledger_plan_source(plan_path, run_dir),
-        plan_sha256=plan_sha256,
-    )
 
 
-def build_ledger_entries(
-    *,
-    repo: str,
-    findings: Iterable[Dict[str, Any]],
-    selected_entries: Iterable[Dict[str, Any]],
-    selected_bodies: Dict[str, str],
-    run_dir: Path,
-    min_severity: str,
-    statuses: Iterable[str],
-    novelty_entries: Optional[Dict[str, Dict[str, Any]]],
-    plan_path: Optional[Path],
-    plan_sha256: Optional[str],
-    overrides: Optional[Dict[str, Dict[str, Any]]] = None,
-) -> List[Dict[str, Any]]:
-    overrides = overrides or {}
-    selected_by_key: Dict[str, Tuple[Dict[str, Any], str]] = {}
-    for entry in selected_entries:
-        if not isinstance(entry, dict):
-            continue
-        selected_by_key[plan_entry_key(entry)] = (entry, selected_bodies.get(plan_entry_key(entry), ""))
-
-    entries: List[Dict[str, Any]] = []
-    for finding in findings:
-        if not isinstance(finding, dict):
-            continue
-        finding_id = str(finding.get("id") or "SEC-UNKNOWN")
-        fingerprint = stable_fingerprint(repo, finding)
-        key = f"{finding_id}\0{fingerprint}"
-        if key in overrides:
-            entries.append(dict(overrides[key]))
-            continue
-        planned = selected_by_key.get(key)
-        if planned:
-            entry, body = planned
-            entries.append(
-                ledger_entry_from_plan_entry(
-                    entry,
-                    body,
-                    publication_status="pending",
-                    run_dir=run_dir,
-                    plan_path=plan_path,
-                    plan_sha256=plan_sha256,
-                )
-            )
-        else:
-            entries.append(
-                ledger_base_entry(
-                    finding_id=finding_id,
-                    fingerprint=fingerprint,
-                    title=issue_title(finding),
-                    labels=normalize_labels(finding),
-                    body_hash=None,
-                    publication_status="not-selected",
-                    selection_reason=finding_selection_reason(
-                        finding,
-                        min_severity,
-                        statuses,
-                        repo=repo,
-                        novelty_entries=novelty_entries,
-                    ),
-                    source_plan=ledger_plan_source(plan_path, run_dir),
-                    plan_sha256=plan_sha256,
-                )
-            )
-    return entries
-
-
-def write_issue_ledger_snapshot(
-    *,
-    run_dir: Path,
-    repo: str,
-    run_id: str,
-    commit: str,
-    findings: Iterable[Dict[str, Any]],
-    selected_entries: Iterable[Dict[str, Any]],
-    selected_bodies: Dict[str, str],
-    min_severity: str,
-    statuses: Iterable[str],
-    novelty_entries: Optional[Dict[str, Dict[str, Any]]],
-    plan_path: Optional[Path],
-    plan_sha256: Optional[str],
-    plan_written: bool,
-    publication_plan_status: str,
-    overrides: Optional[Dict[str, Dict[str, Any]]] = None,
-) -> Dict[str, Any]:
-    ledger_path = default_ledger_path(run_dir)
-    existing = load_ledger(ledger_path, run_id=run_id, repo=repo, commit=commit)
-    current_entries = build_ledger_entries(
-        repo=repo,
-        findings=findings,
-        selected_entries=selected_entries,
-        selected_bodies=selected_bodies,
-        run_dir=run_dir,
-        min_severity=min_severity,
-        statuses=statuses,
-        novelty_entries=novelty_entries,
-        plan_path=plan_path,
-        plan_sha256=plan_sha256,
-        overrides=overrides,
-    )
-    ledger = merge_current_entries(
-        existing=existing,
-        current_entries=current_entries,
-        run_id=run_id,
-        repo=repo,
-        commit=commit,
-        plan_written=plan_written,
-        publication_plan_status=publication_plan_status,
-    )
-    write_ledger(ledger_path, ledger)
-    print(f"Wrote issue ledger: {ledger_path}")
-    return ledger
-
-
-def record_duplicate_decision(
-    *,
-    run_dir: Path,
-    run_id: str,
-    repo: str,
-    commit: str,
-    finding: Dict[str, Any],
-    fingerprint: str,
-    exact_match_url: Optional[str] = None,
-    exact_match_source: Optional[str] = None,
-) -> Tuple[str, str]:
-    decision = duplicate_decision_for(
-        run_id=run_id,
-        repo=repo,
-        commit=commit,
-        finding=finding,
-        fingerprint=fingerprint,
-        exact_match_url=exact_match_url,
-        exact_match_source=exact_match_source,
-    )
-    path = write_duplicate_decision(run_dir, decision)
-    rel_path = duplicate_decision_rel_to_run(run_dir, path)
-    print(f"Wrote duplicate decision: {rel_path}")
-    return rel_path, str(decision.get("decision") or "")
-
-
-def verify_ledger_against_github(repo: str, ledger: Dict[str, Any]) -> List[str]:
-    drifts: List[str] = []
-    for entry in ledger.get("findings") or []:
-        if not isinstance(entry, dict) or not entry.get("url"):
-            continue
-        if str(entry.get("publication_status") or "") not in {"published", "duplicate"}:
-            continue
-        fingerprint = str(entry.get("fingerprint") or "")
-        finding_id = str(entry.get("finding_id") or "SEC-UNKNOWN")
-        if not fingerprint:
-            drifts.append(f"{finding_id}: published ledger entry has no fingerprint")
-            continue
-        existing_url = issue_exists(repo, fingerprint)
-        if not existing_url:
-            drifts.append(f"{finding_id}: no open GitHub issue found for ledger fingerprint {fingerprint}")
-        elif existing_url != entry.get("url"):
-            drifts.append(f"{finding_id}: ledger url {entry.get('url')} differs from GitHub search result {existing_url}")
-    return drifts
-
-
-
-def main() -> int:
+def main(argv: Optional[List[str]] = None, github: Optional[GitHubClient] = None) -> int:
     parser = argparse.ArgumentParser(description="Create GitHub Issues from GenAI Repo Auditor findings.json")
     parser.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
     parser.add_argument("--run", required=True, help="Run directory, e.g. runs/OWNER__REPO/RUN_ID")
@@ -409,7 +156,8 @@ def main() -> int:
         action="store_true",
         help="Fail when selected High/Critical findings lack related chain, proof, or adversarial validation artifacts",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    github = github or GhCliClient()
 
     if args.plan and args.apply:
         parser.error("--plan cannot be combined with --apply")
@@ -452,7 +200,7 @@ def main() -> int:
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             print(f"ERROR: could not read issue ledger: {exc}", file=sys.stderr)
             return 2
-        drifts = verify_ledger_against_github(repo, ledger)
+        drifts = verify_ledger_against_github(repo, ledger, github)
         drifts.extend(verify_duplicate_decisions_for_ledger(run_dir, ledger))
         if drifts:
             print("Issue ledger drift detected:", file=sys.stderr)
@@ -597,13 +345,13 @@ def main() -> int:
             dry_run = True
             print("Dry-run preview only; verified issue publication plan was not applied.")
 
-    visibility = gh_repo_visibility(repo) if not dry_run else "NOT_CHECKED"
+    visibility = github.repo_visibility(repo) if not dry_run else "NOT_CHECKED"
     if not dry_run and visibility in {"PUBLIC", "UNKNOWN", ""} and not args.allow_public:
         print(f"Refusing to create security issues for repo {repo} with visibility={visibility}. Use --allow-public only when disclosure policy permits.", file=sys.stderr)
         return 3
 
     if args.create_labels and not dry_run:
-        create_default_labels(repo)
+        create_default_labels(github, repo, DEFAULT_LABELS)
 
     plan_verified = bool(plan_path and plan_sha256 and args.apply_plan)
     if args.apply_plan:
@@ -746,7 +494,7 @@ def main() -> int:
             print(f"SKIP ledger {finding_id}: {existing_from_ledger.get('url')}")
             continue
 
-        existing = None if dry_run else issue_exists(repo, fingerprint)
+        existing = None if dry_run else github.issue_exists(repo, fingerprint)
         if existing:
             decision_file, decision_value = record_duplicate_decision(
                 run_dir=run_dir,
@@ -787,31 +535,19 @@ def main() -> int:
             ledger_overrides[ledger_key] = ledger_mark_dry_run(ledger_entry)
             continue
 
-        tmp_dir = run_dir / "reports" / ".issue-body-tmp"
-        tmp_dir.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".md", dir=tmp_dir, delete=False) as tmp:
-            tmp.write(body)
-            tmp_path = tmp.name
-        try:
-            if args.create_labels:
-                for label in labels:
-                    if label not in DEFAULT_LABELS:
-                        ensure_label(repo, label, "ededed", "GenAI Repo Auditor label")
-            cmd = ["gh", "issue", "create", "-R", repo, "--title", title, "--body-file", tmp_path]
-            for label in labels:
-                cmd.extend(["--label", label])
-            if args.assignee:
-                cmd.extend(["--assignee", args.assignee])
-            cp = run(cmd, check=True)
-            url = cp.stdout.strip()
-            print(f"CREATED {finding_id}: {url}")
-            result["created"].append({"id": finding_id, "url": url, "title": title, "fingerprint": fingerprint})
-            ledger_overrides[ledger_key] = ledger_mark_published(ledger_entry, url=url, published_at=ledger_utc_now())
-        finally:
-            with contextlib.suppress(OSError):
-                os.unlink(tmp_path)
-            with contextlib.suppress(OSError):
-                tmp_dir.rmdir()
+        if args.create_labels:
+            ensure_custom_labels(github, repo, labels, DEFAULT_LABELS)
+        url = github.create_issue(
+            repo,
+            title=title,
+            body=body,
+            labels=labels,
+            assignee=args.assignee,
+            body_tmp_dir=run_dir / "reports" / ".issue-body-tmp",
+        )
+        print(f"CREATED {finding_id}: {url}")
+        result["created"].append({"id": finding_id, "url": url, "title": title, "fingerprint": fingerprint})
+        ledger_overrides[ledger_key] = ledger_mark_published(ledger_entry, url=url, published_at=ledger_utc_now())
 
     write_issue_ledger_snapshot(
         run_dir=run_dir,
