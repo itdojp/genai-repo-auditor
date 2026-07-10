@@ -186,7 +186,6 @@ attestation, or GitHub Release:
 ```bash
 gh workflow run release.yml \
   --ref main \
-  -f release_ref=main \
   -f publish=false
 ```
 
@@ -220,24 +219,27 @@ Do not tag an unpushed commit or reuse/move an existing release tag.
 
 ## Attested GitHub Release publication
 
-Publication is a separate explicit dispatch. Supply the existing tag and set
-`publish=true`:
+Publication is a separate explicit dispatch. Dispatch the workflow itself from
+the existing release tag and set `publish=true`:
 
 ```bash
 VERSION_VALUE="$(cat VERSION)"
 gh workflow run release.yml \
-  --ref main \
-  -f release_ref="v$VERSION_VALUE" \
+  --ref "v$VERSION_VALUE" \
   -f publish=true
 ```
 
 The elevated `publish` job runs only after the read-only candidate build job.
-It rechecks the tag and checksums, creates a GitHub/Sigstore build-provenance
-attestation for the release artifact set, creates a CycloneDX SBOM attestation for
-both source archives, and runs `gh release create --verify-tag`. The job does
-not create, move, or force-push tags. Configure protection/review requirements
-for the `release` GitHub environment when repository policy requires a second
-human approval.
+It requires the workflow dispatch ref itself to be an annotated version tag on
+`main`, binds the downloaded manifest to that exact commit/tag, rebuilds from
+the checked-out tag, and requires a byte-for-byte match with the candidate.
+This also regenerates release notes from the checked-out `CHANGELOG.md` before
+publication. It then creates a GitHub/Sigstore build-provenance attestation for
+the release artifact set, creates a CycloneDX SBOM attestation for both source
+archives, and runs `gh release create --verify-tag`. The job does not create,
+move, or force-push tags. Configure protection/review requirements for the
+`release` GitHub environment when repository policy requires a second human
+approval.
 
 GitHub documents that `actions/attest` requires `id-token: write` and
 `attestations: write`; the workflow grants those permissions only to the

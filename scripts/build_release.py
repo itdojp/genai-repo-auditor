@@ -322,9 +322,28 @@ def verify_checksums(output_dir: Path) -> None:
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--dry-run", action="store_true", help="validate and print the release plan without writing artifacts (default)")
-    mode.add_argument("--build", action="store_true", help="build reproducible release artifacts from a committed Git ref")
-    mode.add_argument("--verify", action="store_true", help="verify an existing output directory using SHA256SUMS")
+    mode.add_argument(
+        "--dry-run",
+        dest="mode",
+        action="store_const",
+        const="dry-run",
+        help="validate and print the release plan without writing artifacts (default)",
+    )
+    mode.add_argument(
+        "--build",
+        dest="mode",
+        action="store_const",
+        const="build",
+        help="build reproducible release artifacts from a committed Git ref",
+    )
+    mode.add_argument(
+        "--verify",
+        dest="mode",
+        action="store_const",
+        const="verify",
+        help="verify an existing output directory using SHA256SUMS",
+    )
+    parser.set_defaults(mode="dry-run")
     parser.add_argument(
         "--source-ref",
         help="Git ref to validate/build; defaults to WORKTREE for dry-run and HEAD for --build",
@@ -338,18 +357,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = create_parser().parse_args(argv)
     repo_root = args.repo_root.resolve()
     try:
-        if args.verify:
+        if args.mode == "verify":
             verified_output = resolve_output_dir(args.output_dir)
             verify_checksums(verified_output)
             print(json.dumps({"output_dir": str(verified_output), "status": "verified"}, sort_keys=True))
             return 0
 
-        source_ref = args.source_ref or ("HEAD" if args.build else "WORKTREE")
+        source_ref = args.source_ref or ("HEAD" if args.mode == "build" else "WORKTREE")
         snapshot = load_snapshot(repo_root, source_ref)
         validate_snapshot(snapshot)
         result: dict[str, object] = {
             "assets": release_asset_names(snapshot),
-            "mode": "build" if args.build else "dry-run",
+            "mode": args.mode,
             "source_commit": snapshot.commit,
             "source_ref": source_ref,
             "status": "validated",
@@ -357,7 +376,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "tracked_file_count": len(snapshot.tracked_files),
             "version": snapshot.version,
         }
-        if args.build:
+        if args.mode == "build":
             built = build_release(repo_root, snapshot, args.output_dir)
             verified_output = resolve_output_dir(args.output_dir)
             verify_checksums(verified_output)

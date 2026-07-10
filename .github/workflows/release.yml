@@ -3,13 +3,8 @@ name: release
 on:
   workflow_dispatch:
     inputs:
-      release_ref:
-        description: "Git ref to validate; publishing requires an existing annotated vX.Y.Z tag"
-        required: true
-        default: main
-        type: string
       publish:
-        description: "Create attestations and a GitHub Release from release_ref"
+        description: "Create attestations and a GitHub Release from the dispatched vX.Y.Z tag"
         required: true
         default: false
         type: boolean
@@ -27,7 +22,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ inputs.release_ref }}
 
       - name: Validate release inputs without mutation
         run: python3 scripts/build_release.py --dry-run --source-ref HEAD
@@ -61,14 +55,15 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ inputs.release_ref }}
 
       - name: Require an annotated version tag on main
         env:
-          RELEASE_REF: ${{ inputs.release_ref }}
+          RELEASE_REF: ${{ github.ref_name }}
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
         run: |
           set -euo pipefail
           version="$(cat VERSION)"
+          test "$RELEASE_REF_TYPE" = "tag"
           test "$RELEASE_REF" = "v$version"
           test "$(git cat-file -t "$RELEASE_REF")" = "tag"
           test "$(git rev-list -n 1 "$RELEASE_REF")" = "$(git rev-parse HEAD)"
@@ -79,10 +74,32 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-candidate-${{ github.run_id }}
-          path: dist
+          path: candidate-dist
 
-      - name: Verify downloaded release candidate
-        run: python3 scripts/build_release.py --verify --output-dir dist
+      - name: Verify and bind downloaded candidate to the release tag
+        env:
+          RELEASE_REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          python3 scripts/build_release.py --verify --output-dir candidate-dist
+          RELEASE_COMMIT="$(git rev-parse HEAD)" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          manifest = json.loads(Path("candidate-dist/release-manifest.json").read_text(encoding="utf-8"))
+          if manifest.get("source_commit") != os.environ["RELEASE_COMMIT"]:
+              raise SystemExit("release candidate source_commit does not match the checked-out tag")
+          if manifest.get("tag") != os.environ["RELEASE_REF"]:
+              raise SystemExit("release candidate tag does not match the dispatched tag")
+          PY
+
+      - name: Rebuild candidate from the checked-out tag and compare
+        run: |
+          set -euo pipefail
+          python3 scripts/build_release.py --build --source-ref HEAD --output-dir dist
+          diff -ru candidate-dist dist
+          python3 scripts/build_release.py --verify --output-dir dist
 
       - name: Create build provenance attestation
         uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
@@ -100,12 +117,12 @@ jobs:
           subject-path: |
             dist/genai-repo-auditor-v*.tar.gz
             dist/genai-repo-auditor-v*.zip
-          sbom-path: dist/genai-repo-auditor-${{ inputs.release_ref }}.cdx.json
+          sbom-path: dist/genai-repo-auditor-${{ github.ref_name }}.cdx.json
 
       - name: Create GitHub Release without creating or moving tags
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_REF: ${{ inputs.release_ref }}
+          RELEASE_REF: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           if gh release view "$RELEASE_REF" >/dev/null 2>&1; then

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import shutil
@@ -38,10 +39,9 @@ class ReleaseMetadataTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         shutil.rmtree(self.work_dir, ignore_errors=True)
-        try:
+        # Other tests may still own this shared ignored parent.
+        with contextlib.suppress(OSError):
             self.tmp_parent.rmdir()
-        except OSError:
-            pass
 
     def test_version_uses_documented_semver_without_tag_prefix(self) -> None:
         version = project_version()
@@ -92,6 +92,8 @@ class ReleaseMetadataTests(unittest.TestCase):
         self.assertIn("gh attestation verify", text)
 
     def test_release_dry_run_is_non_mutating_and_machine_readable(self) -> None:
+        self.assertEqual("dry-run", build_release.create_parser().parse_args(["--dry-run"]).mode)
+        self.assertEqual("dry-run", build_release.create_parser().parse_args([]).mode)
         output_dir = self.work_dir / "must-not-exist"
         completed = subprocess.run(
             [
@@ -212,8 +214,13 @@ class ReleaseMetadataTests(unittest.TestCase):
         self.assertRegex(text, r"uses: actions/download-artifact@[0-9a-f]{40} # v8\.0\.1")
         self.assertIn("dist/release-manifest.json", text)
         self.assertIn("dist/SHA256SUMS", text)
-        self.assertIn("sbom-path: dist/genai-repo-auditor-${{ inputs.release_ref }}.cdx.json", text)
+        self.assertNotIn("inputs.release_ref", text)
+        self.assertIn("RELEASE_REF_TYPE: ${{ github.ref_type }}", text)
+        self.assertIn("sbom-path: dist/genai-repo-auditor-${{ github.ref_name }}.cdx.json", text)
         self.assertIn('test "$(git cat-file -t "$RELEASE_REF")" = "tag"', text)
+        self.assertIn('manifest.get("source_commit") != os.environ["RELEASE_COMMIT"]', text)
+        self.assertIn('manifest.get("tag") != os.environ["RELEASE_REF"]', text)
+        self.assertIn("diff -ru candidate-dist dist", text)
         self.assertIn("gh release create", text)
         self.assertIn("--verify-tag", text)
         self.assertNotIn("git tag -a", text)
