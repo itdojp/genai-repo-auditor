@@ -84,7 +84,8 @@ Instrumented workflow commands append structured JSONL command events to
 `reports/command-events.jsonl`. Producers cover the audit entry point, recon,
 target queue operations, target research, gapfill, variant analysis, chain
 synthesis, safe proofs, adversarial validation, remediation, trace reachability,
-and report validation. `gra-metrics` accepts both Issue #116 version `1` records
+scanner ingestion, external finding import, scanner triage, Issue publication
+preview/planning, and report validation. `gra-metrics` accepts both Issue #116 version `1` records
 and the version `2` event contract. Version `2` adds unique `event_id` values,
 retry/attempt metadata, bounded input/output artifact references,
 worker/model/effort metadata when available, sandbox/network policy fields, and

@@ -9,6 +9,39 @@ except ImportError:
 
 
 class ScannerStoreWorkflowTests(CliWorkflowTestCase):
+    def test_ingest_and_import_events_respect_custom_reports_dir(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        (run_dir / "reports").rename(run_dir / "custom-reports")
+        context_path = run_dir / "context.json"
+        context = json.loads(context_path.read_text(encoding="utf-8"))
+        context["reports_dir"] = "custom-reports"
+        context_path.write_text(json.dumps(context, indent=2) + "\n", encoding="utf-8")
+        scanner_file = self.work_dir / "custom-reports-scanner.json"
+        scanner_file.write_text('{"results": []}\n', encoding="utf-8")
+
+        self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-ingest", "--run", run_dir, "--tool", "semgrep", "--file", scanner_file],
+            check=True,
+        )
+        external_file = self.work_dir / "custom-reports-external.json"
+        external_file.write_text(json.dumps({"source": "fixture-import", "findings": []}) + "\n", encoding="utf-8")
+        self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-import-findings", "--run", run_dir, "--file", external_file],
+            check=True,
+        )
+        self.run_cmd([REPO_ROOT / "bin" / "gra-scanner-triage", "--run", run_dir], check=True)
+
+        events_path = run_dir / "custom-reports" / "command-events.jsonl"
+        self.assertTrue(events_path.is_file())
+        events = self.read_command_events(run_dir)
+        self.assertEqual(
+            ["gra-ingest", "gra-import-findings", "gra-scanner-triage"],
+            [event["command"] for event in events],
+        )
+        self.assertIn("custom-reports/scanner-results/scanner-index.json", events[-1]["input_artifact_refs"])
+        for event in events[:2]:
+            self.assertTrue(all(ref == "context.json" or ref.startswith("custom-reports/") for ref in event["input_artifact_refs"] + event["output_artifact_refs"]))
+
     def test_ingest_scanner_triage_dashboard_sarif_and_store(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         scanner_file = self.work_dir / "semgrep.json"
@@ -38,6 +71,12 @@ class ScannerStoreWorkflowTests(CliWorkflowTestCase):
         self.assertTrue(normalized_path.exists())
         normalized = json.loads(normalized_path.read_text(encoding="utf-8"))
         self.assertEqual(index["results"][0]["normalized_leads_count"], len(normalized["leads"]))
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events))
+        self.assert_public_command_event(events[0], command="gra-ingest", phase="ingest", subject_id="semgrep")
+        self.assertIn("context.json", events[0]["input_artifact_refs"])
+        self.assertIn("reports/scanner-results/scanner-index.json", events[0]["output_artifact_refs"])
+        self.assertIn(index["results"][0]["normalized_path"], events[0]["output_artifact_refs"])
         cp_metrics = self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
         self.assertIn("metrics.json", cp_metrics.stdout)
         metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
@@ -50,6 +89,14 @@ class ScannerStoreWorkflowTests(CliWorkflowTestCase):
         triage_prompt = run_dir / "prompts" / "exec" / "scanner-triage.prompt.md"
         self.assertIn("reports/scanner-results/scanner-index.json", triage_prompt.read_text(encoding="utf-8"))
         self.assertIn("Normalized lead files", triage_prompt.read_text(encoding="utf-8"))
+        events = self.read_command_events(run_dir)
+        self.assertEqual(2, len(events))
+        self.assert_public_command_event(events[1], command="gra-scanner-triage", phase="scanner-triage")
+        self.assertEqual("gpt-5.5", events[1]["model"])
+        self.assertEqual("xhigh", events[1]["effort"])
+        self.assertFalse(events[1]["network_allowed"])
+        self.assertIn("reports/scanner-results/scanner-index.json", events[1]["input_artifact_refs"])
+        self.assertIn("prompts/exec/scanner-triage.prompt.md", events[1]["output_artifact_refs"])
 
         cp_dashboard = self.run_cmd([REPO_ROOT / "bin" / "gra-dashboard", "--run", run_dir], check=True)
         self.assertIn("dashboard.html", cp_dashboard.stdout)
@@ -230,6 +277,52 @@ class ScannerStoreWorkflowTests(CliWorkflowTestCase):
         all_normalized = "\n".join((run_dir / entry["normalized_path"]).read_text(encoding="utf-8") for entry in index["results"])
         self.assertIn("sk_live_...cdef", all_normalized)
         self.assertIn("AKIA...MNOP", all_normalized)
+        event_text = json.dumps(self.read_command_events(run_dir))
+        self.assertNotIn(stripe_probe, event_text)
+        self.assertNotIn(aws_probe, event_text)
+
+    def test_ingestion_and_triage_failures_remain_nonzero_when_event_writes_warn(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        missing = self.work_dir / "missing-scanner.json"
+
+        cp_ingest = self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-ingest", "--run", run_dir, "--tool", "semgrep", "--file", missing]
+        )
+        self.assertEqual(2, cp_ingest.returncode)
+        ingest_event = self.read_command_events(run_dir)[0]
+        self.assert_public_command_event(
+            ingest_event,
+            command="gra-ingest",
+            phase="ingest",
+            subject_id="semgrep",
+            exit_code=2,
+            status="failed",
+        )
+        self.assertEqual("input_validation", ingest_event["error_category"])
+
+        events_path = run_dir / "reports" / "command-events.jsonl"
+        events_path.unlink()
+        events_path.symlink_to(self.work_dir / "outside-events.jsonl")
+        cp_triage = self.run_cmd([REPO_ROOT / "bin" / "gra-scanner-triage", "--run", run_dir])
+        self.assertEqual(2, cp_triage.returncode)
+        self.assertIn("WARNING: command event was not written", cp_triage.stderr)
+
+    def test_gra_ingest_rejects_unsafe_reports_dir_before_copying_raw_output(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        context_path = run_dir / "context.json"
+        context = json.loads(context_path.read_text(encoding="utf-8"))
+        context["reports_dir"] = "../outside-reports"
+        context_path.write_text(json.dumps(context, indent=2) + "\n", encoding="utf-8")
+        scanner_file = self.work_dir / "scanner.json"
+        scanner_file.write_text('{"results": []}\n', encoding="utf-8")
+
+        cp = self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-ingest", "--run", run_dir, "--tool", "semgrep", "--file", scanner_file]
+        )
+
+        self.assertEqual(2, cp.returncode)
+        self.assertIn("reports_dir must be a relative path under the run directory", cp.stderr)
+        self.assertFalse((run_dir.parent / "outside-reports").exists())
 
     def test_gra_ingest_handles_generic_probe_large_json_and_sarif_locations(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -397,6 +490,16 @@ class ScannerStoreWorkflowTests(CliWorkflowTestCase):
         self.assertEqual("EXT-BAD", report["rejected_findings"][0]["external_id"])
         self.assertIn("affected_locations[0].file", "; ".join(report["rejected_findings"][0]["reasons"]))
         self.assertNotIn(secret, json.dumps(report))
+        import_events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(import_events))
+        self.assert_public_command_event(
+            import_events[0],
+            command="gra-import-findings",
+            phase="import",
+            subject_id="managed-ai-review",
+        )
+        self.assertNotIn(secret, json.dumps(import_events))
+        self.assertIn("reports/imported-findings.json", import_events[0]["output_artifact_refs"])
         self.assertEqual(
             original_findings["findings"],
             json.loads((run_dir / "reports" / "findings.json").read_text(encoding="utf-8"))["findings"],

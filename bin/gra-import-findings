@@ -9,6 +9,13 @@ LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
 from version import auditor_version  # noqa: E402
 from external_findings import ExternalFindingImportError, import_external_findings  # noqa: E402
+from run_events import (  # noqa: E402
+    EventWriteError,
+    append_command_event,
+    preflight_command_event,
+    reports_dir,
+    start_command_event,
+)
 
 
 def main() -> int:
@@ -23,11 +30,52 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    run_dir = Path(args.run).resolve()
+    started_at, started_perf = start_command_event()
+    input_artifacts = [run_dir / "context.json"]
+    output_artifacts: list[Path] = []
+    event_subject_id: str | None = None
+
+    def finish(exit_code: int, *, error_category: str | None = None) -> int:
+        append_command_event(
+            run_dir,
+            command="gra-import-findings",
+            phase="import",
+            subject_id=event_subject_id,
+            started_at=started_at,
+            started_perf=started_perf,
+            exit_code=exit_code,
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=output_artifacts,
+            error_category=error_category,
+            failure_mode="warn" if exit_code != 0 else "block",
+        )
+        return exit_code
+
     try:
-        report = import_external_findings(Path(args.run), Path(args.file), append_findings=args.append_findings)
-    except ExternalFindingImportError as exc:
+        reports = reports_dir(run_dir)
+        potential_outputs = [reports / "imported-findings.json", reports / "IMPORTED_FINDINGS.md"]
+        if args.append_findings:
+            potential_outputs.append(reports / "findings.json")
+        preflight_command_event(
+            run_dir,
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=potential_outputs,
+        )
+    except (EventWriteError, OSError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
+
+    try:
+        report = import_external_findings(run_dir, Path(args.file), append_findings=args.append_findings)
+    except ExternalFindingImportError as exc:
+        print(str(exc), file=sys.stderr)
+        return finish(2, error_category="input_validation")
+
+    event_subject_id = str(report.get("source") or "") or None
+    output_artifacts.extend([reports / "imported-findings.json", reports / "IMPORTED_FINDINGS.md"])
+    if args.append_findings:
+        output_artifacts.append(reports / "findings.json")
 
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     print("Wrote imported findings -> reports/imported-findings.json")
@@ -41,7 +89,7 @@ def main() -> int:
     )
     if not args.append_findings:
         print("Review-only mode: reports/findings.json was not modified. Use --append-findings to append normalized records.")
-    return 0
+    return finish(0)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -52,6 +53,7 @@ from issue_ledger import (  # noqa: E402
 from duplicate_decisions import (  # noqa: E402
     verify_ledger_decisions as verify_duplicate_decisions_for_ledger,
 )
+from run_events import EventWriteError, append_command_event, preflight_command_event, start_command_event  # noqa: E402
 
 
 def load_json(path: Path) -> Any:
@@ -134,7 +136,7 @@ def print_dry_run_preview_summary(preview_plan_path: Path, plan: Dict[str, Any])
 
 
 
-def main(argv: Optional[List[str]] = None, github: Optional[GitHubClient] = None) -> int:
+def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] = None) -> int:
     parser = argparse.ArgumentParser(description="Create GitHub Issues from GenAI Repo Auditor findings.json")
     parser.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
     parser.add_argument("--run", required=True, help="Run directory, e.g. runs/OWNER__REPO/RUN_ID")
@@ -571,6 +573,145 @@ def main(argv: Optional[List[str]] = None, github: Optional[GitHubClient] = None
     output_path.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"Wrote {output_path}")
     return 0
+
+
+def _argv_option_value(argv: List[str], name: str) -> Optional[str]:
+    prefix = f"{name}="
+    for index, value in enumerate(argv):
+        if value.startswith(prefix):
+            return value[len(prefix) :]
+        if value == name and index + 1 < len(argv) and not argv[index + 1].startswith("-"):
+            return argv[index + 1]
+    return None
+
+
+def _publication_event_phase(argv: List[str]) -> str:
+    if "--verify-ledger" in argv:
+        return "verify-ledger"
+    if "--plan" in argv:
+        return "plan"
+    if _argv_option_value(argv, "--apply-plan") is not None:
+        if "--replan" in argv:
+            return "plan"
+        return "verify-plan" if "--dry-run" in argv else "apply-plan"
+    if "--apply" in argv:
+        return "execute"
+    return "preview"
+
+
+def main(argv: Optional[List[str]] = None, github: Optional[GitHubClient] = None) -> int:
+    raw_argv = [str(value) for value in (sys.argv[1:] if argv is None else argv)]
+    run_value = _argv_option_value(raw_argv, "--run")
+    if not run_value:
+        return _main_impl(raw_argv, github)
+
+    run_dir = Path(run_value).resolve()
+    started_at, started_perf = start_command_event()
+    phase = _publication_event_phase(raw_argv)
+    input_artifacts: List[Path] = [run_dir / "context.json"]
+    for candidate in [
+        run_dir / "reports" / "findings.json",
+        run_dir / "repo" / ".genai-audit" / "reports" / "findings.json",
+    ]:
+        if candidate.exists():
+            input_artifacts.append(candidate)
+            break
+    apply_plan_value = _argv_option_value(raw_argv, "--apply-plan")
+    contained_apply_plan_path: Optional[Path] = None
+    if apply_plan_value:
+        apply_plan_path = Path(apply_plan_value)
+        if not apply_plan_path.is_absolute():
+            apply_plan_path = (Path.cwd() / apply_plan_path).resolve()
+        try:
+            apply_plan_path.relative_to(run_dir)
+        except ValueError:
+            pass
+        else:
+            contained_apply_plan_path = apply_plan_path
+            if "--replan" not in raw_argv:
+                input_artifacts.append(apply_plan_path)
+
+    ledger_path = run_dir / "reports" / "issue-ledger.json"
+    issues_created_path = run_dir / "issues-created.json"
+    default_plan_output = run_dir / "reports" / "issue-publication-plan.json"
+    duplicate_dir = run_dir / "reports" / "duplicate-decisions"
+    if phase not in {"plan", "verify-ledger"} and ledger_path.exists():
+        input_artifacts.append(ledger_path)
+    if phase == "verify-ledger":
+        input_artifacts.append(ledger_path)
+        if duplicate_dir.is_dir() and not duplicate_dir.is_symlink():
+            input_artifacts.extend(sorted(path for path in duplicate_dir.iterdir() if path.is_file()))
+
+    potential_outputs = [ledger_path, issues_created_path, default_plan_output, duplicate_dir]
+    if contained_apply_plan_path is not None:
+        potential_outputs.append(contained_apply_plan_path)
+    if duplicate_dir.is_dir() and not duplicate_dir.is_symlink():
+        potential_outputs.extend(sorted(path for path in duplicate_dir.iterdir() if path.is_file()))
+    try:
+        preflight_command_event(
+            run_dir,
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=potential_outputs,
+        )
+    except EventWriteError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    def artifact_candidates() -> List[Path]:
+        candidates = [ledger_path, issues_created_path, default_plan_output]
+        if contained_apply_plan_path is not None and contained_apply_plan_path != default_plan_output:
+            candidates.append(contained_apply_plan_path)
+        if duplicate_dir.is_dir() and not duplicate_dir.is_symlink():
+            candidates.extend(sorted(path for path in duplicate_dir.iterdir() if path.is_file()))
+        return candidates
+
+    def artifact_state(path: Path) -> Optional[Tuple[int, int, str]]:
+        try:
+            mode = path.lstat().st_mode
+        except FileNotFoundError:
+            return None
+        if path.is_symlink() or not path.is_file():
+            return mode, 0, ""
+        data = path.read_bytes()
+        return mode, len(data), hashlib.sha256(data).hexdigest()
+
+    before_states = {path: artifact_state(path) for path in artifact_candidates()}
+
+    def existing_outputs() -> List[Path]:
+        return [path for path in artifact_candidates() if artifact_state(path) != before_states.get(path)]
+
+    def finish(exit_code: int, *, error_category: Optional[str] = None) -> int:
+        append_command_event(
+            run_dir,
+            command="gra-issues",
+            phase=phase,
+            started_at=started_at,
+            started_perf=started_perf,
+            exit_code=exit_code,
+            status="blocked" if exit_code in {3, 4} else None,
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=existing_outputs(),
+            error_category=error_category,
+            failure_mode="warn" if exit_code != 0 else "block",
+        )
+        return exit_code
+
+    try:
+        exit_code = _main_impl(raw_argv, github)
+    except Exception:
+        finish(1, error_category="command_failure")
+        raise
+
+    error_category = None
+    if exit_code == 2:
+        error_category = "input_validation"
+    elif exit_code == 3:
+        error_category = "publication_policy"
+    elif exit_code == 4:
+        error_category = "plan_verification" if phase in {"plan", "verify-plan", "apply-plan"} else "publication_policy"
+    elif exit_code != 0:
+        error_category = "command_failure"
+    return finish(exit_code, error_category=error_category)
 
 
 if __name__ == "__main__":

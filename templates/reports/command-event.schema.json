@@ -111,6 +111,7 @@
         "target-generation",
         "trace",
         "validate",
+        "verify-ledger",
         "verify-plan"
       ]
     },

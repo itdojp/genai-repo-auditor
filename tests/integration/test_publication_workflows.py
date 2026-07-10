@@ -9,6 +9,18 @@ except ImportError:
 
 
 class PublicationWorkflowTests(CliWorkflowTestCase):
+    def test_gra_issues_replan_without_apply_plan_remains_preview(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-issues", "--run", run_dir, "--replan"], check=True)
+
+        self.assertIn("Dry-run preview only", cp.stdout)
+        self.assertFalse((run_dir / "reports" / "issue-publication-plan.json").exists())
+        events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(events))
+        self.assert_public_command_event(events[0], command="gra-issues", phase="preview")
+        self.assertNotIn("reports/issue-publication-plan.json", events[0]["output_artifact_refs"])
+
     def test_gra_issues_dry_run_and_apply_use_safe_fixture_issue_body(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         cp = self.run_cmd(
@@ -58,6 +70,15 @@ class PublicationWorkflowTests(CliWorkflowTestCase):
         self.assertFalse(decision["exact_match"])
         self.assertEqual(len(decision["root_cause_fingerprint"]), 24)
         self.assertEqual(len(decision["source_to_sink_fingerprint"]), 24)
+        preview_events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(preview_events))
+        self.assert_public_command_event(preview_events[0], command="gra-issues", phase="preview")
+        self.assertIn("reports/findings.json", preview_events[0]["input_artifact_refs"])
+        self.assertIn("reports/issue-ledger.json", preview_events[0]["output_artifact_refs"])
+        self.assertIn("issues-created.json", preview_events[0]["output_artifact_refs"])
+        preview_event_text = json.dumps(preview_events)
+        self.assertNotIn("Fixture issue body", preview_event_text)
+        self.assertNotIn("issue_body", preview_event_text)
 
         apply_run = self.copy_fixture_run("minimal-run")
         cp_apply = self.run_cmd(
@@ -74,6 +95,9 @@ class PublicationWorkflowTests(CliWorkflowTestCase):
             check=True,
         )
         self.assertIn("CREATED SEC-001", cp_apply.stdout)
+        apply_events = self.read_command_events(apply_run)
+        self.assertEqual(1, len(apply_events))
+        self.assert_public_command_event(apply_events[0], command="gra-issues", phase="execute")
 
     def test_gra_issues_duplicate_decisions_distinguish_variant_and_related_candidates(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -141,6 +165,27 @@ class PublicationWorkflowTests(CliWorkflowTestCase):
         self.assertEqual(plan["selected_findings"][0]["fingerprint"], FIXTURE_FINGERPRINT)
         self.assertEqual(plan["selected_findings"][0]["issue_body_file"], "reports/issue-drafts/SEC-001.md")
         self.assertFalse((run_dir / "issues-created.json").exists())
+        plan_events = self.read_command_events(run_dir)
+        self.assertEqual(1, len(plan_events))
+        self.assert_public_command_event(plan_events[0], command="gra-issues", phase="plan")
+        self.assertIn("reports/issue-publication-plan.json", plan_events[0]["output_artifact_refs"])
+
+        cp_verify = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply-plan",
+                plan_path,
+                "--dry-run",
+            ],
+            check=True,
+        )
+        self.assertIn("Dry-run preview only; verified issue publication plan was not applied.", cp_verify.stdout)
+        verification_events = self.read_command_events(run_dir)
+        self.assertEqual(2, len(verification_events))
+        self.assert_public_command_event(verification_events[1], command="gra-issues", phase="verify-plan")
+        self.assertIn("reports/issue-publication-plan.json", verification_events[1]["input_artifact_refs"])
 
         issue_url = "https://github.example.invalid/example/demo/issues/60"
         env, log_path = self.env_with_gh_log(GRA_MOCK_ISSUE_URL=issue_url)
@@ -166,6 +211,11 @@ class PublicationWorkflowTests(CliWorkflowTestCase):
         self.assertEqual(result["plan_path"], str(plan_path))
         self.assertEqual(len(result["plan_sha256"]), 64)
         self.assertEqual(result["created"][0]["fingerprint"], FIXTURE_FINGERPRINT)
+        publication_events = self.read_command_events(run_dir)
+        self.assertEqual(3, len(publication_events))
+        self.assert_public_command_event(publication_events[2], command="gra-issues", phase="apply-plan")
+        self.assertIn("reports/issue-publication-plan.json", publication_events[2]["input_artifact_refs"])
+        self.assertIn("issues-created.json", publication_events[2]["output_artifact_refs"])
         calls = self.read_gh_calls(log_path)
         self.assert_gh_called(calls, ["repo", "view"])
         self.assert_gh_called(calls, ["issue", "list"])
@@ -387,6 +437,11 @@ class PublicationWorkflowTests(CliWorkflowTestCase):
             check=True,
         )
         self.assertIn("Issue ledger verified", cp_ok.stdout)
+        verify_events = self.read_command_events(run_dir)
+        self.assert_public_command_event(verify_events[-1], command="gra-issues", phase="verify-ledger")
+        self.assertIn("reports/issue-ledger.json", verify_events[-1]["input_artifact_refs"])
+        self.assertIn("reports/duplicate-decisions/SEC-001.json", verify_events[-1]["input_artifact_refs"])
+        self.assertEqual([], verify_events[-1]["output_artifact_refs"])
 
     def test_gra_issues_verify_ledger_requires_existing_ledger(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -794,6 +849,11 @@ class PublicationWorkflowTests(CliWorkflowTestCase):
         self.assertEqual(self.read_gh_calls(log_path), [])
         refreshed = json.loads(plan_path.read_text(encoding="utf-8"))
         self.assertEqual(refreshed["selected_findings"][0]["id"], "SEC-001")
+        events = self.read_command_events(run_dir)
+        self.assert_public_command_event(events[-1], command="gra-issues", phase="plan")
+        self.assertNotIn("reports/issue-publication-plan.json", events[-1]["input_artifact_refs"])
+        self.assertIn("reports/issue-publication-plan.json", events[-1]["output_artifact_refs"])
+        self.assertNotIn("issues-created.json", events[-1]["output_artifact_refs"])
 
     def test_gra_issues_apply_plan_rejects_changed_fingerprint(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -945,6 +1005,15 @@ class PublicationWorkflowTests(CliWorkflowTestCase):
         )
         self.assertEqual(cp.returncode, 3, cp.stderr)
         self.assertIn("Refusing to create security issues", cp.stderr)
+        denied_events = self.read_command_events(run_dir)
+        self.assert_public_command_event(
+            denied_events[-1],
+            command="gra-issues",
+            phase="apply-plan",
+            exit_code=3,
+            status="blocked",
+        )
+        self.assertEqual("publication_policy", denied_events[-1]["error_category"])
         calls = self.read_gh_calls(log_path)
         self.assert_gh_called(calls, ["repo", "view"])
         self.assert_gh_not_called(calls, ["issue", "list"])
@@ -976,6 +1045,33 @@ class PublicationWorkflowTests(CliWorkflowTestCase):
         self.assert_gh_called(calls, ["repo", "view"])
         self.assert_gh_not_called(calls, ["issue", "list"])
         self.assert_gh_not_called(calls, ["issue", "create"])
+
+    def test_gra_issues_rejects_unsafe_event_path_before_github_mutation(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        context_path = run_dir / "context.json"
+        context = json.loads(context_path.read_text(encoding="utf-8"))
+        context["reports_dir"] = "../outside-reports"
+        context_path.write_text(json.dumps(context, indent=2) + "\n", encoding="utf-8")
+        env, log_path = self.env_with_gh_log(GRA_MOCK_GH_VISIBILITY="PRIVATE")
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            env=env,
+        )
+
+        self.assertEqual(2, cp.returncode)
+        self.assertIn("command event preflight failed", cp.stderr)
+        self.assertEqual([], self.read_gh_calls(log_path))
+        self.assertFalse((run_dir / "issues-created.json").exists())
 
     def test_gra_issues_allow_public_apply_creates_issue_with_safe_fixture(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -1160,4 +1256,5 @@ class PublicationWorkflowTests(CliWorkflowTestCase):
             ]
         )
         self.assertNotEqual(cp.returncode, 0)
-        self.assertIn("issue_body_file must not be a symlink", cp.stderr)
+        self.assertIn("command event preflight failed", cp.stderr)
+        self.assertIn("artifact path must stay under the run directory", cp.stderr)

@@ -275,11 +275,21 @@ artifact references.
 
 Current v2 producers include `gra-audit`, `gra-recon`, `gra-targets`,
 `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`,
-`gra-remediate`, `gra-adversarial-validate`, `gra-trace`, and
-`gra-validate-report`. New event producers should pass input and output artifact
+`gra-remediate`, `gra-adversarial-validate`, `gra-trace`, `gra-ingest`,
+`gra-import-findings`, `gra-scanner-triage`, `gra-issues`, and
+`gra-validate-report`. Ingestion and publication events contain only bounded
+phase/status metadata and run-relative artifact references; scanner bodies,
+external finding evidence, credentials, and Issue body text are excluded. New
+event producers should pass input and output artifact
 references explicitly rather than relying on the legacy `artifact_paths`
 fallback. `gra-metrics` uses these events to report per-execution durations,
 failures, reruns, validation retries, and target-level normalization counts.
+
+Commands that copy scanner bodies, invoke a worker, or mutate GitHub state
+preflight the event append target and planned artifact references before those
+side effects. A preflight creates an empty regular event file when needed but
+does not append a record; the completion event is appended after the command
+outcome is known.
 
 Command-event writing is fail-closed by default: command-completion events use
 blocking write semantics so an unwritable or unsafe observability record cannot

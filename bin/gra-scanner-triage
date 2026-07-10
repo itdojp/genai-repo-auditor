@@ -9,6 +9,7 @@ LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
 from gralib import env_from_context, load_context, render_template, run_codex_exec
+from run_events import EventWriteError, append_command_event, preflight_command_event, reports_dir, start_command_event
 
 
 def main() -> int:
@@ -21,14 +22,56 @@ def main() -> int:
     args = p.parse_args()
 
     run_dir = Path(args.run).resolve()
+    started_at, started_perf = start_command_event()
+    input_artifacts = [run_dir / 'context.json']
+    output_artifacts: list[Path] = []
+
+    def finish(exit_code: int, *, error_category: str | None = None) -> int:
+        append_command_event(
+            run_dir,
+            command='gra-scanner-triage',
+            phase='scanner-triage',
+            started_at=started_at,
+            started_perf=started_perf,
+            exit_code=exit_code,
+            model=args.model,
+            effort=args.effort,
+            sandbox_profile='workspace-write',
+            network_allowed=args.network,
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=output_artifacts,
+            error_category=error_category,
+            failure_mode='warn' if exit_code != 0 else 'block',
+        )
+        return exit_code
+
     ctx = load_context(run_dir)
-    index = run_dir / 'reports' / 'scanner-results' / 'scanner-index.json'
+    try:
+        reports = reports_dir(run_dir)
+    except OSError as exc:
+        print(f'command event preflight failed: {exc}', file=sys.stderr)
+        return 2
+    index = reports / 'scanner-results' / 'scanner-index.json'
+    input_artifacts.append(index)
     if not index.exists():
         print(f'scanner index not found: {index}', file=sys.stderr)
-        return 2
+        return finish(2, error_category='input_validation')
     env = env_from_context(run_dir, {'SCANNER_INDEX': str(index.relative_to(run_dir))})
     prompt = run_dir / 'prompts' / 'exec' / 'scanner-triage.prompt.md'
+    final_path = run_dir / 'codex-scanner-triage-final.md'
+    events_path = run_dir / 'codex-scanner-triage-events.jsonl'
+    stderr_path = run_dir / 'codex-scanner-triage-stderr.txt'
+    try:
+        preflight_command_event(
+            run_dir,
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=[prompt, final_path, events_path, stderr_path],
+        )
+    except EventWriteError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'scanner-triage.prompt.md', prompt, env)
+    output_artifacts.append(prompt)
     print(f'Running Codex scanner triage for {ctx.get("repo", "")}')
     status = run_codex_exec(
         run_dir=run_dir,
@@ -36,12 +79,13 @@ def main() -> int:
         model=args.model,
         effort=args.effort,
         network=args.network,
-        output_last=run_dir / 'codex-scanner-triage-final.md',
-        events_file=run_dir / 'codex-scanner-triage-events.jsonl',
-        stderr_file=run_dir / 'codex-scanner-triage-stderr.txt',
+        output_last=final_path,
+        events_file=events_path,
+        stderr_file=stderr_path,
     )
+    output_artifacts.extend([final_path, events_path, stderr_path])
     print(f'Codex status: {status}')
-    return status
+    return finish(status, error_category='worker_execution' if status != 0 else None)
 
 
 if __name__ == '__main__':
