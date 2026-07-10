@@ -93,6 +93,7 @@ COMMAND_EVENT_PHASES = [
     "target-generation",
     "trace",
     "validate",
+    "verify-ledger",
     "verify-plan",
 ]
 COMMAND_EVENT_STATUSES = ["succeeded", "failed", "blocked", "skipped", "warning"]
@@ -460,24 +461,63 @@ def _acquire_event_append_lock(path: Path, *, timeout_seconds: float = 10.0) -> 
                 raise EventWriteError(f"timed out waiting for command event append lock: {lock_path}") from exc
             time.sleep(0.01)
 
+
+def _open_event_append_fd(path: Path) -> int:
+    try:
+        mode = path.lstat().st_mode
+        if stat.S_ISLNK(mode):
+            raise EventWriteError(f"command event path must not be a symlink: {path}")
+        if not stat.S_ISREG(mode):
+            raise EventWriteError(f"command event path must be a regular file: {path}")
+    except FileNotFoundError:
+        # The event file does not exist yet; it will be created below.
+        pass
+    flags = os.O_APPEND | os.O_CREAT | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags, 0o600)
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise EventWriteError(f"command event path must be a regular file: {path}")
+    return fd
+
+
+def preflight_command_event(
+    run_dir: Path,
+    *,
+    input_artifact_paths: Iterable[Path | str] | None = None,
+    output_artifact_paths: Iterable[Path | str] | None = None,
+) -> Path:
+    """Validate event refs and reserve a safe append target before side effects."""
+
+    try:
+        _safe_run_relative_refs(run_dir, input_artifact_paths, "input_artifact_refs")
+        _safe_run_relative_refs(run_dir, output_artifact_paths, "output_artifact_refs")
+        path = command_events_path(run_dir)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path = _acquire_event_append_lock(path)
+        try:
+            fd = _open_event_append_fd(path)
+            os.close(fd)
+        finally:
+            try:
+                os.rmdir(lock_path)
+            except FileNotFoundError:
+                # The lock was already removed during error handling; there is no cleanup left.
+                pass
+        return path
+    except Exception as exc:  # noqa: BLE001 - expose one fail-closed preflight error.
+        if isinstance(exc, EventWriteError):
+            raise
+        raise EventWriteError(f"command event preflight failed: {exc}") from exc
+
+
 def _atomic_append_jsonl(path: Path, event: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = _acquire_event_append_lock(path)
     try:
-        try:
-            if stat.S_ISLNK(path.lstat().st_mode):
-                raise EventWriteError(f"command event path must not be a symlink: {path}")
-        except FileNotFoundError:
-            # The event file does not exist yet; it will be created below.
-            pass
         line = json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
         data = line.encode("utf-8")
-        flags = os.O_APPEND | os.O_CREAT | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
-        fd = os.open(path, flags, 0o600)
+        fd = _open_event_append_fd(path)
         try:
-            mode = os.fstat(fd).st_mode
-            if not stat.S_ISREG(mode):
-                raise EventWriteError(f"command event path must be a regular file: {path}")
             offset = 0
             while offset < len(data):
                 written = os.write(fd, data[offset:])

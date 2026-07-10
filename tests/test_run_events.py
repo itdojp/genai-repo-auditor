@@ -22,6 +22,7 @@ EventWriteError = run_events.EventWriteError
 append_command_event = run_events.append_command_event
 build_command_event = run_events.build_command_event
 load_command_events = run_events.load_command_events
+preflight_command_event = run_events.preflight_command_event
 start_command_event = run_events.start_command_event
 validate_command_event_payload = run_events.validate_command_event_payload
 
@@ -309,6 +310,24 @@ class RunEventsTests(unittest.TestCase):
             )
         self.assertIsNone(result)
         self.assertIn("WARNING: command event was not written", stderr.getvalue())
+
+    def test_preflight_reserves_safe_event_path_and_rejects_unsafe_refs(self) -> None:
+        run_dir = self.make_run()
+        path = preflight_command_event(
+            run_dir,
+            input_artifact_paths=[run_dir / "context.json"],
+            output_artifact_paths=[run_dir / "reports" / "result.json"],
+        )
+        self.assertTrue(path.is_file())
+        self.assertEqual(b"", path.read_bytes())
+
+        with self.assertRaises(EventWriteError):
+            preflight_command_event(run_dir, output_artifact_paths=[self.work_dir / "outside.json"])
+
+        path.unlink()
+        path.symlink_to(self.work_dir / "outside-events.jsonl")
+        with self.assertRaises(EventWriteError):
+            preflight_command_event(run_dir)
 
     def test_broken_symlink_artifact_component_is_rejected(self) -> None:
         run_dir = self.make_run()

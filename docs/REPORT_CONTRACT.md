@@ -275,11 +275,21 @@ artifact references.
 
 Current v2 producers include `gra-audit`, `gra-recon`, `gra-targets`,
 `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`,
-`gra-remediate`, `gra-adversarial-validate`, `gra-trace`, and
-`gra-validate-report`. New event producers should pass input and output artifact
+`gra-remediate`, `gra-adversarial-validate`, `gra-trace`, `gra-ingest`,
+`gra-import-findings`, `gra-scanner-triage`, `gra-issues`, and
+`gra-validate-report`. Ingestion and publication events contain only bounded
+phase/status metadata and run-relative artifact references; scanner bodies,
+external finding evidence, credentials, and Issue body text are excluded. New
+event producers should pass input and output artifact
 references explicitly rather than relying on the legacy `artifact_paths`
 fallback. `gra-metrics` uses these events to report per-execution durations,
 failures, reruns, validation retries, and target-level normalization counts.
+
+Commands that copy scanner bodies, invoke a worker, or mutate GitHub state
+preflight the event append target and planned artifact references before those
+side effects. A preflight creates an empty regular event file when needed but
+does not append a record; the completion event is appended after the command
+outcome is known.
 
 Command-event writing is fail-closed by default: command-completion events use
 blocking write semantics so an unwritable or unsafe observability record cannot
@@ -337,7 +347,7 @@ Important constraints:
   `active`, `paused`, or `blocked`; `pause_reason` is required for `paused`;
   `block_reason` is required for `blocked`; and `paused_at`, `blocked_at`, and
   `resumed_at` must be parseable ISO-8601 timestamps when present.
-- Optional `reports/command-events.jsonl` records are validated when present.
+- Optional `<reports_dir>/command-events.jsonl` records are validated when present.
   Each line must match `templates/reports/command-event.schema.json`, use
   schema version `1` or `2`, use a known command/phase, keep `artifact_paths`,
   `input_artifact_refs`, and `output_artifact_refs` relative to the run
@@ -349,7 +359,7 @@ Important constraints:
   relative to the run directory, must not traverse through `..` or symlink
   components, and must exist with the declared `kind`. File artifacts must have
   matching `size_bytes` and lowercase SHA-256 digest values. Because
-  `reports/command-events.jsonl` is append-only and later instrumented commands
+  `<reports_dir>/command-events.jsonl` is append-only and later instrumented commands
   may add records after a manifest snapshot, its manifest entry is validated as
   a recorded prefix: the current file must be at least the recorded size and the
   SHA-256 digest of that prefix must match. Completed manifests must have a
