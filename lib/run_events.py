@@ -501,6 +501,7 @@ def preflight_command_event(
             try:
                 os.rmdir(lock_path)
             except FileNotFoundError:
+                # The lock was already removed during error handling; there is no cleanup left.
                 pass
         return path
     except Exception as exc:  # noqa: BLE001 - expose one fail-closed preflight error.
