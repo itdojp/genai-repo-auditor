@@ -37,6 +37,7 @@ jobs:
           from pathlib import Path
           import py_compile
           files = list(Path('lib').glob('*.py'))
+          files += list(Path('src').rglob('*.py'))
           files += [p for p in Path('bin').glob('gra-*') if p.read_text(encoding='utf-8', errors='ignore').startswith('#!/usr/bin/env python3')]
           for p in files:
               py_compile.compile(str(p), doraise=True)
@@ -45,6 +46,25 @@ jobs:
       - name: Run integration tests
         run: |
           python3 -m unittest discover -s tests
+      - name: Build Python package metadata
+        run: |
+          python3 -m pip install --upgrade build
+          python3 -m build --outdir "$RUNNER_TEMP/gra-dist"
+          python3 -m venv "$RUNNER_TEMP/gra-package-venv"
+          "$RUNNER_TEMP/gra-package-venv/bin/python" -m pip install --no-index --find-links "$RUNNER_TEMP/gra-dist" genai-repo-auditor
+          (cd "$RUNNER_TEMP" && "$RUNNER_TEMP/gra-package-venv/bin/python" - <<'PY'
+          from pathlib import Path
+          import genai_repo_auditor as gra
+
+          root = gra.resource_root()
+          assert "share/genai-repo-auditor" in str(root), root
+          assert Path(gra.prompt_path("exec", "full-audit.prompt.md")).is_file()
+          assert Path(gra.report_schema_path("findings.schema.json")).is_file()
+          assert Path(gra.taxonomy_path("owasp-llm-2025.json")).is_file()
+          assert Path(gra.agent_worker_profile_path("codex-cli.json")).is_file()
+          PY
+          )
+          rm -rf build src/*.egg-info
       - name: Run local install smoke validation
         run: |
           scripts/validate-install-smoke.sh

@@ -141,6 +141,7 @@ def is_forbidden_release_path(raw_path: str) -> bool:
         ".test-tmp",
         "audits",
         "batches",
+        "build",
         "locks",
         "reports",
         "repos",
@@ -159,6 +160,9 @@ def is_forbidden_release_path(raw_path: str) -> bool:
         "target-research",
     }
     if any(part in forbidden_segments for part in parts):
+        return True
+
+    if any(part.endswith(".egg-info") for part in parts):
         return True
 
     forbidden_names = {

@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "genai-repo-auditor"
+dynamic = ["version"]
+description = "Local-first defensive repository security auditing toolkit"
+readme = "README.md"
+requires-python = ">=3.10"
+# SPDX license expression per PEP 639; setuptools>=77 validates this as a string.
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "itdojp" }]
+keywords = ["security", "audit", "appsec", "repository", "local-first"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Information Technology",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Security",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/itdojp/genai-repo-auditor"
+Repository = "https://github.com/itdojp/genai-repo-auditor"
+Issues = "https://github.com/itdojp/genai-repo-auditor/issues"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+packages = ["genai_repo_auditor"]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = { file = "VERSION" }
+
+[tool.setuptools.data-files]
+"share/genai-repo-auditor/prompts" = ["prompts/*.md"]
+"share/genai-repo-auditor/prompts/codex" = ["prompts/codex/*.md"]
+"share/genai-repo-auditor/prompts/exec" = ["prompts/exec/*.md"]
+"share/genai-repo-auditor/prompts/goal" = ["prompts/goal/*.md"]
+"share/genai-repo-auditor/prompts/issue" = ["prompts/issue/*.md"]
+"share/genai-repo-auditor/templates" = ["templates/taxonomy-aliases.json"]
+"share/genai-repo-auditor/templates/agent-workers" = ["templates/agent-workers/*"]
+"share/genai-repo-auditor/templates/dogfood" = ["templates/dogfood/*"]
+"share/genai-repo-auditor/templates/reports" = ["templates/reports/*"]
+"share/genai-repo-auditor/templates/taxonomies" = ["templates/taxonomies/*.json"]
