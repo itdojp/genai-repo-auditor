@@ -15,7 +15,14 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from scanner_adapters import ScannerAdapter, ScannerAdapterError, adapter_by_id, build_scan_plan, validate_run_directory
+from scanner_adapters import (
+    SCHEMA_VERSION,
+    ScannerAdapter,
+    ScannerAdapterError,
+    adapter_by_id,
+    build_scan_plan,
+    validate_run_directory,
+)
 
 
 CONTAINER_IMAGES = {
@@ -433,7 +440,7 @@ def execute_scan(
                             status = "output-publication-failed"
                         else:
                             return {
-                                "schema_version": "1",
+                                "schema_version": SCHEMA_VERSION,
                                 "mode": "execute",
                                 "scanner_executed": True,
                                 "network_accessed": False,
@@ -455,7 +462,7 @@ def execute_scan(
         _remove_staging(staging, staging_root)
 
     return {
-        "schema_version": "1",
+        "schema_version": SCHEMA_VERSION,
         "mode": "execute",
         "scanner_executed": True,
         "network_accessed": False,
