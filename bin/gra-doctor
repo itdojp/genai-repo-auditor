@@ -1,0 +1,342 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import platform
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / "lib"))
+from agent_worker import AgentWorkerProfileError, check_profile_executable, load_profile  # noqa: E402
+from version import auditor_version  # noqa: E402
+
+SENSITIVE_SEGMENT_RE = re.compile(r"(?i)(token|secret|password|passwd|credential|apikey|api[_-]?key)")
+SENSITIVE_ENV_NAME_RE = re.compile(r"(?i)(token|secret|password|passwd|credential|apikey|api[_-]?key|authorization)")
+SENSITIVE_PATH_SEGMENT_RE = re.compile(
+    r"(^|[\\/])([^\\/\s:]*?(?:token|secret|password|passwd|credential|apikey|api[_-]?key)[^\\/\s:]*?)",
+    re.IGNORECASE,
+)
+REQUIRED_RESOURCE_PATHS = {
+    "version_file": Path("VERSION"),
+    "audit_prompt": Path("prompts") / "AGENTS.audit.md",
+    "exec_prompt": Path("prompts") / "exec" / "full-audit.prompt.md",
+    "findings_schema": Path("templates") / "reports" / "findings.schema.json",
+    "taxonomy": Path("templates") / "taxonomies" / "owasp-llm-2025.json",
+    "agent_worker_profile": Path("templates") / "agent-workers" / "codex-cli.json",
+    "validate_report_command": Path("bin") / "gra-validate-report",
+    "version_helper": Path("lib") / "version.py",
+}
+OPTIONAL_RUNTIME_COMMANDS = ("docker", "podman", "runsc")
+
+
+def redact_path(value: str | os.PathLike[str] | None) -> str | None:
+    if value is None:
+        return None
+    path = Path(value)
+    text = str(path)
+    home = str(Path.home())
+    if home and text == home:
+        text = "~"
+    elif home and text.startswith(home + os.sep):
+        text = "~" + text[len(home):]
+    parts = []
+    for part in Path(text).parts:
+        if SENSITIVE_SEGMENT_RE.search(part):
+            parts.append("<redacted>")
+        else:
+            parts.append(part)
+    if not parts:
+        return text
+    try:
+        return str(Path(*parts))
+    except TypeError:
+        return text
+
+
+def redact_text(value: str) -> str:
+    text = value
+    home = str(Path.home())
+    if home:
+        text = text.replace(home, "~")
+    for secret in sensitive_env_values():
+        text = text.replace(secret, "<redacted>")
+    return SENSITIVE_PATH_SEGMENT_RE.sub(lambda match: match.group(1) + "<redacted>", text)
+
+
+def sensitive_env_values() -> list[str]:
+    return [
+        value
+        for name, value in os.environ.items()
+        if SENSITIVE_ENV_NAME_RE.search(name) and len(value) >= 8
+    ]
+
+
+def safe_subprocess_env() -> dict[str, str]:
+    return {
+        name: value
+        for name, value in os.environ.items()
+        if not SENSITIVE_ENV_NAME_RE.search(name)
+    }
+
+
+def command_path(name: str) -> str | None:
+    resolved = shutil.which(name)
+    return redact_path(resolved) if resolved else None
+
+
+def run_version(command: str, timeout: int = 5) -> str | None:
+    path = shutil.which(command)
+    if not path:
+        return None
+    try:
+        cp = subprocess.run(
+            [path, "--version"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=timeout,
+            check=False,
+            env=safe_subprocess_env(),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    first_line = cp.stdout.splitlines()[0].strip() if cp.stdout.splitlines() else ""
+    return redact_text(first_line) if first_line else None
+
+
+def check_python() -> dict[str, Any]:
+    version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    supported = sys.version_info >= (3, 10)
+    return {
+        "status": "ok" if supported else "error",
+        "version": version,
+        "executable": redact_path(sys.executable),
+        "platform": platform.platform(),
+        "diagnostics": [] if supported else ["Python 3.10 or newer is required."],
+    }
+
+
+def check_command(name: str, *, required: bool, probe_external_tools: bool) -> dict[str, Any]:
+    path = command_path(name)
+    available = bool(path)
+    status = "ok" if available else ("error" if required else "warning")
+    diagnostics = [] if available else [f"{name} was not found on PATH."]
+    result: dict[str, Any] = {
+        "status": status,
+        "available": available,
+        "path": path,
+        "required": required,
+        "version_checked": False,
+        "diagnostics": diagnostics,
+    }
+    if probe_external_tools and name in {"git", "gh"}:
+        result["version_checked"] = True
+        result["version"] = run_version(name)
+    return result
+
+
+def check_gh_auth(*, probe_external_tools: bool) -> dict[str, Any]:
+    path = shutil.which("gh")
+    if not path:
+        return {
+            "status": "warning",
+            "available": False,
+            "authenticated": None,
+            "checked": False,
+            "diagnostics": ["gh was not found on PATH; GitHub authentication could not be checked."],
+        }
+    if not probe_external_tools:
+        return {
+            "status": "warning",
+            "available": True,
+            "authenticated": None,
+            "checked": False,
+            "diagnostics": [
+                "GitHub authentication was not actively checked. Re-run with --probe-external-tools after confirming PATH points to trusted git/gh binaries.",
+            ],
+        }
+    try:
+        cp = subprocess.run(
+            [path, "auth", "status", "--hostname", "github.com"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=10,
+            check=False,
+            env=safe_subprocess_env(),
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {
+            "status": "warning",
+            "available": True,
+            "authenticated": False,
+            "checked": True,
+            "diagnostics": [f"gh auth status could not be checked safely: {type(exc).__name__}"],
+        }
+    authenticated = cp.returncode == 0
+    return {
+        "status": "ok" if authenticated else "warning",
+        "available": True,
+        "authenticated": authenticated,
+        "checked": True,
+        "diagnostics": [] if authenticated else ["gh auth status did not report an authenticated github.com account."],
+    }
+
+
+def check_worker(profile_id: str) -> dict[str, Any]:
+    try:
+        profile = load_profile(LAB_ROOT, profile_id)
+        check = check_profile_executable(profile, path_env=os.environ.get("PATH"))
+    except AgentWorkerProfileError as exc:
+        return {
+            "status": "error",
+            "profile": profile_id,
+            "available": False,
+            "diagnostics": [redact_text(str(exc))],
+        }
+    available = bool(check.get("available"))
+    resolved_path = redact_path(check.get("resolved_path"))
+    if available:
+        diagnostics = [f"Required executable '{profile.executable}' was found at {resolved_path}."]
+    else:
+        diagnostics = [
+            f"Required executable '{profile.executable}' for profile '{profile.id}' was not found on PATH.",
+            "Install the worker CLI or adjust PATH before using this profile for execution.",
+        ]
+    return {
+        "status": "ok" if available else "warning",
+        "profile": profile.id,
+        "display_name": profile.display_name,
+        "executable": profile.executable,
+        "available": available,
+        "resolved_path": resolved_path,
+        "supports_exec": profile.supports_exec,
+        "supports_goal": profile.supports_goal,
+        "supports_json_events": profile.supports_json_events,
+        "diagnostics": diagnostics,
+    }
+
+
+def check_sandbox_runtimes() -> dict[str, Any]:
+    runtimes = {name: {"available": bool(shutil.which(name)), "path": command_path(name)} for name in OPTIONAL_RUNTIME_COMMANDS}
+    available = [name for name, check in runtimes.items() if check["available"]]
+    return {
+        "status": "ok" if available else "warning",
+        "runtimes": runtimes,
+        "diagnostics": [] if available else ["No optional container sandbox runtime was found on PATH."],
+    }
+
+
+def check_run_directory(path: Path) -> dict[str, Any]:
+    diagnostics: list[str] = []
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(prefix=".gra-doctor-", dir=path, delete=True) as handle:
+            handle.write(b"ok")
+            handle.flush()
+    except OSError as exc:
+        diagnostics.append(f"Run directory is not writable: {type(exc).__name__}")
+        return {"status": "error", "path": redact_path(path), "writable": False, "diagnostics": diagnostics}
+    return {"status": "ok", "path": redact_path(path), "writable": True, "diagnostics": diagnostics}
+
+
+def check_resources() -> dict[str, Any]:
+    entries: dict[str, dict[str, Any]] = {}
+    missing: list[str] = []
+    for name, relative in REQUIRED_RESOURCE_PATHS.items():
+        path = LAB_ROOT / relative
+        exists = path.is_file()
+        entries[name] = {"path": relative.as_posix(), "exists": exists}
+        if not exists:
+            missing.append(name)
+    return {
+        "status": "ok" if not missing else "error",
+        "root": redact_path(LAB_ROOT),
+        "entries": entries,
+        "diagnostics": [] if not missing else [f"Missing packaged resources: {', '.join(sorted(missing))}"],
+    }
+
+
+def summarize(checks: dict[str, Any]) -> str:
+    statuses = []
+    for value in checks.values():
+        if isinstance(value, dict) and "status" in value:
+            statuses.append(str(value["status"]))
+    if "error" in statuses:
+        return "error"
+    if "warning" in statuses:
+        return "warning"
+    return "ok"
+
+
+def build_report(args: argparse.Namespace) -> dict[str, Any]:
+    runs_dir = Path(args.runs_dir or os.environ.get("GENAI_REPO_AUDITOR_RUNS_DIR") or LAB_ROOT / "runs").expanduser().resolve()
+    checks = {
+        "python": check_python(),
+        "git": check_command("git", required=True, probe_external_tools=args.probe_external_tools),
+        "gh": check_command("gh", required=True, probe_external_tools=args.probe_external_tools),
+        "gh_auth": check_gh_auth(probe_external_tools=args.probe_external_tools),
+        "worker": check_worker(args.worker_profile),
+        "sandbox_runtime": check_sandbox_runtimes(),
+        "run_directory": check_run_directory(runs_dir),
+        "packaged_resources": check_resources(),
+    }
+    overall = summarize(checks)
+    return {
+        "schema_version": "1",
+        "tool": "genai-repo-auditor",
+        "version": auditor_version(LAB_ROOT),
+        "external_tool_probes_enabled": bool(args.probe_external_tools),
+        "overall_status": overall,
+        "checks": checks,
+    }
+
+
+def print_text(report: dict[str, Any]) -> None:
+    print("GenAI Repo Auditor doctor")
+    print(f"Version: {report['version']}")
+    print(f"Overall: {report['overall_status']}")
+    checks = report["checks"]
+    for name in sorted(checks):
+        check = checks[name]
+        print(f"{name}: {check.get('status')}")
+        for diagnostic in check.get("diagnostics", []):
+            print(f"  - {diagnostic}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Run redacted local readiness diagnostics for GenAI Repo Auditor")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {auditor_version(LAB_ROOT)}")
+    parser.add_argument("--json", action="store_true", help="Emit JSON diagnostics")
+    parser.add_argument("--runs-dir", help="Run directory root to check for local write readiness")
+    parser.add_argument("--worker-profile", default="codex-cli", help="Agent worker profile to check without executing the worker. Default: codex-cli")
+    parser.add_argument(
+        "--probe-external-tools",
+        action="store_true",
+        help="Execute trusted git/gh readiness probes such as --version and gh auth status. Disabled by default.",
+    )
+    parser.add_argument("--strict", action="store_true", help="Exit non-zero when required readiness checks report errors")
+    args = parser.parse_args()
+
+    report = build_report(args)
+    if args.json:
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+    else:
+        print_text(report)
+    if args.strict and report["overall_status"] == "error":
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

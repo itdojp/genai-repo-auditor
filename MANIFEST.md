@@ -14,6 +14,7 @@ bin/gra-batch
 bin/gra-benchmark
 bin/gra-chains
 bin/gra-dashboard
+bin/gra-doctor
 bin/gra-evidence-graph
 bin/gra-gapfill
 bin/gra-index

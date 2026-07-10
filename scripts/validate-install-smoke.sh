@@ -69,6 +69,7 @@ for path in bin/gra-*; do
 done
 
 gra-audit --help >/dev/null
+gra-doctor --help >/dev/null
 gra-validate-report --help >/dev/null
 smoke_run="$work_dir/minimal-run"
 cp -R "$ROOT/tests/fixtures/minimal-run" "$smoke_run"

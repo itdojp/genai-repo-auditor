@@ -14,7 +14,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 - `--network` enables network access inside the Codex sandbox for commands that call Codex. It is disabled by default and should remain disabled unless an approved workflow requires it.
 - `--model` defaults to `gpt-5.5` and `--effort` defaults to `xhigh` for Codex-driven commands. Command-line `--model` / `--effort` options are the portable override mechanism across Codex-driven commands.
 - Non-interactive `codex exec` invocations set approval behavior through `-c 'approval_policy="never"'` rather than the interactive-only `--ask-for-approval` flag, preserving compatibility with `codex-cli 0.135.0`.
-- Codex-driven commands derive the default executable name from the built-in `codex-cli` worker profile while preserving the tested `codex exec` argument construction in `lib/gralib.py`. `gra-agent-check` can list profiles and check whether the required local worker executable is available without running the worker.
+- Codex-driven commands derive the default executable name from the built-in `codex-cli` worker profile while preserving the tested `codex exec` argument construction in `lib/gralib.py`. `gra-agent-check` can list profiles and check whether the required local worker executable is available without running the worker. `gra-doctor` combines those local readiness checks with redacted package, Git/GitHub CLI availability, opt-in authentication-state probes, sandbox-runtime, and writable-run-directory diagnostics.
 - Executable target-code validation should be gated by an explicit sandbox profile. `gra-sandbox-check` records readiness for `source-only`, `local-test`, `container`, `gvisor`, and `vm` profiles without executing target code.
 - Environment-variable model/effort defaults are limited to `gra-audit` and `gra-batch`, whether invoked from source-checkout wrappers or installed package console scripts. They read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-trace`, `gra-no-findings`, `gra-workflow-profile`, `gra-metrics`, `gra-benchmark`, `gra-evidence-graph`, `gra-import-findings`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
 - Python commands use `argparse`; missing required arguments or invalid choices normally exit with status `2`.
@@ -24,7 +24,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 
 | Phase | Commands | Typical output |
 |---|---|---|
-| Worker profile diagnostics | `gra-agent-check` | Built-in and example worker profile list, executable availability diagnostics |
+| Install readiness diagnostics | `gra-doctor`, `gra-agent-check` | Redacted local readiness report, package resource checks, worker profile and executable availability diagnostics |
 | Prepare / full audit | `gra-audit` | Run directory, cloned target, rendered prompts, Codex output, reports |
 | Batch operation | `gra-batch` | Batch metadata, per-repository logs, `batch-results.json` |
 | Target queue | `gra-targets` | `reports/targets.json`, target queue updates |
@@ -48,7 +48,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Field | Details |
 |---|---|
 | Purpose | List local AI worker adapter profiles and verify that a selected profile's required executable is present on `PATH` without executing the worker. |
-| Workflow category | Worker profile diagnostics. |
+| Workflow category | Install readiness diagnostics. |
 | Required inputs | One action: `--list` or `--profile PROFILE_ID`. Built-in profiles are loaded from `templates/agent-workers/`. |
 | Key options | `--list`, `--profile PROFILE_ID`, `--json`, and `--profiles-dir DIR` for tests or local profile experiments. |
 | Generated outputs | Text table or JSON profile summaries for `--list`; text or JSON availability diagnostics for `--profile`. No audit run artifacts are written. |
@@ -62,6 +62,28 @@ Examples:
 gra-agent-check --list
 gra-agent-check --profile codex-cli
 gra-agent-check --profile codex-cli --json
+```
+
+## `gra-doctor`
+
+| Field | Details |
+|---|---|
+| Purpose | Run redacted local readiness diagnostics for an installed or source-checkout GenAI Repo Auditor environment before an audit. |
+| Workflow category | Install readiness diagnostics. |
+| Required inputs | None. Use `--runs-dir DIR` to select the run-directory root that should be probed for local write readiness. |
+| Key options | `--json`, `--runs-dir DIR`, `--worker-profile PROFILE_ID`, `--probe-external-tools`, and `--strict`. |
+| Generated outputs | Text or JSON diagnostics on stdout. The run-directory probe creates and removes one temporary local file under `--runs-dir`. No audit run, cloned target repository, report, issue draft, or GitHub mutation is created. |
+| Exit status behavior | `0` by default, including warning/error diagnostics for missing optional local tools; with `--strict`, exits `1` when required readiness checks report errors. Usage errors exit with argparse status `2`. |
+| Security / disclosure cautions | The default command does not execute the configured worker, run audits, clone audited repositories, create reports or issues, execute `git`/`gh`, mutate GitHub state, or print credential values. By default it only resolves `git`/`gh` paths. `--probe-external-tools` executes trusted `git --version`, `gh --version`, and `gh auth status --hostname github.com`; use it only after confirming `PATH` points to expected local binaries. Probe output is reduced/redacted, credential-like environment variables are not passed to probe subprocesses, and `gh auth status` stdout/stderr is discarded. Paths are redacted for the user's home directory and secret-like path segments. |
+| Related docs | [`docs/LOCAL_INSTALL_AND_AUDIT.md`](LOCAL_INSTALL_AND_AUDIT.md), [`docs/AGENT_WORKERS.md`](AGENT_WORKERS.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
+
+Examples:
+
+```bash
+gra-doctor
+gra-doctor --json --runs-dir "$HOME/.local/state/genai-repo-auditor/runs"
+gra-doctor --probe-external-tools --json
+gra-doctor --worker-profile codex-cli --strict
 ```
 
 ## `gra-sandbox-check`

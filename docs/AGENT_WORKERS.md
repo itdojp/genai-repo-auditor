@@ -36,7 +36,7 @@ A profile contains:
 }
 ```
 
-The `executable` field is a command name, not an absolute path. `gra-agent-check` resolves it through `PATH` and does not execute the worker binary.
+The `executable` field is a command name, not an absolute path. `gra-agent-check` resolves it through `PATH` and does not execute the worker binary. `gra-doctor` includes the same worker availability check as part of broader redacted local readiness diagnostics.
 
 ## Checking profiles
 

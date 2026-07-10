@@ -67,6 +67,7 @@ codex --help >/dev/null
 python3 --version
 gra-audit --version
 gra-agent-check --list
+gra-doctor --json --runs-dir "$PWD/runs"
 ```
 
 For a fresh local install and first `OWNER/REPO` audit, see:
@@ -283,6 +284,7 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 |---|---|
 | `gra-audit` | Clone a repo, create a run, execute full audit, prepare goal mode |
 | `gra-agent-check` | List and verify local AI worker adapter profiles |
+| `gra-doctor` | Run redacted local install and readiness diagnostics without executing an audit |
 | `gra-recon` | Generate inventory, threat model, and attack surface |
 | `gra-targets` | Generate, list, show, and update target queue |
 | `gra-run-state` | Record paused/resume/blocked run state and guard deep-review starts |
