@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.4.0 - 2026-07-10
+
+Release-readiness, controlled remediation, observability, and public-safe dogfood workflow update.
+
+- Added vendor-neutral AI worker profiles, worker readiness reporting with `gra-agent-check`, and explicit model/effort/worker metadata boundaries.
+- Added sandbox profiles and `gra-sandbox-check` so executable validation can fail closed on filesystem, network, runtime, and target-isolation requirements.
+- Added bounded remediation candidates with `gra-remediate`, disposable worktree enforcement, and a patch-validation ladder that keeps generated changes local until reviewed.
+- Added the known-findings novelty ledger and multi-vote adversarial validation routing to distinguish new, duplicate, downgraded, invalidated, and human-review-required results.
+- Added structured command events, run-state pause/resume/blocked handling, canonical Issue publication and duplicate-decision ledgers, taxonomy preflight normalization, gapfill metrics, and artifact-retention manifest hygiene.
+- Added public-safe metrics summaries, workflow-health benchmark gates, evidence graph reporting, and external finding import without promoting imported or scanner evidence directly to confirmed findings.
+- Added explicit no-findings reporting and a recon-only workflow profile so intentionally scoped omissions remain distinct from failures or missing evidence.
+- Added operator and customer runbooks, a self-dogfood campaign, an ITDO_ERP4 dogfood campaign plan, internal reporting templates, public-safe case studies, and conservative launch/demo materials.
+- Hardened advanced validation and publication-plan binding, trace reachability safety, worktree separation checks, safe proof command records, target review-depth serialization, and Codex execution configuration.
+- Added reproducible source archives, SHA-256 checksums, a CycloneDX source SBOM, guarded GitHub Release creation, and GitHub build-provenance/SBOM attestations through an explicit human-dispatched release workflow.
+- Preserved local-first and defensive-only boundaries: release archives exclude local audit runs, scanner output, target clones, SQLite stores, transcripts, findings, proof artifacts, remediation patches, Issue drafts, credentials, and private security data.
+
 ## v0.3.0 - 2026-05-27
 
 Advanced chain, validation, proof, coverage, and reachability workflow update.

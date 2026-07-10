@@ -41,6 +41,13 @@ bin/gra-workflow-profile
 bin/gra-worktree-check
 ```
 
+## Release tooling
+
+```text
+.github/workflows/release.yml
+scripts/build_release.py
+```
+
 ## Prompts
 
 ```text

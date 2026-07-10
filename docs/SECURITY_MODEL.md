@@ -147,3 +147,18 @@ self-validation workflow prepares an offline fixture audit run and exercises a
 minimal `gra-audit --mode exec` path with mocked `gh` and `codex` commands.
 This verifies the primary non-interactive path without contacting a target
 repository or enabling Codex network access.
+
+## Release supply-chain boundary
+
+Source release archives are generated from a committed Git object rather than
+the mutable working tree. The release builder rejects tracked local audit
+artifacts, target clones, scanner output, Issue drafts, proof/remediation
+artifacts, transcripts, SQLite/SARIF output, and local agent state. It produces
+SHA-256 checksums and a bounded CycloneDX source SBOM.
+
+The guarded release workflow separates read-only candidate construction from a
+conditional publication job. Publication requires an existing annotated
+version tag, grants `id-token: write`, `attestations: write`, and
+`contents: write` only to that job, creates GitHub artifact attestations, and
+never creates or moves tags. Release publication remains an explicit maintainer
+action. See [`RELEASE_PROCESS.md`](RELEASE_PROCESS.md).

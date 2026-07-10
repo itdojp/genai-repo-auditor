@@ -1,5 +1,11 @@
 # Report contract
 
+> Release boundary: every artifact described here is local run data and is
+> excluded from GenAI Repo Auditor source release assets. The release builder
+> archives tracked repository source only and rejects tracked run reports,
+> scanner output, Issue drafts, proof/remediation artifacts, and local stores.
+> See [`RELEASE_PROCESS.md`](RELEASE_PROCESS.md).
+
 監査 run は `reports/` に以下のような成果物を持ちます。`AUDIT_*` /
 `FINDINGS.md` / `findings.json` は Codex による監査出力であり、
 `PROVENANCE_POSTURE.md` / `provenance-posture.json` は `gra-recon` が

@@ -60,6 +60,12 @@ class ManifestTests(unittest.TestCase):
         }
         self.assert_manifest_section("Commands", expected)
 
+    def test_manifest_lists_release_tooling(self) -> None:
+        self.assert_manifest_section(
+            "Release tooling",
+            {".github/workflows/release.yml", "scripts/build_release.py"},
+        )
+
     def test_manifest_lists_prompt_surface(self) -> None:
         self.assert_manifest_section("Prompts", relative_files("prompts", pattern="*.md"))
 

@@ -79,6 +79,12 @@ For a fresh local install and first `OWNER/REPO` audit, see:
 - [`docs/dogfood/PUBLIC_SELF_DOGFOOD_CASE_STUDY.md`](docs/dogfood/PUBLIC_SELF_DOGFOOD_CASE_STUDY.md) for a public-safe self-dogfood example
 - [`docs/dogfood/PUBLIC_LAUNCH_CHECKLIST.md`](docs/dogfood/PUBLIC_LAUNCH_CHECKLIST.md) for public dogfood launch and recognition readiness checks
 
+Release source archives are built from committed Git objects and published with
+SHA-256 checksums, a CycloneDX source SBOM, and GitHub artifact attestations.
+Verify checksums and attestations before installing a downloaded release. See
+[`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md) for the artifact contents,
+verification commands, and the explicit human-controlled publication process.
+
 ## Quick start: full audit
 
 ```bash
