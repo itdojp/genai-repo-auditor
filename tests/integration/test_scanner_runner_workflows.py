@@ -48,6 +48,8 @@ class ScannerRunnerWorkflowTests(CliWorkflowTestCase):
             "    time.sleep(5)\n"
             "if mode == 'nonzero':\n"
             "    raise SystemExit(7)\n"
+            "if mode == 'oversized-log':\n"
+            "    sys.stdout.write('x' * 1000001)\n"
             "output = output_dir / f'{adapter}.json'\n"
             "if mode == 'symlink-output':\n"
             "    output.symlink_to('/etc/passwd')\n"
@@ -165,6 +167,7 @@ class ScannerRunnerWorkflowTests(CliWorkflowTestCase):
                 self.assertIn("--read-only", runtime["args"])
                 self.assertIn("--pull=never", runtime["args"])
                 self.assertNotIn("--user", runtime["args"])
+                self.assertIn("/tmp:rw,noexec,nosuid,nodev,size=67108864", runtime["args"])
                 self.assertTrue(any("dst=/target,readonly" in value for value in runtime["args"]))
                 self.assertTrue(any("@sha256:" in value for value in runtime["args"]))
                 self.assertFalse(runtime["secret_visible"])
@@ -210,6 +213,11 @@ class ScannerRunnerWorkflowTests(CliWorkflowTestCase):
         cp_oversized = self.execute_scanner(run_dir, "gitleaks", mode="oversized")
         self.assertEqual(1, cp_oversized.returncode, cp_oversized.stderr)
         self.assertEqual("output-limit-exceeded", json.loads(cp_oversized.stdout)["status"])
+
+        run_dir = self.copy_fixture_run("minimal-run")
+        cp_log = self.execute_scanner(run_dir, "gitleaks", mode="oversized-log")
+        self.assertEqual(1, cp_log.returncode, cp_log.stderr)
+        self.assertEqual("log-limit-exceeded", json.loads(cp_log.stdout)["status"])
 
     def test_execute_rejects_network_and_non_enforced_profiles(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

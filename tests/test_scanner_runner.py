@@ -15,6 +15,7 @@ from scanner_runner import (  # noqa: E402
     CONTAINER_IMAGES,
     ScannerExecutionError,
     _container_command,
+    _directory_size,
     _publish_output,
     _runtime_prefix,
     _safe_runtime_environment,
@@ -79,6 +80,26 @@ class ScannerRunnerTests(TestCase):
                 with self.assertRaisesRegex(ScannerExecutionError, "publish"):
                     _publish_output(source, destination)
                 self.assertEqual("existing\n", destination.read_text(encoding="utf-8"))
+        finally:
+            with contextlib.suppress(OSError):
+                tmp_parent.rmdir()
+
+    def test_directory_size_rejects_symlinks_without_traversal(self) -> None:
+        tmp_parent = REPO_ROOT / ".test-tmp"
+        tmp_parent.mkdir(exist_ok=True)
+        try:
+            with tempfile.TemporaryDirectory(dir=tmp_parent) as tmp:
+                root = Path(tmp)
+                outside = root / "outside"
+                staging = root / "staging"
+                outside.mkdir()
+                staging.mkdir()
+                (outside / "large").write_bytes(b"x" * 100)
+                try:
+                    (staging / "link").symlink_to(outside, target_is_directory=True)
+                except OSError as exc:
+                    self.skipTest(f"symlink not available: {exc}")
+                self.assertGreater(_directory_size(staging, 10), 10)
         finally:
             with contextlib.suppress(OSError):
                 tmp_parent.rmdir()

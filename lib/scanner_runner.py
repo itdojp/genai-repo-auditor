@@ -119,16 +119,24 @@ def _ensure_directory(path: Path, *, root: Path) -> None:
 
 def _directory_size(path: Path, limit: int) -> int:
     total = 0
-    for entry in path.rglob("*"):
+    pending = [path]
+    while pending:
+        current = pending.pop()
         try:
-            if entry.is_symlink():
-                return limit + 1
-            if entry.is_file():
-                total += entry.stat().st_size
+            with os.scandir(current) as entries:
+                for entry in entries:
+                    if entry.is_symlink():
+                        return limit + 1
+                    if entry.is_file(follow_symlinks=False):
+                        total += entry.stat(follow_symlinks=False).st_size
+                    elif entry.is_dir(follow_symlinks=False):
+                        pending.append(Path(entry.path))
+                    else:
+                        return limit + 1
+                    if total > limit:
+                        return total
         except OSError:
             return limit + 1
-        if total > limit:
-            return total
     return total
 
 
@@ -238,7 +246,7 @@ def _container_command(
             "--mount",
             _container_mount(staging, "/output"),
             "--tmpfs",
-            "/tmp:rw,noexec,nosuid,size=67108864",
+            "/tmp:rw,noexec,nosuid,nodev,size=67108864",
             image,
             *adapter_args,
         )
@@ -393,6 +401,13 @@ def execute_scan(
                     break
                 time.sleep(_POLL_SECONDS)
             returncode = process.returncode if process.returncode is not None else -1
+            if failure is None:
+                if max(_bounded_file_size(log_out), _bounded_file_size(log_err)) > _LOG_LIMIT_BYTES:
+                    failure = "log-limit-exceeded"
+                elif _directory_size(staging, adapter.max_output_bytes + _LOG_LIMIT_BYTES) > (
+                    adapter.max_output_bytes + _LOG_LIMIT_BYTES
+                ):
+                    failure = "output-limit-exceeded"
     except (OSError, subprocess.SubprocessError) as exc:
         _cleanup_container(prefix, name, safe_env)
         _remove_staging(staging, staging_root)
