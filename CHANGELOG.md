@@ -7,6 +7,7 @@ Release-readiness, controlled remediation, observability, and public-safe dogfoo
 - Added vendor-neutral AI worker profiles, worker readiness reporting with `gra-agent-check`, and explicit model/effort/worker metadata boundaries.
 - Added sandbox profiles and `gra-sandbox-check` so executable validation can fail closed on filesystem, network, runtime, and target-isolation requirements.
 - Added the non-executing `gra-scan` adapter registry and safe planning contract for approved offline-capable Gitleaks and Syft workflows.
+- Added explicit offline `gra-scan --execute` with digest-pinned pre-pulled images, enforced local container isolation, bounded output/results/time, and review-only raw artifacts.
 - Added bounded remediation candidates with `gra-remediate`, disposable worktree enforcement, and a patch-validation ladder that keeps generated changes local until reviewed.
 - Added the known-findings novelty ledger and multi-vote adversarial validation routing to distinguish new, duplicate, downgraded, invalidated, and human-review-required results.
 - Added structured command events, run-state pause/resume/blocked handling, canonical Issue publication and duplicate-decision ledgers, taxonomy preflight normalization, gapfill metrics, and artifact-retention manifest hygiene.
