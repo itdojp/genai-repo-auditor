@@ -20,7 +20,10 @@ VALIDATOR_PATH = REPO_ROOT / "bin" / "gra-validate-report"
 SCHEMAS = REPO_ROOT / "templates" / "reports"
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 from benchmark import validate_benchmark_payload as validate_benchmark_payload_internal  # noqa: E402
+from validators.advanced import IMPORTED_FINDING_APPEND_STATUSES  # noqa: E402
+from validators.common import load_schema as load_schema_from_root, validate_schema  # noqa: E402
 from validators.findings import REQUIRED_FINDING, REQUIRED_TOP  # noqa: E402
+from validators.registry import ValidationContext, report_validator_registry  # noqa: E402
 from validators.targets import REQUIRED_TARGET  # noqa: E402
 
 
@@ -692,7 +695,7 @@ class ReportContractTests(unittest.TestCase):
             set(imported_item["required"]),
         )
         self.assertEqual(
-            sorted(VALIDATOR.IMPORTED_FINDING_APPEND_STATUSES),
+            sorted(IMPORTED_FINDING_APPEND_STATUSES),
             sorted(imported_item["properties"]["append_status"]["enum"]),
         )
         self.assertEqual(
@@ -1364,6 +1367,49 @@ class ReportContractTests(unittest.TestCase):
         self.assertIn("scanner_index: expected type object, got array", cp.stderr)
         self.assertNotIn("Traceback", cp.stderr)
 
+    def test_advanced_artifact_validators_reject_non_object_json_without_crashing(self) -> None:
+        run_dir = self.copy_run()
+        reports = run_dir / "reports"
+        (reports / "dependencies.json").write_text("[]\n", encoding="utf-8")
+        (reports / "chains.json").write_text("[]\n", encoding="utf-8")
+        (reports / "validation.json").write_text("[]\n", encoding="utf-8")
+        (reports / "imported-findings.json").write_text("[]\n", encoding="utf-8")
+
+        cp = self.run_validator(run_dir)
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("dependencies: expected type object, got array", cp.stderr)
+        self.assertIn("chains: expected type object, got array", cp.stderr)
+        self.assertIn("validation: expected type object, got array", cp.stderr)
+        self.assertIn("imported_findings: expected type object", cp.stderr)
+        self.assertNotIn("Traceback", cp.stderr)
+
+    def test_advanced_registry_uses_validation_context_lab_root_for_schema_loading(self) -> None:
+        run_dir = self.copy_run()
+        reports = run_dir / "reports"
+        (reports / "dependencies.json").write_text(
+            json.dumps({"components": [], "vulnerabilities": []}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        fake_lab = self.work_dir / "fake-lab"
+        schema_dir = fake_lab / "templates" / "reports"
+        schema_dir.mkdir(parents=True)
+        (schema_dir / "dependencies.schema.json").write_text(
+            json.dumps({"type": "object", "required": ["custom_required"], "properties": {}}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        findings_path = reports / "findings.json"
+        errors: list[str] = []
+        context = ValidationContext(
+            lab_root=fake_lab,
+            run_dir=run_dir,
+            findings_path=findings_path,
+            findings_data=self.load_json(findings_path),
+            errors=errors,
+        )
+
+        self.assertEqual({"dependencies": True}, report_validator_registry().run(context, ["dependencies"]))
+        self.assertIn("dependencies.custom_required: missing required field", errors)
+
     def test_run_manifest_retention_hygiene_validates_latest_and_archive_artifacts(self) -> None:
         run_dir = self.copy_run()
         (run_dir / "run-summary.txt").write_text("final_status=0\n", encoding="utf-8")
@@ -1459,7 +1505,7 @@ class ReportContractTests(unittest.TestCase):
             ],
         }
         errors: list[str] = []
-        VALIDATOR.validate_schema(scanner_index, VALIDATOR.load_schema("scanner-index.schema.json"), "scanner_index", errors)
+        validate_schema(scanner_index, load_schema_from_root(REPO_ROOT, "scanner-index.schema.json"), "scanner_index", errors)
         self.assertEqual([], errors)
 
         invalid = json.loads(json.dumps(scanner_index))
@@ -1467,7 +1513,7 @@ class ReportContractTests(unittest.TestCase):
         invalid["results"][0]["raw_bytes"] = -1
         invalid["results"][0]["normalized_leads_count"] = -1
         errors = []
-        VALIDATOR.validate_schema(invalid, VALIDATOR.load_schema("scanner-index.schema.json"), "scanner_index", errors)
+        validate_schema(invalid, load_schema_from_root(REPO_ROOT, "scanner-index.schema.json"), "scanner_index", errors)
         joined = "\n".join(errors)
         self.assertIn("scanner_index.results[0].path: missing required field", joined)
         self.assertIn("scanner_index.results[0].raw_bytes: value -1 is below minimum 0", joined)
