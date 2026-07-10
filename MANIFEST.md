@@ -31,6 +31,7 @@ bin/gra-research
 bin/gra-run-state
 bin/gra-sandbox-check
 bin/gra-sarif
+bin/gra-scan
 bin/gra-scanner-triage
 bin/gra-store
 bin/gra-targets
@@ -119,7 +120,9 @@ templates/reports/proofs.schema.json
 templates/reports/remediation-candidates.schema.json
 templates/reports/run-manifest.schema.json
 templates/reports/run-state.schema.json
+templates/reports/scanner-adapter.schema.json
 templates/reports/scanner-index.schema.json
+templates/reports/scanner-plan.schema.json
 templates/reports/targets.schema.json
 templates/reports/traces.schema.json
 templates/reports/validation.schema.json

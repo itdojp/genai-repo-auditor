@@ -32,6 +32,7 @@ COMMANDS: tuple[str, ...] = (
     "gra-run-state",
     "gra-sandbox-check",
     "gra-sarif",
+    "gra-scan",
     "gra-scanner-triage",
     "gra-store",
     "gra-targets",

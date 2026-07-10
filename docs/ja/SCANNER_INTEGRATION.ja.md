@@ -2,9 +2,33 @@
 
 英語版は [`docs/SCANNER_INTEGRATION.md`](../SCANNER_INTEGRATION.md) を参照してください。この文書では、既存 scanner output を GenAI Repo Auditor の run directory に取り込む際の日本語運用指針をまとめます。
 
-## 前提
+## local scanner の安全な計画
 
-`gra-ingest` は scanner を実行しません。Semgrep、Gitleaks、Trivy、Grype、Checkov、CodeQL などで取得済みの local output をコピーし、triage 用の normalized lead を生成します。
+`gra-scan` は、承認対象の local scanner adapter を列挙し、実行予定の
+argument array を確認するための command です。現在の `--list` と既定の
+`--plan` は scanner や version command を実行せず、target content を読み取らず、
+network access や output directory の作成も行いません。containment と symlink
+check に必要な run context と path metadata のみ確認します。
+
+```bash
+gra-scan --run runs/OWNER__REPO/RUN_ID --list
+gra-scan --run runs/OWNER__REPO/RUN_ID --tool gitleaks
+gra-scan --run runs/OWNER__REPO/RUN_ID --tool syft --plan --sandbox-profile container --json
+```
+
+初期 adapter は offline-capable な `gitleaks` と `syft` です。plan は executable
+の有無、対応 OS、network 要否、sandbox profile、read/write path、timeout、
+output/result 上限、ingest format、secret handling、exit semantics を machine-readable
+に示しますが、sandbox readiness の承認や scanner 実行を意味しません。
+
+path traversal、symlink、未宣言の network access、任意 shell string は拒否します。
+対象範囲は local repository の SAST/SCA/secret scan と SBOM generation です。
+DAST、live endpoint probing、external-host scan、brute force、credential use、
+production/staging access は禁止です。
+
+## 既存 scanner output の取り込み
+
+`gra-ingest` 自体は scanner を実行しません。Semgrep、Gitleaks、Trivy、Grype、Checkov、CodeQL などで取得済みの local output をコピーし、triage 用の normalized lead を生成します。
 
 ```bash
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool semgrep --file semgrep.json --format json

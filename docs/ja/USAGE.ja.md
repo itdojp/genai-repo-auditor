@@ -135,7 +135,15 @@ gra-batch --repo-list repos.txt --concurrency 1 --mode exec
 
 ## scanner output の取り込み
 
-GenAI Repo Auditor は scanner を実行しません。別途取得済みの scanner output を run directory に取り込み、redacted normalized lead として triage します。
+実行前に、non-executing な adapter list/plan で command、sandbox、network、path、
+output limit を確認できます。
+
+```bash
+gra-scan --run "$RUN_DIR" --list
+gra-scan --run "$RUN_DIR" --tool gitleaks --plan
+```
+
+現在の `gra-scan` は list/plan 専用で scanner を実行しません。別途取得済みの scanner output を run directory に取り込み、redacted normalized lead として triage します。
 
 ```bash
 gra-ingest --run "$RUN_DIR" --tool semgrep --file semgrep.json --format json

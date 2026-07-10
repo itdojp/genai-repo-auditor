@@ -22,6 +22,7 @@ SCHEMAS = REPO_ROOT / "templates" / "reports"
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 from benchmark import validate_benchmark_payload as validate_benchmark_payload_internal  # noqa: E402
 from run_events import COMMAND_EVENT_COMMANDS, COMMAND_EVENT_PHASES, COMMAND_EVENT_STATUSES, append_command_event, start_command_event  # noqa: E402
+from scanner_adapters import list_adapters  # noqa: E402
 from validators.advanced import IMPORTED_FINDING_APPEND_STATUSES  # noqa: E402
 from validators.common import load_schema as load_schema_from_root, validate_schema  # noqa: E402
 from validators.findings import REQUIRED_FINDING, REQUIRED_TOP  # noqa: E402
@@ -170,6 +171,8 @@ class ReportContractTests(unittest.TestCase):
         findings_schema = self.load_json(SCHEMAS / "findings.schema.json")
         target_schema = self.load_json(SCHEMAS / "targets.schema.json")
         scanner_schema = self.load_json(SCHEMAS / "scanner-index.schema.json")
+        scanner_adapter_schema = self.load_json(SCHEMAS / "scanner-adapter.schema.json")
+        scanner_plan_schema = self.load_json(SCHEMAS / "scanner-plan.schema.json")
         manifest_schema = self.load_json(SCHEMAS / "run-manifest.schema.json")
         dependencies_schema = self.load_json(SCHEMAS / "dependencies.schema.json")
         validation_schema = self.load_json(SCHEMAS / "validation.schema.json")
@@ -188,6 +191,42 @@ class ReportContractTests(unittest.TestCase):
         duplicate_decision_schema = self.load_json(SCHEMAS / "duplicate-decision.schema.json")
         run_state_schema = self.load_json(SCHEMAS / "run-state.schema.json")
         command_event_schema = self.load_json(SCHEMAS / "command-event.schema.json")
+
+        adapter_required = {
+            "schema_version",
+            "id",
+            "display_name",
+            "executable",
+            "version_check",
+            "command_template",
+            "supported_operating_systems",
+            "network_required",
+            "approved_sandbox_profiles",
+            "target_access",
+            "read_path_templates",
+            "write_path_templates",
+            "output_format",
+            "ingest_tool",
+            "result_classification",
+            "secret_handling",
+            "timeout_seconds",
+            "max_output_bytes",
+            "max_results",
+            "exit_semantics",
+            "readiness",
+        }
+        self.assertEqual(adapter_required, set(scanner_adapter_schema["required"]))
+        plan_adapter_schema = scanner_plan_schema["properties"]["adapter"]
+        self.assertNotIn("$ref", plan_adapter_schema)
+        for key in ("type", "additionalProperties", "required", "properties"):
+            self.assertEqual(scanner_adapter_schema[key], plan_adapter_schema[key])
+        for adapter in list_adapters(path_env=str(self.work_dir / "missing-bin"))["adapters"]:
+            adapter_errors: list[str] = []
+            validate_schema(adapter, scanner_adapter_schema, f"adapter.{adapter['id']}", adapter_errors)
+            self.assertEqual([], adapter_errors)
+        self.assertEqual("plan", scanner_plan_schema["properties"]["mode"]["const"])
+        self.assertFalse(scanner_plan_schema["properties"]["scanner_executed"]["const"])
+        self.assertFalse(scanner_plan_schema["properties"]["network_accessed"]["const"])
 
         self.assertTrue(set(REQUIRED_TOP).issubset(findings_schema["required"]))
         finding_required = findings_schema["properties"]["findings"]["items"]["required"]

@@ -1,5 +1,49 @@
 # Scanner Integration
 
+## Safe local scanner planning
+
+`gra-scan` provides a versioned, static registry for approved local scanner
+adapters. Its current `--list` and default `--plan` modes are non-executing:
+they do not run scanners or version commands, read target contents, access the
+network, create output directories, or ingest results. Planning inspects only
+run context and path metadata needed for containment and symlink checks.
+
+```bash
+gra-scan --run runs/OWNER__REPO/RUN_ID --list
+gra-scan --run runs/OWNER__REPO/RUN_ID --list --json
+gra-scan --run runs/OWNER__REPO/RUN_ID --tool gitleaks
+gra-scan --run runs/OWNER__REPO/RUN_ID --tool syft --plan --sandbox-profile container --json
+```
+
+The initial offline-capable definitions are:
+
+- `gitleaks`: read-only directory secret scanning, JSON lead output, full tool
+  redaction, and later `gra-ingest --tool gitleaks` normalization;
+- `syft`: read-only filesystem SBOM generation in CycloneDX JSON and later
+  `gra-ingest --tool syft --format cyclonedx` dependency posture ingestion.
+
+Each machine-readable adapter contract declares its bare executable and version
+argument array, supported operating systems, network requirement, approved
+sandbox profiles, read/write paths, immutable argument template, timeout and
+output/result limits, ingest format, secret handling, exit semantics, and
+whether the output is scanner leads, posture evidence, or SBOM data. Planning
+reports binary presence but never executes the version check. The schema is
+[`templates/reports/scanner-adapter.schema.json`](../templates/reports/scanner-adapter.schema.json).
+Machine-readable plans use
+[`templates/reports/scanner-plan.schema.json`](../templates/reports/scanner-plan.schema.json).
+
+Plans reject unknown adapters, source-only/local-test execution profiles, path
+traversal, symlinked run paths, undeclared network access, and arbitrary shell
+arguments. All planned paths are run-relative. A valid plan is not sandbox
+readiness approval and does not authorize execution; executable scanner support
+must enforce the selected profile before running a tool.
+
+Approved scope is local repository SAST/SCA/secret scanning and SBOM generation.
+DAST, live endpoint probing, external-host scanning, brute force, credential
+use, and production/staging access remain prohibited.
+
+## Ingest existing scanner output
+
 The lab can ingest scanner outputs and ask Codex to triage them in repository context.
 
 Supported by convention:

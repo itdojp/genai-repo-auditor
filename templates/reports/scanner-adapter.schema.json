@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://itdojp.github.io/genai-repo-auditor/schemas/scanner-adapter.schema.json",
+  "title": "GenAI Repo Auditor scanner adapter contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "display_name",
+    "executable",
+    "version_check",
+    "command_template",
+    "supported_operating_systems",
+    "network_required",
+    "approved_sandbox_profiles",
+    "target_access",
+    "read_path_templates",
+    "write_path_templates",
+    "output_format",
+    "ingest_tool",
+    "result_classification",
+    "secret_handling",
+    "timeout_seconds",
+    "max_output_bytes",
+    "max_results",
+    "exit_semantics",
+    "readiness"
+  ],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+    "display_name": {"type": "string", "minLength": 1},
+    "executable": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$"},
+    "version_check": {"type": "array", "minItems": 2, "items": {"type": "string", "minLength": 1}},
+    "command_template": {"type": "array", "minItems": 2, "items": {"type": "string", "minLength": 1}},
+    "supported_operating_systems": {"type": "array", "minItems": 1, "items": {"enum": ["linux", "darwin", "windows"]}},
+    "network_required": {"type": "boolean"},
+    "approved_sandbox_profiles": {"type": "array", "minItems": 1, "items": {"enum": ["container", "gvisor", "vm"]}},
+    "target_access": {"const": "read-only"},
+    "read_path_templates": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "write_path_templates": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "output_format": {"type": "string", "minLength": 1},
+    "ingest_tool": {"type": "string", "minLength": 1},
+    "result_classification": {"enum": ["scanner-leads", "posture-evidence", "sbom-data"]},
+    "secret_handling": {"type": "string", "minLength": 1},
+    "timeout_seconds": {"type": "integer", "minimum": 1},
+    "max_output_bytes": {"type": "integer", "minimum": 1},
+    "max_results": {"type": "integer", "minimum": 1},
+    "exit_semantics": {"type": "object", "minProperties": 1},
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operating_system", "operating_system_supported", "executable_available", "version_check_executed"],
+      "properties": {
+        "operating_system": {"type": "string"},
+        "operating_system_supported": {"type": "boolean"},
+        "executable_available": {"type": "boolean"},
+        "version_check_executed": {"const": false}
+      }
+    }
+  }
+}
