@@ -23,6 +23,16 @@ SAFE_ARG_RE = re.compile(r"^[A-Za-z0-9_./{}:=+-]{1,128}$")
 COMMAND_CONTRACTS = {
     ("gra-recon", "--run", "{run}"),
     ("gra-targets", "--run", "{run}", "--generate"),
+    ("gra-scan", "--run", "{run}", "--tool", "syft", "--plan"),
+    ("gra-scan", "--run", "{run}", "--tool", "gitleaks", "--plan"),
+    ("gra-chains", "--run", "{run}"),
+    ("gra-proofs", "--run", "{run}", "--all-critical-high"),
+    ("gra-adversarial-validate", "--run", "{run}", "--all-critical-high"),
+    ("gra-validate-report", "--run", "{run}"),
+    ("gra-metrics", "--run", "{run}"),
+    ("gra-evidence-graph", "--run", "{run}"),
+    ("gra-dashboard", "--run", "{run}"),
+    ("gra-sarif", "--run", "{run}"),
 }
 FORBIDDEN_ARGUMENTS = {
     "--allow-public", "--apply", "--apply-plan", "--execute", "--network", "--publish",

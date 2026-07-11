@@ -235,7 +235,19 @@ def reports_dir(run_dir: Path) -> Path:
         current = current / part
         if current.is_symlink():
             raise OSError(f"reports_dir must not contain symlink components: {raw.as_posix()}")
-    return run_dir / raw
+    target_raw = Path(str(ctx.get("target_repo_dir") or "repo"))
+    if target_raw.is_absolute() or ".." in target_raw.parts:
+        raise OSError(f"target_repo_dir must be a relative path under the run directory: {target_raw.as_posix()}")
+    reports_path = run_dir / raw
+    reports_resolved = reports_path.resolve(strict=False)
+    target_resolved = (run_dir / target_raw).resolve(strict=False)
+    if (
+        reports_resolved == target_resolved
+        or reports_resolved in target_resolved.parents
+        or target_resolved in reports_resolved.parents
+    ):
+        raise OSError("reports_dir and target_repo_dir must not overlap")
+    return reports_path
 
 
 def command_events_path(run_dir: Path) -> Path:

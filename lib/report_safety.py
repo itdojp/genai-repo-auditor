@@ -4,6 +4,8 @@ import re
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Iterator, Tuple
 
+from run_events import reports_dir as configured_reports_dir
+
 MAX_ISSUE_BODY_BYTES = 256 * 1024
 SECRET_PATTERNS: Tuple[Tuple[str, re.Pattern[str]], ...] = (
     ("private key", re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")),
@@ -61,6 +63,13 @@ def validate_relative_repo_path(value: object, *, field_path: str) -> str:
 
 
 def safe_issue_body_path(run_dir: Path, issue_body_file: object, *, field_path: str = "issue_body_file", max_bytes: int = MAX_ISSUE_BODY_BYTES) -> Path:
+    try:
+        reports_root = configured_reports_dir(run_dir)
+    except OSError as exc:
+        raise ReportSafetyError(f"{field_path}: unsafe reports_dir: {exc}") from exc
+    issue_drafts_root = reports_root / "issue-drafts"
+    issue_drafts_ref = issue_drafts_root.relative_to(run_dir)
+    required_prefix = issue_drafts_ref.as_posix() + "/"
     raw = str(issue_body_file or "")
     if not raw:
         raise ReportSafetyError(f"{field_path}: issue_body_file must not be empty when an issue body file is used")
@@ -70,15 +79,18 @@ def safe_issue_body_path(run_dir: Path, issue_body_file: object, *, field_path: 
         raise ReportSafetyError(f"{field_path}: issue_body_file must use '/' separators")
     posix = PurePosixPath(raw)
     if posix.is_absolute() or PureWindowsPath(raw).is_absolute():
-        raise ReportSafetyError(f"{field_path}: issue_body_file must be relative under reports/issue-drafts/")
+        raise ReportSafetyError(f"{field_path}: issue_body_file must be relative under {required_prefix}")
     if any(part in {"", ".", ".."} for part in raw.split("/")):
         raise ReportSafetyError(f"{field_path}: issue_body_file must not contain empty, '.', or '..' segments")
-    if len(posix.parts) < 3 or posix.parts[0] != "reports" or posix.parts[1] != "issue-drafts":
-        raise ReportSafetyError(f"{field_path}: issue_body_file must be under reports/issue-drafts/")
+    if (
+        len(posix.parts) <= len(issue_drafts_ref.parts)
+        or posix.parts[:len(issue_drafts_ref.parts)] != issue_drafts_ref.parts
+    ):
+        raise ReportSafetyError(f"{field_path}: issue_body_file must be under {required_prefix}")
     if posix.suffix.lower() != ".md":
         raise ReportSafetyError(f"{field_path}: issue_body_file must be a .md file")
 
-    base = (run_dir / "reports" / "issue-drafts").resolve(strict=False)
+    base = issue_drafts_root.resolve(strict=False)
     candidate = run_dir / raw
     if not candidate.exists():
         raise ReportSafetyError(f"{field_path}: issue_body_file not found: {raw}")
@@ -87,7 +99,7 @@ def safe_issue_body_path(run_dir: Path, issue_body_file: object, *, field_path: 
             raise ReportSafetyError(f"{field_path}: issue_body_file must not be a symlink: {raw}")
     resolved = candidate.resolve(strict=True)
     if not _is_relative_to(resolved, base):
-        raise ReportSafetyError(f"{field_path}: issue_body_file escapes reports/issue-drafts/: {raw}")
+        raise ReportSafetyError(f"{field_path}: issue_body_file escapes {required_prefix}: {raw}")
     if not resolved.is_file():
         raise ReportSafetyError(f"{field_path}: issue_body_file is not a regular file: {raw}")
     size = resolved.stat().st_size

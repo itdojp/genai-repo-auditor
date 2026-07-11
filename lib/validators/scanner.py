@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from report_safety import ReportSafetyError
+from run_events import reports_dir as configured_reports_dir
 
 from .common import (
     validate_generated_at,
@@ -21,13 +22,16 @@ NORMALIZED_SCANNER_RESULTS_DIR = SCANNER_RESULTS_DIR / "normalized"
 def validate_scanner_index(context: ValidationContext) -> bool:
     run_dir = context.run_dir
     errors = context.errors
-    index_path = run_dir / SCANNER_RESULTS_DIR / "scanner-index.json"
+    reports_ref = configured_reports_dir(run_dir).relative_to(run_dir)
+    scanner_results_dir = reports_ref / "scanner-results"
+    normalized_scanner_results_dir = scanner_results_dir / "normalized"
+    index_path = run_dir / scanner_results_dir / "scanner-index.json"
     if not index_path.exists():
         return False
     try:
         validate_no_symlink_components(
             run_dir,
-            SCANNER_RESULTS_DIR / "scanner-index.json",
+            scanner_results_dir / "scanner-index.json",
             field_path="scanner_index",
         )
     except ReportSafetyError as exc:
@@ -60,7 +64,7 @@ def validate_scanner_index(context: ValidationContext) -> bool:
                 run_dir,
                 entry.get("path"),
                 field_path=f"{path}.path",
-                required_root=SCANNER_RESULTS_DIR,
+                required_root=scanner_results_dir,
                 missing_label="raw scanner artifact",
             )
         except ReportSafetyError as exc:
@@ -75,7 +79,7 @@ def validate_scanner_index(context: ValidationContext) -> bool:
                 run_dir,
                 normalized_path,
                 field_path=f"{path}.normalized_path",
-                required_root=NORMALIZED_SCANNER_RESULTS_DIR,
+                required_root=normalized_scanner_results_dir,
                 require_json=True,
                 missing_label="normalized scanner artifact",
             )

@@ -1,0 +1,155 @@
+{
+  "schema_version": "1",
+  "profile": "appsec-deep",
+  "profile_version": "1.0.0",
+  "description": "Run bounded application-security synthesis and validation from existing findings without network access.",
+  "stages": [
+    {
+      "id": "recon",
+      "command": [
+        "gra-recon",
+        "--run",
+        "{run}"
+      ],
+      "depends_on": [],
+      "required_inputs": [
+        "context.json",
+        "{target_repo_dir}"
+      ],
+      "outputs": [
+        "{reports_dir}/AUDIT_SUMMARY.md",
+        "{reports_dir}/THREAT_MODEL.md",
+        "{reports_dir}/ATTACK_SURFACE.md",
+        "{reports_dir}/agent-surface.json",
+        "{reports_dir}/provenance-posture.json"
+      ],
+      "skippable": false,
+      "skip_reason": null,
+      "network_allowed": false,
+      "mutation": "local-artifacts-only"
+    },
+    {
+      "id": "gitleaks-plan",
+      "command": [
+        "gra-scan",
+        "--run",
+        "{run}",
+        "--tool",
+        "gitleaks",
+        "--plan"
+      ],
+      "depends_on": [
+        "recon"
+      ],
+      "required_inputs": [
+        "context.json",
+        "{target_repo_dir}"
+      ],
+      "outputs": [],
+      "skippable": true,
+      "skip_reason": "Gitleaks planning is optional and never invokes the external scanner.",
+      "network_allowed": false,
+      "mutation": "local-artifacts-only"
+    },
+    {
+      "id": "targets",
+      "command": [
+        "gra-targets",
+        "--run",
+        "{run}",
+        "--generate"
+      ],
+      "depends_on": [
+        "recon"
+      ],
+      "required_inputs": [
+        "context.json",
+        "{reports_dir}/ATTACK_SURFACE.md",
+        "{reports_dir}/agent-surface.json",
+        "{reports_dir}/provenance-posture.json"
+      ],
+      "outputs": [
+        "{reports_dir}/targets.json"
+      ],
+      "skippable": false,
+      "skip_reason": null,
+      "network_allowed": false,
+      "mutation": "local-artifacts-only"
+    },
+    {
+      "id": "chains",
+      "command": [
+        "gra-chains",
+        "--run",
+        "{run}"
+      ],
+      "depends_on": [
+        "targets"
+      ],
+      "required_inputs": [
+        "context.json",
+        "{reports_dir}/findings.json",
+        "{reports_dir}/targets.json"
+      ],
+      "outputs": [
+        "{reports_dir}/chains.json",
+        "{reports_dir}/ATTACK_CHAINS.md"
+      ],
+      "skippable": false,
+      "skip_reason": null,
+      "network_allowed": false,
+      "mutation": "local-artifacts-only"
+    },
+    {
+      "id": "proofs",
+      "command": [
+        "gra-proofs",
+        "--run",
+        "{run}",
+        "--all-critical-high"
+      ],
+      "depends_on": [
+        "chains"
+      ],
+      "required_inputs": [
+        "context.json",
+        "{reports_dir}/findings.json",
+        "{reports_dir}/chains.json"
+      ],
+      "outputs": [
+        "{reports_dir}/proofs.json",
+        "{reports_dir}/PROOFS.md"
+      ],
+      "skippable": false,
+      "skip_reason": null,
+      "network_allowed": false,
+      "mutation": "local-artifacts-only"
+    },
+    {
+      "id": "adversarial-validation",
+      "command": [
+        "gra-adversarial-validate",
+        "--run",
+        "{run}",
+        "--all-critical-high"
+      ],
+      "depends_on": [
+        "proofs"
+      ],
+      "required_inputs": [
+        "context.json",
+        "{reports_dir}/findings.json",
+        "{reports_dir}/chains.json",
+        "{reports_dir}/proofs.json"
+      ],
+      "outputs": [
+        "{reports_dir}/validation.json",
+        "{reports_dir}/VALIDATION.md"
+      ],
+      "skippable": false,
+      "skip_reason": null,
+      "network_allowed": false,
+      "mutation": "local-artifacts-only"
+    }
+  ]
+}

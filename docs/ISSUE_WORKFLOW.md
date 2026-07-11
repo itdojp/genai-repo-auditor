@@ -82,7 +82,7 @@ gra-issues --run runs/OWNER__REPO/RUN_ID --dry-run
 ```
 
 If a finding uses `issue_body_file`, the path must be a relative `.md` file under
-`reports/issue-drafts/`. `gra-issues` rejects absolute paths, `..` traversal,
+`<reports_dir>/issue-drafts/` (default: `reports/issue-drafts/`). `gra-issues` rejects absolute paths, `..` traversal,
 symlinks, non-Markdown files, and oversized drafts before dry-run or apply
 output is produced.
 

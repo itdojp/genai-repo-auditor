@@ -1,0 +1,119 @@
+{
+  "schema_version": "1",
+  "profile": "publication-ready",
+  "profile_version": "1.0.0",
+  "description": "Validate and render local publication-review artifacts without GitHub mutation.",
+  "stages": [
+    {
+      "id": "report-validation",
+      "command": [
+        "gra-validate-report",
+        "--run",
+        "{run}"
+      ],
+      "depends_on": [],
+      "required_inputs": [
+        "context.json",
+        "{reports_dir}/findings.json"
+      ],
+      "outputs": [],
+      "skippable": false,
+      "skip_reason": null,
+      "network_allowed": false,
+      "mutation": "local-artifacts-only"
+    },
+    {
+      "id": "metrics",
+      "command": [
+        "gra-metrics",
+        "--run",
+        "{run}"
+      ],
+      "depends_on": [
+        "report-validation"
+      ],
+      "required_inputs": [
+        "context.json",
+        "{reports_dir}/findings.json"
+      ],
+      "outputs": [
+        "{reports_dir}/metrics.json",
+        "{reports_dir}/METRICS.md"
+      ],
+      "skippable": false,
+      "skip_reason": null,
+      "network_allowed": false,
+      "mutation": "local-artifacts-only"
+    },
+    {
+      "id": "evidence-graph",
+      "command": [
+        "gra-evidence-graph",
+        "--run",
+        "{run}"
+      ],
+      "depends_on": [
+        "metrics"
+      ],
+      "required_inputs": [
+        "context.json",
+        "{reports_dir}/findings.json",
+        "{reports_dir}/metrics.json"
+      ],
+      "outputs": [
+        "{reports_dir}/evidence-graph.json",
+        "{reports_dir}/EVIDENCE_GRAPH.md"
+      ],
+      "skippable": false,
+      "skip_reason": null,
+      "network_allowed": false,
+      "mutation": "local-artifacts-only"
+    },
+    {
+      "id": "dashboard",
+      "command": [
+        "gra-dashboard",
+        "--run",
+        "{run}"
+      ],
+      "depends_on": [
+        "evidence-graph"
+      ],
+      "required_inputs": [
+        "context.json",
+        "{reports_dir}/findings.json",
+        "{reports_dir}/metrics.json",
+        "{reports_dir}/evidence-graph.json"
+      ],
+      "outputs": [
+        "{reports_dir}/dashboard.html"
+      ],
+      "skippable": false,
+      "skip_reason": null,
+      "network_allowed": false,
+      "mutation": "local-artifacts-only"
+    },
+    {
+      "id": "sarif",
+      "command": [
+        "gra-sarif",
+        "--run",
+        "{run}"
+      ],
+      "depends_on": [
+        "report-validation"
+      ],
+      "required_inputs": [
+        "context.json",
+        "{reports_dir}/findings.json"
+      ],
+      "outputs": [
+        "{reports_dir}/findings.sarif"
+      ],
+      "skippable": false,
+      "skip_reason": null,
+      "network_allowed": false,
+      "mutation": "local-artifacts-only"
+    }
+  ]
+}

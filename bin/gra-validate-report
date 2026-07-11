@@ -17,17 +17,27 @@ from taxonomies import (  # noqa: E402
     load_taxonomy_profiles,
     taxonomy_label_map,
 )
-from run_events import append_command_event, start_command_event  # noqa: E402
+from run_events import append_command_event, reports_dir as configured_reports_dir, start_command_event  # noqa: E402
 from validators.common import load_schema as load_schema_from_root  # noqa: E402
 from validators.advanced import ADVANCED_VALIDATOR_ORDER  # noqa: E402
 from validators.registry import ValidationContext, report_validator_registry  # noqa: E402
 
 def find_findings(run: Path) -> Path:
-    candidates = [run / "reports" / "findings.json"]
+    candidates = [configured_reports_dir(run) / "findings.json"]
     for p in candidates:
         if p.exists():
             return p
     raise FileNotFoundError(f"findings.json not found under {run}")
+
+
+def infer_run_dir(findings_path: Path) -> Path:
+    for candidate in findings_path.parents:
+        if not (candidate / "context.json").is_file():
+            continue
+        reports = configured_reports_dir(candidate)
+        if findings_path == reports / "findings.json":
+            return candidate
+    return findings_path.parent.parent
 
 
 def load_schema(name: str) -> Dict[str, Any]:
@@ -46,8 +56,16 @@ def main() -> int:
     if not args.run and not args.findings:
         parser.error("one of --run or --findings is required")
 
-    path = Path(args.findings).resolve() if args.findings else find_findings(Path(args.run).resolve())
-    run_dir = Path(args.run).resolve() if args.run else path.parent.parent
+    try:
+        if args.run:
+            run_dir = Path(args.run).resolve()
+            path = Path(args.findings).resolve() if args.findings else find_findings(run_dir)
+        else:
+            path = Path(args.findings).resolve()
+            run_dir = infer_run_dir(path)
+    except (FileNotFoundError, OSError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
     started_at, started_perf = start_command_event()
 
     def finish(exit_code: int) -> int:

@@ -9,12 +9,12 @@ from typing import Any
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
-from gralib import env_from_context, load_context, load_json, render_template, run_codex_exec, write_json, utc_now
-from run_events import append_command_event, start_command_event
+from gralib import env_from_context, load_context, load_json, render_template, run_codex_exec, safe_run_artifact_destination, utc_now, write_run_artifact_json, write_run_artifact_text
+from run_events import append_command_event, reports_dir as configured_reports_dir, start_command_event
 
 
 def render_chains_markdown(run_dir: Path, chains_data: dict[str, Any]) -> None:
-    reports = run_dir / 'reports'
+    reports = configured_reports_dir(run_dir)
 
     def comma_list(value: Any) -> str:
         if not isinstance(value, list):
@@ -75,13 +75,14 @@ def render_chains_markdown(run_dir: Path, chains_data: dict[str, Any]) -> None:
             *bullet_list(chain.get('recommended_remediation')),
             '',
         ])
-    (reports / 'ATTACK_CHAINS.md').write_text('\n'.join(lines), encoding='utf-8')
+    write_run_artifact_text(run_dir, reports / 'ATTACK_CHAINS.md', '\n'.join(lines))
 
 
 def ensure_chain_artifacts(run_dir: Path, ctx: dict[str, Any]) -> None:
-    chains_path = run_dir / 'reports' / 'chains.json'
+    chains_path = configured_reports_dir(run_dir) / 'chains.json'
     if not chains_path.exists():
         return
+    safe_run_artifact_destination(run_dir, chains_path)
     data = load_json(chains_path, {}) or {}
     if not isinstance(data, dict):
         return
@@ -91,7 +92,7 @@ def ensure_chain_artifacts(run_dir: Path, ctx: dict[str, Any]) -> None:
     data.setdefault('commit', ctx.get('commit', ''))
     data.setdefault('generated_at', utc_now())
     data.setdefault('chains', [])
-    write_json(chains_path, data)
+    write_run_artifact_json(run_dir, chains_path, data)
     render_chains_markdown(run_dir, data)
 
 
@@ -107,11 +108,17 @@ def main() -> int:
 
     run_dir = Path(args.run).resolve()
     started_at, started_perf = start_command_event()
+    try:
+        reports = configured_reports_dir(run_dir)
+    except OSError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    reports_ref = reports.relative_to(run_dir).as_posix()
     input_artifacts = [
         run_dir / 'context.json',
-        run_dir / 'reports' / 'findings.json',
-        run_dir / 'reports' / 'validation.json',
-        run_dir / 'reports' / 'proofs.json',
+        reports / 'findings.json',
+        reports / 'validation.json',
+        reports / 'proofs.json',
     ]
     output_artifacts: list[Path] = []
 
@@ -133,10 +140,17 @@ def main() -> int:
         )
         return exit_code
 
+    try:
+        safe_run_artifact_destination(run_dir, reports / 'chains.json')
+        safe_run_artifact_destination(run_dir, reports / 'ATTACK_CHAINS.md')
+    except OSError as exc:
+        print(str(exc), file=sys.stderr)
+        return finish(2)
+
     ctx = load_context(run_dir)
     env = env_from_context(run_dir, {
-        'CHAINS_OUTPUT_JSON': 'reports/chains.json',
-        'CHAINS_OUTPUT_MD': 'reports/ATTACK_CHAINS.md',
+        'CHAINS_OUTPUT_JSON': f'{reports_ref}/chains.json',
+        'CHAINS_OUTPUT_MD': f'{reports_ref}/ATTACK_CHAINS.md',
     })
 
     if args.mode == 'goal':
@@ -170,10 +184,10 @@ def main() -> int:
         stderr_file=stderr_path,
     )
     ensure_chain_artifacts(run_dir, ctx)
-    output_artifacts.extend([final_path, events_path, stderr_path, run_dir / 'reports' / 'chains.json', run_dir / 'reports' / 'ATTACK_CHAINS.md'])
+    output_artifacts.extend([final_path, events_path, stderr_path, reports / 'chains.json', reports / 'ATTACK_CHAINS.md'])
     print(f'Codex status: {status}')
-    print(f'Chains report: {run_dir / "reports" / "ATTACK_CHAINS.md"}')
-    print(f'Chains JSON: {run_dir / "reports" / "chains.json"}')
+    print(f'Chains report: {reports / "ATTACK_CHAINS.md"}')
+    print(f'Chains JSON: {reports / "chains.json"}')
     return finish(status)
 
 

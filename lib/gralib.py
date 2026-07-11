@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import datetime as _dt
+import contextlib
 import json
+import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from agent_worker import codex_worker_executable
+from run_events import reports_dir as configured_reports_dir
 from template_env import validate_template_env_key
 
 
@@ -26,6 +31,67 @@ def load_json(path: Path, default: Any = None) -> Any:
 def write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+
+
+def safe_run_artifact_destination(run_dir: Path, path: Path) -> Path:
+    """Prepare one run-local destination without following symlink components."""
+
+    run_root = run_dir.resolve(strict=True)
+    candidate = path if path.is_absolute() else run_root / path
+    try:
+        rel = candidate.relative_to(run_root)
+    except ValueError as exc:
+        raise OSError(f'run artifact must stay under the run directory: {candidate}') from exc
+    if not rel.parts:
+        raise OSError('run artifact destination must name a file')
+    if '..' in rel.parts:
+        raise OSError(f'run artifact path must not contain parent traversal: {rel.as_posix()}')
+
+    current = run_root
+    for part in rel.parts[:-1]:
+        current = current / part
+        if current.is_symlink():
+            raise OSError(f'run artifact path must not contain symlink components: {rel.as_posix()}')
+        if current.exists():
+            if not current.is_dir():
+                raise OSError(f'run artifact parent must be a directory: {current}')
+        else:
+            current.mkdir(mode=0o700)
+    if candidate.is_symlink() or (candidate.exists() and not candidate.is_file()):
+        raise OSError(f'run artifact destination must be a regular non-symlink file: {rel.as_posix()}')
+    return candidate
+
+
+def write_run_artifact_text(run_dir: Path, path: Path, content: str) -> None:
+    destination = safe_run_artifact_destination(run_dir, path)
+    temporary = destination.with_name(f'.{destination.name}.{uuid.uuid4().hex}.tmp')
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0)
+    fd: int | None = None
+    try:
+        fd = os.open(temporary, flags, 0o600)
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError('run artifact temporary path must be a regular file')
+        payload = content.encode('utf-8')
+        offset = 0
+        while offset < len(payload):
+            written = os.write(fd, payload[offset:])
+            if written <= 0:
+                raise OSError('run artifact write made no progress')
+            offset += written
+        os.fsync(fd)
+        os.close(fd)
+        fd = None
+        safe_run_artifact_destination(run_dir, destination)
+        os.replace(temporary, destination)
+    finally:
+        if fd is not None:
+            os.close(fd)
+        with contextlib.suppress(FileNotFoundError):
+            temporary.unlink()
+
+
+def write_run_artifact_json(run_dir: Path, path: Path, data: Any) -> None:
+    write_run_artifact_text(run_dir, path, json.dumps(data, indent=2, ensure_ascii=False) + '\n')
 
 
 def load_context(run_dir: Path) -> Dict[str, Any]:
@@ -163,8 +229,7 @@ def normalize_repo_slug(repo: str) -> str:
 
 
 def load_targets(run_dir: Path) -> List[Dict[str, Any]]:
-    ctx = load_context(run_dir)
-    data = load_json(run_dir / ctx.get('reports_dir', 'reports') / 'targets.json', {}) or {}
+    data = load_json(configured_reports_dir(run_dir) / 'targets.json', {}) or {}
     targets = data.get('targets') or []
     return [t for t in targets if isinstance(t, dict)]
 
@@ -173,7 +238,7 @@ def write_targets(run_dir: Path, targets: List[Dict[str, Any]]) -> None:
     from target_coverage_guardrails import append_coverage_normalization_log, normalize_targets_coverage_for_write
 
     ctx = load_context(run_dir)
-    reports_dir = run_dir / ctx.get('reports_dir', 'reports')
+    reports_dir = configured_reports_dir(run_dir)
     data = load_json(reports_dir / 'targets.json', {}) or {}
     normalized_targets, coverage_changes = normalize_targets_coverage_for_write(targets)
     data.update({
@@ -196,7 +261,7 @@ def find_target(run_dir: Path, target_id: str) -> Dict[str, Any]:
 
 
 def load_findings(run_dir: Path) -> List[Dict[str, Any]]:
-    data = load_json(run_dir / 'reports' / 'findings.json', {}) or {}
+    data = load_json(configured_reports_dir(run_dir) / 'findings.json', {}) or {}
     findings = data.get('findings') or []
     return [f for f in findings if isinstance(f, dict)]
 

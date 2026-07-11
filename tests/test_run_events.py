@@ -90,6 +90,16 @@ class RunEventsTests(unittest.TestCase):
         self.assertFalse(event["network_allowed"])
         validate_command_event_payload(event)
 
+    def test_reports_dir_rejects_target_checkout_overlap(self) -> None:
+        run_dir = self.make_run()
+        context_path = run_dir / "context.json"
+        context = json.loads(context_path.read_text(encoding="utf-8"))
+        context.update({"target_repo_dir": "repo", "reports_dir": "repo/audit-artifacts"})
+        context_path.write_text(json.dumps(context) + "\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(OSError, "reports_dir and target_repo_dir must not overlap"):
+            run_events.reports_dir(run_dir)
+
     def test_reader_accepts_existing_v1_and_new_v2_records(self) -> None:
         run_dir = self.make_run()
         v1 = {

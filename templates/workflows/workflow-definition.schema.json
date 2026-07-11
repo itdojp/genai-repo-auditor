@@ -20,7 +20,17 @@
             "type": "array",
             "enum": [
               ["gra-recon", "--run", "{run}"],
-              ["gra-targets", "--run", "{run}", "--generate"]
+              ["gra-targets", "--run", "{run}", "--generate"],
+              ["gra-scan", "--run", "{run}", "--tool", "syft", "--plan"],
+              ["gra-scan", "--run", "{run}", "--tool", "gitleaks", "--plan"],
+              ["gra-chains", "--run", "{run}"],
+              ["gra-proofs", "--run", "{run}", "--all-critical-high"],
+              ["gra-adversarial-validate", "--run", "{run}", "--all-critical-high"],
+              ["gra-validate-report", "--run", "{run}"],
+              ["gra-metrics", "--run", "{run}"],
+              ["gra-evidence-graph", "--run", "{run}"],
+              ["gra-dashboard", "--run", "{run}"],
+              ["gra-sarif", "--run", "{run}"]
             ]
           },
           "depends_on": {"type": "array", "items": {"type": "string"}},

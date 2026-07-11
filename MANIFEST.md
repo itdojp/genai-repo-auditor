@@ -137,6 +137,10 @@ templates/reports/workflow-plan.schema.json
 
 ```text
 templates/workflows/recon-only.json
+templates/workflows/supply-chain.json
+templates/workflows/appsec-deep.json
+templates/workflows/publication-ready.json
+templates/workflows/full.json
 templates/workflows/workflow-definition.schema.json
 ```
 

@@ -29,7 +29,7 @@ REQUIRED_TARGET = [
 
 
 def validate_targets(context: ValidationContext) -> bool:
-    targets_path = context.run_dir / "reports" / "targets.json"
+    targets_path = context.findings_path.parent / "targets.json"
     if not targets_path.exists():
         return False
     errors = context.errors

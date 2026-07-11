@@ -97,6 +97,9 @@ paused 中は read-only status check のみに制限してください。`gra-re
 
 `gra-run` はデフォルトでは計画のみを生成します。計画を確認した後、明示的な
 `--execute` でのみ、profile で承認されたローカル command を依存順に実行します。
+組み込み profile は `recon-only`、`supply-chain`、`appsec-deep`、
+`publication-ready`、`full` です。scanner stage は計画のみであり、外部 scanner
+を実行しません。Issue 公開は全 profile の対象外です。
 
 ```bash
 gra-run --run "$RUN_DIR" --profile recon-only
