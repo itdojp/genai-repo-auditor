@@ -8,6 +8,7 @@ import unittest
 from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -138,6 +139,25 @@ class ScannerAdapterTests(unittest.TestCase):
                 sandbox_profile="container",
                 network_policy="explicit-allow",
             )
+
+    def test_gvisor_plan_is_rejected_outside_linux_and_wsl2(self) -> None:
+        for operating_system in ("native-windows", "macos"):
+            with self.subTest(operating_system=operating_system), mock.patch(
+                "scanner_adapters.detect_environment", return_value=operating_system
+            ), self.assertRaisesRegex(ScannerAdapterError, "Linux or WSL2"):
+                build_scan_plan(self.run_dir, adapter_id="gitleaks", sandbox_profile="gvisor")
+
+    def test_scanner_plan_rejects_unconfirmed_wsl(self) -> None:
+        with mock.patch(
+            "scanner_adapters.detect_environment", return_value="wsl-unknown"
+        ), self.assertRaisesRegex(ScannerAdapterError, "confirmed WSL2"):
+            build_scan_plan(self.run_dir, adapter_id="gitleaks", sandbox_profile="container")
+
+    def test_scanner_plan_rejects_unsupported_environment(self) -> None:
+        with mock.patch(
+            "scanner_adapters.detect_environment", return_value="unsupported"
+        ), self.assertRaisesRegex(ScannerAdapterError, "unsupported on this operating system"):
+            build_scan_plan(self.run_dir, adapter_id="gitleaks", sandbox_profile="container")
 
     def test_plan_rejects_leading_dash_path_components(self) -> None:
         context_path = self.run_dir / "context.json"

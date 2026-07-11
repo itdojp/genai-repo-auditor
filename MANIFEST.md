@@ -64,6 +64,7 @@ src/genai_repo_auditor/batch_cli.py
 src/genai_repo_auditor/cli.py
 src/genai_repo_auditor/resources.py
 src/genai_repo_auditor/version.py
+lib/platform_support.py
 ```
 
 ## Prompts
@@ -266,6 +267,7 @@ docs/VARIANT_ANALYSIS.md
 docs/WORKFLOWS.md
 docs/WORKFLOW_OVERVIEW.md
 docs/WORKTREE_SEPARATION.md
+docs/WINDOWS_WSL_SUPPORT.md
 docs/dogfood/ITDO_ERP4_INTERNAL_SUMMARY_TEMPLATE.md
 docs/dogfood/ITDO_ERP4_REPORTING_BOUNDARIES.md
 docs/dogfood/INTERNAL_EFFECTIVENESS_REPORT_TEMPLATE.md
@@ -290,4 +292,5 @@ docs/ja/README.md
 docs/ja/SCANNER_INTEGRATION.ja.md
 docs/ja/SECURITY_MODEL.ja.md
 docs/ja/USAGE.ja.md
+docs/ja/WINDOWS_WSL_SUPPORT.ja.md
 ```

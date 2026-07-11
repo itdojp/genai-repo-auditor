@@ -16,6 +16,7 @@ from typing import Any
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
 from agent_worker import AgentWorkerProfileError, check_profile_executable, load_profile  # noqa: E402
+from platform_support import platform_support_report  # noqa: E402
 from version import auditor_version  # noqa: E402
 
 SENSITIVE_SEGMENT_RE = re.compile(r"(?i)(token|secret|password|passwd|credential|apikey|api[_-]?key)")
@@ -35,6 +36,7 @@ REQUIRED_RESOURCE_PATHS = {
     "version_helper": Path("lib") / "version.py",
 }
 OPTIONAL_RUNTIME_COMMANDS = ("docker", "podman", "runsc")
+GITHUB_TOKEN_ENV_PRECEDENCE = ("GH_TOKEN", "GITHUB_TOKEN")
 
 
 def redact_path(value: str | os.PathLike[str] | None) -> str | None:
@@ -193,6 +195,26 @@ def check_gh_auth(*, probe_external_tools: bool) -> dict[str, Any]:
     }
 
 
+def check_github_token_environment() -> dict[str, Any]:
+    present = [name for name in GITHUB_TOKEN_ENV_PRECEDENCE if os.environ.get(name)]
+    effective = present[0] if present else None
+    diagnostics: list[str] = []
+    if present:
+        diagnostics.append(
+            f"GitHub CLI token environment detected: {', '.join(present)}; {effective} takes precedence over stored gh credentials."
+        )
+        diagnostics.append(
+            "gra-doctor never prints token values and strips credential-like variables from active gh probes; unset stale variables before normal gh operations."
+        )
+    return {
+        "status": "warning" if present else "ok",
+        "present_names": present,
+        "effective_name": effective,
+        "values_exposed": False,
+        "diagnostics": diagnostics,
+    }
+
+
 def check_worker(profile_id: str) -> dict[str, Any]:
     try:
         profile = load_profile(LAB_ROOT, profile_id)
@@ -286,8 +308,10 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         "git": check_command("git", required=True, probe_external_tools=args.probe_external_tools),
         "gh": check_command("gh", required=True, probe_external_tools=args.probe_external_tools),
         "gh_auth": check_gh_auth(probe_external_tools=args.probe_external_tools),
+        "github_token_environment": check_github_token_environment(),
         "worker": check_worker(args.worker_profile),
         "sandbox_runtime": check_sandbox_runtimes(),
+        "platform_support": platform_support_report(),
         "run_directory": check_run_directory(runs_dir),
         "packaged_resources": check_resources(),
     }

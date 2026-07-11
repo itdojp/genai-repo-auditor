@@ -43,6 +43,13 @@ capabilities, `no-new-privileges`, bounded CPU/memory/PIDs, and `--network=none`
 It never pulls an image. The operator must pre-pull the immutable image digest
 during a separately authorized setup phase.
 
+Platform boundaries are explicit: planning is supported on native Windows,
+WSL2, Linux, and macOS; native Windows execution is experimental and requires
+local Docker Desktop in Linux-container mode; WSL2/Linux may use local Docker
+or Podman; macOS selects local Docker. gVisor is Linux/WSL2-only when `runsc` is
+configured. Remote daemon environment configuration remains rejected. See
+[`WINDOWS_WSL_SUPPORT.md`](WINDOWS_WSL_SUPPORT.md).
+
 On an enforcing SELinux host, execution uses `label=disable` instead of
 recursively relabeling the audited target. This preserves target filesystem
 metadata; isolation continues to rely on the read-only target/root mounts,

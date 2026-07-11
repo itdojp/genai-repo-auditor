@@ -367,6 +367,7 @@ Do not use this project for:
 ## Documentation
 
 - [`docs/LOCAL_INSTALL_AND_AUDIT.md`](docs/LOCAL_INSTALL_AND_AUDIT.md)
+- [`docs/WINDOWS_WSL_SUPPORT.md`](docs/WINDOWS_WSL_SUPPORT.md)
 - [`docs/COMMAND_REFERENCE.md`](docs/COMMAND_REFERENCE.md)
 - [`docs/OPERATING_MODEL.md`](docs/OPERATING_MODEL.md)
 - [`docs/CUSTOMER_AUDIT_RUNBOOK.md`](docs/CUSTOMER_AUDIT_RUNBOOK.md)
@@ -378,6 +379,7 @@ Do not use this project for:
 - [`docs/NOVELTY_LEDGER.md`](docs/NOVELTY_LEDGER.md)
 - Japanese docs index: [`docs/ja/README.md`](docs/ja/README.md)
   - [`docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md`](docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md)
+  - [`docs/ja/WINDOWS_WSL_SUPPORT.ja.md`](docs/ja/WINDOWS_WSL_SUPPORT.ja.md)
   - [`docs/ja/USAGE.ja.md`](docs/ja/USAGE.ja.md)
   - [`docs/ja/ISSUE_WORKFLOW.ja.md`](docs/ja/ISSUE_WORKFLOW.ja.md)
   - [`docs/ja/SCANNER_INTEGRATION.ja.md`](docs/ja/SCANNER_INTEGRATION.ja.md)

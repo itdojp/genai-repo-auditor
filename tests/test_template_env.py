@@ -8,12 +8,13 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
-from gralib import env_from_context  # noqa: E402
+from gralib import env_from_context, render_template  # noqa: E402
 from template_env import (  # noqa: E402
     build_template_values,
     controlled_placeholder_from_env_key,
@@ -135,6 +136,33 @@ class TemplateEnvTests(unittest.TestCase):
         self.assertNotIn("OPENAI_API_KEY", env)
         with self.assertRaisesRegex(ValueError, "denied template environment key: API_KEY"):
             env_from_context(run_dir, {"API_KEY": "fixture-secret"})
+
+    def test_render_template_preserves_only_bounded_windows_runtime_environment(self) -> None:
+        with unittest.mock.patch.dict(
+            os.environ,
+            {
+                "SYSTEMROOT": r"C:\\Windows",
+                "WINDIR": r"C:\\Windows",
+                "PYTHONHASHSEED": "0",
+                "PATH": "unsafe-path",
+                "OPENAI_API_KEY": "fixture-secret",
+            },
+            clear=True,
+        ), unittest.mock.patch("gralib.subprocess.run") as run:
+            render_template(
+                REPO_ROOT,
+                self.work_dir / "template.md",
+                self.work_dir / "out.md",
+                {"RUN_ID": "fixture-run"},
+            )
+
+        child_env = run.call_args.kwargs["env"]
+        self.assertEqual(r"C:\\Windows", child_env["SYSTEMROOT"])
+        self.assertEqual(r"C:\\Windows", child_env["WINDIR"])
+        self.assertEqual("0", child_env["PYTHONHASHSEED"])
+        self.assertEqual("fixture-run", child_env["RUN_ID"])
+        self.assertNotIn("PATH", child_env)
+        self.assertNotIn("OPENAI_API_KEY", child_env)
 
 
 if __name__ == "__main__":

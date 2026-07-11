@@ -23,6 +23,7 @@ from scanner_adapters import (
     build_scan_plan,
     validate_run_directory,
 )
+from platform_support import detect_environment
 
 
 CONTAINER_IMAGES = {
@@ -326,6 +327,13 @@ def execute_scan(
     run_dir = validate_run_directory(run_dir).absolute()
     if sandbox_profile not in EXECUTION_PROFILES:
         raise ScannerExecutionError("execution requires the container or gvisor sandbox profile")
+    execution_environment = detect_environment()
+    if execution_environment == "unsupported":
+        raise ScannerExecutionError("scanner execution is unsupported on this operating system")
+    if execution_environment == "wsl-unknown":
+        raise ScannerExecutionError("scanner execution requires confirmed WSL2; WSL1 and unconfirmed WSL are unsupported")
+    if sandbox_profile == "gvisor" and execution_environment not in {"linux", "wsl2"}:
+        raise ScannerExecutionError("gvisor scanner execution is supported only on Linux or WSL2")
     if network_policy != "disabled":
         raise ScannerExecutionError("scanner execution is offline-only and requires network policy disabled")
     adapter = adapter_by_id(adapter_id)

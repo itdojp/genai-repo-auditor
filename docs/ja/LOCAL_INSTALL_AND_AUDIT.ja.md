@@ -51,7 +51,11 @@ sqlite3
 | `uv tool` | `uv` で isolated tool install を管理する場合。 | `uv tool install .` |
 | Virtual environment | `pipx` / `uv` を使わない CI や制約のある workstation で固定的に使う場合。 | `python -m venv`, `pip install .` |
 
-package install matrix は、Ubuntu、macOS、Windows と Python 3.10、3.11、3.12 の組み合わせで CI 検証します。開発用途では source checkout wrapper、編集を伴わない運用用途では packaged console scripts を推奨します。
+package install matrix は、Ubuntu、macOS、Windows と Python 3.10、3.11、3.12 の
+組み合わせで CI 検証します。workflow ごとにサポート範囲が異なるため、native Windows
+execution または container scanner の前に
+[`Windows / WSL2 support matrix`](WINDOWS_WSL_SUPPORT.ja.md) を確認してください。開発用途では
+source checkout wrapper、編集を伴わない運用用途では packaged console scripts を推奨します。
 
 ### Source checkout install
 
@@ -167,7 +171,12 @@ Windows PowerShell:
 gra-doctor --json --runs-dir "$env:LOCALAPPDATA\genai-repo-auditor\runs"
 ```
 
-`gra-doctor` は Python version、Git/GitHub CLI の有無、設定済み worker executable、任意の sandbox runtime、書き込み可能な run directory、packaged resources、GenAI Repo Auditor の version を確認します。既定では `git`、`gh`、audit、worker、repository clone は実行せず、GitHub state の変更や credential value の出力も行いません。run directory の確認では、`--runs-dir` 配下に一時 probe file を作成して削除します。CI で必須 readiness error を失敗として扱う場合は `--strict` を追加してください。
+`gra-doctor` は Python version、platform support、Git/GitHub CLI の有無、設定済み worker
+executable、任意の sandbox runtime、書き込み可能な run directory、packaged resources、
+version を確認します。`GH_TOKEN` / `GITHUB_TOKEN` は存在する name と precedence だけを
+記録し、value は出力しません。既定では `git`、`gh`、audit、worker、repository clone
+を実行せず、GitHub state も変更しません。CI で必須 readiness error を失敗として扱う
+場合は `--strict` を追加してください。
 
 `PATH` 上の `git` と `gh` が信頼できる local binary であることを確認した後、外部ツールの version と GitHub 認証状態を含める場合は opt-in probe を使います。この probe は credential-like environment variables を child process に渡さず、`gh auth status` の出力を破棄し、redacted diagnostics だけを記録します。
 
@@ -332,7 +341,10 @@ chmod +x bin/* scripts/*.sh
 |---|---|---|
 | `Missing required command: gh` | `gh --version` | GitHub CLI をインストールして再実行する。 |
 | `gh repo clone` が失敗する | `gh auth status`; `gh repo view OWNER/REPO` | `gh auth login` で認証する、または対象 repo にアクセスできる account を使う。 |
+| 保存済み auth が正しいのに `gh` が失敗する | `GH_TOKEN` / `GITHUB_TOKEN` の name だけを確認する | 意図しない stale variable を value を表示せず削除する。両者は保存済み auth より優先される。 |
 | `Missing required command: codex` | `codex --help` | 互換性のある Codex CLI をインストール・設定する。 |
+| native Windows の efficacy report が status `2` で終了する | `gra-efficacy-benchmark --list`; `gra-doctor --json` の `platform_support` | list は Windows で確認し、report generation は WSL2/Linux/macOS で実行する。dirfd safeguard を迂回しない。 |
+| native Windows の scanner execution が利用できない | Docker Desktop の Linux-container mode | supported Docker/Podman operation には WSL2 を使う。native Windows は experimental。 |
 | レポートが生成されない | `codex-final.md`; `codex-stderr.txt` | run directory 内で model、認証、sandbox エラーを確認する。 |
 | レポート検証が失敗する | `report-validation.txt`; `reports/findings.json` | Issue 作成前に invalid report data を修正または再生成する。 |
 | 既に別の監査が実行中と表示される | `runs/.locks/` | 既存監査の終了を待つ。競合がないと確信できる場合のみ `--no-lock` を使う。 |

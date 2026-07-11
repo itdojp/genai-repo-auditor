@@ -143,6 +143,7 @@ class DocsConsistencyTests(unittest.TestCase):
             "docs/SECURITY_MODEL.md",
             "docs/SCANNER_INTEGRATION.md",
             "docs/ISSUE_WORKFLOW.md",
+            "docs/WINDOWS_WSL_SUPPORT.md",
         }
         self.assertTrue(required.issubset(linked_targets), f"missing README doc links: {sorted(required - linked_targets)}")
 

@@ -71,6 +71,7 @@ class ManifestTests(unittest.TestCase):
             "Packaging",
             {
                 "MANIFEST.in",
+                "lib/platform_support.py",
                 "pyproject.toml",
                 "src/genai_repo_auditor/__init__.py",
                 "src/genai_repo_auditor/audit_cli.py",
