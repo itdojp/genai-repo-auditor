@@ -357,6 +357,8 @@ class ScannerRunnerWorkflowTests(CliWorkflowTestCase):
         )
         self.assertEqual(2, cp.returncode)
         self.assertIn("must not overlap", cp.stderr)
+        self.assertFalse((run_dir / "repo" / "reports").exists())
+        self.assertFalse((run_dir / "repo" / "reports" / "command-events.jsonl").exists())
 
     def test_planning_rejects_unknown_tools_unsafe_paths_and_network(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

@@ -30,7 +30,13 @@ from scanner_reporting import (  # noqa: E402
     preflight_scanner_reports,
     successful_scanner_run_exists,
 )
-from scanner_runner import CONTAINER_IMAGES, CONTAINER_TOOL_VERSIONS, EXECUTION_PROFILES, execute_scan  # noqa: E402
+from scanner_runner import (  # noqa: E402
+    CONTAINER_IMAGES,
+    CONTAINER_TOOL_VERSIONS,
+    EXECUTION_PROFILES,
+    execute_scan,
+    validate_execution_layout,
+)
 from run_events import (  # noqa: E402
     EventWriteError,
     append_command_event,
@@ -91,6 +97,13 @@ def main() -> int:
             raise ScannerAdapterError("execution requires the container or gvisor sandbox profile")
         image = CONTAINER_IMAGES[adapter.id]
         tool_version = CONTAINER_TOOL_VERSIONS[adapter.id]
+        validate_execution_layout(
+            run_dir,
+            adapter_id=adapter.id,
+            sandbox_profile=args.sandbox_profile,
+            network_policy=args.network_policy,
+            path_env=planning_environment_path(),
+        )
         json_report_path, markdown_report_path = preflight_scanner_reports(run_dir)
         if successful_scanner_run_exists(run_dir, adapter_id=adapter.id):
             raise ScannerReportError(

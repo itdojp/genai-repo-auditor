@@ -279,6 +279,41 @@ def _publish_output(source: Path, destination: Path) -> None:
             temporary.unlink()
 
 
+def validate_execution_layout(
+    run_dir: Path,
+    *,
+    adapter_id: str,
+    sandbox_profile: str,
+    network_policy: str,
+    path_env: str | None = None,
+) -> tuple[Path, dict[str, Any], Path, Path]:
+    """Validate target/report separation without creating report artifacts."""
+
+    safe_run_dir = validate_run_directory(run_dir).absolute()
+    plan = build_scan_plan(
+        safe_run_dir,
+        adapter_id=adapter_id,
+        sandbox_profile=sandbox_profile,
+        # Layout is independent of a rejected network request. Use the only
+        # executable policy so overlap is checked before reporting preflight,
+        # while execute_scan retains its established network error/reporting.
+        network_policy="disabled",
+        path_env=path_env,
+    )
+    target = safe_run_dir / plan["read_paths"][0]
+    output = safe_run_dir / plan["raw_output_path"]
+    reports_root = output.parents[2]
+    target_resolved = target.resolve(strict=False)
+    reports_resolved = reports_root.resolve(strict=False)
+    if (
+        target_resolved == reports_resolved
+        or target_resolved in reports_resolved.parents
+        or reports_resolved in target_resolved.parents
+    ):
+        raise ScannerExecutionError("target repository and reports directory must not overlap for execution")
+    return safe_run_dir, plan, target, output
+
+
 def execute_scan(
     run_dir: Path,
     *,
@@ -303,22 +338,15 @@ def execute_scan(
     if not tool_version:
         raise ScannerExecutionError(f"adapter {adapter.id} does not declare a container tool version")
 
-    plan = build_scan_plan(
+    run_dir, plan, target, output = validate_execution_layout(
         run_dir,
         adapter_id=adapter.id,
         sandbox_profile=sandbox_profile,
         network_policy=network_policy,
         path_env=path_env,
     )
-    target = run_dir / plan["read_paths"][0]
     if not target.is_dir() or target.is_symlink():
         raise ScannerExecutionError("target repository must be an existing non-symlink directory")
-    output = run_dir / plan["raw_output_path"]
-    reports_root = output.parents[2]
-    target_resolved = target.resolve(strict=True)
-    reports_resolved = reports_root.resolve(strict=False)
-    if target_resolved == reports_resolved or target_resolved in reports_resolved.parents or reports_resolved in target_resolved.parents:
-        raise ScannerExecutionError("target repository and reports directory must not overlap for execution")
     if output.exists() or output.is_symlink():
         raise ScannerExecutionError("raw scanner output already exists; use a fresh run to preserve immutable evidence")
     scanner_results = output.parent.parent
