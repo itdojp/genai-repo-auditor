@@ -213,7 +213,7 @@ def _dependency_ancestors(by_id: dict[str, dict[str, Any]], stage_id: str) -> se
     return result
 
 
-def _existing_input(run_dir: Path, rel: str) -> bool:
+def _existing_input(run_dir: Path, rel: str, *, require_dir: bool = False) -> bool:
     candidate = run_dir / rel
     current = run_dir
     for part in PurePosixPath(rel).parts:
@@ -226,6 +226,8 @@ def _existing_input(run_dir: Path, rel: str) -> bool:
         candidate.resolve(strict=True).relative_to(run_dir)
     except (FileNotFoundError, ValueError) as exc:
         raise WorkflowPlanError("workflow required input must stay under the run directory") from exc
+    if require_dir and not candidate.is_dir():
+        raise WorkflowPlanError("workflow required input must be a directory")
     return True
 
 
@@ -259,6 +261,7 @@ def build_plan(run_dir: Path, definition: dict[str, Any], *, definition_ref: str
     context = load_context(run_dir)
     validated_reports = _reports_dir(run_dir, context)
     reports_ref = validated_reports.relative_to(run_dir).as_posix()
+    target_repo_ref = _safe_rel(context.get("target_repo_dir") or "repo", "target_repo_dir")
     order = validate_profile(definition)
     by_id = {stage["id"]: stage for stage in definition["stages"]}
     skip_set = set(skips)
@@ -285,7 +288,7 @@ def build_plan(run_dir: Path, definition: dict[str, Any], *, definition_ref: str
         if stage_id not in skip_set:
             for required in inputs:
                 producer = expanded_outputs.get(required)
-                if producer is None and not _existing_input(run_dir, required):
+                if producer is None and not _existing_input(run_dir, required, require_dir=(required == target_repo_ref)):
                     raise WorkflowPlanError(f"stage {stage_id} has unsatisfied required input: {required}")
                 if producer is not None and producer not in _dependency_ancestors(by_id, stage_id):
                     raise WorkflowPlanError(f"stage {stage_id} required input is not provided by a dependency")

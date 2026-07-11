@@ -55,6 +55,18 @@ class WorkflowOrchestratorTests(unittest.TestCase):
         self.assertEqual([], definition_errors)
         self.assertEqual([], plan_errors)
 
+    def test_workflow_definition_schema_matches_command_contracts(self) -> None:
+        invalid = copy.deepcopy(self.definition)
+        invalid["stages"][0]["command"] = ["bogus"]
+        definition_errors: list[str] = []
+        validate_schema(
+            invalid,
+            json.loads((REPO_ROOT / "templates" / "workflows" / "workflow-definition.schema.json").read_text()),
+            "workflow_definition",
+            definition_errors,
+        )
+        self.assertNotEqual([], definition_errors)
+
     def test_unknown_dependency_and_cycle_fail_closed(self) -> None:
         unknown = copy.deepcopy(self.definition)
         unknown["stages"][1]["depends_on"] = ["missing"]
@@ -100,6 +112,12 @@ class WorkflowOrchestratorTests(unittest.TestCase):
         (self.run / "repo").rmdir()
         with self.assertRaisesRegex(WorkflowPlanError, "unsatisfied required input"):
             self.plan()
+        (self.run / "repo").mkdir()
+        shutil.rmtree(self.run / "repo")
+        (self.run / "repo").write_text("not a directory", encoding="utf-8")
+        with self.assertRaisesRegex(WorkflowPlanError, "must be a directory"):
+            self.plan()
+        (self.run / "repo").unlink()
         (self.run / "repo").mkdir()
         with self.assertRaisesRegex(WorkflowPlanError, "not skippable"):
             self.plan(skips=["recon"])
