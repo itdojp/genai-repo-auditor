@@ -9,7 +9,6 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 
-CORPUS_SCHEMA_VERSION = "1"
 MAX_JSON_BYTES = 512_000
 MAX_FIXTURE_BYTES = 128_000
 CONTENT_VERSION_RE = re.compile(r"^(?P<release>[0-9]+\.[0-9]+\.[0-9]+)\+sha256\.(?P<digest>[a-f0-9]{64})$")
