@@ -18,6 +18,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 from efficacy_benchmark import (  # noqa: E402
     EfficacyBenchmarkError,
+    analyze_fixture_case,
     build_fixture_report,
     score_cases,
     select_cases,
@@ -65,15 +66,16 @@ class EfficacyBenchmarkTests(unittest.TestCase):
 
         self.assertEqual(first, second)
         self.assertEqual("deterministic-fixture", first["mode"])
-        self.assertEqual(8, first["execution"]["selected_case_count"])
-        self.assertEqual(8, first["execution"]["supported_case_count"])
+        self.assertEqual("synthetic-reference-rules-v2", first["execution"]["detector_id"])
+        self.assertEqual(20, first["execution"]["selected_case_count"])
+        self.assertEqual(20, first["execution"]["supported_case_count"])
         self.assertEqual(
             {
-                "true_positives": 5,
+                "true_positives": 10,
                 "false_positives": 0,
                 "false_negatives": 0,
-                "true_negatives": 3,
-                "prediction_count": 5,
+                "true_negatives": 10,
+                "prediction_count": 10,
             },
             first["scores"]["counts"],
         )
@@ -82,14 +84,14 @@ class EfficacyBenchmarkTests(unittest.TestCase):
             first["scores"]["rates"],
         )
         self.assertEqual(
-            {"agreed": 5, "eligible": 5, "rate": 1.0},
+            {"agreed": 10, "eligible": 10, "rate": 1.0},
             first["scores"]["severity_agreement"],
         )
         self.assertEqual(
-            {"covered": 8, "selected": 8, "rate": 1.0},
+            {"covered": 20, "selected": 20, "rate": 1.0},
             first["scores"]["target_coverage"],
         )
-        self.assertEqual(5, first["scores"]["human_review_required_count"])
+        self.assertEqual(10, first["scores"]["human_review_required_count"])
         self.assertEqual(
             {
                 "local_synthetic_fixtures_only": True,
@@ -155,6 +157,20 @@ class EfficacyBenchmarkTests(unittest.TestCase):
         }
         self.assertEqual(declared, {case_id: set(paths) for case_id, paths in first_texts.items()})
 
+    def test_reference_rules_do_not_depend_on_case_ids_or_fixture_filenames(self) -> None:
+        loaded, fixture_texts = load_corpus_fixture_texts(REPO_ROOT)
+        for case in loaded["cases"]:
+            original = fixture_texts[case["case_id"]]
+            renamed = {
+                f"renamed-{index}{Path(path).suffix}": text
+                for index, (path, text) in enumerate(sorted(original.items()), start=1)
+            }
+            with self.subTest(case_id=case["case_id"]):
+                self.assertEqual(
+                    analyze_fixture_case(case, original),
+                    analyze_fixture_case({**case, "case_id": "synthetic/renamed-case"}, renamed),
+                )
+
     def test_suite_and_explicit_case_selection_are_sorted_and_fail_closed(self) -> None:
         loaded = load_corpus(REPO_ROOT)
         suite_cases, suite_selection = select_cases(loaded, suite="appsec")
@@ -164,7 +180,18 @@ class EfficacyBenchmarkTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            ["python-web/authz-001", "python-web/authz-control-001", "python-web/path-001"],
+            [
+                "execution-boundaries/query-001",
+                "execution-boundaries/query-control-001",
+                "python-web/authz-001",
+                "python-web/authz-control-001",
+                "python-web/path-001",
+                "python-web/path-control-001",
+                "secrets-logging/request-log-001",
+                "secrets-logging/request-log-control-001",
+                "webhook-trust/signature-001",
+                "webhook-trust/signature-control-001",
+            ],
             [case["case_id"] for case in suite_cases],
         )
         self.assertEqual("suite", suite_selection["kind"])

@@ -1,0 +1,6 @@
+{
+  "fixture_only": true,
+  "indirect_content_treated_as_instructions": false,
+  "tool_output_schema_enforced": true,
+  "untrusted_output_reaches_followup_instruction": false
+}

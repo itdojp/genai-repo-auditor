@@ -1,6 +1,30 @@
 {
   "cases": [
     {
+      "case_id": "ai-agent-mcp/indirect-output-001",
+      "case_version": "1.0.0+sha256.51bf33857abfcfd540faa7b648150e9aab63da2dc2fd4ab3d395e4f1f38f5a0b",
+      "category": "ai-agent-mcp",
+      "classification": "positive",
+      "manifest": "cases/ai-agent-mcp/indirect-output-001/case.json",
+      "manifest_sha256": "5cb5dc52dcc2ed07fe096f14cf9536a7d1798535127bec56e905102c9ea177ef",
+      "suites": [
+        "core",
+        "agentic"
+      ]
+    },
+    {
+      "case_id": "ai-agent-mcp/indirect-output-control-001",
+      "case_version": "1.0.0+sha256.edb3a6deaf51106e8b9545a30d083dc4b08ecf0a49097df339a9e7ff36895ddf",
+      "category": "ai-agent-mcp",
+      "classification": "negative_control",
+      "manifest": "cases/ai-agent-mcp/indirect-output-control-001/case.json",
+      "manifest_sha256": "9504adfc73b17b1da3acb0fd2fc306beb8acafe0f56af4554a4f3d8463225296",
+      "suites": [
+        "core",
+        "agentic"
+      ]
+    },
+    {
       "case_id": "ai-agent-mcp/tool-boundary-001",
       "case_version": "1.0.0+sha256.4679d7bd4fde5612e15c77db416292f1e659ae24d00613f7373d386390484a48",
       "category": "ai-agent-mcp",
@@ -25,6 +49,18 @@
       ]
     },
     {
+      "case_id": "dependency-supply-chain/dependency-control-001",
+      "case_version": "1.0.0+sha256.bb70cadf8c3da5b10a4f978d014aac4eca00cb8fd8cc28897cff68accb83a627",
+      "category": "dependency-supply-chain",
+      "classification": "negative_control",
+      "manifest": "cases/dependency-supply-chain/dependency-control-001/case.json",
+      "manifest_sha256": "f305b78a95a22c9a47f969ac44da9c6d619001efecabe977f507313d0fdd966a",
+      "suites": [
+        "core",
+        "supply-chain"
+      ]
+    },
+    {
       "case_id": "dependency-supply-chain/dependency-path-001",
       "case_version": "1.0.0+sha256.f81ca835f117e72281b4222fb682528dc2c5f11a42d4f30fb02715f5ba5b11bf",
       "category": "dependency-supply-chain",
@@ -34,6 +70,54 @@
       "suites": [
         "core",
         "supply-chain"
+      ]
+    },
+    {
+      "case_id": "execution-boundaries/query-001",
+      "case_version": "1.0.0+sha256.c9c07522c312c3d40b7b5f0b17fa01f78f0d996a037718f548d072b850291757",
+      "category": "execution-boundaries",
+      "classification": "positive",
+      "manifest": "cases/execution-boundaries/query-001/case.json",
+      "manifest_sha256": "adf951cf0c638d36e13e287e745294e096c62e21c2c801b6991243fb29e371dd",
+      "suites": [
+        "core",
+        "appsec"
+      ]
+    },
+    {
+      "case_id": "execution-boundaries/query-control-001",
+      "case_version": "1.0.0+sha256.c6867ab4fe82fb9334d3182477a6633a55c5ef3912ba9bd00ecf7b79eb76939c",
+      "category": "execution-boundaries",
+      "classification": "negative_control",
+      "manifest": "cases/execution-boundaries/query-control-001/case.json",
+      "manifest_sha256": "b25daf29105d2b5e97c5b1c307fde82f5bc894a29a3e7601efc5db1d239bed2e",
+      "suites": [
+        "core",
+        "appsec"
+      ]
+    },
+    {
+      "case_id": "github-actions/cache-control-001",
+      "case_version": "1.0.0+sha256.bbae25f65e5842a21e8a6d05a3f8c0a59cc1156359302c6bb8a46a1ecd3728d9",
+      "category": "github-actions",
+      "classification": "negative_control",
+      "manifest": "cases/github-actions/cache-control-001/case.json",
+      "manifest_sha256": "16ac5b9d7f5da122515bc5d66f9df2dada30cf0281432e12819d877ca528aec4",
+      "suites": [
+        "core",
+        "automation"
+      ]
+    },
+    {
+      "case_id": "github-actions/cache-target-001",
+      "case_version": "1.0.0+sha256.d1ad7531d8144a1cc36e76c4e58fc55b8671e9bc8eb3da3035a09e63e3fec7c4",
+      "category": "github-actions",
+      "classification": "positive",
+      "manifest": "cases/github-actions/cache-target-001/case.json",
+      "manifest_sha256": "1ec26ff12687800ebf996d13afb73cb6fc06eda470764ddabb45aa5cc48712e6",
+      "suites": [
+        "core",
+        "automation"
       ]
     },
     {
@@ -95,12 +179,72 @@
         "core",
         "appsec"
       ]
+    },
+    {
+      "case_id": "python-web/path-control-001",
+      "case_version": "1.0.0+sha256.1277c3f44c5c7e106e2b8f25b29f690e2aefec49a8f63ab332b7202f3f7b4570",
+      "category": "python-web",
+      "classification": "negative_control",
+      "manifest": "cases/python-web/path-control-001/case.json",
+      "manifest_sha256": "a55746f2ce489ef33d0e4b8e2db7c74e3024180d8629642ffe553faa46b286e4",
+      "suites": [
+        "core",
+        "appsec"
+      ]
+    },
+    {
+      "case_id": "secrets-logging/request-log-001",
+      "case_version": "1.0.0+sha256.1d00502bc8d9fe6a55cfe16bf85216ea7ba8228514d4fc41daee7d76d3094614",
+      "category": "secrets-logging",
+      "classification": "positive",
+      "manifest": "cases/secrets-logging/request-log-001/case.json",
+      "manifest_sha256": "269485ca1057de3bcb6cb963945303a92f166b4dfd126a3e15f6a3b36a204872",
+      "suites": [
+        "core",
+        "appsec"
+      ]
+    },
+    {
+      "case_id": "secrets-logging/request-log-control-001",
+      "case_version": "1.0.0+sha256.ce3b988886bb700bbaf2986d8601587e2e941a66f8bb29ad73c7d19d134af17e",
+      "category": "secrets-logging",
+      "classification": "negative_control",
+      "manifest": "cases/secrets-logging/request-log-control-001/case.json",
+      "manifest_sha256": "98fc1519670addd62f68977cbb3faa3f89dbe028559b92220104300b87065bc7",
+      "suites": [
+        "core",
+        "appsec"
+      ]
+    },
+    {
+      "case_id": "webhook-trust/signature-001",
+      "case_version": "1.0.0+sha256.0b5facb39775cfa3e187541a71e49a1286562300a2b3450a6b4a456f292eed29",
+      "category": "webhook-trust",
+      "classification": "positive",
+      "manifest": "cases/webhook-trust/signature-001/case.json",
+      "manifest_sha256": "191c6ffc5c30927870590071ba4709567ced1cd294f02fba14ff003358c3eeb7",
+      "suites": [
+        "core",
+        "appsec"
+      ]
+    },
+    {
+      "case_id": "webhook-trust/signature-control-001",
+      "case_version": "1.0.0+sha256.c674e6f3817d4fa13c47ff9a82e35f934ac60b8e1317c8e5136ad3563866c2da",
+      "category": "webhook-trust",
+      "classification": "negative_control",
+      "manifest": "cases/webhook-trust/signature-control-001/case.json",
+      "manifest_sha256": "12ed80075291eb1a41475a08c935f6701e09ecea91b53784e9dc9888ae1fda54",
+      "suites": [
+        "core",
+        "appsec"
+      ]
     }
   ],
   "corpus_id": "genai-repo-auditor-synthetic-core",
-  "corpus_version": "1.0.0+sha256.64bd403ce8cf97cef3d3f8301aca171f1281bc1edf11a0678a680ee0b38879f0",
+  "corpus_version": "1.1.0+sha256.33c20915076017869a6b99e0552be59f40aa05d701b61e4572d4d449a4fa6146",
   "default_suite": "core",
-  "description": "Small deterministic defensive fixtures for measuring review efficacy without live targets or exploit payloads.",
+  "description": "Balanced deterministic defensive fixtures for public-safe regression measurement without live targets or exploit payloads.",
   "public_safe": true,
   "schema_version": "1"
 }

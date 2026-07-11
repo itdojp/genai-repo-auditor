@@ -1,0 +1,71 @@
+{
+  "case_id": "dependency-supply-chain/dependency-control-001",
+  "case_version": "1.0.0+sha256.bb70cadf8c3da5b10a4f978d014aac4eca00cb8fd8cc28897cff68accb83a627",
+  "category": "dependency-supply-chain",
+  "classification": "negative_control",
+  "description": "A lookalike synthetic dependency graph records the advisory metadata without an application reachability path.",
+  "fixture": {
+    "credentials_included": false,
+    "external_hosts": [],
+    "files": [
+      {
+        "path": "dependency-graph.json",
+        "sha256": "170432e406674883f90870fa0ef1a08791362cba66b679b0c883674ce3535c78"
+      }
+    ],
+    "network_required": false,
+    "non_deployable": true,
+    "root": ".",
+    "weaponized_payloads_included": false
+  },
+  "framework": "dependency-graph-fixture",
+  "ground_truth": {
+    "negative_controls": [
+      {
+        "control_property": "The fixture dependency has no path from the local application entry point.",
+        "id": "NC-005",
+        "location": {
+          "end_line": 7,
+          "file": "dependency-graph.json",
+          "line": 7,
+          "symbol": "empty reachable_from path"
+        },
+        "resembles": "synthetic advisory metadata for a transitive dependency",
+        "taxonomy": [
+          {
+            "id": "SC-REACHABLE-DEPENDENCY",
+            "system": "SUPPLY-CHAIN"
+          }
+        ]
+      }
+    ],
+    "positive_findings": []
+  },
+  "language": "json",
+  "limitations": [
+    "This synthetic case is regression evidence only and does not establish production detection performance.",
+    "The fixture is an inert policy or code model, not a deployable service, workflow, or exploit procedure."
+  ],
+  "public_safe": true,
+  "schema_version": "1",
+  "stage_expectations": {
+    "optional": [
+      "recon",
+      "targets",
+      "scanner-plan",
+      "scanner-triage",
+      "chains",
+      "proofs",
+      "evidence-graph"
+    ],
+    "prohibited": [
+      "issue-publication"
+    ],
+    "required": [
+      "target-research",
+      "adversarial-validation",
+      "metrics"
+    ]
+  },
+  "title": "Unreachable synthetic dependency negative control"
+}

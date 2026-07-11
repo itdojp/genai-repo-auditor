@@ -218,7 +218,7 @@ jobs:
           import sys
           sys.path.insert(0, str(gra.resource_root() / "lib"))
           from efficacy_corpus import load_corpus
-          assert len(load_corpus(gra.resource_root())["cases"]) >= 8
+          assert len(load_corpus(gra.resource_root())["cases"]) >= 20
           '@
           $probe | & $python
           $commands = (& $python -c "from genai_repo_auditor.cli import COMMANDS; print(chr(10).join(COMMANDS))") -split "`n" | Where-Object { $_ }

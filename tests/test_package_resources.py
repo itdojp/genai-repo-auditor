@@ -264,6 +264,10 @@ class PackageResourceTests(unittest.TestCase):
             "share/genai-repo-auditor/benchmarks/corpus/cases/ai-agent-mcp/tool-control-001",
             "share/genai-repo-auditor/benchmarks/corpus/cases/dependency-supply-chain/dependency-path-001",
         }
+        expected_destinations.update(
+            f"share/genai-repo-auditor/{manifest.parent.relative_to(REPO_ROOT).as_posix()}"
+            for manifest in (REPO_ROOT / "benchmarks" / "corpus" / "cases").glob("*/*/case.json")
+        )
         self.assertEqual(expected_destinations, data_files)
         serialized = pyproject
         forbidden_terms = [
