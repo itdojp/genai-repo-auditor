@@ -141,9 +141,15 @@ Scanner outputs imported with `gra-ingest` are stored under:
 
 ```text
 reports/scanner-results/
+reports/scanner-runs.json
+reports/SCANNER_RUNS.md
 ```
 
-Scanner outputs are treated as untrusted leads. `gra-scanner-triage` may promote a lead to a finding only after repository-context validation.
+`gra-scan --execute` routes successful local static/SCA/SBOM output through
+normalization and records bounded execution metadata. Scanner outputs are
+treated as untrusted leads. `gra-scanner-triage` may promote a lead to a finding
+only after repository-context validation. Raw scanner bodies stay local and are
+not copied into scanner-run reports, metrics, evidence graphs, or command events.
 
 ## Persistent local store
 

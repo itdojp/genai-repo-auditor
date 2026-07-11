@@ -57,6 +57,18 @@ class ScannerNormalizeTests(unittest.TestCase):
         self.assertNotIn(aws_id, text)
         self.assertIn("sk_live_...cdef", text)
         self.assertIn("AKIA...MNOP", text)
+        self.assertEqual(2, normalized["normalization"]["redaction_count"])
+
+    def test_redacts_secret_like_scanner_metadata_fields(self) -> None:
+        token = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
+        path = self.write_json(
+            "metadata-secret.json",
+            [{"RuleID": token, "Severity": token, "File": token, "Secret": "opaque-value"}],
+        )
+        normalized = self.normalize("gitleaks", path)
+        serialized = json.dumps(normalized)
+        self.assertNotIn(token, serialized)
+        self.assertEqual(4, normalized["normalization"]["redaction_count"])
 
     def test_normalizes_semgrep_and_sarif_locations(self) -> None:
         semgrep = self.write_json(

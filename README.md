@@ -228,9 +228,14 @@ local/private until reviewed.
 
 ## Scanner integration
 
-GenAI Repo Auditor does not run external scanners by default. It ingests scanner output and lets the AI agent triage leads in repository context.
+GenAI Repo Auditor does not run scanners by default. Operators may ingest an
+existing output or explicitly execute one of the approved offline Gitleaks/Syft
+adapters. Explicit execution automatically normalizes/redacts successful output
+and writes bounded scanner-run metadata; all leads remain review-only.
 
 ```bash
+gra-scan --run runs/OWNER__REPO/RUN_ID --tool gitleaks --plan
+gra-scan --run runs/OWNER__REPO/RUN_ID --tool gitleaks --execute --sandbox-profile container
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool semgrep --file semgrep.json --format json
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool codeql --file codeql.sarif --format sarif
 gra-ingest --run runs/OWNER__REPO/RUN_ID --tool scorecard --file scorecard.json --format json

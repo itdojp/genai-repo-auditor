@@ -13,6 +13,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 from scanner_adapters import ADAPTERS  # noqa: E402
 from scanner_runner import (  # noqa: E402
     CONTAINER_IMAGES,
+    CONTAINER_TOOL_VERSIONS,
     ScannerExecutionError,
     _container_command,
     _directory_size,
@@ -25,9 +26,12 @@ from scanner_runner import (  # noqa: E402
 class ScannerRunnerTests(TestCase):
     def test_every_adapter_uses_an_immutable_container_digest(self) -> None:
         self.assertEqual(set(ADAPTERS), set(CONTAINER_IMAGES))
+        self.assertEqual(set(ADAPTERS), set(CONTAINER_TOOL_VERSIONS))
         for image in CONTAINER_IMAGES.values():
             self.assertRegex(image, re.compile(r"^[a-z0-9.-]+/[a-z0-9./-]+@sha256:[a-f0-9]{64}$"))
             self.assertNotIn(":latest", image)
+        for version in CONTAINER_TOOL_VERSIONS.values():
+            self.assertRegex(version, re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$"))
 
     def test_runtime_environment_removes_remote_and_credential_configuration(self) -> None:
         safe = _safe_runtime_environment(

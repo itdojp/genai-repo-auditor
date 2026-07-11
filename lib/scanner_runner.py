@@ -29,6 +29,10 @@ CONTAINER_IMAGES = {
     "gitleaks": "ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f",
     "syft": "ghcr.io/anchore/syft@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb",
 }
+CONTAINER_TOOL_VERSIONS = {
+    "gitleaks": "8.30.1",
+    "syft": "1.46.0",
+}
 EXECUTION_PROFILES = ("container", "gvisor")
 _LOG_LIMIT_BYTES = 1_000_000
 _POLL_SECONDS = 0.05
@@ -295,6 +299,9 @@ def execute_scan(
     image = CONTAINER_IMAGES.get(adapter.id)
     if not image or "@sha256:" not in image:
         raise ScannerExecutionError(f"adapter {adapter.id} does not declare an immutable container image")
+    tool_version = CONTAINER_TOOL_VERSIONS.get(adapter.id)
+    if not tool_version:
+        raise ScannerExecutionError(f"adapter {adapter.id} does not declare a container tool version")
 
     plan = build_scan_plan(
         run_dir,
@@ -313,7 +320,7 @@ def execute_scan(
     if target_resolved == reports_resolved or target_resolved in reports_resolved.parents or reports_resolved in target_resolved.parents:
         raise ScannerExecutionError("target repository and reports directory must not overlap for execution")
     if output.exists() or output.is_symlink():
-        raise ScannerExecutionError("raw scanner output already exists; use a fresh run or remove it explicitly")
+        raise ScannerExecutionError("raw scanner output already exists; use a fresh run to preserve immutable evidence")
     scanner_results = output.parent.parent
     _ensure_directory(scanner_results, root=run_dir)
     _ensure_directory(output.parent, root=run_dir)
@@ -465,6 +472,7 @@ def execute_scan(
                                 "network_policy": network_policy,
                                 "runtime": runtime,
                                 "image": image,
+                                "tool_version": tool_version,
                                 "status": status,
                                 "exit_code": returncode,
                                 "duration_ms": duration_ms,
@@ -487,6 +495,7 @@ def execute_scan(
         "network_policy": network_policy,
         "runtime": runtime,
         "image": image,
+        "tool_version": tool_version,
         "status": status,
         "exit_code": returncode,
         "duration_ms": duration_ms,

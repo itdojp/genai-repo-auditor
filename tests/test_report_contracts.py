@@ -171,6 +171,7 @@ class ReportContractTests(unittest.TestCase):
         findings_schema = self.load_json(SCHEMAS / "findings.schema.json")
         target_schema = self.load_json(SCHEMAS / "targets.schema.json")
         scanner_schema = self.load_json(SCHEMAS / "scanner-index.schema.json")
+        scanner_runs_schema = self.load_json(SCHEMAS / "scanner-runs.schema.json")
         scanner_adapter_schema = self.load_json(SCHEMAS / "scanner-adapter.schema.json")
         scanner_plan_schema = self.load_json(SCHEMAS / "scanner-plan.schema.json")
         manifest_schema = self.load_json(SCHEMAS / "run-manifest.schema.json")
@@ -305,6 +306,12 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual({"tool", "path", "format", "imported_at"}, set(scanner_result["required"]))
         for normalized_field in ["normalized_path", "normalized_leads_count", "normalization"]:
             self.assertIn(normalized_field, scanner_result["properties"])
+        self.assertEqual(
+            {"schema_version", "run_id", "repo", "generated_at", "source", "safety", "summary", "runs"},
+            set(scanner_runs_schema["required"]),
+        )
+        self.assertEqual(1000, scanner_runs_schema["properties"]["runs"]["maxItems"])
+        self.assertEqual("review-only", scanner_runs_schema["properties"]["runs"]["items"]["properties"]["finding_status"]["const"])
 
         self.assertEqual(
             {
@@ -669,6 +676,7 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual(
             [
                 "target",
+                "scanner_run",
                 "scanner_lead",
                 "finding",
                 "chain",

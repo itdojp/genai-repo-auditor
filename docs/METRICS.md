@@ -36,6 +36,8 @@ Metrics are computed from local report artifacts only:
 - issue publication plan selected findings and warning counts
 - issue ledger tracked, published, status, and drift-warning counts
 - duplicate decision total, exact-match count, candidate Issue references, and decision buckets
+- scanner execution counts by status/adapter, total and maximum duration,
+  result/normalized-lead counts, and redaction counts from `scanner-runs.json`
 - command event counts, status/duration summaries, failures, reruns, retries,
   execution-configuration coverage, artifact-reference production counts,
   stage-group counts, and producer coverage
@@ -67,7 +69,9 @@ and simple status flags:
 - `benchmark.artifact_present`, `overall_status`, gate totals, warnings, and
   failures when `reports/benchmark.json` is present
 - `scanner.artifact_present`, `result_count`, and
-  `normalized_leads_count` when scanner index artifacts are present
+  `normalized_leads_count` when scanner index artifacts are present, plus
+  scanner-run presence, execution/status counts, bounded duration, and
+  redaction counts when `scanner-runs.json` is present
 - `workflow_profile.artifact_present`, `profile`,
   `skipped_by_scope_count`, and status counts when
   `reports/workflow-profile.json` is present
@@ -87,7 +91,7 @@ Instrumented workflow commands append structured JSONL command events to
 `context.json` and defaults to `reports/`. Producers cover the audit entry
 point, recon, target queue operations, target research, gapfill, variant
 analysis, chain synthesis, safe proofs, adversarial validation, remediation,
-trace reachability, scanner ingestion, external finding import, scanner triage,
+trace reachability, scanner execution/ingestion, external finding import, scanner triage,
 Issue publication preview/planning, report validation, metrics generation,
 dogfood benchmarking, evidence-graph generation, dashboard rendering, SARIF
 export, and SQLite store import. `gra-metrics` accepts both Issue #116 version

@@ -53,6 +53,17 @@
             "failed_stages": {"type": "array", "items": {"type": "string"}}
           }
         },
+        "scanner_runs": {
+          "type": "object",
+          "required": ["artifact_present", "run_count", "by_status", "total_duration_ms", "maximum_duration_ms"],
+          "properties": {
+            "artifact_present": {"type": "boolean"},
+            "run_count": {"type": "integer", "minimum": 0},
+            "by_status": {"type": "object"},
+            "total_duration_ms": {"type": "integer", "minimum": 0},
+            "maximum_duration_ms": {"type": "integer", "minimum": 0}
+          }
+        },
         "high_critical_issue_recommended_findings": {"type": "integer", "minimum": 0},
         "high_critical_with_supporting_evidence": {"type": "integer", "minimum": 0},
         "high_critical_with_challenging_evidence": {"type": "integer", "minimum": 0}
@@ -65,13 +76,16 @@
         "required": ["id", "type", "ref_id", "label", "path", "summary"],
         "properties": {
           "id": {"type": "string"},
-          "type": {"enum": ["target", "scanner_lead", "finding", "chain", "proof", "validation", "trace", "remediation_candidate", "patch_validation", "issue_plan_entry", "metric", "workflow_profile", "workflow_stage"]},
+          "type": {"enum": ["target", "scanner_run", "scanner_lead", "finding", "chain", "proof", "validation", "trace", "remediation_candidate", "patch_validation", "issue_plan_entry", "metric", "workflow_profile", "workflow_stage"]},
           "ref_id": {"type": "string"},
           "label": {"type": "string"},
           "severity": {"type": "string"},
           "status": {"type": "string"},
           "path": {"type": "string"},
-          "summary": {"type": "string", "maxLength": 200}
+          "summary": {"type": "string", "maxLength": 200},
+          "duration_ms": {"type": "integer", "minimum": 0},
+          "result_count": {"type": "integer", "minimum": 0},
+          "normalized_leads_count": {"type": "integer", "minimum": 0}
         }
       }
     },

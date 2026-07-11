@@ -35,6 +35,7 @@ The graph is generated from local run artifacts only:
 - `<reports_dir>/findings.json`
 - `<reports_dir>/targets.json`
 - `<reports_dir>/scanner-results/scanner-index.json`
+- `<reports_dir>/scanner-runs.json`
 - `<reports_dir>/chains.json`
 - `<reports_dir>/proofs.json`
 - `<reports_dir>/validation.json`
@@ -56,6 +57,7 @@ custom report paths.
 Node types:
 
 - `target`
+- `scanner_run`
 - `scanner_lead`
 - `finding`
 - `chain`
@@ -94,6 +96,8 @@ The evidence graph is local/private by default. It stores bounded metadata only:
 - validation decisions and missing-evidence challenge links
 - chain/proof/trace/remediation/Issue-plan IDs and status
 - workflow-profile and stage IDs, status, and scoped-skip counts
+- scanner adapter/status, bounded execution duration/counts, and links to
+  normalized review-only lead artifacts
 - aggregate node/edge counts
 
 It must not copy raw finding evidence, root cause text, impact text, remediation

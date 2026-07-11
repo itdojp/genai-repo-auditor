@@ -35,7 +35,24 @@ capability drop、resource limit 付きで起動します。image pull は実行
 network allowance、未取得 image、timeout、output/result 上限超過、symlink または
 unexpected output、scanner failure は fail-closed です。成功時のみ raw JSON を
 `reports/scanner-results/raw/` に移動します。この raw result は `review-only` であり、
-confirmed finding や Issue 推奨には自動昇格しません。
+confirmed finding や Issue 推奨には自動昇格しません。成功した output は自動的に
+`gra-ingest` と共通の normalization/redaction/indexing boundary を通り、
+`reports/scanner-results/normalized/` の bounded lead と scanner index に反映されます。
+
+run/tool/report preflight を通過した各 `--execute` は sanitized `gra-scan` command event を追記し、次の public-safe な
+実行 metadata report を更新します。
+
+```text
+reports/scanner-runs.json
+reports/SCANNER_RUNS.md
+```
+
+これらには adapter/version、image digest、status、duration、result/normalized lead
+count、redaction count のみを記録し、raw scanner body、secret 値、raw output path は
+含めません。scanner failure は failed として記録され、clean scan として扱われません。
+evidence reference の不変性を保つため、同一 adapter の成功実行は 1 run directory
+につき 1 回です。再実行には新しい run directory を使用し、過去の raw/normalized
+artifact path を削除して再利用しないでください。
 
 ## 既存 scanner output の取り込み
 
