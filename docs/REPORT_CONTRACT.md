@@ -279,7 +279,7 @@ artifact references.
 Current v2 producers include `gra-audit`, `gra-recon`, `gra-targets`,
 `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`,
 `gra-remediate`, `gra-adversarial-validate`, `gra-trace`, `gra-ingest`,
-`gra-import-findings`, `gra-scanner-triage`, `gra-issues`,
+`gra-scan`, `gra-import-findings`, `gra-scanner-triage`, `gra-issues`,
 `gra-validate-report`, `gra-metrics`, `gra-benchmark`,
 `gra-evidence-graph`, `gra-dashboard`, `gra-sarif`, and `gra-store`.
 Ingestion, publication, reporting, and store events contain only bounded
@@ -297,12 +297,12 @@ normalization counts.
 
 Producer coverage uses the current completion-event producer set as its
 denominator, not the broader `COMMAND_EVENT_COMMANDS` allowlist. The following
-14 command names are accepted by the schema/reader as utility, orchestrator, or
+13 command names are accepted by the schema/reader as utility, orchestrator, or
 reserved command names but are intentionally excluded from producer coverage
 because they do not currently emit completion events: `gra-agent-check`,
 `gra-batch`, `gra-doctor`, <code>gra&#45;efficacy-benchmark</code>, `gra-index`,
 `gra-no-findings`, `gra-novelty`, <code>gra&#45;run</code>, `gra-run-state`,
-`gra-sandbox-check`, `gra-scan`, `gra-taxonomy-preflight`,
+`gra-sandbox-check`, `gra-taxonomy-preflight`,
 `gra-workflow-profile`, and `gra-worktree-check`. This is an acceptance/coverage
 exception only; it does not imply those command names are invalid in the shared
 event contract.
@@ -432,6 +432,13 @@ Important constraints:
   `.json` files under `reports/scanner-results/normalized/`, and
   `normalized_leads_count`, `raw_bytes`, and `normalization` metadata must match
   the referenced normalized artifact.
+- If `reports/scanner-runs.json` exists, it must match
+  `templates/reports/scanner-runs.schema.json`, contain at most 1,000 records,
+  and use public-safe review-only safety flags. Summary status/timing/result/
+  redaction counts must match the bounded execution records. Normalized-result
+  and scanner-index references must remain under `reports/scanner-results/`.
+  Raw scanner bodies, secret values, and raw-output paths are prohibited from
+  this report and `SCANNER_RUNS.md`.
 - If `reports/supply-chain-posture.json` exists, its Scorecard check reasons and
   details must be treated as posture leads. Promote them to findings only after
   repository context confirms concrete file/line evidence and impact.

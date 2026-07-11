@@ -34,24 +34,34 @@ def _mask_secret(value: str) -> str:
     return value[:4] + "..." + value[-4:]
 
 
-def redact_text(value: object) -> str:
+def redact_text_with_count(value: object) -> tuple[str, int]:
     text = "" if value is None else str(value)
+    redaction_count = 0
     for label, pattern in REDACTION_PATTERNS:
         if label == "private-key":
-            text = pattern.sub("<REDACTED:private-key>", text)
+            text, count = pattern.subn("<REDACTED:private-key>", text)
         else:
-            text = pattern.sub(lambda m: _mask_secret(m.group(0)), text)
+            text, count = pattern.subn(lambda m: _mask_secret(m.group(0)), text)
+        redaction_count += count
     if len(text) > MAX_EVIDENCE_CHARS:
         text = text[:MAX_EVIDENCE_CHARS] + "...<truncated>"
-    return text
+    return text, redaction_count
+
+
+def redact_text(value: object) -> str:
+    return redact_text_with_count(value)[0]
+
+
+def redact_sensitive_field_with_count(value: object) -> tuple[str, int]:
+    text = "" if value is None else str(value)
+    redacted, count = redact_text_with_count(text)
+    if redacted == text and text:
+        return "<REDACTED:scanner-secret>", 1
+    return redacted, count
 
 
 def redact_sensitive_field(value: object) -> str:
-    text = "" if value is None else str(value)
-    redacted = redact_text(text)
-    if redacted == text and text:
-        return "<REDACTED:scanner-secret>"
-    return redacted
+    return redact_sensitive_field_with_count(value)[0]
 
 
 def sha256_short(value: str, length: int = 24) -> str:
@@ -104,8 +114,10 @@ def iter_result_objects(parsed: Any) -> List[Dict[str, Any]]:
 
 
 def normalize_result(tool: str, item: Dict[str, Any], index: int, raw_result_ref: str) -> Dict[str, Any]:
-    rule_id = first_value(item, ["RuleID", "rule_id", "ruleId", "check_id", "DetectorName", "detector_name", "type"]) or "unknown"
-    severity = str(first_value(item, ["Severity", "severity", "level"]) or ("high" if tool.lower() in {"gitleaks", "trufflehog"} else "unknown")).lower()
+    raw_rule_id = first_value(item, ["RuleID", "rule_id", "ruleId", "check_id", "DetectorName", "detector_name", "type"]) or "unknown"
+    rule_id, rule_id_redactions = redact_text_with_count(raw_rule_id)
+    raw_severity = str(first_value(item, ["Severity", "severity", "level"]) or ("high" if tool.lower() in {"gitleaks", "trufflehog"} else "unknown")).lower()
+    severity, severity_redactions = redact_text_with_count(raw_severity)
     path = first_value(item, ["File", "file", "path", "Path", "uri"])
     path = path or nested_get(item, ["SourceMetadata", "Data", "Git", "file"])
     path = path or nested_get(item, ["location", "path"])
@@ -113,7 +125,7 @@ def normalize_result(tool: str, item: Dict[str, Any], index: int, raw_result_ref
         first_location = item["locations"][0]
         if isinstance(first_location, dict):
             path = nested_get(first_location, ["physicalLocation", "artifactLocation", "uri"])
-    path = str(path or "")
+    path, path_redactions = redact_text_with_count(path or "")
     line = coerce_int(first_value(item, ["StartLine", "Line", "line", "start_line"]))
     if line is None:
         line = coerce_int(nested_get(item, ["SourceMetadata", "Data", "Git", "line"]))
@@ -131,13 +143,16 @@ def normalize_result(tool: str, item: Dict[str, Any], index: int, raw_result_ref
     if evidence_source is None and "extra" in item and isinstance(item["extra"], dict):
         evidence_source = first_value(item["extra"], ["message", "metadata", "lines"])
     if sensitive_evidence is not None:
-        redacted_evidence = redact_sensitive_field(sensitive_evidence)
+        redacted_evidence, evidence_redactions = redact_sensitive_field_with_count(sensitive_evidence)
     else:
-        redacted_evidence = redact_text(evidence_source if evidence_source is not None else json.dumps(item, sort_keys=True)[:MAX_EVIDENCE_CHARS])
+        redacted_evidence, evidence_redactions = redact_text_with_count(
+            evidence_source if evidence_source is not None else json.dumps(item, sort_keys=True)[:MAX_EVIDENCE_CHARS]
+        )
+    redaction_count = rule_id_redactions + severity_redactions + path_redactions + evidence_redactions
     fingerprint_source = "|".join([tool, str(rule_id), path, str(line or ""), redacted_evidence, str(index)])
     return {
         "tool": tool,
-        "rule_id": str(rule_id),
+        "rule_id": rule_id,
         "severity": severity,
         "path": path,
         "line": line,
@@ -145,6 +160,7 @@ def normalize_result(tool: str, item: Dict[str, Any], index: int, raw_result_ref
         "fingerprint": sha256_short(fingerprint_source),
         "raw_result_ref": raw_result_ref,
         "raw_result_index": index,
+        "redaction_count": redaction_count,
     }
 
 
@@ -185,7 +201,7 @@ def normalize_scanner_file(*, tool: str, raw_path: Path, raw_result_ref: str) ->
         else:
             truncated_input = raw_size > MAX_TEXT_BYTES
             truncated_results = False
-            redacted = redact_text(text_sample)
+            redacted, sample_redaction_count = redact_text_with_count(text_sample)
             leads.append({
                 "tool": tool,
                 "rule_id": "unparsed-text",
@@ -196,7 +212,13 @@ def normalize_scanner_file(*, tool: str, raw_path: Path, raw_result_ref: str) ->
                 "fingerprint": sha256_short("|".join([tool, raw_result_ref, redacted])),
                 "raw_result_ref": raw_result_ref,
                 "raw_result_index": 0,
+                "redaction_count": sample_redaction_count,
             })
+    redaction_count = sum(
+        int(lead.get("redaction_count") or 0)
+        for lead in leads
+        if isinstance(lead, dict) and isinstance(lead.get("redaction_count"), int)
+    )
     return {
         "tool": tool,
         "raw_result_ref": raw_result_ref,
@@ -209,6 +231,7 @@ def normalize_scanner_file(*, tool: str, raw_path: Path, raw_result_ref: str) ->
             "input_truncated": truncated_input,
             "results_truncated": truncated_results,
             "parse_error": parse_error,
+            "redaction_count": redaction_count,
         },
         "leads": leads,
     }

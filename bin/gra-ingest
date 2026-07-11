@@ -3,18 +3,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import shutil
 import sys
 from pathlib import Path
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
-from gralib import load_context, load_json, utc_now, write_json
-from dependency_posture import append_dependency_posture_targets, should_ingest_dependencies, write_dependency_artifacts
-from scanner_normalize import normalize_scanner_file
-from scorecard_posture import append_scorecard_posture_targets, write_scorecard_posture_artifacts
-from run_events import EventWriteError, append_command_event, preflight_command_event, reports_dir, start_command_event
+from scanner_ingest import build_scanner_ingest_plan, ingest_scanner_file, safe_tool_name
+from run_events import EventWriteError, append_command_event, preflight_command_event, start_command_event
 
 
 def main() -> int:
@@ -29,7 +25,7 @@ def main() -> int:
 
     run_dir = Path(args.run).resolve()
     started_at, started_perf = start_command_event()
-    safe_tool = ''.join(ch if ch.isalnum() or ch in '-_' else '-' for ch in args.tool.lower())
+    safe_tool = safe_tool_name(args.tool)
     event_subject_id = safe_tool[:128]
     if not event_subject_id:
         event_subject_id = 'unknown-tool'
@@ -54,111 +50,41 @@ def main() -> int:
         )
         return exit_code
 
-    ctx = load_context(run_dir)
     src = Path(args.file).resolve()
     if not src.exists():
         print(f'file not found: {src}', file=sys.stderr)
         return finish(2, error_category='input_validation')
-
-    fmt = args.format
-    if fmt == 'auto':
-        suffix = src.suffix.lower().lstrip('.')
-        fmt = suffix or 'unknown'
     try:
-        reports = reports_dir(run_dir)
-    except OSError as exc:
-        print(f'command event preflight failed: {exc}', file=sys.stderr)
-        return 2
-    dest_dir = reports / 'scanner-results'
-    digest = hashlib.sha256(src.read_bytes()).hexdigest()[:12]
-    dest = dest_dir / f'{safe_tool}-{digest}.{fmt}'
-    normalized_path = dest_dir / 'normalized' / f'{safe_tool}-{digest}-leads.json'
-    index_path = dest_dir / 'scanner-index.json'
-    potential_outputs = [dest, normalized_path, index_path]
-    if safe_tool in {'scorecard', 'openssf-scorecard', 'ossf-scorecard'}:
-        potential_outputs.extend(
-            [reports / 'supply-chain-posture.json', reports / 'supply-chain-posture.md', reports / 'targets.json']
+        plan = build_scanner_ingest_plan(
+            run_dir,
+            tool=args.tool,
+            source=src,
+            requested_format=args.format,
         )
-    if should_ingest_dependencies(safe_tool=safe_tool, fmt=fmt):
-        potential_outputs.extend(
-            [reports / 'dependencies.json', reports / 'DEPENDENCY_RISK.md', reports / 'targets.json']
-        )
-    try:
         preflight_command_event(
             run_dir,
             input_artifact_paths=input_artifacts,
-            output_artifact_paths=potential_outputs,
+            output_artifact_paths=plan.output_paths,
         )
-    except EventWriteError as exc:
+    except (EventWriteError, OSError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
-
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, dest)
-    output_artifacts.append(dest)
-    raw_result_ref = str(dest.relative_to(run_dir))
-
-    normalized_dir = dest_dir / 'normalized'
-    normalized_dir.mkdir(parents=True, exist_ok=True)
-    normalized = normalize_scanner_file(tool=args.tool, raw_path=dest, raw_result_ref=raw_result_ref)
-    write_json(normalized_path, normalized)
-    output_artifacts.append(normalized_path)
-
-    data = load_json(index_path, None)
-    if not data:
-        data = {
-            'run_id': ctx.get('run_id', run_dir.name),
-            'repo': ctx.get('repo', ''),
-            'generated_at': utc_now(),
-            'results': [],
-        }
-    entry = {
-        'tool': args.tool,
-        'path': raw_result_ref,
-        'format': fmt,
-        'imported_at': utc_now(),
-        'sha256': digest,
-        'raw_bytes': normalized.get('raw_bytes', 0),
-        'normalized_path': str(normalized_path.relative_to(run_dir)),
-        'normalized_leads_count': len(normalized.get('leads') or []),
-        'normalization': normalized.get('normalization') or {},
-        'note': args.note,
-    }
-    data.setdefault('results', []).append(entry)
-    write_json(index_path, data)
-    output_artifacts.append(index_path)
-    added_scorecard_targets = []
-    if safe_tool in {'scorecard', 'openssf-scorecard', 'ossf-scorecard'}:
-        write_scorecard_posture_artifacts(run_dir=run_dir, raw_path=dest, raw_result_ref=raw_result_ref)
-        output_artifacts.extend([reports / 'supply-chain-posture.json', reports / 'supply-chain-posture.md'])
-        added_scorecard_targets = append_scorecard_posture_targets(run_dir)
-        if added_scorecard_targets:
-            output_artifacts.append(reports / 'targets.json')
-    dependency_data = None
-    if should_ingest_dependencies(safe_tool=safe_tool, fmt=fmt):
-        dependency_data = write_dependency_artifacts(
-            run_dir=run_dir,
-            raw_path=dest,
-            raw_result_ref=raw_result_ref,
-            tool=args.tool,
-            requested_format=fmt,
-        )
-        output_artifacts.extend([reports / 'dependencies.json', reports / 'DEPENDENCY_RISK.md'])
-    print(f'Ingested {src} -> {dest}')
-    print(f'Normalized leads -> {normalized_path}')
+    result = ingest_scanner_file(plan, note=args.note)
+    output_artifacts.extend(result.output_paths)
+    reports = plan.index_path.parent.parent
+    print(f'Ingested {src} -> {plan.destination}')
+    print(f'Normalized leads -> {plan.normalized_path}')
+    if result.added_scorecard_targets:
+        print(f'Added {len(result.added_scorecard_targets)} scorecard-posture target(s)')
+    if result.added_dependency_targets:
+        print(f'Added {len(result.added_dependency_targets)} dependency-posture target(s)')
     if safe_tool in {'scorecard', 'openssf-scorecard', 'ossf-scorecard'}:
         print(f'Wrote {reports / "supply-chain-posture.json"}')
         print(f'Wrote {reports / "supply-chain-posture.md"}')
-        if added_scorecard_targets:
-            print(f'Added {len(added_scorecard_targets)} scorecard-posture target(s)')
-    if dependency_data is not None:
+    if (reports / 'dependencies.json') in result.output_paths:
         print(f'Wrote {reports / "dependencies.json"}')
         print(f'Wrote {reports / "DEPENDENCY_RISK.md"}')
-        added_dependency_targets = append_dependency_posture_targets(run_dir)
-        if added_dependency_targets:
-            output_artifacts.append(reports / 'targets.json')
-            print(f'Added {len(added_dependency_targets)} dependency-posture target(s)')
-    print(f'Updated {index_path}')
+    print(f'Updated {plan.index_path}')
     return finish(0)
 
 

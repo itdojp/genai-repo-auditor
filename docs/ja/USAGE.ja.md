@@ -146,8 +146,10 @@ gra-scan --run "$RUN_DIR" --tool gitleaks --execute --sandbox-profile container 
 
 list/plan は scanner を実行しません。`--execute` は事前取得した digest 固定 image を
 network 無効・read-only target mount の local container で明示実行し、成功した raw
-JSON のみ run directory に保持します。raw output は未確認の `review-only` evidence です。
-normalized lead の生成には次の ingest/triage stage を使用します。
+JSON を run directory に保持します。成功時は normalized lead、scanner index、
+`scanner-runs.json` / `SCANNER_RUNS.md`、sanitized command event も自動生成します。
+raw output と normalized lead は未確認の `review-only` evidence です。外部 scanner
+output を手動取り込みする場合は `gra-ingest` を使用し、確認には triage stage を使用します。
 
 ```bash
 gra-ingest --run "$RUN_DIR" --tool semgrep --file semgrep.json --format json

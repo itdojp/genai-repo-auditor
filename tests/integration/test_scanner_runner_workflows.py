@@ -60,10 +60,13 @@ class ScannerRunnerWorkflowTests(CliWorkflowTestCase):
             "elif mode == 'invalid-output':\n"
             "    output.write_text('not-json')\n"
             "elif adapter == 'gitleaks':\n"
-            "    output.write_text(('[{}]' if mode == 'leads' else '[]') + '\\n')\n"
+            "    if mode == 'secret-lead':\n"
+            "        output.write_text(json.dumps([{'RuleID': 'generic-api-key', 'File': 'config.env', 'StartLine': 7, 'Secret': 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'}]) + '\\n')\n"
+            "    else:\n"
+            "        output.write_text(('[{}]' if mode == 'leads' else '[]') + '\\n')\n"
             "else:\n"
             "    output.write_text(json.dumps({'bomFormat': 'CycloneDX', 'components': []}) + '\\n')\n"
-            "raise SystemExit(10 if mode == 'leads' else (1 if mode == 'partial-error' else 0))\n",
+            "raise SystemExit(10 if mode in {'leads', 'secret-lead'} else (1 if mode == 'partial-error' else 0))\n",
             encoding="utf-8",
         )
         path.chmod(0o755)
@@ -162,6 +165,17 @@ class ScannerRunnerWorkflowTests(CliWorkflowTestCase):
                 self.assertEqual("review-only", result["finding_status"])
                 raw = run_dir / result["raw_output_path"]
                 self.assertTrue(raw.is_file())
+                normalized = run_dir / result["normalized_result_path"]
+                self.assertTrue(normalized.is_file())
+                self.assertEqual("review-only", result["finding_status"])
+                self.assertTrue((run_dir / result["scanner_index_path"]).is_file())
+                self.assertTrue((run_dir / result["scanner_runs_path"]).is_file())
+                events = self.read_command_events(run_dir)
+                self.assertEqual(1, len(events))
+                self.assert_public_command_event(
+                    events[0], command="gra-scan", phase="scan", subject_id=tool
+                )
+                self.assertNotIn(result["raw_output_path"], events[0]["output_artifact_refs"])
                 runtime = json.loads((self.work_dir / f"{tool}-success-runtime.json").read_text(encoding="utf-8"))
                 self.assertIn("--network=none", runtime["args"])
                 self.assertIn("--read-only", runtime["args"])
@@ -192,6 +206,81 @@ class ScannerRunnerWorkflowTests(CliWorkflowTestCase):
         self.assertEqual(10, result["exit_code"])
         self.assertEqual(1, result["result_count"])
         self.assertEqual("review-only", result["finding_status"])
+
+    def test_execute_redacts_ingests_and_summarizes_without_raw_secret_bodies(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        secret = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
+        cp = self.execute_scanner(run_dir, "gitleaks", mode="secret-lead")
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        result = json.loads(cp.stdout)
+        self.assertEqual(1, result["normalized_leads_count"])
+        self.assertEqual(1, result["redaction_count"])
+
+        raw_text = (run_dir / result["raw_output_path"]).read_text(encoding="utf-8")
+        normalized_text = (run_dir / result["normalized_result_path"]).read_text(encoding="utf-8")
+        scanner_runs_text = (run_dir / result["scanner_runs_path"]).read_text(encoding="utf-8")
+        scanner_runs_md = (run_dir / "reports" / "SCANNER_RUNS.md").read_text(encoding="utf-8")
+        events_text = (run_dir / "reports" / "command-events.jsonl").read_text(encoding="utf-8")
+        self.assertIn(secret, raw_text, "raw output remains local and may contain scanner evidence")
+        for public_safe_text in (normalized_text, scanner_runs_text, scanner_runs_md, events_text):
+            self.assertNotIn(secret, public_safe_text)
+        normalized = json.loads(normalized_text)
+        self.assertNotIn("status", normalized["leads"][0])
+        self.assertNotIn("issue_recommended", normalized["leads"][0])
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
+        self.assertEqual(1, metrics["scanner_runs"]["run_count"])
+        self.assertEqual(1, metrics["scanner_runs"]["by_status"]["succeeded"])
+        self.assertGreaterEqual(metrics["scanner_runs"]["total_duration_ms"], 0)
+        self.assertEqual(1, metrics["summary"]["scanner"]["redaction_count"])
+        self.assertNotIn(secret, json.dumps(metrics))
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", run_dir], check=True)
+        graph = json.loads((run_dir / "reports" / "evidence-graph.json").read_text(encoding="utf-8"))
+        self.assertEqual(1, graph["summary"]["scanner_runs"]["run_count"])
+        self.assertGreaterEqual(graph["summary"]["scanner_runs"]["total_duration_ms"], 0)
+        scanner_nodes = [node for node in graph["nodes"] if node["type"] == "scanner_run"]
+        self.assertEqual(1, len(scanner_nodes))
+        self.assertEqual("succeeded", scanner_nodes[0]["status"])
+        self.assertNotIn(secret, json.dumps(graph))
+        self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+
+    def test_successful_adapter_cannot_reuse_paths_after_operator_deletes_artifacts(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        first = self.execute_scanner(run_dir, "gitleaks")
+        self.assertEqual(0, first.returncode, first.stderr)
+        payload = json.loads(first.stdout)
+        (run_dir / payload["raw_output_path"]).unlink()
+        (run_dir / payload["normalized_result_path"]).unlink()
+        runtime_log = self.work_dir / "gitleaks-success-runtime.json"
+        runtime_log.unlink()
+
+        second = self.execute_scanner(run_dir, "gitleaks")
+        self.assertEqual(2, second.returncode)
+        self.assertIn("already completed in this run", second.stderr)
+        self.assertFalse(runtime_log.exists(), "rejected rerun must stop before the container runtime")
+        scanner_runs = json.loads((run_dir / "reports" / "scanner-runs.json").read_text(encoding="utf-8"))
+        self.assertEqual(1, scanner_runs["summary"]["run_count"])
+
+    def test_poisoned_scanner_report_fails_before_container_execution(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        first = self.execute_scanner(run_dir, "gitleaks")
+        self.assertEqual(0, first.returncode, first.stderr)
+        payload = json.loads(first.stdout)
+        (run_dir / payload["raw_output_path"]).unlink()
+        (run_dir / payload["normalized_result_path"]).unlink()
+        report_path = run_dir / "reports" / "scanner-runs.json"
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        report["runs"][0]["scanner_status"] = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
+        report_path.write_text(json.dumps(report) + "\n", encoding="utf-8")
+        runtime_log = self.work_dir / "gitleaks-success-runtime.json"
+        runtime_log.unlink()
+
+        second = self.execute_scanner(run_dir, "gitleaks")
+        self.assertEqual(2, second.returncode)
+        self.assertIn("unredacted secret", second.stderr)
+        self.assertFalse(runtime_log.exists(), "unsafe report must stop before the container runtime")
 
     def test_execute_enforces_timeout_and_output_limit(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -236,6 +325,7 @@ class ScannerRunnerWorkflowTests(CliWorkflowTestCase):
         )
         self.assertEqual(2, cp_network.returncode)
         self.assertIn("offline-only", cp_network.stderr)
+        report_before_profile = json.loads((run_dir / "reports" / "scanner-runs.json").read_text(encoding="utf-8"))
         cp_vm = self.run_cmd(
             [
                 REPO_ROOT / "bin" / "gra-scan",
@@ -250,6 +340,9 @@ class ScannerRunnerWorkflowTests(CliWorkflowTestCase):
         )
         self.assertEqual(2, cp_vm.returncode)
         self.assertIn("container or gvisor", cp_vm.stderr)
+        report_after_profile = json.loads((run_dir / "reports" / "scanner-runs.json").read_text(encoding="utf-8"))
+        self.assertEqual(report_before_profile, report_after_profile)
+        self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
 
     def test_execute_rejects_overlapping_target_and_reports_paths(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -264,6 +357,8 @@ class ScannerRunnerWorkflowTests(CliWorkflowTestCase):
         )
         self.assertEqual(2, cp.returncode)
         self.assertIn("must not overlap", cp.stderr)
+        self.assertFalse((run_dir / "repo" / "reports").exists())
+        self.assertFalse((run_dir / "repo" / "reports" / "command-events.jsonl").exists())
 
     def test_planning_rejects_unknown_tools_unsafe_paths_and_network(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

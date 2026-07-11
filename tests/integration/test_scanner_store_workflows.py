@@ -7,8 +7,105 @@ try:
 except ImportError:
     from support import *  # noqa: F401,F403
 
+from scanner_reporting import append_scanner_run, build_scanner_run_record  # noqa: E402
+
 
 class ScannerStoreWorkflowTests(CliWorkflowTestCase):
+    def test_evidence_graph_distinguishes_absent_and_empty_scanner_run_report(self) -> None:
+        absent_run = self.copy_fixture_run("minimal-run")
+        self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", absent_run], check=True)
+        absent_graph = json.loads((absent_run / "reports" / "evidence-graph.json").read_text(encoding="utf-8"))
+        self.assertFalse(absent_graph["summary"]["scanner_runs"]["artifact_present"])
+        self.assertIn("reports/scanner-runs.json", absent_graph["summary"]["missing_optional_artifacts"])
+
+        empty_run = self.copy_fixture_run("minimal-run")
+        empty_report = {
+            "schema_version": "1",
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "generated_at": "2026-07-11T00:00:00Z",
+            "source": "local-scanner-execution",
+            "safety": {
+                "public_safe": True,
+                "raw_scanner_bodies_copied": False,
+                "secret_values_copied": False,
+                "review_only": True,
+            },
+            "summary": {
+                "run_count": 0,
+                "by_status": {},
+                "by_adapter": {},
+                "total_duration_ms": 0,
+                "maximum_duration_ms": 0,
+                "result_count": 0,
+                "normalized_leads_count": 0,
+                "redaction_count": 0,
+            },
+            "runs": [],
+        }
+        (empty_run / "reports" / "scanner-runs.json").write_text(
+            json.dumps(empty_report) + "\n", encoding="utf-8"
+        )
+        self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", empty_run], check=True)
+        empty_graph = json.loads((empty_run / "reports" / "evidence-graph.json").read_text(encoding="utf-8"))
+        self.assertTrue(empty_graph["summary"]["scanner_runs"]["artifact_present"])
+        self.assertEqual(0, empty_graph["summary"]["scanner_runs"]["run_count"])
+        self.assertNotIn("reports/scanner-runs.json", empty_graph["summary"]["missing_optional_artifacts"])
+
+    def test_metrics_and_evidence_graph_reject_noncanonical_scanner_run_refs(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        (run_dir / "reports").rename(run_dir / "artifacts")
+        context_path = run_dir / "context.json"
+        context = json.loads(context_path.read_text(encoding="utf-8"))
+        context["reports_dir"] = "artifacts"
+        context_path.write_text(json.dumps(context) + "\n", encoding="utf-8")
+        scanner_results = run_dir / "artifacts" / "scanner-results"
+        normalized = scanner_results / "normalized" / "gitleaks-leads.json"
+        normalized.parent.mkdir(parents=True)
+        normalized.write_text('{"leads": []}\n', encoding="utf-8")
+        scanner_index = scanner_results / "scanner-index.json"
+        scanner_index.write_text('{"results": []}\n', encoding="utf-8")
+        record = build_scanner_run_record(
+            adapter_id="gitleaks",
+            tool_version="8.30.1",
+            image="gitleaks@sha256:" + "a" * 64,
+            status="succeeded",
+            scanner_status="completed-no-leads",
+            started_at="2026-07-11T00:00:00Z",
+            ended_at="2026-07-11T00:00:01Z",
+            duration_ms=1000,
+            scanner_exit_code=0,
+            result_count=0,
+            normalized_leads_count=0,
+            redaction_count=0,
+            sandbox_profile="container",
+            runtime="docker",
+            network_accessed=False,
+            result_classification="scanner-leads",
+            normalized_result_ref="artifacts/scanner-results/normalized/gitleaks-leads.json",
+            scanner_index_ref="artifacts/scanner-results/scanner-index.json",
+        )
+        report, report_path, _ = append_scanner_run(run_dir, record)
+        report["runs"][0]["scanner_index_ref"] = "reports/scanner-results/scanner-index.json"
+        report_path.write_text(json.dumps(report) + "\n", encoding="utf-8")
+
+        for command in ("gra-evidence-graph", "gra-metrics"):
+            cp = self.run_cmd([REPO_ROOT / "bin" / command, "--run", run_dir])
+            self.assertEqual(2, cp.returncode, f"{command}: {cp.stdout}\n{cp.stderr}")
+            self.assertIn("scanner-runs.json is not public-safe", cp.stderr)
+            self.assertNotIn("Traceback", cp.stderr)
+
+    def test_evidence_graph_rejects_malformed_scanner_runs_without_traceback(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        scanner_runs = run_dir / "reports" / "scanner-runs.json"
+        scanner_runs.write_text("[]\n", encoding="utf-8")
+
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", run_dir])
+
+        self.assertEqual(2, cp.returncode)
+        self.assertIn("scanner-runs.json is not public-safe", cp.stderr)
+        self.assertNotIn("Traceback", cp.stderr)
+
     def test_reporting_failures_emit_events_after_successful_preflight(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         dashboard_out = run_dir / "reports" / "dashboard-output"
@@ -361,6 +458,31 @@ class ScannerStoreWorkflowTests(CliWorkflowTestCase):
         cp_triage = self.run_cmd([REPO_ROOT / "bin" / "gra-scanner-triage", "--run", run_dir])
         self.assertEqual(2, cp_triage.returncode)
         self.assertIn("WARNING: command event was not written", cp_triage.stderr)
+
+    def test_unsupported_dependency_shape_does_not_claim_unwritten_outputs(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        scanner_file = self.work_dir / "trivy-unsupported.json"
+        scanner_file.write_text('{"unsupported": true}\n', encoding="utf-8")
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-ingest",
+                "--run",
+                run_dir,
+                "--tool",
+                "trivy",
+                "--file",
+                scanner_file,
+                "--format",
+                "json",
+            ],
+            check=True,
+        )
+        self.assertNotIn("dependencies.json", cp.stdout)
+        self.assertFalse((run_dir / "reports" / "dependencies.json").exists())
+        event = self.read_command_events(run_dir)[0]
+        self.assertNotIn("reports/dependencies.json", event["output_artifact_refs"])
+        self.assertNotIn("reports/DEPENDENCY_RISK.md", event["output_artifact_refs"])
 
     def test_gra_ingest_rejects_unsafe_reports_dir_before_copying_raw_output(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

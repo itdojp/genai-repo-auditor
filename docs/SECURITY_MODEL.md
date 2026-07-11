@@ -140,6 +140,11 @@ Syft adapters in digest-pinned, pre-pulled container images. `gra-scan
 output directory, applies runtime/resource bounds, and discards failed output.
 It does not execute target code, accept arbitrary scanner arguments, pull
 images, scan hosts/services, or promote output beyond review-only evidence.
+Successful output is automatically normalized and redacted before downstream
+triage. `scanner-runs.json`, `SCANNER_RUNS.md`, metrics, evidence graph nodes,
+and command events contain only bounded status/timing/count metadata and never
+copy raw scanner bodies or secret values. The local raw artifact remains
+private and is not a public-safe report.
 
 ## Repository CI hardening
 

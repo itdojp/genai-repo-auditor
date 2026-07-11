@@ -11,10 +11,12 @@ from report_safety import (
     iter_secret_findings,
     validate_relative_repo_path,
 )
+from scanner_reporting import ScannerReportError, validate_scanner_runs_for_run
 from run_events import (
     COMMAND_EVENT_COMMANDS,
     COMMAND_EVENT_PHASES,
     EventValidationError,
+    reports_dir as configured_reports_dir,
     validate_command_event_payload,
 )
 from workflow_profile import validate_workflow_profile_payload
@@ -25,6 +27,7 @@ from .common import (
     parse_event_time,
     validate_generated_at,
     validate_no_symlink_components,
+    validate_run_artifact_path,
     validate_schema,
     validate_schema_shape,
     validate_string_list,
@@ -126,6 +129,7 @@ EVIDENCE_GRAPH_FORBIDDEN_KEYS = {
 }
 EVIDENCE_GRAPH_NODE_TYPES = {
     "target",
+    "scanner_run",
     "scanner_lead",
     "finding",
     "chain",
@@ -1197,6 +1201,134 @@ def validate_metrics_payload(value: Any, path: str, errors: List[str]) -> None:
             validate_metrics_payload(item, f"{path}[{index}]", errors)
 
 
+def validate_scanner_runs(run_dir: Path, errors: List[str]) -> bool:
+    try:
+        reports = configured_reports_dir(run_dir)
+        reports_rel = reports.relative_to(run_dir)
+    except (OSError, ValueError) as exc:
+        errors.append(f"scanner_runs: invalid reports_dir: {exc}")
+        return True
+    scanner_runs_path = reports_rel / "scanner-runs.json"
+    scanner_results_dir = reports_rel / "scanner-results"
+    normalized_scanner_results_dir = scanner_results_dir / "normalized"
+    scanner_index_path = scanner_results_dir / "scanner-index.json"
+    report_path = run_dir / scanner_runs_path
+    if not report_path.exists():
+        return False
+    try:
+        validate_no_symlink_components(run_dir, scanner_runs_path, field_path="scanner_runs")
+    except ReportSafetyError as exc:
+        errors.append(str(exc))
+        return True
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"scanner-runs.json invalid JSON: {exc}")
+        return True
+    if not isinstance(report, dict):
+        errors.append(f"scanner_runs: expected type object, got {json_type_name(report)}")
+        return True
+    validate_schema(report, load_schema("scanner-runs.schema.json"), "scanner_runs", errors)
+    validate_generated_at(report.get("generated_at"), "scanner_runs.generated_at", errors)
+    safety = report.get("safety") if isinstance(report.get("safety"), dict) else {}
+    if safety != {
+        "public_safe": True,
+        "raw_scanner_bodies_copied": False,
+        "secret_values_copied": False,
+        "review_only": True,
+    }:
+        errors.append("scanner_runs.safety: public-safe review-only scanner safety flags are required")
+    if list(iter_secret_findings(report, field_path="scanner_runs")):
+        errors.append("scanner_runs: contains obvious unredacted secret-like value(s)")
+
+    runs = report.get("runs") if isinstance(report.get("runs"), list) else []
+    status_counts: dict[str, int] = {}
+    adapter_counts: dict[str, int] = {}
+    durations: list[int] = []
+    result_count = 0
+    normalized_leads_count = 0
+    redaction_count = 0
+    for index, item in enumerate(runs):
+        if not isinstance(item, dict):
+            continue
+        path = f"scanner_runs.runs[{index}]"
+        validate_generated_at(item.get("started_at"), f"{path}.started_at", errors)
+        validate_generated_at(item.get("ended_at"), f"{path}.ended_at", errors)
+        started = parse_event_time(item.get("started_at"))
+        ended = parse_event_time(item.get("ended_at"))
+        if started and ended and ended < started:
+            errors.append(f"{path}.ended_at: must not precede started_at")
+        status = str(item.get("status") or "unknown")
+        adapter_id = str(item.get("adapter_id") or "unknown")
+        status_counts[status] = status_counts.get(status, 0) + 1
+        adapter_counts[adapter_id] = adapter_counts.get(adapter_id, 0) + 1
+        duration = item.get("duration_ms")
+        if isinstance(duration, int) and not isinstance(duration, bool) and duration >= 0:
+            durations.append(duration)
+        for field, accumulator in (
+            ("result_count", "result_count"),
+            ("normalized_leads_count", "normalized_leads_count"),
+            ("redaction_count", "redaction_count"),
+        ):
+            value = item.get(field)
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                if accumulator == "result_count":
+                    result_count += value
+                elif accumulator == "normalized_leads_count":
+                    normalized_leads_count += value
+                else:
+                    redaction_count += value
+        normalized_ref = item.get("normalized_result_ref")
+        if normalized_ref is not None:
+            try:
+                validate_run_artifact_path(
+                    run_dir,
+                    normalized_ref,
+                    field_path=f"{path}.normalized_result_ref",
+                    required_root=normalized_scanner_results_dir,
+                    require_json=True,
+                    missing_label="normalized scanner artifact",
+                )
+            except ReportSafetyError as exc:
+                errors.append(str(exc))
+        index_ref = item.get("scanner_index_ref")
+        if index_ref is not None:
+            if index_ref != scanner_index_path.as_posix():
+                errors.append(
+                    f"{path}.scanner_index_ref: must reference {scanner_index_path.as_posix()}"
+                )
+                continue
+            try:
+                validate_run_artifact_path(
+                    run_dir,
+                    index_ref,
+                    field_path=f"{path}.scanner_index_ref",
+                    required_root=scanner_results_dir,
+                    require_json=True,
+                    missing_label="scanner index",
+                )
+            except ReportSafetyError as exc:
+                errors.append(str(exc))
+
+    expected_summary = {
+        "run_count": len(runs),
+        "by_status": dict(sorted(status_counts.items())),
+        "by_adapter": dict(sorted(adapter_counts.items())),
+        "total_duration_ms": sum(durations),
+        "maximum_duration_ms": max(durations, default=0),
+        "result_count": result_count,
+        "normalized_leads_count": normalized_leads_count,
+        "redaction_count": redaction_count,
+    }
+    if report.get("summary") != expected_summary:
+        errors.append("scanner_runs.summary: value does not match scanner run records")
+    try:
+        validate_scanner_runs_for_run(run_dir, report)
+    except ScannerReportError as exc:
+        errors.append(f"scanner_runs: {exc}")
+    return True
+
+
 def validate_metrics(run_dir: Path, errors: List[str]) -> bool:
     metrics_path = run_dir / METRICS_PATH
     if not metrics_path.exists():
@@ -1881,6 +2013,7 @@ ADVANCED_VALIDATOR_ORDER = (
     "patch_validations",
     "novelty_ledger",
     "traces",
+    "scanner_runs",
     "metrics",
     "workflow_profile",
     "benchmark",
@@ -1921,6 +2054,7 @@ def register_advanced_validators(registry: Any) -> None:
     registry.register("patch_validations", lambda context: _run_with_findings(context, validate_patch_validations))
     registry.register("novelty_ledger", lambda context: _run_with_findings(context, validate_novelty_ledger))
     registry.register("traces", lambda context: _run_with_findings(context, validate_traces))
+    registry.register("scanner_runs", lambda context: _run_without_findings(context, validate_scanner_runs))
     registry.register("metrics", lambda context: _run_without_findings(context, validate_metrics))
     registry.register("workflow_profile", lambda context: _run_without_findings(context, validate_workflow_profile))
     registry.register("benchmark", lambda context: _run_without_findings(context, validate_benchmark))

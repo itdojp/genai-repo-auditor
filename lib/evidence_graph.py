@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 from collections import Counter
+import json
 from pathlib import Path
 from typing import Any
 
 from gralib import load_context, load_json, utc_now, write_json
+from scanner_reporting import ScannerReportError, validate_scanner_runs_for_run
 from workflow_profile import summarize_workflow_profile
 
 NODE_TYPES = {
     "target",
+    "scanner_run",
     "scanner_lead",
     "finding",
     "chain",
@@ -108,6 +111,12 @@ def short_text(value: Any, *, max_len: int = 160) -> str:
     return text
 
 
+def nonnegative_int(value: Any) -> int:
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return 0
+
+
 def list_strings(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -149,6 +158,8 @@ class EvidenceGraphBuilder:
         self.findings: list[dict[str, Any]] = []
         self.targets: list[dict[str, Any]] = []
         self.scanner_leads: list[dict[str, Any]] = []
+        self.scanner_runs: list[dict[str, Any]] = []
+        self.scanner_runs_present = False
         self.chains: list[dict[str, Any]] = []
         self.proofs: list[dict[str, Any]] = []
         self.validations: list[dict[str, Any]] = []
@@ -220,6 +231,17 @@ class EvidenceGraphBuilder:
             self.scanner_leads = [item for item in scanner_index.get("results") or [] if isinstance(item, dict)]
         else:
             self.missing_optional_artifacts.append(rel_to_run(self.run_dir, scanner_path))
+        scanner_runs_path = self.reports / "scanner-runs.json"
+        if scanner_runs_path.exists():
+            self.scanner_runs_present = True
+            try:
+                scanner_runs = load_json(scanner_runs_path, {}) or {}
+                validate_scanner_runs_for_run(self.run_dir, scanner_runs)
+            except (OSError, json.JSONDecodeError, ScannerReportError) as exc:
+                raise EvidenceGraphSafetyError(f"scanner-runs.json is not public-safe: {exc}") from exc
+            self.scanner_runs = list(scanner_runs["runs"])
+        else:
+            self.missing_optional_artifacts.append(rel_to_run(self.run_dir, scanner_runs_path))
         self.chains = self.load_report_array("chains.json", "chains")
         self.proofs = self.load_report_array("proofs.json", "proofs")
         self.validations = self.load_report_array("validation.json", "validations")
@@ -287,6 +309,24 @@ class EvidenceGraphBuilder:
                 "status": str(lead.get("format") or "unknown"),
                 "path": ref,
                 "summary": short_text(f"{lead.get('tool', 'scanner')} lead {ref}"),
+            })
+        for index, scanner_run in enumerate(self.scanner_runs):
+            run_id = str(scanner_run.get("id") or f"index-{index}")
+            self.add_node({
+                "id": f"scanner_run:{run_id}",
+                "type": "scanner_run",
+                "ref_id": run_id,
+                "label": str(scanner_run.get("adapter_id") or run_id),
+                "severity": "Unknown",
+                "status": str(scanner_run.get("status") or "unknown"),
+                "path": json_pointer(self.report_rel("scanner-runs.json"), "runs", index),
+                "summary": short_text(
+                    f"{scanner_run.get('adapter_id', 'scanner')} {scanner_run.get('scanner_status', 'unknown')} "
+                    f"in {scanner_run.get('duration_ms', 0)} ms"
+                ),
+                "duration_ms": nonnegative_int(scanner_run.get("duration_ms")),
+                "result_count": nonnegative_int(scanner_run.get("result_count")),
+                "normalized_leads_count": nonnegative_int(scanner_run.get("normalized_leads_count")),
             })
         for index, chain in enumerate(self.chains):
             chain_id = str(chain.get("id") or f"index-{index}")
@@ -412,6 +452,21 @@ class EvidenceGraphBuilder:
                 })
 
     def add_edges(self) -> None:
+        scanner_lead_ids = {
+            str(lead.get("normalized_path") or lead.get("path") or ""): f"scanner_lead:{str(lead.get('normalized_path') or lead.get('path') or '')}"
+            for lead in self.scanner_leads
+        }
+        for scanner_run in self.scanner_runs:
+            scanner_run_id = str(scanner_run.get("id") or "")
+            normalized_ref = str(scanner_run.get("normalized_result_ref") or "")
+            lead_node = scanner_lead_ids.get(normalized_ref)
+            if scanner_run_id and lead_node:
+                self.add_edge(
+                    f"scanner_run:{scanner_run_id}",
+                    lead_node,
+                    "produced",
+                    reason="scanner execution produced normalized review-only leads",
+                )
         for target in self.targets:
             target_id = str(target.get("id") or "")
             for finding in self.findings:
@@ -496,6 +551,11 @@ class EvidenceGraphBuilder:
             finding for finding in self.findings
             if str(finding.get("severity") or "") in HIGH_CRITICAL and finding.get("issue_recommended") is not False
         ]
+        scanner_statuses = Counter(str(item.get("status") or "unknown") for item in self.scanner_runs)
+        scanner_durations = [
+            nonnegative_int(item.get("duration_ms"))
+            for item in self.scanner_runs
+        ]
         return {
             "node_count": len(self.nodes),
             "edge_count": len(self.edges),
@@ -503,6 +563,13 @@ class EvidenceGraphBuilder:
             "edge_counts": dict(sorted(edge_counts.items())),
             "missing_optional_artifacts": sorted(set(self.missing_optional_artifacts)),
             "workflow_profile": summarize_workflow_profile(self.workflow_profile),
+            "scanner_runs": {
+                "artifact_present": self.scanner_runs_present,
+                "run_count": len(self.scanner_runs),
+                "by_status": dict(sorted(scanner_statuses.items())),
+                "total_duration_ms": sum(scanner_durations),
+                "maximum_duration_ms": max(scanner_durations, default=0),
+            },
             "high_critical_issue_recommended_findings": len(high_issue_findings),
             "high_critical_with_supporting_evidence": sum(1 for finding in high_issue_findings if f"finding:{finding.get('id')}" in supporting_edges),
             "high_critical_with_challenging_evidence": sum(1 for finding in high_issue_findings if f"finding:{finding.get('id')}" in challenging_edges),
@@ -549,6 +616,7 @@ def write_evidence_graph(run_dir: Path, graph: dict[str, Any]) -> tuple[Path, Pa
 def render_evidence_graph_markdown(path: Path, graph: dict[str, Any]) -> None:
     summary = graph.get("summary") if isinstance(graph.get("summary"), dict) else {}
     workflow_profile = summary.get("workflow_profile") if isinstance(summary.get("workflow_profile"), dict) else {}
+    scanner_runs = summary.get("scanner_runs") if isinstance(summary.get("scanner_runs"), dict) else {}
     lines = [
         "# Evidence Graph",
         "",
@@ -564,6 +632,8 @@ def render_evidence_graph_markdown(path: Path, graph: dict[str, Any]) -> None:
         f"- Edges: {summary.get('edge_count', 0)}",
         f"- Workflow profile: `{workflow_profile.get('profile', 'not-recorded')}`",
         f"- Stages skipped by scope: {workflow_profile.get('skipped_by_scope_count', 0)}",
+        f"- Scanner executions: {scanner_runs.get('run_count', 0)}",
+        f"- Scanner execution duration: {scanner_runs.get('total_duration_ms', 0)} ms",
         f"- High/Critical issue-recommended findings: {summary.get('high_critical_issue_recommended_findings', 0)}",
         f"- With supporting evidence: {summary.get('high_critical_with_supporting_evidence', 0)}",
         f"- With challenging evidence: {summary.get('high_critical_with_challenging_evidence', 0)}",

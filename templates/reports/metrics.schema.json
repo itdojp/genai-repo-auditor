@@ -94,7 +94,13 @@
           "properties": {
             "artifact_present": {"type": "boolean"},
             "result_count": {"type": "integer", "minimum": 0},
-            "normalized_leads_count": {"type": "integer", "minimum": 0}
+            "normalized_leads_count": {"type": "integer", "minimum": 0},
+            "run_artifact_present": {"type": "boolean"},
+            "run_count": {"type": "integer", "minimum": 0},
+            "run_statuses": {"type": "object"},
+            "total_duration_ms": {"type": "integer", "minimum": 0},
+            "maximum_duration_ms": {"type": "integer", "minimum": 0},
+            "redaction_count": {"type": "integer", "minimum": 0}
           }
         },
         "workflow_profile": {
@@ -259,6 +265,21 @@
         "by_decision": {"type": "object"},
         "exact_match_count": {"type": "integer", "minimum": 0},
         "candidate_issue_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "scanner_runs": {
+      "type": "object",
+      "required": ["artifact_present", "run_count", "by_status", "by_adapter", "total_duration_ms", "maximum_duration_ms", "result_count", "normalized_leads_count", "redaction_count"],
+      "properties": {
+        "artifact_present": {"type": "boolean"},
+        "run_count": {"type": "integer", "minimum": 0},
+        "by_status": {"type": "object"},
+        "by_adapter": {"type": "object"},
+        "total_duration_ms": {"type": "integer", "minimum": 0},
+        "maximum_duration_ms": {"type": "integer", "minimum": 0},
+        "result_count": {"type": "integer", "minimum": 0},
+        "normalized_leads_count": {"type": "integer", "minimum": 0},
+        "redaction_count": {"type": "integer", "minimum": 0}
       }
     },
     "observability": {

@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
@@ -11,12 +12,38 @@ sys.path.insert(0, str(LAB_ROOT / "lib"))
 from scanner_adapters import (  # noqa: E402
     NETWORK_POLICIES,
     ScannerAdapterError,
+    adapter_by_id,
     build_scan_plan,
     list_adapters,
     planning_environment_path,
     validate_run_directory,
 )
-from scanner_runner import execute_scan  # noqa: E402
+from scanner_ingest import (  # noqa: E402
+    build_scanner_ingest_plan,
+    ingest_scanner_file,
+    managed_scanner_output_paths,
+)
+from scanner_reporting import (  # noqa: E402
+    ScannerReportError,
+    append_scanner_run,
+    build_scanner_run_record,
+    preflight_scanner_reports,
+    successful_scanner_run_exists,
+)
+from scanner_runner import (  # noqa: E402
+    CONTAINER_IMAGES,
+    CONTAINER_TOOL_VERSIONS,
+    EXECUTION_PROFILES,
+    execute_scan,
+    validate_execution_layout,
+)
+from run_events import (  # noqa: E402
+    EventWriteError,
+    append_command_event,
+    preflight_command_event,
+    start_command_event,
+    utc_now,
+)
 from sandbox_profiles import PROFILE_IDS  # noqa: E402
 from version import auditor_version  # noqa: E402
 
@@ -44,30 +71,257 @@ def main() -> int:
     if not args.list and not args.tool:
         parser.error("--tool is required for planning")
 
+    if not args.execute:
+        try:
+            run_dir = validate_run_directory(args.run)
+            if args.list:
+                payload = list_adapters(path_env=planning_environment_path())
+            else:
+                payload = build_scan_plan(
+                    run_dir,
+                    adapter_id=args.tool,
+                    sandbox_profile=args.sandbox_profile,
+                    network_policy=args.network_policy,
+                    path_env=planning_environment_path(),
+                )
+        except (OSError, ValueError, ScannerAdapterError) as exc:
+            print(f"gra-scan: {exc}", file=sys.stderr)
+            return 2
+        return print_payload(args, payload)
+
+    started_at, started_perf = start_command_event()
     try:
         run_dir = validate_run_directory(args.run)
-        if args.list:
-            payload = list_adapters(path_env=planning_environment_path())
-        elif args.execute:
-            payload = execute_scan(
-                run_dir,
-                adapter_id=args.tool,
-                sandbox_profile=args.sandbox_profile,
-                network_policy=args.network_policy,
-                path_env=planning_environment_path(),
+        adapter = adapter_by_id(args.tool)
+        if args.sandbox_profile not in EXECUTION_PROFILES:
+            raise ScannerAdapterError("execution requires the container or gvisor sandbox profile")
+        image = CONTAINER_IMAGES[adapter.id]
+        tool_version = CONTAINER_TOOL_VERSIONS[adapter.id]
+        validate_execution_layout(
+            run_dir,
+            adapter_id=adapter.id,
+            sandbox_profile=args.sandbox_profile,
+            network_policy=args.network_policy,
+            path_env=planning_environment_path(),
+        )
+        json_report_path, markdown_report_path = preflight_scanner_reports(run_dir)
+        if successful_scanner_run_exists(run_dir, adapter_id=adapter.id):
+            raise ScannerReportError(
+                f"adapter {adapter.id} already completed in this run; use a fresh run to preserve immutable evidence"
             )
-        else:
-            payload = build_scan_plan(
-                run_dir,
-                adapter_id=args.tool,
-                sandbox_profile=args.sandbox_profile,
-                network_policy=args.network_policy,
-                path_env=planning_environment_path(),
-            )
-    except (OSError, ValueError, ScannerAdapterError) as exc:
+        managed_outputs = managed_scanner_output_paths(run_dir, tool=adapter.ingest_tool)
+        for exclusive_output in managed_outputs[:2]:
+            if exclusive_output.exists() or exclusive_output.is_symlink():
+                raise ScannerReportError(
+                    "raw and normalized scanner outputs must not already exist; use a fresh run to preserve immutable evidence"
+                )
+        planned_outputs = [
+            *managed_outputs,
+            json_report_path,
+            markdown_report_path,
+        ]
+        preflight_command_event(
+            run_dir,
+            input_artifact_paths=[run_dir / "context.json"],
+            output_artifact_paths=planned_outputs,
+            event_fields={
+                "command": "gra-scan",
+                "phase": "scan",
+                "subject_id": adapter.id,
+                "started_at": started_at,
+                "started_perf": started_perf,
+                "exit_code": 0,
+                "sandbox_profile": args.sandbox_profile,
+                "network_allowed": False,
+                "redaction_count": 0,
+            },
+        )
+    except (KeyError, OSError, ValueError, ScannerAdapterError, ScannerReportError, EventWriteError) as exc:
         print(f"gra-scan: {exc}", file=sys.stderr)
         return 2
 
+    try:
+        payload = execute_scan(
+            run_dir,
+            adapter_id=adapter.id,
+            sandbox_profile=args.sandbox_profile,
+            network_policy=args.network_policy,
+            path_env=planning_environment_path(),
+        )
+    except (OSError, ValueError, ScannerAdapterError) as exc:
+        return record_execution_exception(
+            args=args,
+            run_dir=run_dir,
+            adapter=adapter,
+            image=image,
+            tool_version=tool_version,
+            started_at=started_at,
+            started_perf=started_perf,
+            error=exc,
+        )
+
+    cli_exit_code = 0 if payload.get("raw_output_path") else 1
+    output_artifacts: list[Path] = []
+    error_category: str | None = None if cli_exit_code == 0 else "scanner_execution"
+    redaction_count = 0
+    normalized_leads_count = 0
+    normalized_result_ref: str | None = None
+    scanner_index_ref: str | None = None
+    if cli_exit_code == 0:
+        try:
+            raw_path = run_dir / str(payload["raw_output_path"])
+            ingest_plan = build_scanner_ingest_plan(
+                run_dir,
+                tool=adapter.ingest_tool,
+                source=raw_path,
+                requested_format=adapter.output_format,
+                managed_source=True,
+            )
+            ingest_result = ingest_scanner_file(
+                ingest_plan,
+                note=f"generated by gra-scan adapter {adapter.id}",
+            )
+            output_artifacts.extend(path for path in ingest_result.output_paths if path != ingest_plan.destination)
+            normalized_leads_count = int(ingest_result.entry.get("normalized_leads_count") or 0)
+            normalization = ingest_result.entry.get("normalization")
+            if isinstance(normalization, dict):
+                redaction_count = int(normalization.get("redaction_count") or 0)
+            normalized_result_ref = str(ingest_result.entry.get("normalized_path") or "") or None
+            scanner_index_ref = str(ingest_plan.index_path.relative_to(run_dir))
+            payload.update(
+                {
+                    "normalized_result_path": normalized_result_ref,
+                    "scanner_index_path": scanner_index_ref,
+                    "normalized_leads_count": normalized_leads_count,
+                    "redaction_count": redaction_count,
+                }
+            )
+        except (OSError, ValueError, ScannerAdapterError) as exc:
+            payload["status"] = "ingestion-failed"
+            payload["normalized_result_path"] = None
+            payload["scanner_index_path"] = None
+            print(f"gra-scan: scanner output ingestion failed: {exc}", file=sys.stderr)
+            cli_exit_code = 2
+            error_category = "scanner_ingestion"
+
+    ended_at = utc_now()
+    total_duration_ms = max(0, int(round((time.perf_counter() - started_perf) * 1000)))
+    try:
+        record = build_scanner_run_record(
+            adapter_id=adapter.id,
+            tool_version=tool_version,
+            image=image,
+            status="succeeded" if cli_exit_code == 0 else "failed",
+            scanner_status=str(payload.get("status") or "unknown"),
+            started_at=started_at,
+            ended_at=ended_at,
+            duration_ms=total_duration_ms,
+            scanner_exit_code=payload.get("exit_code") if isinstance(payload.get("exit_code"), int) else None,
+            result_count=int(payload.get("result_count") or 0),
+            normalized_leads_count=normalized_leads_count,
+            redaction_count=redaction_count,
+            sandbox_profile=args.sandbox_profile,
+            runtime=str(payload.get("runtime") or "unknown"),
+            network_accessed=False,
+            result_classification=adapter.result_classification,
+            normalized_result_ref=normalized_result_ref,
+            scanner_index_ref=scanner_index_ref,
+        )
+        _, json_report_path, markdown_report_path = append_scanner_run(run_dir, record)
+        output_artifacts.extend([json_report_path, markdown_report_path])
+        payload["scanner_runs_path"] = str(json_report_path.relative_to(run_dir))
+    except (OSError, ScannerReportError) as exc:
+        print(f"gra-scan: scanner reporting failed: {exc}", file=sys.stderr)
+        payload["status"] = "reporting-failed"
+        cli_exit_code = 2
+        error_category = "reporting_failure"
+
+    try:
+        append_command_event(
+            run_dir,
+            command="gra-scan",
+            phase="scan",
+            subject_id=adapter.id,
+            started_at=started_at,
+            started_perf=started_perf,
+            exit_code=cli_exit_code,
+            input_artifact_paths=[run_dir / "context.json"],
+            output_artifact_paths=output_artifacts,
+            sandbox_profile=args.sandbox_profile,
+            network_allowed=False,
+            redaction_count=redaction_count,
+            error_category=error_category,
+            failure_mode="block" if cli_exit_code == 0 else "warn",
+        )
+    except EventWriteError as exc:
+        print(f"gra-scan: {exc}", file=sys.stderr)
+        payload["status"] = "event-recording-failed"
+        cli_exit_code = 2
+
+    print_payload(args, payload)
+    return cli_exit_code
+
+
+def record_execution_exception(
+    *,
+    args: argparse.Namespace,
+    run_dir: Path,
+    adapter,
+    image: str,
+    tool_version: str,
+    started_at: str,
+    started_perf: float,
+    error: Exception,
+) -> int:
+    ended_at = utc_now()
+    duration_ms = max(0, int(round((time.perf_counter() - started_perf) * 1000)))
+    output_artifacts: list[Path] = []
+    try:
+        record = build_scanner_run_record(
+            adapter_id=adapter.id,
+            tool_version=tool_version,
+            image=image,
+            status="failed",
+            scanner_status="execution-error",
+            started_at=started_at,
+            ended_at=ended_at,
+            duration_ms=duration_ms,
+            scanner_exit_code=None,
+            result_count=0,
+            normalized_leads_count=0,
+            redaction_count=0,
+            sandbox_profile=args.sandbox_profile,
+            runtime="unknown",
+            network_accessed=False,
+            result_classification=adapter.result_classification,
+            normalized_result_ref=None,
+            scanner_index_ref=None,
+        )
+        _, json_report_path, markdown_report_path = append_scanner_run(run_dir, record)
+        output_artifacts.extend([json_report_path, markdown_report_path])
+    except (OSError, ScannerReportError) as report_exc:
+        print(f"gra-scan: scanner reporting failed: {report_exc}", file=sys.stderr)
+    append_command_event(
+        run_dir,
+        command="gra-scan",
+        phase="scan",
+        subject_id=adapter.id,
+        started_at=started_at,
+        started_perf=started_perf,
+        exit_code=2,
+        input_artifact_paths=[run_dir / "context.json"],
+        output_artifact_paths=output_artifacts,
+        sandbox_profile=args.sandbox_profile,
+        network_allowed=False,
+        redaction_count=0,
+        error_category="scanner_execution",
+        failure_mode="warn",
+    )
+    print(f"gra-scan: {error}", file=sys.stderr)
+    return 2
+
+
+def print_payload(args: argparse.Namespace, payload: dict) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True))
     elif args.list:
@@ -96,7 +350,7 @@ def main() -> int:
         print(f"Tool: {payload['adapter_id']}")
         print(f"Sandbox profile: {payload['sandbox_profile']}")
         print(f"Raw output: {payload['raw_output_path'] or 'not retained'}")
-    return 1 if args.execute and payload["raw_output_path"] is None else 0
+    return 0
 
 
 if __name__ == "__main__":

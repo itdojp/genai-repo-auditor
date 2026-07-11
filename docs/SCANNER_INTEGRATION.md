@@ -60,9 +60,29 @@ timeouts, oversized output/logs, excess result counts, unexpected files, and
 scanner failures. A timed-out container is force-removed. Successful raw JSON is
 atomically moved to `reports/scanner-results/raw/`; timeout, SIGTERM/SIGHUP,
 keyboard interruption, and failed output trigger container/staging cleanup.
-The result remains `review-only` and is never a confirmed or issue-recommended
-finding. Normalization and ingestion are added by the next workflow stage; until
-then, do not send the raw file to a model or public report.
+Successful output is then routed through the same normalization, redaction,
+scanner-index, and dependency-posture boundaries used by `gra-ingest`. The raw
+artifact remains local; downstream triage uses the bounded normalized artifact
+under `reports/scanner-results/normalized/`. The result remains `review-only`
+and is never a confirmed or issue-recommended finding.
+
+Each explicit execution that passes run/tool/report preflight also appends a sanitized `gra-scan` command event and
+updates the following bounded reports:
+
+```text
+reports/scanner-runs.json
+reports/SCANNER_RUNS.md
+```
+
+These reports contain adapter/version, immutable image digest, aggregate
+status, timing, result/normalized-lead counts, and redaction counts. They do not
+contain raw scanner bodies, secrets, or raw-output paths. A failed scanner run
+is recorded as failed and is never interpreted as a clean scan. The JSON
+contract is
+[`templates/reports/scanner-runs.schema.json`](../templates/reports/scanner-runs.schema.json).
+To preserve immutable evidence references, an adapter may complete successfully
+only once per run directory. Use a fresh run directory for a repeat execution;
+do not delete and reuse historical raw or normalized artifact paths.
 
 Approved scope is local repository SAST/SCA/secret scanning and SBOM generation.
 DAST, live endpoint probing, external-host scanning, brute force, credential

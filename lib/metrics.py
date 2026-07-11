@@ -16,6 +16,7 @@ from run_events import (
 )
 from duplicate_decisions import duplicate_decision_metrics
 from issue_ledger import ledger_metrics
+from scanner_reporting import ScannerReportError, validate_scanner_runs_for_run
 from workflow_profile import summarize_workflow_profile
 
 COUNT_STATUSES = [
@@ -50,6 +51,7 @@ UNKNOWN_TARGET_ID = "__unknown__"
 TARGET_ID_RE = re.compile(r"^TGT-(?:[A-Z][A-Z0-9]*-)?[0-9]{3,}$")
 EVENT_METADATA_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.:/@+=-]{0,127}$")
 SCANNER_EVENT_COMMANDS = {"gra-import-findings", "gra-ingest", "gra-scan", "gra-scanner-triage"}
+SCANNER_RUN_STATUSES = ["succeeded", "failed", "unknown"]
 REMEDIATION_EVENT_COMMANDS = {
     "gra-adversarial-validate",
     "gra-chains",
@@ -563,7 +565,46 @@ def benchmark_compact_summary(benchmark: Any) -> dict[str, Any]:
     }
 
 
-def scanner_compact_summary(scanner_index: Any) -> dict[str, Any]:
+def scanner_run_metrics(scanner_runs: Any) -> dict[str, Any]:
+    runs = list_of_dicts(scanner_runs, "runs")
+    durations = [safe_duration_ms(item.get("duration_ms")) for item in runs]
+    statuses = Counter(safe_label(item.get("status"), SCANNER_RUN_STATUSES[:-1], "unknown") for item in runs)
+    adapters = Counter(
+        str(item.get("adapter_id")) if EVENT_METADATA_RE.fullmatch(str(item.get("adapter_id") or "")) else "unknown"
+        for item in runs
+    )
+    return {
+        "artifact_present": isinstance(scanner_runs, dict),
+        "run_count": len(runs),
+        "by_status": counter_dict(statuses, SCANNER_RUN_STATUSES),
+        "by_adapter": counter_dict(adapters),
+        "total_duration_ms": sum(durations),
+        "maximum_duration_ms": max(durations, default=0),
+        "result_count": sum(
+            int(item.get("result_count") or 0)
+            for item in runs
+            if isinstance(item.get("result_count"), int)
+            and not isinstance(item.get("result_count"), bool)
+            and item.get("result_count") >= 0
+        ),
+        "normalized_leads_count": sum(
+            int(item.get("normalized_leads_count") or 0)
+            for item in runs
+            if isinstance(item.get("normalized_leads_count"), int)
+            and not isinstance(item.get("normalized_leads_count"), bool)
+            and item.get("normalized_leads_count") >= 0
+        ),
+        "redaction_count": sum(
+            int(item.get("redaction_count") or 0)
+            for item in runs
+            if isinstance(item.get("redaction_count"), int)
+            and not isinstance(item.get("redaction_count"), bool)
+            and item.get("redaction_count") >= 0
+        ),
+    }
+
+
+def scanner_compact_summary(scanner_index: Any, scanner_runs: Any) -> dict[str, Any]:
     results = []
     if isinstance(scanner_index, dict):
         results = [item for item in scanner_index.get("results") or [] if isinstance(item, dict)]
@@ -572,10 +613,17 @@ def scanner_compact_summary(scanner_index: Any) -> dict[str, Any]:
         count = item.get("normalized_leads_count")
         if isinstance(count, int) and not isinstance(count, bool) and count > 0:
             normalized_leads += count
+    run_summary = scanner_run_metrics(scanner_runs)
     return {
         "artifact_present": isinstance(scanner_index, dict),
         "result_count": len(results),
         "normalized_leads_count": normalized_leads,
+        "run_artifact_present": run_summary["artifact_present"],
+        "run_count": run_summary["run_count"],
+        "run_statuses": run_summary["by_status"],
+        "total_duration_ms": run_summary["total_duration_ms"],
+        "maximum_duration_ms": run_summary["maximum_duration_ms"],
+        "redaction_count": run_summary["redaction_count"],
     }
 
 
@@ -589,6 +637,7 @@ def compact_public_summary(
     evidence_graph: Any,
     benchmark: Any,
     scanner_index: Any,
+    scanner_runs: Any,
 ) -> dict[str, Any]:
     no_findings = findings_data.get("no_findings") if isinstance(findings_data, dict) and isinstance(findings_data.get("no_findings"), dict) else {}
     no_findings_source_stage = str(no_findings.get("source_stage") or "")
@@ -605,7 +654,7 @@ def compact_public_summary(
         "workflow_profile": dict(workflow_profile),
         "evidence_graph": evidence_graph_compact_summary(evidence_graph),
         "benchmark": benchmark_compact_summary(benchmark),
-        "scanner": scanner_compact_summary(scanner_index),
+        "scanner": scanner_compact_summary(scanner_index, scanner_runs),
         "no_findings": {
             "recorded": bool(no_findings),
             "source_stage": no_findings_source_stage,
@@ -740,6 +789,12 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
     evidence_graph = load_report_json(reports, Path("evidence-graph.json"), None)
     benchmark = load_report_json(reports, Path("benchmark.json"), None)
     scanner_index = load_report_json(reports, Path("scanner-results") / "scanner-index.json", None)
+    scanner_runs = load_report_json(reports, Path("scanner-runs.json"), None)
+    if scanner_runs is not None:
+        try:
+            validate_scanner_runs_for_run(run_dir, scanner_runs)
+        except ScannerReportError as exc:
+            raise MetricsError(f"scanner-runs.json is not public-safe: {exc}") from exc
     command_events_path = reports / "command-events.jsonl"
     command_events = load_jsonl_objects(command_events_path)
     taxonomy_normalizations_path = reports / "taxonomy-normalizations.jsonl"
@@ -807,6 +862,7 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
             evidence_graph=evidence_graph,
             benchmark=benchmark,
             scanner_index=scanner_index,
+            scanner_runs=scanner_runs,
         ),
         "findings": findings_metrics,
         "adversarial_validation": validation_summary,
@@ -818,6 +874,7 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
         "issue_ledger": issue_ledger_summary,
         "workflow_profile": workflow_profile_summary,
         "duplicate_decisions": duplicate_decisions_summary,
+        "scanner_runs": scanner_run_metrics(scanner_runs),
         "observability": observability_summary,
         "artifacts": artifacts_summary,
         "run_duration": duration_summary,
@@ -875,6 +932,9 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
         f"| Benchmark failures | {benchmark.get('failed', 0)} |",
         f"| Scanner results | {scanner.get('result_count', 0)} |",
         f"| Normalized scanner leads | {scanner.get('normalized_leads_count', 0)} |",
+        f"| Scanner executions | {scanner.get('run_count', 0)} |",
+        f"| Scanner execution duration | {scanner.get('total_duration_ms', 0)} ms |",
+        f"| Scanner redactions | {scanner.get('redaction_count', 0)} |",
         f"| No-findings record present | {str(bool(no_findings.get('recorded'))).lower()} |",
         "",
         "## Summary",
@@ -980,6 +1040,8 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
     lines.extend(markdown_counts("Network policy", metrics["observability"]["configuration"]["by_network_policy"]))
     lines.extend(markdown_counts("Produced artifact refs by command", metrics["observability"]["artifact_production"]["output_refs_by_command"]))
     lines.extend(markdown_counts("Scanner phases", metrics["observability"]["stage_groups"]["scanner_phases"]))
+    lines.extend(markdown_counts("Scanner run statuses", metrics["scanner_runs"]["by_status"]))
+    lines.extend(markdown_counts("Scanner runs by adapter", metrics["scanner_runs"]["by_adapter"]))
     lines.extend(markdown_counts("Remediation phases", metrics["observability"]["stage_groups"]["remediation_phases"]))
     lines.extend(markdown_counts("Issue publication phases", metrics["observability"]["stage_groups"]["issue_publication_phases"]))
     lines.extend(markdown_counts("Taxonomy normalizations by target", metrics["observability"]["taxonomy_normalizations_by_target"]))
