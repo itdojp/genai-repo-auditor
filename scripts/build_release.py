@@ -148,6 +148,8 @@ def is_forbidden_release_path(raw_path: str) -> bool:
         "runs",
         "worktrees",
         "dist",
+        "holdout",
+        "private-holdout",
     }
     if parts[0] in forbidden_roots:
         return True
@@ -175,6 +177,8 @@ def is_forbidden_release_path(raw_path: str) -> bool:
         "codex-stderr.txt",
         "codex-transcript.txt",
         "gitleaks.json",
+        "holdout-aggregate.json",
+        "holdout-metadata.json",
         "semgrep.json",
         "trivy.json",
     }

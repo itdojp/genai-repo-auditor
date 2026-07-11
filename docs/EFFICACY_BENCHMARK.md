@@ -174,3 +174,6 @@ boundary for every host-readable file; use separate host isolation when needed.
 
 Complete methodology and publication rules are in
 [`EFFICACY_CLAIMS_AND_PUBLICATION.md`](EFFICACY_CLAIMS_AND_PUBLICATION.md).
+Private holdout material must not be added to this packaged corpus or passed to
+this public-corpus command. Use the separate aggregate-only validation protocol
+in [`PRIVATE_HOLDOUT_PROTOCOL.md`](PRIVATE_HOLDOUT_PROTOCOL.md).

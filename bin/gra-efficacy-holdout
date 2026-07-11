@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / "lib"))
+
+from efficacy_benchmark import EfficacyBenchmarkError  # noqa: E402
+from efficacy_holdout import load_and_validate_holdout_records, render_holdout_summary  # noqa: E402
+from version import auditor_version  # noqa: E402
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Validate aggregate-only private holdout records without loading holdout fixtures"
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {auditor_version(LAB_ROOT)}")
+    parser.add_argument(
+        "--records-root",
+        required=True,
+        help="Absolute non-symlink directory containing holdout-metadata.json and holdout-aggregate.json",
+    )
+    args = parser.parse_args()
+    try:
+        metadata, aggregate = load_and_validate_holdout_records(LAB_ROOT, Path(args.records_root))
+    except (OSError, ValueError, EfficacyBenchmarkError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    print(render_holdout_summary(metadata, aggregate), end="")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

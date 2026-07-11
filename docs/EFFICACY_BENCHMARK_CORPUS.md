@@ -1,5 +1,10 @@
 # Security efficacy benchmark corpus
 
+This document covers the committed public regression corpus only. Private
+holdout cases and real-repository dogfood material must never be added here;
+their separation and aggregate-only handoff are defined in
+[`PRIVATE_HOLDOUT_PROTOCOL.md`](PRIVATE_HOLDOUT_PROTOCOL.md).
+
 The efficacy corpus is a balanced, versioned set of synthetic ground-truth cases
 for measuring defensive security-review behavior. It is intentionally separate
 from [`gra-benchmark`](BENCHMARKING.md), which remains the workflow-health and

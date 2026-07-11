@@ -203,7 +203,7 @@ jobs:
           import genai_repo_auditor as gra
           from genai_repo_auditor.cli import COMMANDS
 
-          assert len(COMMANDS) == 36, COMMANDS
+          assert len(COMMANDS) == 37, COMMANDS
           assert Path(gra.resource_path("VERSION")).is_file()
           assert Path(gra.resource_path("bin", "gra-doctor")).is_file()
           assert Path(gra.resource_path("lib", "agent_worker.py")).is_file()
@@ -222,7 +222,7 @@ jobs:
           '@
           $probe | & $python
           $commands = (& $python -c "from genai_repo_auditor.cli import COMMANDS; print(chr(10).join(COMMANDS))") -split "`n" | Where-Object { $_ }
-          if ($commands.Count -ne 36) { throw "Expected 36 commands, got $($commands.Count): $commands" }
+          if ($commands.Count -ne 37) { throw "Expected 37 commands, got $($commands.Count): $commands" }
           $version = (Get-Content VERSION -TotalCount 1).Trim()
           foreach ($command in $commands) {
             & $command --help | Out-Null
@@ -231,6 +231,34 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "$command --version failed with $LASTEXITCODE" }
             if ($output -ne "$command $version") { throw "$command --version output '$output', expected '$command $version'" }
           }
+          $env:GRA_HOLDOUT_SMOKE_ROOT = Join-Path $env:RUNNER_TEMP "gra-holdout-records"
+          $holdoutProbe = @'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          from tests.test_efficacy_holdout import records
+
+          root = Path(os.environ["GRA_HOLDOUT_SMOKE_ROOT"])
+          root.mkdir()
+          metadata, aggregate = records()
+          (root / "holdout-metadata.json").write_text(
+              json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          (root / "holdout-aggregate.json").write_text(
+              json.dumps(aggregate, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          completed = subprocess.run(
+              ["gra-efficacy-holdout", "--records-root", os.fspath(root)],
+              text=True,
+              capture_output=True,
+              timeout=30,
+              check=False,
+          )
+          assert completed.returncode == 0, completed.stderr
+          assert completed.stdout.startswith("Private holdout records validated\n"), completed.stdout
+          '@
+          $holdoutProbe | & $python
           $doctorReport = (gra-doctor --json --runs-dir $runs | Out-String) | ConvertFrom-Json
           if ($IsWindows) {
             if ($doctorReport.checks.platform_support.environment -ne "native-windows") { throw "gra-doctor did not classify native Windows" }

@@ -16,7 +16,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 - Non-interactive `codex exec` invocations set approval behavior through `-c 'approval_policy="never"'` rather than the interactive-only `--ask-for-approval` flag, preserving compatibility with `codex-cli 0.135.0`.
 - Codex-driven commands derive the default executable name from the built-in `codex-cli` worker profile while preserving the tested `codex exec` argument construction in `lib/gralib.py`. `gra-agent-check` can list profiles and check whether the required local worker executable is available without running the worker. `gra-doctor` combines those local readiness checks with redacted package, Git/GitHub CLI availability, opt-in authentication-state probes, sandbox-runtime, and writable-run-directory diagnostics.
 - Executable target-code validation should be gated by an explicit sandbox profile. `gra-sandbox-check` records readiness for `source-only`, `local-test`, `container`, `gvisor`, and `vm` profiles without executing target code.
-- Environment-variable model/effort defaults are limited to `gra-audit` and `gra-batch`, whether invoked from source-checkout wrappers or installed package console scripts. They read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-trace`, `gra-no-findings`, `gra-workflow-profile`, `gra-metrics`, `gra-benchmark`, `gra-efficacy-benchmark`, `gra-evidence-graph`, `gra-import-findings`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
+- Environment-variable model/effort defaults are limited to `gra-audit` and `gra-batch`, whether invoked from source-checkout wrappers or installed package console scripts. They read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-trace`, `gra-no-findings`, `gra-workflow-profile`, `gra-metrics`, `gra-benchmark`, `gra-efficacy-benchmark`, `gra-efficacy-holdout`, `gra-evidence-graph`, `gra-import-findings`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
 - Python commands use `argparse`; missing required arguments or invalid choices normally exit with status `2`.
 - Generated audit artifacts, cloned target repositories, scanner raw outputs, issue drafts, and local stores should remain local and should not be committed.
 
@@ -41,7 +41,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Cross-repo trace reachability | `gra-trace` | Experimental/P3 trace prompt, subject seed JSON, `reports/traces.json`, `reports/TRACE.md` |
 | Scanner planning/execution / external finding import | `gra-scan`, `gra-ingest`, `gra-import-findings`, `gra-scanner-triage` | Non-executing adapter inventory/plans, explicit bounded offline scanner execution, raw scanner copies, redacted normalized leads, scanner index, review-only imported finding artifacts, Scorecard posture artifacts, dependency posture artifacts, triage output |
 | Validation | `gra-no-findings`, `gra-workflow-profile`, `gra-taxonomy-preflight`, `gra-validate-report` | Explicit no-confirmed-finding artifact, workflow scope profile, controlled taxonomy preflight, report contract validation result |
-| Reporting / persistence | `gra-metrics`, `gra-benchmark`, `gra-efficacy-benchmark`, `gra-evidence-graph`, `gra-dashboard`, `gra-sarif`, `gra-store`, `gra-index` | Local metrics, dogfood benchmark gates, synthetic efficacy scoring, evidence graph, HTML dashboard, SARIF, SQLite store, run index |
+| Reporting / persistence | `gra-metrics`, `gra-benchmark`, `gra-efficacy-benchmark`, `gra-efficacy-holdout`, `gra-evidence-graph`, `gra-dashboard`, `gra-sarif`, `gra-store`, `gra-index` | Local metrics, dogfood benchmark gates, public synthetic efficacy scoring, aggregate-only private holdout validation, evidence graph, HTML dashboard, SARIF, SQLite store, run index |
 | Issue workflow | `gra-issues` | Dry-run previews, canonical issue ledger, duplicate decision records, ledger verification, or GitHub Issues after human review |
 
 ## `gra-agent-check`
@@ -681,6 +681,25 @@ gra-efficacy-benchmark --suite appsec
 gra-efficacy-benchmark --case python-web/authz-001 --case python-web/authz-control-001
 mkdir -m 700 .test-tmp/efficacy-worker
 gra-efficacy-benchmark --compare --worker --worker-dir .test-tmp/efficacy-worker
+```
+
+## `gra-efficacy-holdout`
+
+| Field | Details |
+|---|---|
+| Purpose | Validate a fixed private-holdout metadata record and an aggregate-only result without loading, copying, or packaging holdout fixtures. |
+| Workflow category | Private efficacy governance and aggregate handoff validation. It is separate from public-corpus regression and real-repository dogfood. |
+| Required inputs | `--records-root ABSOLUTE_DIR`. The existing non-symlink directory must be outside the package/repository root and contain the expected `holdout-metadata.json` and `holdout-aggregate.json` files. |
+| Key options | `--records-root`; `--help`; `--version`. The command deliberately has no fixture-root, worker-execution, network, GitHub, publication, or output-copy option. |
+| Generated outputs | No file output. Standard output is a bounded aggregate summary containing only opaque corpus identity/version, case-class counts, configuration count, repeat-run range, and publication-approval state. |
+| Exit status behavior | `0` when both records satisfy the trusted packaged schemas and cross-record semantics; `2` for unsafe/relative/symlink/overlapping or identity-changing paths, missing/oversized/malformed records, schema leakage fields, credential-like markers, plan/result mixing, invalid review metadata, inconsistent metrics/variance, or publication-approval mismatch. |
+| Security / disclosure cautions | The command does not validate or read the private fixtures themselves and does not establish that operator assertions are authentic. Keep fixtures, case IDs, source, evidence, locations, local paths, prompts, transcripts, raw worker output, credentials, review records, and adjudication details outside this repository. Validation never authorizes a capability claim, finding publication, or GitHub Issue. |
+| Related docs | [`docs/PRIVATE_HOLDOUT_PROTOCOL.md`](PRIVATE_HOLDOUT_PROTOCOL.md), [`docs/EFFICACY_CLAIMS_AND_PUBLICATION.md`](EFFICACY_CLAIMS_AND_PUBLICATION.md), [`docs/EFFICACY_BENCHMARK.md`](EFFICACY_BENCHMARK.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
+
+Example:
+
+```bash
+gra-efficacy-holdout --records-root "$PWD/../.codex-local/tmp/private-holdout-records"
 ```
 
 ## `gra-evidence-graph`

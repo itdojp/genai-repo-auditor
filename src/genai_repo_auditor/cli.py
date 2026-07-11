@@ -17,6 +17,7 @@ COMMANDS: tuple[str, ...] = (
     "gra-dashboard",
     "gra-doctor",
     "gra-efficacy-benchmark",
+    "gra-efficacy-holdout",
     "gra-evidence-graph",
     "gra-gapfill",
     "gra-import-findings",

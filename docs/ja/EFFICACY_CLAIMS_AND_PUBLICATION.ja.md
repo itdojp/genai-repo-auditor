@@ -84,3 +84,7 @@ gra-efficacy-benchmark --compare \
 worker-assisted comparison は承認済みの監督下 local operation とし、`--worker-dir` は
 current working directory 配下の既存 non-symlink directory とします。cwd 自体は指定できません。
 `.test-tmp/efficacy-worker` など version control で ignore された path を使用してください。
+
+## Private holdout の公開境界
+
+private holdout は public corpus より厳格に入力を分離し、承認済み aggregate だけを共有します。詳細は [`PRIVATE_HOLDOUT_PROTOCOL.ja.md`](PRIVATE_HOLDOUT_PROTOCOL.ja.md) を参照してください。holdout aggregate の検証や公開承認は、product capability claim、production performance claim、finding、Issue の公開を許可しません。

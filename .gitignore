@@ -4,6 +4,10 @@ batches/
 locks/
 .test-tmp/
 dist/
+holdout/
+private-holdout/
+holdout-metadata.json
+holdout-aggregate.json
 *.sqlite
 *.sqlite3
 

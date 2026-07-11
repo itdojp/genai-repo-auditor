@@ -4,6 +4,12 @@ This policy governs results from `gra-efficacy-benchmark --compare`, including
 optional worker-assisted runs. The synthetic corpus is a regression instrument,
 not representative production evaluation data.
 
+Private holdout evaluation has stricter input-separation and aggregate-only
+output rules. See
+[`PRIVATE_HOLDOUT_PROTOCOL.md`](PRIVATE_HOLDOUT_PROTOCOL.md); validation of a
+holdout aggregate does not relax any claim or finding-publication restriction
+in this policy.
+
 ## Methodology
 
 A valid deterministic comparison holds these inputs fixed:
