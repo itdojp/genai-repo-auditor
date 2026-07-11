@@ -9,7 +9,7 @@
     "generated_at": {"type": "string"}, "source": {"const": "gra-run-plan"},
     "profile": {"type": "string"}, "profile_version": {"type": "string"},
     "definition_ref": {"type": "string"}, "definition_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "reports_dir": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$"},
+    "reports_dir": {"type": "string", "minLength": 1, "maxLength": 240, "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*\\\\)(?!.*[\\u0000-\\u001F\\u007F])[^\\\\]+$"},
     "mode": {"const": "plan"},
     "safety": {"type": "object", "additionalProperties": false, "required": ["commands_executed", "network_allowed", "github_mutation_allowed", "raw_payloads_copied"], "properties": {"commands_executed": {"const": false}, "network_allowed": {"const": false}, "github_mutation_allowed": {"const": false}, "raw_payloads_copied": {"const": false}}},
     "summary": {"type": "object", "additionalProperties": false, "required": ["stage_count", "planned_count", "skipped_by_scope_count"], "properties": {"stage_count": {"type": "integer", "minimum": 1, "maximum": 64}, "planned_count": {"type": "integer", "minimum": 0}, "skipped_by_scope_count": {"type": "integer", "minimum": 0}}},

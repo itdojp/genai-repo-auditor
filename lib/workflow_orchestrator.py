@@ -46,6 +46,7 @@ def _safe_rel(value: Any, field: str) -> str:
         not text
         or "\\" in text
         or "\x00" in text
+        or any(ord(character) < 32 or ord(character) == 127 for character in text)
         or path.is_absolute()
         or PureWindowsPath(text).is_absolute()
         or any(part in {"", ".", ".."} for part in text.split("/"))
@@ -152,9 +153,14 @@ def validate_profile(value: Any) -> list[str]:
             raise WorkflowPlanError(f"{field} must remain offline and local-artifacts-only")
         for key in ("depends_on", "required_inputs", "outputs"):
             items = stage.get(key)
-            if not isinstance(items, list) or len(items) != len(set(items)):
+            if not isinstance(items, list) or not all(isinstance(item, str) for item in items):
+                raise WorkflowPlanError(f"{field}.{key} must be a list of strings")
+            if len(items) != len(set(items)):
                 raise WorkflowPlanError(f"{field}.{key} must be a unique list")
-            if key != "depends_on":
+            if key == "depends_on":
+                if any(not SAFE_ID_RE.fullmatch(item) for item in items):
+                    raise WorkflowPlanError(f"{field}.depends_on must contain valid stage ids")
+            else:
                 for item_index, item in enumerate(items):
                     _safe_rel(item, f"{field}.{key}[{item_index}]")
             if key == "outputs" and any(not str(item).startswith("{reports_dir}/") for item in items):

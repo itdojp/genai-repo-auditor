@@ -65,6 +65,17 @@ class WorkflowOrchestratorTests(unittest.TestCase):
         with self.assertRaisesRegex(WorkflowPlanError, "cycle"):
             validate_profile(cyclic)
 
+    def test_non_string_stage_lists_fail_closed_without_type_error(self) -> None:
+        for key, item in (
+            ("depends_on", ["nested"]),
+            ("required_inputs", {"nested": "value"}),
+            ("outputs", ["nested"]),
+        ):
+            definition = copy.deepcopy(self.definition)
+            definition["stages"][0][key] = [item]
+            with self.subTest(key=key), self.assertRaisesRegex(WorkflowPlanError, "list of strings"):
+                validate_profile(definition)
+
     def test_network_github_mutation_and_unknown_commands_fail_closed(self) -> None:
         for mutation in ("network", "command", "argument", "credential", "path"):
             definition = copy.deepcopy(self.definition)
@@ -114,6 +125,28 @@ class WorkflowOrchestratorTests(unittest.TestCase):
         self.assertEqual(self.run / "reports" / "workflow-plan.json", json_path)
         self.assertEqual(self.run / "reports" / "WORKFLOW_PLAN.md", markdown_path)
         self.assertFalse((self.run / "changed-after-build").exists())
+
+    def test_reports_dir_with_spaces_matches_plan_schema(self) -> None:
+        context_path = self.run / "context.json"
+        context = json.loads(context_path.read_text(encoding="utf-8"))
+        context["reports_dir"] = "custom reports"
+        context_path.write_text(json.dumps(context) + "\n", encoding="utf-8")
+
+        plan = self.plan()
+        errors: list[str] = []
+        validate_schema(plan, load_schema(REPO_ROOT, "workflow-plan.schema.json"), "workflow_plan", errors)
+
+        self.assertEqual("custom reports", plan["reports_dir"])
+        self.assertEqual([], errors)
+
+    def test_reports_dir_control_character_fails_closed(self) -> None:
+        context_path = self.run / "context.json"
+        context = json.loads(context_path.read_text(encoding="utf-8"))
+        context["reports_dir"] = "reports\nunsafe"
+        context_path.write_text(json.dumps(context) + "\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(WorkflowPlanError, "safe run-relative path"):
+            self.plan()
 
 
 if __name__ == "__main__":
