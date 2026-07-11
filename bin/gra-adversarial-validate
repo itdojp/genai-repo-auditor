@@ -465,7 +465,11 @@ def main() -> int:
 
     run_dir = Path(args.run).resolve()
     started_at, started_perf = start_command_event()
-    reports = configured_reports_dir(run_dir)
+    try:
+        reports = configured_reports_dir(run_dir)
+    except OSError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     reports_ref = reports.relative_to(run_dir).as_posix()
     input_artifacts = [
         run_dir / 'context.json',

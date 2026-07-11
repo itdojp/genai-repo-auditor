@@ -366,6 +366,25 @@ class BuiltinWorkflowProfileTests(CliWorkflowTestCase):
 
         self.assertIn(f"OK: {nested_findings_path}", nested.stdout)
 
+    def test_direct_profile_command_rejects_target_reports_overlap(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        (run_dir / "repo").mkdir()
+        context_path = run_dir / "context.json"
+        context = json.loads(context_path.read_text(encoding="utf-8"))
+        context.update({"target_repo_dir": "repo", "reports_dir": "repo"})
+        context_path.write_text(json.dumps(context) + "\n", encoding="utf-8")
+        env, codex_log = self.env_with_codex_log()
+
+        result = self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-proofs", "--run", run_dir, "--all-critical-high"],
+            env=env,
+        )
+
+        self.assertEqual(2, result.returncode)
+        self.assertIn("reports_dir and target_repo_dir must not overlap", result.stderr)
+        self.assertEqual([], list((run_dir / "repo").iterdir()))
+        self.assertEqual([], self.read_codex_calls(codex_log))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
