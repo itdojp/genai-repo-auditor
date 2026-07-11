@@ -203,6 +203,7 @@ class WorkflowHardeningTests(unittest.TestCase):
         self.assertIn('Join-Path $venv "bin/python"', package_install)
         self.assertIn('$env:PATH = "$bin$([System.IO.Path]::PathSeparator)$mockBin$([System.IO.Path]::PathSeparator)$env:PATH"', package_install)
         self.assertIn("$mockBuilder = @'", package_install)
+        self.assertIn('(clone_dir / "AGENTS.md").write_text(', package_install)
         self.assertIn("print(chr(10).join(COMMANDS))", package_install)
         self.assertIn("assert len(COMMANDS) == 36, COMMANDS", package_install)
         self.assertIn('assert Path(gra.resource_path("VERSION")).is_file()', package_install)

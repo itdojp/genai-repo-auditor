@@ -77,7 +77,12 @@ jobs:
           args = sys.argv[2:]
           if tool == "gh":
               if args[:2] == ["repo", "clone"] and len(args) >= 4:
-                  Path(args[3]).mkdir(parents=True, exist_ok=True)
+                  clone_dir = Path(args[3])
+                  clone_dir.mkdir(parents=True, exist_ok=True)
+                  (clone_dir / "AGENTS.md").write_text(
+                      "# Offline install-matrix fixture\n\nReview defensively.\n",
+                      encoding="utf-8",
+                  )
                   raise SystemExit(0)
               if args[:2] == ["repo", "view"]:
                   print("PUBLIC")
