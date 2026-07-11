@@ -33,7 +33,7 @@ gra-targets --run "$RUN_DIR" --list
 
 scanner stage は `gra-scan --plan` のみです。Issue 公開、remediation、release、network
 有効化は profile 外にあり、個別 command と人間の承認が必要です。target research や
-project-specific validation には、後述の個別 commandまたは `/goal` を supervised path
+project-specific validation には、後述の個別 command または `/goal` を supervised path
 として使用します。
 
 reporting profile の terminal completion 後は、最終 execution state を反映します。
