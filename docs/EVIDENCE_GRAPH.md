@@ -45,6 +45,7 @@ The graph is generated from local run artifacts only:
 - `<reports_dir>/issue-publication-plan.json`
 - `<reports_dir>/metrics.json`
 - `<reports_dir>/workflow-profile.json`
+- `<reports_dir>/workflow-execution.json`
 
 Only `findings.json` is expected for a useful graph. All other inputs are
 optional; missing optional artifacts are recorded under
@@ -70,6 +71,7 @@ Node types:
 - `metric`
 - `workflow_profile`
 - `workflow_stage`
+- `workflow_execution`
 
 Edge types:
 
@@ -96,6 +98,8 @@ The evidence graph is local/private by default. It stores bounded metadata only:
 - validation decisions and missing-evidence challenge links
 - chain/proof/trace/remediation/Issue-plan IDs and status
 - workflow-profile and stage IDs, status, and scoped-skip counts
+- workflow-execution and stage IDs, status, bounded duration, failure/absence
+  state, blocked dependencies, and resume state
 - scanner adapter/status, bounded execution duration/counts, and links to
   normalized review-only lead artifacts
 - aggregate node/edge counts
@@ -130,3 +134,12 @@ gra-dashboard --run runs/OWNER__REPO/RUN_ID
 Review `reports/EVIDENCE_GRAPH.md` and the dashboard before publishing Issues.
 The graph is a review aid; it does not replace human confirmation for public
 disclosure or maintainer-facing remediation work.
+
+When `gra-evidence-graph` runs as a stage inside `publication-ready` or `full`,
+it observes the workflow execution state that existed before that graph stage
+completed. Run `gra-metrics` and `gra-evidence-graph` again after terminal
+`gra-run` completion to record the final stage statuses and the orchestrator's
+completion event. If no workflow execution report exists, the compact summary
+uses `artifact_present: false` and
+`absence_reason: workflow_execution_not_recorded` rather than silently
+implying a successful workflow.

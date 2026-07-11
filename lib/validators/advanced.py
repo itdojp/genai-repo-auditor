@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Callable, Dict, List
@@ -11,6 +12,7 @@ from report_safety import (
     iter_secret_findings,
     validate_relative_repo_path,
 )
+from gralib import load_context
 from scanner_reporting import ScannerReportError, validate_scanner_runs_for_run
 from run_events import (
     COMMAND_EVENT_COMMANDS,
@@ -54,6 +56,7 @@ EVIDENCE_GRAPH_PATH = Path("reports/evidence-graph.json")
 IMPORTED_FINDINGS_PATH = Path("reports/imported-findings.json")
 BENCHMARK_PATH = Path("reports/benchmark.json")
 WORKFLOW_PROFILE_PATH = Path("reports/workflow-profile.json")
+WORKFLOW_EXECUTION_PATH = Path("reports/workflow-execution.json")
 ISSUE_LEDGER_PATH = Path("reports/issue-ledger.json")
 DUPLICATE_DECISIONS_DIR = Path("reports/duplicate-decisions")
 RUN_STATE_PATH = Path("reports/run-state.json")
@@ -127,6 +130,56 @@ EVIDENCE_GRAPH_FORBIDDEN_KEYS = {
     "token",
     "credential",
 }
+WORKFLOW_EXECUTION_FORBIDDEN_KEYS = {
+    "prompt",
+    "prompts",
+    "raw_prompt",
+    "raw_prompts",
+    "finding",
+    "findings",
+    "raw_finding",
+    "raw_findings",
+    "evidence",
+    "raw_evidence",
+    "credential",
+    "credentials",
+    "secret",
+    "secrets",
+    "token",
+    "tokens",
+    "private_reasoning",
+    "reasoning",
+    "chain_of_thought",
+    "scratchpad",
+    "issue_body",
+    "issue_body_text",
+    "stdout",
+    "stderr",
+    "command_output",
+}
+WORKFLOW_EXECUTION_STAGE_STATUSES = {
+    "pending",
+    "running",
+    "succeeded",
+    "failed",
+    "blocked_dependency",
+    "external_prerequisite",
+    "skipped_by_scope",
+    "out_of_range",
+}
+WORKFLOW_EXECUTION_ABSENCE_REASONS = {
+    "workflow_execution_not_recorded",
+    "interrupted",
+    "operator_scoped_skip",
+    "external_prerequisite",
+    "outside_selected_range",
+    "blocked_by_dependency",
+    "range_continuation",
+    "workflow_paused",
+    "workflow_blocked",
+    "not_started",
+}
+SAFE_WORKFLOW_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 EVIDENCE_GRAPH_NODE_TYPES = {
     "target",
     "scanner_run",
@@ -141,6 +194,7 @@ EVIDENCE_GRAPH_NODE_TYPES = {
     "issue_plan_entry",
     "metric",
     "workflow_profile",
+    "workflow_execution",
     "workflow_stage",
 }
 
@@ -1218,6 +1272,103 @@ def validate_metrics_payload(value: Any, path: str, errors: List[str]) -> None:
             validate_metrics_payload(item, f"{path}[{index}]", errors)
 
 
+def validate_workflow_execution_summary_contract(
+    value: Any,
+    path: str,
+    schema_name: str,
+    errors: List[str],
+) -> None:
+    if value is None:
+        return
+    schema = load_schema(schema_name)
+    definition = schema.get("$defs", {}).get("workflowExecutionSummary")
+    if not isinstance(definition, dict):
+        errors.append(f"{path}: workflow execution summary schema definition is missing")
+        return
+    validate_schema(value, definition, path, errors)
+    if not isinstance(value, dict):
+        return
+    allowed_fields = set(definition.get("properties", {}))
+    if set(value) - allowed_fields:
+        errors.append(f"{path}: contains unsupported fields")
+    by_status = value.get("by_status")
+    if isinstance(by_status, dict) and set(by_status) != WORKFLOW_EXECUTION_STAGE_STATUSES:
+        errors.append(f"{path}.by_status: must contain exactly the supported workflow stage statuses")
+    if isinstance(by_status, dict) and any(
+        not isinstance(count, int) or isinstance(count, bool) or count < 0
+        for count in by_status.values()
+    ):
+        errors.append(f"{path}.by_status: counts must be non-negative integers")
+    absence_reasons = value.get("absence_reasons")
+    if isinstance(absence_reasons, dict) and set(absence_reasons) - WORKFLOW_EXECUTION_ABSENCE_REASONS:
+        errors.append(f"{path}.absence_reasons: contains unsupported absence reasons")
+    if isinstance(absence_reasons, dict) and any(
+        not isinstance(count, int) or isinstance(count, bool) or count < 0
+        for count in absence_reasons.values()
+    ):
+        errors.append(f"{path}.absence_reasons: counts must be non-negative integers")
+    for field in ("failed_stages", "scoped_skip_stages", "blocked_dependency_stages"):
+        identifiers = value.get(field)
+        if isinstance(identifiers, list) and any(
+            not isinstance(identifier, str) or not SAFE_WORKFLOW_ID_RE.fullmatch(identifier)
+            for identifier in identifiers
+        ):
+            errors.append(f"{path}.{field}: contains an invalid stage id")
+        if (
+            isinstance(identifiers, list)
+            and all(isinstance(identifier, str) for identifier in identifiers)
+            and len(identifiers) != len(set(identifiers))
+        ):
+            errors.append(f"{path}.{field}: stage ids must be unique")
+    profile = value.get("profile")
+    if not isinstance(profile, str) or not SAFE_WORKFLOW_ID_RE.fullmatch(profile):
+        errors.append(f"{path}.profile: must be a bounded safe identifier")
+    if value.get("status") not in {"not-recorded", "running", "paused", "blocked", "succeeded"}:
+        errors.append(f"{path}.status: unsupported workflow execution status")
+    if value.get("artifact_present") is True and value.get("absence_reason") is not None:
+        errors.append(f"{path}.absence_reason: must be null when the artifact is present")
+    if value.get("artifact_present") is False and value.get("absence_reason") != "workflow_execution_not_recorded":
+        errors.append(f"{path}.absence_reason: must explain that workflow execution was not recorded")
+    if isinstance(by_status, dict) and all(
+        isinstance(count, int) and not isinstance(count, bool) and count >= 0
+        for count in by_status.values()
+    ):
+        if value.get("stage_count") != sum(by_status.values()):
+            errors.append(f"{path}.stage_count: must match workflow stage status counts")
+        for count_field, status_name, list_field in (
+            ("failed_count", "failed", "failed_stages"),
+            ("skipped_by_scope_count", "skipped_by_scope", "scoped_skip_stages"),
+            ("blocked_dependency_count", "blocked_dependency", "blocked_dependency_stages"),
+        ):
+            if value.get(count_field) != by_status.get(status_name):
+                errors.append(f"{path}.{count_field}: must match workflow stage status counts")
+            identifiers = value.get(list_field)
+            if isinstance(identifiers, list) and value.get(count_field) != len(identifiers):
+                errors.append(f"{path}.{list_field}: length must match {count_field}")
+    if value.get("artifact_present") is True and isinstance(absence_reasons, dict) and all(
+        isinstance(count, int) and not isinstance(count, bool) and count >= 0
+        for count in absence_reasons.values()
+    ) and value.get("absent_stage_count") != sum(absence_reasons.values()):
+        errors.append(f"{path}.absent_stage_count: must match absence reason counts")
+    if bool(value.get("resume_available")) != (value.get("resume_stage") is not None):
+        errors.append(f"{path}.resume_available: must match whether resume_stage is set")
+    resume_stage = value.get("resume_stage")
+    if resume_stage is not None and (
+        not isinstance(resume_stage, str) or not SAFE_WORKFLOW_ID_RE.fullmatch(resume_stage)
+    ):
+        errors.append(f"{path}.resume_stage: must be a bounded safe stage id")
+    total_duration = value.get("total_duration_ms")
+    maximum_duration = value.get("maximum_duration_ms")
+    if (
+        isinstance(total_duration, int)
+        and not isinstance(total_duration, bool)
+        and isinstance(maximum_duration, int)
+        and not isinstance(maximum_duration, bool)
+        and maximum_duration > total_duration
+    ):
+        errors.append(f"{path}.maximum_duration_ms: must not exceed total_duration_ms")
+
+
 def validate_scanner_runs(run_dir: Path, errors: List[str]) -> bool:
     try:
         reports = configured_reports_dir(run_dir)
@@ -1359,6 +1510,19 @@ def validate_metrics(run_dir: Path, errors: List[str]) -> bool:
         errors.append(f"metrics: expected type object, got {json_type_name(metrics_data)}")
         return True
     validate_schema(metrics_data, load_schema("metrics.schema.json"), "metrics", errors)
+    validate_workflow_execution_summary_contract(
+        metrics_data.get("workflow_execution"),
+        "metrics.workflow_execution",
+        "metrics.schema.json",
+        errors,
+    )
+    metrics_summary = metrics_data.get("summary") if isinstance(metrics_data.get("summary"), dict) else {}
+    validate_workflow_execution_summary_contract(
+        metrics_summary.get("workflow_execution"),
+        "metrics.summary.workflow_execution",
+        "metrics.schema.json",
+        errors,
+    )
     validate_generated_at(metrics_data.get("generated_at"), "metrics.generated_at", errors)
     if metrics_data.get("source") != "local-report-artifacts":
         errors.append("metrics.source: metrics must be generated from local-report-artifacts")
@@ -1393,6 +1557,141 @@ def validate_workflow_profile(run_dir: Path, errors: List[str]) -> bool:
     validate_schema(profile_data, load_schema("workflow-profile.schema.json"), "workflow_profile", errors)
     validate_generated_at(profile_data.get("generated_at"), "workflow_profile.generated_at", errors)
     errors.extend(validate_workflow_profile_payload(profile_data))
+    return True
+
+
+def validate_workflow_execution_payload(value: Any, path: str, errors: List[str]) -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            normalized = str(key).strip().lower().replace("-", "_")
+            if normalized in WORKFLOW_EXECUTION_FORBIDDEN_KEYS:
+                errors.append(
+                    f"{path}.{key}: workflow execution must not copy raw prompts, findings, "
+                    "evidence, credentials, private reasoning, command output, or Issue bodies"
+                )
+            validate_workflow_execution_payload(item, f"{path}.{key}", errors)
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            validate_workflow_execution_payload(item, f"{path}[{index}]", errors)
+
+
+def validate_workflow_execution(run_dir: Path, errors: List[str]) -> bool:
+    execution_path = configured_artifact_path(run_dir, WORKFLOW_EXECUTION_PATH)
+    if not execution_path.exists():
+        return False
+    try:
+        validate_no_symlink_components(
+            run_dir,
+            configured_artifact_ref(run_dir, WORKFLOW_EXECUTION_PATH),
+            field_path="workflow_execution",
+        )
+    except ReportSafetyError as exc:
+        errors.append(str(exc))
+        return True
+    try:
+        execution = json.loads(execution_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"workflow_execution invalid JSON: {exc}")
+        return True
+    if not isinstance(execution, dict):
+        errors.append(f"workflow_execution: expected type object, got {json_type_name(execution)}")
+        return True
+    validate_schema(execution, load_schema("workflow-execution.schema.json"), "workflow_execution", errors)
+    validate_generated_at(execution.get("generated_at"), "workflow_execution.generated_at", errors)
+    validate_workflow_execution_payload(execution, "workflow_execution", errors)
+    for secret_error in iter_secret_findings(execution, field_path="workflow_execution"):
+        errors.append(secret_error)
+    try:
+        context = load_context(run_dir)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        errors.append(f"workflow_execution: could not load run context: {exc}")
+        context = {}
+    for field in ("run_id", "repo"):
+        expected = context.get(field)
+        if isinstance(expected, str) and execution.get(field) != expected:
+            errors.append(f"workflow_execution.{field}: must match context.json")
+
+    stages = execution.get("stages") if isinstance(execution.get("stages"), list) else []
+    stage_ids = [str(stage.get("id") or "") for stage in stages if isinstance(stage, dict)]
+    if len(stage_ids) != len(set(stage_ids)):
+        errors.append("workflow_execution.stages: stage ids must be unique")
+    statuses: Counter[str] = Counter()
+    absence_reasons: Counter[str] = Counter()
+    durations: list[int] = []
+    for index, stage in enumerate(stages):
+        if not isinstance(stage, dict):
+            continue
+        path = f"workflow_execution.stages[{index}]"
+        status = str(stage.get("status") or "")
+        statuses[status] += 1
+        absence_reason = stage.get("absence_reason")
+        if isinstance(absence_reason, str):
+            absence_reasons[absence_reason] += 1
+        duration = stage.get("duration_ms")
+        if isinstance(duration, int) and not isinstance(duration, bool) and duration >= 0:
+            durations.append(duration)
+        started_at = stage.get("started_at")
+        ended_at = stage.get("ended_at")
+        if started_at is not None:
+            validate_generated_at(started_at, f"{path}.started_at", errors)
+        if ended_at is not None:
+            validate_generated_at(ended_at, f"{path}.ended_at", errors)
+        started = parse_event_time(started_at)
+        ended = parse_event_time(ended_at)
+        expected_duration = 0
+        if started is not None and ended is not None:
+            try:
+                if ended < started:
+                    errors.append(f"{path}.ended_at: must not precede started_at")
+                expected_duration = max(0, int((ended - started).total_seconds() * 1000))
+            except (OverflowError, TypeError, ValueError):
+                errors.append(f"{path}: timestamps must use compatible ISO-8601 timezone forms")
+        if duration != expected_duration:
+            errors.append(f"{path}.duration_ms: value does not match stage timestamps")
+        dependencies = stage.get("depends_on") if isinstance(stage.get("depends_on"), list) else []
+        blocked_by = stage.get("blocked_by") if isinstance(stage.get("blocked_by"), list) else []
+        for dependency in dependencies:
+            if dependency not in stage_ids:
+                errors.append(f"{path}.depends_on: unknown stage {dependency!r}")
+        for dependency in blocked_by:
+            if dependency not in dependencies:
+                errors.append(f"{path}.blocked_by: {dependency!r} is not a declared dependency")
+        for artifact_index, artifact in enumerate(stage.get("output_artifact_refs") or []):
+            validate_command_event_artifact_path(
+                run_dir,
+                artifact,
+                field_path=f"{path}.output_artifact_refs[{artifact_index}]",
+                errors=errors,
+            )
+
+    summary = execution.get("summary") if isinstance(execution.get("summary"), dict) else {}
+    if summary.get("stage_count") != len(stages):
+        errors.append("workflow_execution.summary.stage_count: value does not match stages length")
+    if summary.get("by_status") != {
+        status: statuses.get(status, 0)
+        for status in [
+            "pending", "running", "succeeded", "failed", "blocked_dependency",
+            "external_prerequisite", "skipped_by_scope", "out_of_range",
+        ]
+    }:
+        errors.append("workflow_execution.summary.by_status: values do not match stages")
+    expected_values = {
+        "total_duration_ms": sum(durations),
+        "maximum_duration_ms": max(durations, default=0),
+        "failed_count": statuses.get("failed", 0),
+        "skipped_by_scope_count": statuses.get("skipped_by_scope", 0),
+        "blocked_dependency_count": statuses.get("blocked_dependency", 0),
+        "absent_stage_count": sum(absence_reasons.values()),
+        "absence_reasons": dict(sorted(absence_reasons.items())),
+    }
+    for key, expected in expected_values.items():
+        if summary.get(key) != expected:
+            errors.append(f"workflow_execution.summary.{key}: value does not match stages")
+    resume = execution.get("resume") if isinstance(execution.get("resume"), dict) else {}
+    if bool(resume.get("available")) != (resume.get("stage") is not None):
+        errors.append("workflow_execution.resume.available: must match whether resume.stage is set")
+    if resume.get("stage") is not None and resume.get("stage") not in stage_ids:
+        errors.append("workflow_execution.resume.stage: must reference a workflow stage")
     return True
 
 
@@ -1549,6 +1848,13 @@ def validate_evidence_graph(run_dir: Path, errors: List[str]) -> bool:
         return True
 
     validate_schema(graph, load_schema("evidence-graph.schema.json"), "evidence_graph", errors)
+    graph_summary = graph.get("summary") if isinstance(graph.get("summary"), dict) else {}
+    validate_workflow_execution_summary_contract(
+        graph_summary.get("workflow_execution"),
+        "evidence_graph.summary.workflow_execution",
+        "evidence-graph.schema.json",
+        errors,
+    )
     validate_generated_at(graph.get("generated_at"), "evidence_graph.generated_at", errors)
     if graph.get("source") != "local-report-artifacts":
         errors.append("evidence_graph.source: must be local-report-artifacts")
@@ -2033,6 +2339,7 @@ ADVANCED_VALIDATOR_ORDER = (
     "scanner_runs",
     "metrics",
     "workflow_profile",
+    "workflow_execution",
     "benchmark",
     "evidence_graph",
     "imported_findings",
@@ -2074,6 +2381,7 @@ def register_advanced_validators(registry: Any) -> None:
     registry.register("scanner_runs", lambda context: _run_without_findings(context, validate_scanner_runs))
     registry.register("metrics", lambda context: _run_without_findings(context, validate_metrics))
     registry.register("workflow_profile", lambda context: _run_without_findings(context, validate_workflow_profile))
+    registry.register("workflow_execution", lambda context: _run_without_findings(context, validate_workflow_execution))
     registry.register("benchmark", lambda context: _run_without_findings(context, validate_benchmark))
     registry.register("evidence_graph", lambda context: _run_without_findings(context, validate_evidence_graph))
     registry.register("imported_findings", lambda context: _run_with_findings(context, validate_imported_findings))

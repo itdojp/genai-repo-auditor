@@ -6,9 +6,104 @@ except ImportError:
     from support import *  # noqa: F401,F403
 
 from run_events import append_command_event, start_command_event  # noqa: E402
+from workflow_execution import build_workflow_execution  # noqa: E402
 
 
 class MetricsWorkflowTests(CliWorkflowTestCase):
+    def test_metrics_and_evidence_graph_consume_workflow_execution_status(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        plan = {
+            "stages": [
+                {"id": "recon", "depends_on": []},
+                {"id": "optional-scan", "depends_on": ["recon"]},
+                {"id": "targets", "depends_on": ["recon"]},
+            ]
+        }
+        checkpoint = {
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "profile": "fixture-profile",
+            "profile_version": "1.0.0",
+            "status": "blocked",
+            "requested_from": None,
+            "requested_until": None,
+            "requested_skips": ["optional-scan"],
+            "resume_stage": "recon",
+            "stages": [
+                {
+                    "id": "recon", "status": "failed", "attempt": 1,
+                    "started_at": "2026-07-11T00:00:00Z", "ended_at": "2026-07-11T00:00:02Z",
+                    "exit_code": 7, "error_category": "stage_exit", "output_artifacts": [],
+                },
+                {
+                    "id": "optional-scan", "status": "skipped_by_scope", "attempt": 0,
+                    "started_at": None, "ended_at": None, "exit_code": None,
+                    "error_category": None, "output_artifacts": [],
+                },
+                {
+                    "id": "targets", "status": "blocked_dependency", "attempt": 0,
+                    "started_at": None, "ended_at": None, "exit_code": None,
+                    "error_category": None, "output_artifacts": [],
+                },
+            ],
+        }
+        report = build_workflow_execution(checkpoint, plan)
+        (run_dir / "reports" / "workflow-execution.json").write_text(
+            json.dumps(report, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
+        self.assertEqual("blocked", metrics["workflow_execution"]["status"])
+        self.assertEqual(2000, metrics["workflow_execution"]["total_duration_ms"])
+        self.assertEqual(["recon"], metrics["workflow_execution"]["failed_stages"])
+        self.assertEqual(["optional-scan"], metrics["workflow_execution"]["scoped_skip_stages"])
+        self.assertEqual(["targets"], metrics["workflow_execution"]["blocked_dependency_stages"])
+        self.assertEqual("recon", metrics["workflow_execution"]["resume_stage"])
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", run_dir], check=True)
+        graph = json.loads((run_dir / "reports" / "evidence-graph.json").read_text(encoding="utf-8"))
+        self.assertEqual("blocked", graph["summary"]["workflow_execution"]["status"])
+        nodes = {node["id"]: node for node in graph["nodes"]}
+        self.assertEqual("blocked", nodes["workflow_execution:run"]["status"])
+        self.assertEqual(2000, nodes["workflow_execution_stage:recon"]["duration_ms"])
+        self.assertTrue(
+            any(
+                edge["source"] == "workflow_execution_stage:targets"
+                and edge["target"] == "workflow_execution_stage:recon"
+                and edge["type"] == "depends_on"
+                for edge in graph["edges"]
+            )
+        )
+        serialized = json.dumps({"metrics": metrics["workflow_execution"], "graph": graph["summary"]["workflow_execution"]})
+        self.assertNotIn("findings", serialized)
+        self.assertNotIn("evidence", serialized)
+
+        valid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Workflow execution: validated", valid.stdout)
+        self.assertIn("Metrics: validated", valid.stdout)
+        self.assertIn("Evidence graph: validated", valid.stdout)
+
+        metrics_path = run_dir / "reports" / "metrics.json"
+        broken_metrics = json.loads(json.dumps(metrics))
+        broken_metrics["summary"]["workflow_execution"]["stage_count"] = "not-an-integer"
+        broken_metrics["summary"]["workflow_execution"]["private_reasoning"] = "must not be copied"
+        metrics_path.write_text(json.dumps(broken_metrics, indent=2) + "\n", encoding="utf-8")
+        invalid_metrics = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir])
+        self.assertEqual(1, invalid_metrics.returncode)
+        self.assertIn("metrics.summary.workflow_execution.stage_count", invalid_metrics.stderr)
+        self.assertIn("metrics.summary.workflow_execution: contains unsupported fields", invalid_metrics.stderr)
+        metrics_path.write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
+
+        graph_path = run_dir / "reports" / "evidence-graph.json"
+        broken_graph = json.loads(json.dumps(graph))
+        del broken_graph["summary"]["workflow_execution"]["resume_available"]
+        graph_path.write_text(json.dumps(broken_graph, indent=2) + "\n", encoding="utf-8")
+        invalid_graph = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir])
+        self.assertEqual(1, invalid_graph.returncode)
+        self.assertIn("evidence_graph.summary.workflow_execution.resume_available", invalid_graph.stderr)
+
     def test_metrics_and_evidence_graph_failures_record_only_written_outputs(self) -> None:
         metrics_run = self.copy_fixture_run("minimal-run")
         (metrics_run / "reports" / "findings.json").write_text("{invalid-json\n", encoding="utf-8")
@@ -44,6 +139,25 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
         )
         self.assertEqual("reporting_failure", graph_event["error_category"])
         self.assertEqual([], graph_event["output_artifact_refs"])
+
+    def test_evidence_graph_rejects_symlinked_workflow_execution_artifact(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        outside = self.work_dir / "outside-workflow-execution.json"
+        outside.write_text(
+            json.dumps({
+                "profile": "outside-profile",
+                "stages": [{"id": "outside-stage", "status": "succeeded"}],
+            }) + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "reports" / "workflow-execution.json").symlink_to(outside)
+
+        result = self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", run_dir])
+
+        self.assertEqual(2, result.returncode)
+        self.assertRegex(result.stderr, r"symlink|stay under run directory")
+        self.assertFalse((run_dir / "reports" / "evidence-graph.json").exists())
+        self.assertNotIn("outside-profile", "".join(result.stdout + result.stderr))
 
     def test_reporting_commands_support_custom_reports_dir_and_emit_completion_events(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -720,7 +834,12 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
         self.assertEqual(2, graph["summary"]["high_critical_issue_recommended_findings"])
         self.assertEqual(2, graph["summary"]["high_critical_with_supporting_evidence"])
         self.assertEqual(2, graph["summary"]["high_critical_with_challenging_evidence"])
-        self.assertEqual([], graph["summary"]["missing_optional_artifacts"])
+        self.assertEqual(["reports/workflow-execution.json"], graph["summary"]["missing_optional_artifacts"])
+        self.assertFalse(graph["summary"]["workflow_execution"]["artifact_present"])
+        self.assertEqual(
+            "workflow_execution_not_recorded",
+            graph["summary"]["workflow_execution"]["absence_reason"],
+        )
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
         self.assertIn("Evidence graph: validated", cp_validate.stdout)

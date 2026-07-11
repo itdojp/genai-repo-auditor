@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -9,11 +10,19 @@ from pathlib import Path
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
 from version import auditor_version  # noqa: E402
+from run_events import (  # noqa: E402
+    EventWriteError,
+    append_command_event,
+    preflight_command_event,
+    reports_dir as configured_reports_dir,
+    start_command_event,
+)
 from workflow_executor import (  # noqa: E402
     WorkflowExecutionError,
     checkpoint_path,
     ensure_run_state_active,
     execute_workflow,
+    preflight_resume_checkpoint,
     resume_skip_set,
 )
 from workflow_orchestrator import WorkflowPlanError, build_plan, load_profile, write_plan  # noqa: E402
@@ -39,50 +48,140 @@ def main() -> int:
         parser.error("--resume uses the checkpoint range; do not pass --from/--until")
     if args.resume and args.skip:
         parser.error("--resume uses the checkpoint skip set; do not pass --skip")
+    run_dir = args.run.resolve()
+    started_at, started_perf = start_command_event()
+    phase = "resume" if args.resume else "execute" if args.execute else "plan"
+    input_artifacts = [run_dir / "context.json"]
+    output_artifacts: list[Path] = []
+    initial_output_fingerprints: dict[Path, tuple[int, str] | None] = {}
+    event_preflighted = False
+
+    def output_fingerprint(path: Path) -> tuple[int, str] | None:
+        if path.is_symlink():
+            return None
+        try:
+            if not path.is_file():
+                return None
+            data = path.read_bytes()
+        except OSError:
+            return None
+        return len(data), hashlib.sha256(data).hexdigest()
+
+    def finish(exit_code: int, *, status: str | None = None, error_category: str | None = None) -> int:
+        if not event_preflighted:
+            return exit_code
+        event_outputs = (
+            output_artifacts
+            if exit_code == 0
+            else [
+                path
+                for path in output_artifacts
+                if output_fingerprint(path) != initial_output_fingerprints.get(path)
+            ]
+        )
+        try:
+            append_command_event(
+                run_dir,
+                command="gra-run",
+                phase=phase,
+                started_at=started_at,
+                started_perf=started_perf,
+                exit_code=exit_code,
+                status=status,
+                input_artifact_paths=input_artifacts,
+                output_artifact_paths=event_outputs,
+                error_category=error_category,
+                failure_mode="warn" if exit_code != 0 else "block",
+            )
+        except EventWriteError as exc:
+            print(f"gra-run: {exc}", file=sys.stderr)
+            return 2 if exit_code == 0 else exit_code
+        return exit_code
+
     try:
         if args.resume:
             args.skip = resume_skip_set(args.run)
         definition, path, digest = load_profile(LAB_ROOT, args.profile)
         plan = build_plan(
-            args.run,
+            run_dir,
             definition,
             definition_ref=path.relative_to(LAB_ROOT).as_posix(),
             digest=digest,
             skips=args.skip,
         )
         if args.execute or args.resume:
-            ensure_run_state_active(args.run)
-        json_path, markdown_path = write_plan(args.run, plan)
+            ensure_run_state_active(run_dir)
+        if args.resume:
+            preflight_resume_checkpoint(run_dir, plan, LAB_ROOT)
+        reports = configured_reports_dir(run_dir)
+        if args.resume:
+            input_artifacts.extend([
+                reports / "workflow-plan.json",
+                reports / "workflow-checkpoint.json",
+            ])
+        else:
+            output_artifacts.extend([reports / "workflow-plan.json", reports / "WORKFLOW_PLAN.md"])
+        if args.execute or args.resume:
+            output_artifacts.extend([
+                reports / "workflow-checkpoint.json",
+                reports / "workflow-execution.json",
+                reports / "WORKFLOW_EXECUTION.md",
+            ])
+        preflight_command_event(
+            run_dir,
+            input_artifact_paths=input_artifacts,
+            output_artifact_paths=output_artifacts,
+            event_fields={
+                "command": "gra-run",
+                "phase": phase,
+                "started_at": started_at,
+                "started_perf": started_perf,
+                "exit_code": 0,
+            },
+            reserve_file=False,
+        )
+        event_preflighted = True
+        initial_output_fingerprints.update({path: output_fingerprint(path) for path in output_artifacts})
+        json_path: Path | None = None
+        markdown_path: Path | None = None
+        if not args.resume:
+            json_path, markdown_path = write_plan(run_dir, plan)
         if args.execute or args.resume:
             checkpoint, exit_code = execute_workflow(
-                args.run,
+                run_dir,
                 plan,
                 lab_root=LAB_ROOT,
                 resume=args.resume,
                 from_stage=args.from_stage,
                 until_stage=args.until_stage,
             )
-            checkpoint_file = checkpoint_path(args.run.resolve(), plan)
+            checkpoint_file = checkpoint_path(run_dir, plan)
             if args.json:
                 print(json.dumps(checkpoint, indent=2, sort_keys=True))
             else:
                 print(f"Workflow execution: {checkpoint['status']}")
                 print(f"Resume stage: {checkpoint['resume_stage'] or '-'}")
                 print(f"Checkpoint: {checkpoint_file}")
-            return exit_code
-    except (OSError, ValueError, WorkflowPlanError, WorkflowExecutionError) as exc:
+            event_status = "succeeded" if exit_code == 0 else "blocked"
+            return finish(
+                exit_code,
+                status=event_status,
+                error_category=None if exit_code == 0 else "workflow_execution",
+            )
+    except (OSError, ValueError, EventWriteError, WorkflowPlanError, WorkflowExecutionError) as exc:
         print(f"gra-run: {exc}", file=sys.stderr)
-        return 2
+        return finish(2, error_category="workflow_validation")
     if args.json:
         print(json.dumps(plan, indent=2, sort_keys=True))
     else:
+        assert json_path is not None and markdown_path is not None
         print("Workflow plan (no stages executed):")
         print(f"Profile: {plan['profile']} {plan['profile_version']}")
         for stage in plan["stages"]:
             print(f"- {stage['id']}: {stage['status']} ({' '.join(stage['command'])})")
         print(f"JSON: {json_path}")
         print(f"Markdown: {markdown_path}")
-    return 0
+    return finish(0)
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ from typing import Any
 from gralib import load_context, load_json, utc_now, write_json
 from scanner_reporting import ScannerReportError, validate_scanner_runs_for_run
 from workflow_profile import summarize_workflow_profile
+from workflow_execution import summarize_workflow_execution
 
 NODE_TYPES = {
     "target",
@@ -23,6 +24,7 @@ NODE_TYPES = {
     "issue_plan_entry",
     "metric",
     "workflow_profile",
+    "workflow_execution",
     "workflow_stage",
 }
 EDGE_TYPES = {
@@ -169,6 +171,7 @@ class EvidenceGraphBuilder:
         self.issue_plan_entries: list[dict[str, Any]] = []
         self.metrics: dict[str, Any] = {}
         self.workflow_profile: dict[str, Any] = {}
+        self.workflow_execution: dict[str, Any] = {}
 
     def report_artifact(self, rel: str) -> Path:
         return self.reports / rel
@@ -263,6 +266,17 @@ class EvidenceGraphBuilder:
         if workflow_profile_path.exists():
             profile = load_json(workflow_profile_path, {}) or {}
             self.workflow_profile = profile if isinstance(profile, dict) else {}
+        workflow_execution_path = self.reports / "workflow-execution.json"
+        workflow_execution_path = ensure_under_run(
+            workflow_execution_path,
+            self.run_dir,
+            "workflow execution artifact",
+        )
+        if workflow_execution_path.exists():
+            execution = load_json(workflow_execution_path, {}) or {}
+            self.workflow_execution = execution if isinstance(execution, dict) else {}
+        else:
+            self.missing_optional_artifacts.append(rel_to_run(self.run_dir, workflow_execution_path))
         remediation_root = self.reports / "remediation"
         safe_remediation_root = ensure_under_run(remediation_root, self.run_dir, "remediation directory")
         if safe_remediation_root.exists():
@@ -450,6 +464,34 @@ class EvidenceGraphBuilder:
                     "path": json_pointer(self.report_rel("workflow-profile.json"), "stages", index),
                     "summary": short_text(stage.get("reason") or stage_id),
                 })
+        if self.workflow_execution:
+            execution_status = str(self.workflow_execution.get("status") or "unknown")
+            self.add_node({
+                "id": "workflow_execution:run",
+                "type": "workflow_execution",
+                "ref_id": str(self.workflow_execution.get("profile") or "unknown"),
+                "label": "Workflow execution",
+                "severity": "Unknown",
+                "status": execution_status,
+                "path": self.report_rel("workflow-execution.json"),
+                "summary": short_text(f"Workflow execution status {execution_status}"),
+            })
+            for index, stage in enumerate(self.workflow_execution.get("stages") or []):
+                if not isinstance(stage, dict):
+                    continue
+                stage_id = str(stage.get("id") or f"index-{index}")
+                absence_reason = str(stage.get("absence_reason") or "")
+                self.add_node({
+                    "id": f"workflow_execution_stage:{stage_id}",
+                    "type": "workflow_stage",
+                    "ref_id": stage_id,
+                    "label": stage_id,
+                    "severity": "Unknown",
+                    "status": str(stage.get("status") or "unknown"),
+                    "path": json_pointer(self.report_rel("workflow-execution.json"), "stages", index),
+                    "summary": short_text(absence_reason or f"workflow stage {stage_id}"),
+                    "duration_ms": nonnegative_int(stage.get("duration_ms")),
+                })
 
     def add_edges(self) -> None:
         scanner_lead_ids = {
@@ -541,6 +583,27 @@ class EvidenceGraphBuilder:
                         "produced",
                         reason=f"workflow profile marks stage {stage.get('status', 'unknown')}",
                     )
+        if self.workflow_execution and "workflow_execution:run" in self.nodes:
+            for stage in self.workflow_execution.get("stages") or []:
+                if not isinstance(stage, dict):
+                    continue
+                stage_id = str(stage.get("id") or "")
+                stage_node = f"workflow_execution_stage:{stage_id}"
+                if not stage_id:
+                    continue
+                self.add_edge(
+                    "workflow_execution:run",
+                    stage_node,
+                    "produced",
+                    reason=f"workflow execution records stage status {stage.get('status', 'unknown')}",
+                )
+                for dependency in list_strings(stage.get("depends_on")):
+                    self.add_edge(
+                        stage_node,
+                        f"workflow_execution_stage:{dependency}",
+                        "depends_on",
+                        reason="workflow stage dependency",
+                    )
 
     def summary(self) -> dict[str, Any]:
         node_counts = Counter(node["type"] for node in self.nodes.values())
@@ -563,6 +626,7 @@ class EvidenceGraphBuilder:
             "edge_counts": dict(sorted(edge_counts.items())),
             "missing_optional_artifacts": sorted(set(self.missing_optional_artifacts)),
             "workflow_profile": summarize_workflow_profile(self.workflow_profile),
+            "workflow_execution": summarize_workflow_execution(self.workflow_execution),
             "scanner_runs": {
                 "artifact_present": self.scanner_runs_present,
                 "run_count": len(self.scanner_runs),
@@ -616,6 +680,7 @@ def write_evidence_graph(run_dir: Path, graph: dict[str, Any]) -> tuple[Path, Pa
 def render_evidence_graph_markdown(path: Path, graph: dict[str, Any]) -> None:
     summary = graph.get("summary") if isinstance(graph.get("summary"), dict) else {}
     workflow_profile = summary.get("workflow_profile") if isinstance(summary.get("workflow_profile"), dict) else {}
+    workflow_execution = summary.get("workflow_execution") if isinstance(summary.get("workflow_execution"), dict) else {}
     scanner_runs = summary.get("scanner_runs") if isinstance(summary.get("scanner_runs"), dict) else {}
     lines = [
         "# Evidence Graph",
@@ -632,6 +697,11 @@ def render_evidence_graph_markdown(path: Path, graph: dict[str, Any]) -> None:
         f"- Edges: {summary.get('edge_count', 0)}",
         f"- Workflow profile: `{workflow_profile.get('profile', 'not-recorded')}`",
         f"- Stages skipped by scope: {workflow_profile.get('skipped_by_scope_count', 0)}",
+        f"- Workflow execution status: `{workflow_execution.get('status', 'not-recorded')}`",
+        f"- Workflow execution duration: {workflow_execution.get('total_duration_ms', 0)} ms",
+        f"- Workflow failed stages: {workflow_execution.get('failed_count', 0)}",
+        f"- Workflow blocked dependencies: {workflow_execution.get('blocked_dependency_count', 0)}",
+        f"- Workflow resume stage: `{workflow_execution.get('resume_stage') or '-'}`",
         f"- Scanner executions: {scanner_runs.get('run_count', 0)}",
         f"- Scanner execution duration: {scanner_runs.get('total_duration_ms', 0)} ms",
         f"- High/Critical issue-recommended findings: {summary.get('high_critical_issue_recommended_findings', 0)}",

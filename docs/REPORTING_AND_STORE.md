@@ -24,7 +24,9 @@ prompts, transcripts, target research, variant analysis, scanner-result trees,
 and similar logs discoverable with digests even when they are not active
 validation targets. `gra-metrics` and `gra-dashboard` surface these retention
 counts so operators can distinguish current handoff artifacts from retained
-reproducibility logs.
+reproducibility logs. When a manifest snapshot is regenerated after declarative
+workflow execution, `workflow-execution.json` and `WORKFLOW_EXECUTION.md` are
+classified as latest-status artifacts.
 
 Generate local novelty classification, metrics, dogfood benchmark gates, evidence graph, and dashboard:
 
@@ -62,7 +64,10 @@ Issue ledger publication states, artifact counts, manifest retention buckets,
 manifest hygiene warning counts, run duration when local metadata is
 available, and command-event observability aggregates for status, duration,
 failure, retry, execution configuration, artifact-ref production, workflow
-stage groups, and producer coverage. It intentionally omits raw finding
+stage groups, producer coverage, and bounded declarative workflow execution
+status/duration/failure/skip/block/resume summaries. An absent optional
+`workflow-execution.json` is represented explicitly rather than treated as a
+successful execution. It intentionally omits raw finding
 evidence, issue body text, proof evidence, trace evidence, scanner lead bodies,
 and secret values.
 
@@ -70,7 +75,8 @@ The benchmark report scores local v0.4 quality gates from `metrics.json` when pr
 
 The evidence graph links findings to supporting and challenging local artifacts
 such as targets, chains, proofs, validation, traces, remediation candidates,
-patch validation, Issue plans, and metrics. It records bounded metadata and
+patch validation, Issue plans, workflow execution stages, and metrics. It
+records bounded metadata and
 run-relative artifact references only; it does not copy raw evidence,
 remediation text, proof payloads, Issue bodies, or secrets. Like metrics and
 benchmarking, a successful graph write is fail-closed, but an already failing

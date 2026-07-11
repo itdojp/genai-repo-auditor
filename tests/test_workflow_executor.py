@@ -72,6 +72,16 @@ class WorkflowExecutorTests(unittest.TestCase):
                 validate_schema(artifact, schema["$defs"]["artifact"], "workflow_checkpoint.artifact", errors)
         self.assertEqual([], errors)
 
+    def load_execution_report(self) -> dict:
+        path = self.run / "reports" / "workflow-execution.json"
+        report = json.loads(path.read_text(encoding="utf-8"))
+        schema = load_schema(REPO_ROOT, "workflow-execution.schema.json")
+        errors: list[str] = []
+        validate_schema(report, schema, "workflow_execution", errors)
+        self.assertEqual([], errors)
+        self.assertTrue((self.run / "reports" / "WORKFLOW_EXECUTION.md").is_file())
+        return report
+
     def test_dependency_order_success_and_sanitized_checkpoint(self) -> None:
         checkpoint, exit_code = self.execute()
 
@@ -83,6 +93,17 @@ class WorkflowExecutorTests(unittest.TestCase):
         self.assertNotIn("argv", json.dumps(checkpoint))
         self.assert_checkpoint_schema(checkpoint)
         self.assertEqual(["gra-recon", "gra-targets"], [item["command"] for item in checkpoint["command_implementations"]])
+        execution = self.load_execution_report()
+        self.assertEqual("succeeded", execution["status"])
+        self.assertEqual(2, execution["summary"]["by_status"]["succeeded"])
+        self.assertFalse(execution["resume"]["available"])
+        self.assertFalse(execution["safety"]["issue_publication_included"])
+        allowed_stage_fields = {
+            "id", "status", "depends_on", "attempt", "started_at", "ended_at",
+            "duration_ms", "exit_code", "error_category", "absence_reason",
+            "blocked_by", "output_artifact_refs",
+        }
+        self.assertTrue(all(set(stage) == allowed_stage_fields for stage in execution["stages"]))
 
     def test_failure_blocks_then_resume_retries_only_failed_stage(self) -> None:
         self.fail_targets = True
@@ -91,6 +112,10 @@ class WorkflowExecutorTests(unittest.TestCase):
         self.assertEqual("blocked", checkpoint["status"])
         self.assertEqual("targets", checkpoint["resume_stage"])
         self.assertEqual(["gra-recon", "gra-targets"], self.calls)
+        execution = self.load_execution_report()
+        self.assertEqual("blocked", execution["status"])
+        self.assertEqual(["targets"], [stage["id"] for stage in execution["stages"] if stage["status"] == "failed"])
+        self.assertEqual("targets", execution["resume"]["stage"])
 
         self.calls.clear()
         self.fail_targets = False
@@ -150,6 +175,9 @@ class WorkflowExecutorTests(unittest.TestCase):
         self.assertEqual(["gra-recon"], self.calls)
         self.assertEqual("paused", checkpoint["status"])
         self.assertEqual("targets", checkpoint["resume_stage"])
+        execution = self.load_execution_report()
+        self.assertEqual("range_continuation", execution["stages"][1]["absence_reason"])
+        self.assertEqual("targets", execution["resume"]["stage"])
 
         self.calls.clear()
         checkpoint, exit_code = self.execute(resume=True)
@@ -206,6 +234,9 @@ class WorkflowExecutorTests(unittest.TestCase):
         self.assertEqual("paused", checkpoint["status"])
         self.assertEqual("recon", checkpoint["resume_stage"])
         self.assertEqual("interrupted", checkpoint["stages"][0]["error_category"])
+        execution = self.load_execution_report()
+        self.assertEqual("interrupted", execution["stages"][0]["absence_reason"])
+        self.assertEqual("recon", execution["resume"]["stage"])
 
     def test_existing_checkpoint_requires_resume(self) -> None:
         self.execute(until_stage="recon")

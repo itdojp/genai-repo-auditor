@@ -133,6 +133,9 @@ class BuiltinWorkflowProfileTests(CliWorkflowTestCase):
         self.assertEqual(0, exit_code)
         self.assertEqual("skipped_by_scope", next(x for x in checkpoint["stages"] if x["id"] == "syft-plan")["status"])
         self.assertNotIn("gra-scan", calls)
+        execution = json.loads((run_dir / "reports" / "workflow-execution.json").read_text())
+        syft = next(stage for stage in execution["stages"] if stage["id"] == "syft-plan")
+        self.assertEqual("operator_scoped_skip", syft["absence_reason"])
 
     def test_recon_only_scoped_skip_is_not_missing_or_failed(self) -> None:
         run_dir, _plan, command_root = self.prepare("recon-only")
@@ -166,6 +169,11 @@ class BuiltinWorkflowProfileTests(CliWorkflowTestCase):
         self.assertEqual(9, exit_code)
         self.assertEqual("blocked", checkpoint["status"])
         self.assertEqual("chains", checkpoint["resume_stage"])
+        execution = json.loads((run_dir / "reports" / "workflow-execution.json").read_text())
+        self.assertEqual(1, execution["summary"]["failed_count"])
+        self.assertEqual(1, execution["summary"]["blocked_dependency_count"])
+        self.assertEqual("blocked_by_dependency", execution["stages"][4]["absence_reason"])
+        self.assertEqual("blocked_by_dependency", execution["stages"][5]["absence_reason"])
 
         resumed_calls: list[str] = []
 

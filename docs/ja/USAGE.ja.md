@@ -107,11 +107,33 @@ gra-run --run "$RUN_DIR" --profile recon-only --execute --until recon
 gra-run --run "$RUN_DIR" --profile recon-only --resume
 ```
 
-実行状態は `<reports_dir>/workflow-checkpoint.json` に保存されます。`--resume` は
+再開用の実行状態は `<reports_dir>/workflow-checkpoint.json` に保存されます。
+各 checkpoint 更新時に、確認用の `<reports_dir>/workflow-execution.json` と
+`<reports_dir>/WORKFLOW_EXECUTION.md` も更新されます。確認用 report には stage の
+status・duration・失敗分類・scoped skip・blocked dependency・未実行理由・resume
+stage だけを記録し、raw prompt、finding/evidence 本文、credential、private reasoning、
+Issue 公開内容は複製しません。`--resume` は
 run/profile/plan と成功済み出力の SHA-256 を照合し、成功済み stage を再実行せず、
 記録済み resume stage から再開します。run state が `paused` または `blocked` の
 場合は実行を拒否します。orchestrator は network flag や Issue/release/remediation
-publication command を暗黙に追加しません。
+publication command を暗黙に追加しません。resume は既存 plan/checkpoint の完全性を
+plan 更新前に検証し、plan 自体は書き換えず、checkpoint と execution report だけを
+更新します。
+
+`--until` による範囲実行、stage failure、interruption の場合も、未実行 stage を
+黙って除外せず、`range_continuation`、`blocked_by_dependency`、`interrupted` などの
+限定された理由を execution report に残します。reporting stage を含む profile では、
+terminal status と `gra-run` completion event を反映するため、完了後に次の順序で
+再生成してください。
+
+```bash
+gra-metrics --run "$RUN_DIR"
+gra-evidence-graph --run "$RUN_DIR"
+gra-validate-report --run "$RUN_DIR"
+```
+
+workflow 成功は Issue 公開承認を意味しません。Issue 公開は引き続き人手で
+review した別 command として扱います。
 
 ## 主要成果物
 
@@ -135,6 +157,11 @@ runs/OWNER__REPO/RUN_ID/
     validation.json           # adversarial validation の機械可読出力
     VALIDATION.md             # Issue 作成前に確認する検証サマリ
     run-state.json            # paused/resume/blocked の run-level state
+    workflow-plan.json        # gra-run の実行前計画
+    WORKFLOW_PLAN.md
+    workflow-checkpoint.json  # resume integrity 用の実行 checkpoint
+    workflow-execution.json   # bounded な実行 status/duration/absence reason
+    WORKFLOW_EXECUTION.md
     issue-drafts/             # Issue 本文候補。人間が確認する
     scanner-results/          # 任意で取り込んだ scanner output
   codex-final.md
@@ -165,8 +192,9 @@ gra-run --run "$RUN_DIR" --profile recon-only --skip targets --json
 
 `<reports_dir>/workflow-plan.json` と `WORKFLOW_PLAN.md` には sanitized argv と
 run-relative artifact ref のみを記録します。network、GitHub Issue mutation、release、
-raw prompt/finding/evidence/credential は plan に含めません。workflow execution と
-resume/checkpoint は後続フェーズの機能であり、この planning command では実行されません。
+raw prompt/finding/evidence/credential は plan に含めません。デフォルトは計画のみで、
+明示的な `--execute` または `--resume` の場合だけ stage を実行し、checkpoint と
+execution report を更新します。
 
 ## scanner output の取り込み
 

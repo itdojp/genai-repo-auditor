@@ -118,6 +118,7 @@ COMMAND_EVENT_PRODUCERS = [
     "gra-recon",
     "gra-remediate",
     "gra-research",
+    "gra-run",
     "gra-sarif",
     "gra-scan",
     "gra-scanner-triage",

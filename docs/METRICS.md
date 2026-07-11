@@ -38,6 +38,9 @@ Metrics are computed from local report artifacts only:
 - duplicate decision total, exact-match count, candidate Issue references, and decision buckets
 - scanner execution counts by status/adapter, total and maximum duration,
   result/normalized-lead counts, and redaction counts from `scanner-runs.json`
+- declarative workflow execution status, stage durations, failures, scoped
+  skips, blocked dependencies, explicit absence reasons, and resume state from
+  `workflow-execution.json`
 - command event counts, status/duration summaries, failures, reruns, retries,
   execution-configuration coverage, artifact-reference production counts,
   stage-group counts, and producer coverage
@@ -75,6 +78,11 @@ and simple status flags:
 - `workflow_profile.artifact_present`, `profile`,
   `skipped_by_scope_count`, and status counts when
   `reports/workflow-profile.json` is present
+- `workflow_execution.artifact_present`, terminal/current status, profile,
+  stage and duration counts, failed/scoped-skip/blocked stage IDs, absence
+  reasons, and resume stage when `reports/workflow-execution.json` is present;
+  an absent optional report is represented by
+  `absence_reason: workflow_execution_not_recorded`
 - `no_findings.recorded`, `source_stage`, and `recon_only` for explicit
   no-confirmed-finding records
 
@@ -91,8 +99,9 @@ Instrumented workflow commands append structured JSONL command events to
 `context.json` and defaults to `reports/`. Producers cover the audit entry
 point, recon, target queue operations, target research, gapfill, variant
 analysis, chain synthesis, safe proofs, adversarial validation, remediation,
-trace reachability, scanner execution/ingestion, external finding import, scanner triage,
-Issue publication preview/planning, report validation, metrics generation,
+trace reachability, scanner execution/ingestion, external finding import,
+scanner triage, Issue publication preview/planning, declarative workflow
+plan/execution/resume, report validation, metrics generation,
 dogfood benchmarking, evidence-graph generation, dashboard rendering, SARIF
 export, and SQLite store import. `gra-metrics` accepts both Issue #116 version
 `1` records and the version `2` event contract. Version `2` adds unique
@@ -144,6 +153,12 @@ to `gra-benchmark`, `gra-evidence-graph`, `gra-dashboard`, `gra-sarif`, and
 `gra-store`; their new events become visible on the next `gra-metrics`
 execution, after which a later `gra-dashboard` run can display the
 updated metrics.
+
+The same sequencing applies when a `publication-ready` or `full` `gra-run`
+profile invokes reporting commands as stages. Those stages observe the
+in-progress workflow report. Rerun `gra-metrics` after terminal `gra-run`
+completion to consume the final workflow status and the `gra-run` completion
+event, then regenerate the evidence graph or dashboard as needed.
 
 `gra-dashboard` renders the longest target executions, producer coverage,
 execution-configuration coverage, workflow stage-group counts, artifact

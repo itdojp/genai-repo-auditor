@@ -130,6 +130,7 @@ templates/reports/traces.schema.json
 templates/reports/validation.schema.json
 templates/reports/workflow-profile.schema.json
 templates/reports/workflow-checkpoint.schema.json
+templates/reports/workflow-execution.schema.json
 templates/reports/workflow-plan.schema.json
 ```
 
