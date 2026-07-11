@@ -28,9 +28,8 @@ FORBIDDEN_PUBLIC_MARKERS = (
     "subprocess",
     "os.system",
     "child_process",
-    "curl ",
-    "wget ",
 )
+FORBIDDEN_PUBLIC_HELPER_RE = re.compile(r"(?<![a-z0-9_-])(?:curl|wget)(?![a-z0-9_-])")
 SUPPORTED_SCHEMA_KEYS = {
     "$defs",
     "$ref",
@@ -211,12 +210,26 @@ def _require_public_safe_text(raw: bytes, *, label: str) -> str:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise EfficacyCorpusError(f"{label} must contain valid UTF-8 text") from exc
-    lowered = text.lower()
-    if any(marker in lowered for marker in FORBIDDEN_PUBLIC_MARKERS):
+    if _contains_forbidden_public_marker(text):
         raise EfficacyCorpusError(
             f"{label} contains a prohibited live-network, credential, or execution marker"
         )
     return text
+
+
+def _contains_forbidden_public_marker(text: str) -> bool:
+    normalized = text.lower()
+    replacements = ((r"\/", "/"), (r"\u002f", "/"), (r"\x2f", "/"), (r"\u003a", ":"), (r"\x3a", ":"))
+    for _attempt in range(3):
+        updated = normalized
+        for escaped, literal in replacements:
+            updated = updated.replace(escaped, literal)
+        if updated == normalized:
+            break
+        normalized = updated
+    return any(marker in normalized for marker in FORBIDDEN_PUBLIC_MARKERS) or bool(
+        FORBIDDEN_PUBLIC_HELPER_RE.search(normalized)
+    )
 
 
 def _require_public_safe_json(value: Any, *, label: str) -> None:
@@ -229,8 +242,7 @@ def _require_public_safe_json(value: Any, *, label: str) -> None:
         elif isinstance(current, list):
             pending.extend(current)
         elif isinstance(current, str):
-            lowered = current.lower()
-            if any(marker in lowered for marker in FORBIDDEN_PUBLIC_MARKERS):
+            if _contains_forbidden_public_marker(current):
                 raise EfficacyCorpusError(
                     f"{label} contains a prohibited live-network, credential, or execution marker"
                 )

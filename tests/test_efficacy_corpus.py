@@ -214,6 +214,24 @@ class EfficacyCorpusTests(unittest.TestCase):
         with self.assertRaisesRegex(EfficacyCorpusError, "requires closed object contracts"):
             load_corpus(lab_root)
 
+    def test_non_json_fixture_rejects_escaped_urls_and_bare_helpers(self) -> None:
+        for name, appended in (
+            ("escaped-url", r"documentation: https:\/\/example.invalid/private" + "\n"),
+            ("bare-helper", "post_content_step: curl\n"),
+        ):
+            with self.subTest(name=name):
+                lab_root = self.copy_corpus(f"lab-{name}")
+                case_root = lab_root / "benchmarks" / "corpus" / "cases" / "github-actions" / "pr-control-001"
+                fixture_path = case_root / "workflow-fixture.yml"
+                manifest_path = case_root / "case.json"
+                fixture_path.write_text(fixture_path.read_text(encoding="utf-8") + appended, encoding="utf-8")
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                manifest["fixture"]["files"][0]["sha256"] = hashlib.sha256(fixture_path.read_bytes()).hexdigest()
+                self.write_json(manifest_path, manifest)
+                self.refresh_manifest_digest(lab_root, manifest_path)
+                with self.assertRaisesRegex(EfficacyCorpusError, "fixture file contains a prohibited"):
+                    load_corpus(lab_root)
+
     @unittest.skipUnless(efficacy_corpus.OPEN_SUPPORTS_DIR_FD, "requires openat-style dir_fd support")
     def test_directory_handle_read_resists_ancestor_symlink_swap(self) -> None:
         lab_root = self.copy_corpus()
