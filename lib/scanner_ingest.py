@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -50,10 +51,8 @@ def _atomic_write_json(path: Path, value: Any) -> None:
     finally:
         if fd is not None:
             os.close(fd)
-        try:
+        with contextlib.suppress(FileNotFoundError):
             temporary.unlink()
-        except FileNotFoundError:
-            pass
 
 
 @dataclass(frozen=True)

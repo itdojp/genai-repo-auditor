@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -425,10 +426,8 @@ def _atomic_write(path: Path, content: str) -> None:
     finally:
         if fd is not None:
             os.close(fd)
-        try:
+        with contextlib.suppress(FileNotFoundError):
             temporary.unlink()
-        except FileNotFoundError:
-            pass
 
 
 def append_scanner_run(run_dir: Path, record: dict[str, Any]) -> tuple[dict[str, Any], Path, Path]:
@@ -473,7 +472,5 @@ def append_scanner_run(run_dir: Path, record: dict[str, Any]) -> tuple[dict[str,
         _atomic_write(markdown_path, render_scanner_runs_markdown(report))
         return report, json_path, markdown_path
     finally:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             os.rmdir(lock_path)
-        except FileNotFoundError:
-            pass
