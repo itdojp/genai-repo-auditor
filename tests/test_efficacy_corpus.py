@@ -7,9 +7,9 @@ import shutil
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from collections import Counter
 from pathlib import Path
-from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -230,7 +230,7 @@ class EfficacyCorpusTests(unittest.TestCase):
                 return real_open(path, flags, mode)
             return real_open(path, flags, mode, dir_fd=dir_fd)
 
-        with mock.patch.object(efficacy_corpus.os, "open", side_effect=racing_open):
+        with unittest.mock.patch.object(efficacy_corpus.os, "open", side_effect=racing_open):
             loaded = load_corpus(lab_root)
         self.assertTrue(swapped)
         self.assertEqual(8, len(loaded["cases"]))
