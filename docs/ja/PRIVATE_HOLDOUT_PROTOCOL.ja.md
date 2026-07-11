@@ -164,6 +164,10 @@ aggregate が最低限記録すべきものは次のとおりです。
   - severity agreement
   - target coverage
   - human review required count
+
+`false_positives` と `prediction_count` は prediction 件数です。positive case の unmatched
+extra prediction も false positive に含まれるため、`false_positives` は control case 件数を
+表す `negative_control_false_positive_case_count` より大きい場合があります。
 - adjudication completion state と adjudication digest
 - safety flag
 - publication approval state と別個の approval digest

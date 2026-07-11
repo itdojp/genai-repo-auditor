@@ -223,11 +223,12 @@ def _validate_semantics(metadata: dict[str, Any], aggregate: dict[str, Any]) -> 
                 counts["true_positives"],
                 counts["true_positives"] + counts["false_negatives"],
             )
-            f1 = (
-                None
-                if precision is None or recall is None or precision + recall == 0
-                else round(2 * precision * recall / (precision + recall), 6)
-            )
+            f1 = None
+            if precision is not None and recall is not None:
+                f1 = 0.0 if precision + recall == 0 else round(
+                    2 * precision * recall / (precision + recall),
+                    6,
+                )
             _require_rate(rates["precision"], precision, label="holdout precision")
             _require_rate(rates["recall"], recall, label="holdout recall")
             _require_rate(rates["f1"], f1, label="holdout F1")

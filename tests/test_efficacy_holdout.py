@@ -331,6 +331,40 @@ class EfficacyHoldoutTests(unittest.TestCase):
         with self.assertRaisesRegex(EfficacyBenchmarkError, "adjudication counts"):
             load_and_validate_holdout_records(REPO_ROOT, self.records_root)
 
+    def test_complete_miss_uses_defined_zero_f1_and_preserves_positive_case_false_positives(self) -> None:
+        for run in self.aggregate["configurations"][0]["runs"]:
+            run["counts"] = {
+                "true_positives": 0,
+                "false_positives": 2,
+                "false_negatives": 2,
+                "true_negatives": 0,
+                "prediction_count": 2,
+            }
+            run["rates"] = {"precision": 0, "recall": 0, "f1": 0}
+            run["negative_control_false_positive_case_count"] = 2
+            run["severity_agreement"] = {"agreed": 0, "eligible": 0, "rate": None}
+        variance = self.aggregate["configurations"][0]["repeat_variance"]
+        for metric in ("precision", "recall", "f1"):
+            variance[metric] = metric_summary(0)
+        variance["severity_agreement"] = {
+            "applicable_run_count": 0,
+            "minimum": None,
+            "maximum": None,
+            "mean": None,
+            "population_variance": None,
+        }
+        self.write_records()
+        load_and_validate_holdout_records(REPO_ROOT, self.records_root)
+
+        # Aggregate FP is a prediction count and may also include unmatched
+        # extra predictions on positive cases, so it need not equal the count
+        # of negative-control cases that produced one or more false positives.
+        for run in self.aggregate["configurations"][0]["runs"]:
+            run["counts"]["false_positives"] = 3
+            run["counts"]["prediction_count"] = 3
+        self.write_records()
+        load_and_validate_holdout_records(REPO_ROOT, self.records_root)
+
     def test_record_files_and_components_must_not_be_symlinks(self) -> None:
         aggregate_path = self.records_root / "holdout-aggregate.json"
         real_path = self.work / "aggregate.json"

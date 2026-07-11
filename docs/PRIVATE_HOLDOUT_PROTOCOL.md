@@ -167,6 +167,11 @@ At minimum, aggregate must record:
   - severity agreement
   - target coverage
   - human review required count
+
+`false_positives` and `prediction_count` count predictions. A positive case can
+contribute an unmatched extra prediction, so `false_positives` may exceed
+`negative_control_false_positive_case_count`, which counts affected control
+cases rather than predictions.
 - adjudication completion state and adjudication digest;
 - safety flags; and
 - publication approval state and separate approval digest.
