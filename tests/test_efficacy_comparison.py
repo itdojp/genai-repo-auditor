@@ -16,8 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 COMMAND = REPO_ROOT / "bin" / "gra-efficacy-benchmark"
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
-import efficacy_benchmark  # noqa: E402
-from efficacy_benchmark import EfficacyBenchmarkError  # noqa: E402
+from efficacy_benchmark import DIR_FD_OUTPUT_SUPPORTED, EfficacyBenchmarkError, select_cases  # noqa: E402
 from efficacy_comparison import (  # noqa: E402
     build_comparison_report,
     list_configurations,
@@ -55,8 +54,6 @@ class EfficacyComparisonTests(unittest.TestCase):
         )
 
     def selected_cases(self, suite: str = "appsec"):
-        from efficacy_benchmark import select_cases
-
         loaded, fixture_texts = load_corpus_fixture_texts(REPO_ROOT)
         cases, _selection = select_cases(loaded, suite=suite)
         return cases, fixture_texts
@@ -143,7 +140,7 @@ class EfficacyComparisonTests(unittest.TestCase):
         self.assertIn("--configuration requires --compare", configuration_without_compare.stderr)
 
     @unittest.skipUnless(
-        efficacy_benchmark.DIR_FD_OUTPUT_SUPPORTED,
+        DIR_FD_OUTPUT_SUPPORTED,
         "requires dirfd-anchored output support",
     )
     def test_cli_comparison_reports_are_byte_stable_without_external_tools(self) -> None:
@@ -281,7 +278,7 @@ print(json.dumps({'type': 'result', 'status': 'ok'}))
         self.assertNotIn(str(worker["artifacts_dir"]), serialized)
 
     @unittest.skipUnless(
-        efficacy_benchmark.DIR_FD_OUTPUT_SUPPORTED,
+        DIR_FD_OUTPUT_SUPPORTED,
         "requires dirfd-anchored output support",
     )
     def test_cli_worker_comparison_runs_only_after_explicit_opt_in(self) -> None:

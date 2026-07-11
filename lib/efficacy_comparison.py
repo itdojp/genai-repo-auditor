@@ -32,7 +32,7 @@ DEFAULT_CONFIGURATIONS = tuple(REFERENCE_CONFIGURATIONS)
 COMPARISON_LIMITATIONS = [
     "Configuration deltas on this small synthetic corpus are regression evidence, not product capability claims.",
     "Worker-assisted results are non-deterministic and are not comparable across model or prompt "
-    "changes without review.",
+    + "changes without review.",
     "No benchmark result authorizes finding or Issue publication without repository-specific human validation.",
 ]
 
@@ -274,7 +274,7 @@ def render_comparison_markdown(report: dict[str, Any]) -> str:
         "## Configuration scores",
         "",
         "| Configuration | Type | Workflow stages | Deterministic | Worker profile | CLI | Model | Effort | "
-        "TP | FP | FN | TN | Precision | Recall | F1 | Severity | Coverage | Human review |",
+        + "TP | FP | FN | TN | Precision | Recall | F1 | Severity | Coverage | Human review |",
         "|---|---|---|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for configuration in report["configurations"]:
