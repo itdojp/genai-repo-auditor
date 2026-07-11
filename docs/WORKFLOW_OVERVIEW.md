@@ -3,8 +3,7 @@
 ## 結論
 
 通常運用は `gra-audit --mode prepare` と宣言的 `gra-run` を使います。plan を確認してから
-`--execute` し、必要時は同じ checkpoint を `--resume` します。個別 `codex exec` 相当の
-command と `/goal` は、重要 finding や特定カテゴリを深く検証する supervised deep dive
+`--execute` し、必要時は同じ checkpoint を `--resume` します。個別 `gra-*` command と `/goal` は、重要 finding や特定カテゴリを深く検証する supervised deep dive
 として使います。
 
 | 観点 | 通常使用: `gra-run` | 深掘り: 個別 command / `/goal` |
