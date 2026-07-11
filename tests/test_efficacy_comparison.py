@@ -363,6 +363,16 @@ print(json.dumps({'type': 'result', 'status': 'ok'}))
         with self.assertRaisesRegex(EfficacyBenchmarkError, "current working directory"):
             _worker_base(outside)
 
+        cwd_alias = self.work / "cwd-alias"
+        try:
+            cwd_alias.symlink_to(REPO_ROOT, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            pass
+        else:
+            aliased_worker_dir = cwd_alias / self.work.relative_to(REPO_ROOT)
+            with unittest.mock.patch.dict(os.environ, {"PWD": str(cwd_alias)}):
+                self.assertEqual(aliased_worker_dir, _worker_base(aliased_worker_dir))
+
     def test_worker_rejects_codex_cli_older_than_the_isolated_execution_contract(self) -> None:
         cases, fixture_texts = self.selected_cases()
         worker_base = self.work / "worker-base"

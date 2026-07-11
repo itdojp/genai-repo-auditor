@@ -60,15 +60,33 @@ def _worker_environment(source: dict[str, str] | None = None) -> dict[str, str]:
 
 
 def _worker_base(path: Path) -> Path:
-    base = Path(os.path.abspath(os.fspath(path.expanduser())))
-    cwd = Path.cwd().resolve(strict=True)
-    try:
-        relative = base.relative_to(cwd)
-    except ValueError as exc:
-        raise EfficacyBenchmarkError("--worker-dir must stay under the current working directory") from exc
+    physical_cwd = Path.cwd().resolve(strict=True)
+    logical_cwd = physical_cwd
+    pwd = os.environ.get("PWD")
+    if pwd and Path(pwd).is_absolute():
+        candidate_cwd = Path(os.path.abspath(pwd))
+        try:
+            if candidate_cwd.samefile(physical_cwd):
+                logical_cwd = candidate_cwd
+        except OSError:
+            pass
+    candidate = path.expanduser()
+    if not candidate.is_absolute():
+        candidate = logical_cwd / candidate
+    base = Path(os.path.abspath(os.fspath(candidate)))
+    current: Path | None = None
+    relative: Path | None = None
+    for root in dict.fromkeys((logical_cwd, physical_cwd)):
+        try:
+            relative = base.relative_to(root)
+            current = root
+            break
+        except ValueError:
+            continue
+    if current is None or relative is None:
+        raise EfficacyBenchmarkError("--worker-dir must stay under the current working directory")
     if not relative.parts:
         raise EfficacyBenchmarkError("--worker-dir must not be the current working directory")
-    current = cwd
     for component in relative.parts:
         current = current / component
         if current.is_symlink():
