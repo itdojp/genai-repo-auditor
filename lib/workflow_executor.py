@@ -7,7 +7,6 @@ import os
 import stat
 import subprocess
 import sys
-import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
@@ -16,7 +15,7 @@ from typing import Any
 from report_safety import iter_secret_findings
 from gralib import load_context, utc_now
 from run_state import ACTIVE, BLOCKED, PAUSED, load_run_state, run_state_path
-from workflow_orchestrator import WorkflowPlanError, _safe_rel
+from workflow_orchestrator import _safe_rel
 
 
 CHECKPOINT_SCHEMA_VERSION = "1"
