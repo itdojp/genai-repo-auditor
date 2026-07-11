@@ -171,22 +171,37 @@ def build_codex_exec_args(
     output_last: Path,
     approval: str = 'never',
     executable: Optional[str] = None,
+    sandbox: str = 'workspace-write',
+    ephemeral: bool = False,
+    ignore_user_config: bool = False,
+    ignore_rules: bool = False,
+    output_schema: Optional[Path] = None,
 ) -> List[str]:
-    return [
+    if sandbox not in {'read-only', 'workspace-write'}:
+        raise ValueError(f'unsupported Codex sandbox mode: {sandbox}')
+    args = [
         executable or codex_worker_executable(), 'exec',
         '--cd', str(run_dir),
         '--skip-git-repo-check',
         '--model', model,
-        '--sandbox', 'workspace-write',
+        '--sandbox', sandbox,
         '--color', 'never',
         '--output-last-message', str(output_last),
         '-c', codex_config_arg('approval_policy', approval),
         '-c', codex_config_arg('model_reasoning_effort', effort),
         '-c', codex_config_arg('web_search', 'disabled'),
         '-c', codex_config_arg('sandbox_workspace_write.network_access', network),
-        '--json',
-        '-',
     ]
+    if ephemeral:
+        args.append('--ephemeral')
+    if ignore_user_config:
+        args.append('--ignore-user-config')
+    if ignore_rules:
+        args.append('--ignore-rules')
+    if output_schema is not None:
+        args.extend(('--output-schema', str(output_schema)))
+    args.extend(('--json', '-'))
+    return args
 
 
 def run_codex_exec(

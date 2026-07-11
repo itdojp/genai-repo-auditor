@@ -47,6 +47,8 @@ jobs:
           $repoList = Join-Path $env:RUNNER_TEMP "gra-package-repos.txt"
           $efficacyJson = Join-Path $env:RUNNER_TEMP "gra-efficacy.json"
           $efficacyMarkdown = Join-Path $env:RUNNER_TEMP "gra-efficacy.md"
+          $efficacyComparisonJson = Join-Path $env:RUNNER_TEMP "gra-efficacy-comparison.json"
+          $efficacyComparisonMarkdown = Join-Path $env:RUNNER_TEMP "gra-efficacy-comparison.md"
           New-Item -ItemType Directory -Force -Path $mockBin | Out-Null
           python -m venv $venv
           if ($IsWindows) {
@@ -123,6 +125,8 @@ jobs:
           assert Path(gra.resource_path("lib", "agent_worker.py")).is_file()
           assert Path(gra.prompt_path("exec", "full-audit.prompt.md")).is_file()
           assert Path(gra.report_schema_path("findings.schema.json")).is_file()
+          assert Path(gra.report_schema_path("efficacy-comparison.schema.json")).is_file()
+          assert Path(gra.report_schema_path("efficacy-worker-response.schema.json")).is_file()
           assert Path(gra.taxonomy_path("owasp-llm-2025.json")).is_file()
           assert Path(gra.agent_worker_profile_path("codex-cli.json")).is_file()
           assert Path(gra.efficacy_corpus_path("core.json")).is_file()
@@ -146,9 +150,12 @@ jobs:
           gra-agent-check --list --json | Out-Null
           if ($IsWindows) {
             gra-efficacy-benchmark --list | Out-Null
+            gra-efficacy-benchmark --list-configurations | Out-Null
           } else {
             gra-efficacy-benchmark --out-json $efficacyJson --out-md $efficacyMarkdown | Out-Null
             if (-not (Test-Path $efficacyJson) -or -not (Test-Path $efficacyMarkdown)) { throw "missing installed efficacy benchmark outputs" }
+            gra-efficacy-benchmark --compare --out-json $efficacyComparisonJson --out-md $efficacyComparisonMarkdown | Out-Null
+            if (-not (Test-Path $efficacyComparisonJson) -or -not (Test-Path $efficacyComparisonMarkdown)) { throw "missing installed efficacy comparison outputs" }
           }
           Copy-Item -Recurse tests/fixtures/minimal-run $fixture
           gra-validate-report --run $fixture | Out-Null

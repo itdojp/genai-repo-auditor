@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor security efficacy comparison",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "benchmark_id", "mode", "corpus", "safety", "configurations", "comparison", "claim_guardrails", "limitations"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "benchmark_id": {"const": "genai-repo-auditor-security-efficacy-comparison"},
+    "mode": {"enum": ["deterministic-comparison", "worker-assisted-comparison"]},
+    "corpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["corpus_id", "corpus_version", "selection"],
+      "properties": {
+        "corpus_id": {"type": "string", "minLength": 1, "maxLength": 100},
+        "corpus_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+\\+sha256\\.[a-f0-9]{64}$"},
+        "selection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "suite", "case_ids"],
+          "properties": {
+            "kind": {"enum": ["suite", "cases"]},
+            "suite": {"type": ["string", "null"]},
+            "case_ids": {"type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,47}/[a-z][a-z0-9-]{1,63}$"}}
+          }
+        }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["benchmark_inputs_local_synthetic_only", "model_channel_used", "external_network_beyond_model_channel_enabled", "worker_user_configuration_loaded", "worker_project_rules_loaded", "github_accessed", "issue_publication_performed", "raw_fixture_content_included", "bounded_summary_only"],
+      "properties": {
+        "benchmark_inputs_local_synthetic_only": {"const": true},
+        "model_channel_used": {"type": "boolean"},
+        "external_network_beyond_model_channel_enabled": {"const": false},
+        "worker_user_configuration_loaded": {"const": false},
+        "worker_project_rules_loaded": {"const": false},
+        "github_accessed": {"const": false},
+        "issue_publication_performed": {"const": false},
+        "raw_fixture_content_included": {"const": false},
+        "bounded_summary_only": {"const": true}
+      }
+    },
+    "configurations": {"type": "array", "minItems": 2, "maxItems": 4, "uniqueItems": true, "items": {"$ref": "#/$defs/configuration"}},
+    "comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline_configuration_id", "case_ids", "deltas"],
+      "properties": {
+        "baseline_configuration_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9:._-]{1,127}$"},
+        "case_ids": {"type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,47}/[a-z][a-z0-9-]{1,63}$"}},
+        "deltas": {"type": "array", "minItems": 1, "maxItems": 3, "items": {"$ref": "#/$defs/delta"}}
+      }
+    },
+    "claim_guardrails": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product_capability_claim_allowed", "production_performance_claim_allowed", "publication_requires_human_review", "finding_publication_performed"],
+      "properties": {
+        "product_capability_claim_allowed": {"const": false},
+        "production_performance_claim_allowed": {"const": false},
+        "publication_requires_human_review": {"const": true},
+        "finding_publication_performed": {"const": false}
+      }
+    },
+    "limitations": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "string", "minLength": 1, "maxLength": 240}}
+  },
+  "$defs": {
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["true_positives", "false_positives", "false_negatives", "true_negatives", "prediction_count"],
+      "properties": {
+        "true_positives": {"type": "integer", "minimum": 0},
+        "false_positives": {"type": "integer", "minimum": 0},
+        "false_negatives": {"type": "integer", "minimum": 0},
+        "true_negatives": {"type": "integer", "minimum": 0},
+        "prediction_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "rates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["precision", "recall", "f1"],
+      "properties": {
+        "precision": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "recall": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "f1": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+      }
+    },
+    "agreement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agreed", "eligible", "rate"],
+      "properties": {
+        "agreed": {"type": "integer", "minimum": 0},
+        "eligible": {"type": "integer", "minimum": 0},
+        "rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["covered", "selected", "rate"],
+      "properties": {
+        "covered": {"type": "integer", "minimum": 0},
+        "selected": {"type": "integer", "minimum": 1},
+        "rate": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "scores": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["counts", "rates", "severity_agreement", "target_coverage", "human_review_required_count"],
+      "properties": {
+        "counts": {"$ref": "#/$defs/counts"},
+        "rates": {"$ref": "#/$defs/rates"},
+        "severity_agreement": {"$ref": "#/$defs/agreement"},
+        "target_coverage": {"$ref": "#/$defs/coverage"},
+        "human_review_required_count": {"type": "integer", "minimum": 0, "maximum": 64}
+      }
+    },
+    "caseOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_id", "outcome", "true_positives", "false_positives", "false_negatives", "human_review_required"],
+      "properties": {
+        "case_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,47}/[a-z][a-z0-9-]{1,63}$"},
+        "outcome": {"enum": ["true_positive", "true_negative", "false_positive", "false_negative", "mixed"]},
+        "true_positives": {"type": "integer", "minimum": 0},
+        "false_positives": {"type": "integer", "minimum": 0},
+        "false_negatives": {"type": "integer", "minimum": 0},
+        "human_review_required": {"type": "boolean"}
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["configuration_id", "configuration_type", "deterministic", "description", "workflow_stage_ids", "worker_profile_id", "model_id", "worker_effort", "worker_cli_version", "case_ids", "scores", "case_outcomes"],
+      "properties": {
+        "configuration_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9:._-]{1,127}$"},
+        "configuration_type": {"enum": ["reference-workflow", "worker-workflow"]},
+        "deterministic": {"type": "boolean"},
+        "description": {"type": "string", "minLength": 1, "maxLength": 240},
+        "workflow_stage_ids": {"type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,63}$"}},
+        "worker_profile_id": {"type": ["string", "null"]},
+        "model_id": {"type": ["string", "null"]},
+        "worker_effort": {"type": ["string", "null"], "maxLength": 32},
+        "worker_cli_version": {"type": ["string", "null"], "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "case_ids": {"type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,47}/[a-z][a-z0-9-]{1,63}$"}},
+        "scores": {"$ref": "#/$defs/scores"},
+        "case_outcomes": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/$defs/caseOutcome"}}
+      }
+    },
+    "delta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["configuration_id", "true_positive_delta", "false_positive_delta", "false_negative_delta", "precision_delta", "recall_delta", "f1_delta"],
+      "properties": {
+        "configuration_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9:._-]{1,127}$"},
+        "true_positive_delta": {"type": "integer"},
+        "false_positive_delta": {"type": "integer"},
+        "false_negative_delta": {"type": "integer"},
+        "precision_delta": {"type": ["number", "null"], "minimum": -1, "maximum": 1},
+        "recall_delta": {"type": ["number", "null"], "minimum": -1, "maximum": 1},
+        "f1_delta": {"type": ["number", "null"], "minimum": -1, "maximum": 1}
+      }
+    }
+  }
+}

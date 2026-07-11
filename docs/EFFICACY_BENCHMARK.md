@@ -136,3 +136,32 @@ CPython where the required directory-relative operations are unavailable, use
 
 The corpus structure and case-maintenance procedure are documented in
 [`EFFICACY_BENCHMARK_CORPUS.md`](EFFICACY_BENCHMARK_CORPUS.md).
+
+## Compare configurations
+
+List and run the deterministic comparison configurations:
+
+```bash
+gra-efficacy-benchmark --list-configurations
+gra-efficacy-benchmark --compare
+```
+
+Comparison mode writes `reports/efficacy-comparison.json` and
+`reports/EFFICACY_COMPARISON.md` by default. It identifies every configuration
+and case, records aggregate scores and bounded case outcomes, and encodes claim
+and publication guardrails. The default comparison is byte-stable and does not
+invoke a worker.
+
+Worker-assisted comparison requires explicit `--worker` and an existing local
+`--worker-dir` below the current working directory. The directory must not be a
+symlink or the current directory itself and should be ignored by version
+control. Worker mode requires Codex CLI 0.135.0 or newer. It uses the built-in
+worker profile with read-only sandbox and
+sandbox network disabled. It also uses an ephemeral session and ignores user
+configuration and project/user rules. The configured model/control-plane
+channel is still used. Worker artifacts remain local in that directory and the
+worker row is non-deterministic. Read-only sandboxing is not a confidentiality
+boundary for every host-readable file; use separate host isolation when needed.
+
+Complete methodology and publication rules are in
+[`EFFICACY_CLAIMS_AND_PUBLICATION.md`](EFFICACY_CLAIMS_AND_PUBLICATION.md).

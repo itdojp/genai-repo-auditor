@@ -131,3 +131,7 @@ superiority.
 Do not publish detailed case execution traces automatically. Any external
 summary must remain aggregate, identify the corpus/configuration versions, and
 receive human review.
+
+Configuration comparisons, optional worker rows, permitted wording, and
+publication approval are governed by
+[`EFFICACY_CLAIMS_AND_PUBLICATION.md`](EFFICACY_CLAIMS_AND_PUBLICATION.md).

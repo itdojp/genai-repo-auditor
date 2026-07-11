@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor efficacy worker response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "cases"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {"$ref": "#/$defs/caseAnalysis"}
+    }
+  },
+  "$defs": {
+    "prediction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vulnerability_class", "severity", "human_review_required"],
+      "properties": {
+        "vulnerability_class": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,95}$"},
+        "severity": {"enum": ["Low", "Medium", "High", "Critical"]},
+        "human_review_required": {"const": true}
+      }
+    },
+    "caseAnalysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_id", "predictions", "target_covered", "human_review_required"],
+      "properties": {
+        "case_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,47}/[a-z][a-z0-9-]{1,63}$"},
+        "predictions": {"type": "array", "maxItems": 4, "uniqueItems": true, "items": {"$ref": "#/$defs/prediction"}},
+        "target_covered": {"const": true},
+        "human_review_required": {"type": "boolean"}
+      }
+    }
+  }
+}

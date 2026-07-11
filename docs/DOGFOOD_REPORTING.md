@@ -104,6 +104,10 @@ Avoid claims such as fully autonomous auditing, zero-day discovery, exploit
 generation, automatic patching, or equivalence to managed frontier-model security
 products.
 
+Synthetic efficacy scores and configuration/model comparisons have additional
+methodology, claim, and publication constraints in
+[`EFFICACY_CLAIMS_AND_PUBLICATION.md`](EFFICACY_CLAIMS_AND_PUBLICATION.md).
+
 ## Review checklist before committing a report
 
 ```text

@@ -632,7 +632,12 @@ def _commit_staged_outputs(staged_outputs: list[_StagedOutput]) -> None:
                     _unlink_leaf(staged, backup)
 
 
-def write_report(report: dict[str, Any], json_path: Path, markdown_path: Path) -> tuple[Path, Path]:
+def write_report_pair(
+    report: dict[str, Any],
+    json_path: Path,
+    markdown_path: Path,
+    markdown: str,
+) -> tuple[Path, Path]:
     json_destination = _destination(json_path)
     markdown_destination = _destination(markdown_path)
     if json_destination == markdown_destination:
@@ -645,7 +650,7 @@ def write_report(report: dict[str, Any], json_path: Path, markdown_path: Path) -
                 json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             )
         )
-        staged_outputs.append(_stage_write(markdown_destination, render_markdown(report)))
+        staged_outputs.append(_stage_write(markdown_destination, markdown))
         _commit_staged_outputs(staged_outputs)
     finally:
         for staged in staged_outputs:
@@ -655,3 +660,7 @@ def write_report(report: dict[str, Any], json_path: Path, markdown_path: Path) -
             finally:
                 _close_staged(staged)
     return json_destination, markdown_destination
+
+
+def write_report(report: dict[str, Any], json_path: Path, markdown_path: Path) -> tuple[Path, Path]:
+    return write_report_pair(report, json_path, markdown_path, render_markdown(report))

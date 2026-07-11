@@ -113,6 +113,8 @@ templates/reports/dependencies.schema.json
 templates/reports/duplicate-decision.schema.json
 templates/reports/evidence-graph.schema.json
 templates/reports/efficacy-benchmark.schema.json
+templates/reports/efficacy-comparison.schema.json
+templates/reports/efficacy-worker-response.schema.json
 templates/reports/imported-findings.schema.json
 templates/reports/findings.schema.json
 templates/reports/issue-ledger.schema.json
@@ -219,6 +221,7 @@ docs/ATTACK_CHAINS.md
 docs/BENCHMARKING.md
 docs/EFFICACY_BENCHMARK.md
 docs/EFFICACY_BENCHMARK_CORPUS.md
+docs/EFFICACY_CLAIMS_AND_PUBLICATION.md
 docs/CODEX_WORK_INSTRUCTIONS.md
 docs/COMMAND_REFERENCE.md
 docs/CUSTOMER_AUDIT_RUNBOOK.md
@@ -280,6 +283,7 @@ docs/dogfood/SELF_DOGFOOD_SUMMARY.md
 docs/ja/ADVANCED_POSTURE_WORKFLOWS.ja.md
 docs/ja/CODEX_WORK_INSTRUCTIONS.ja.md
 docs/ja/EFFICACY_BENCHMARK.ja.md
+docs/ja/EFFICACY_CLAIMS_AND_PUBLICATION.ja.md
 docs/ja/ISSUE_WORKFLOW.ja.md
 docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md
 docs/ja/README.md
