@@ -16,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 from efficacy_corpus import EfficacyCorpusError, load_corpus  # noqa: E402
+from efficacy_benchmark import _yaml_scalars  # noqa: E402
 import efficacy_corpus  # noqa: E402
 
 
@@ -150,18 +151,12 @@ class EfficacyCorpusTests(unittest.TestCase):
         positive_dependency["dependencies"][0]["reachable_from"] = []
         self.assertEqual(control_dependency, positive_dependency)
 
-        def yaml_scalars(path: Path) -> dict[str, str]:
-            values: dict[str, str] = {}
-            for line in path.read_text(encoding="utf-8").splitlines():
-                stripped = line.strip()
-                if not stripped or stripped.startswith("#") or ": " not in stripped:
-                    continue
-                key, value = stripped.split(": ", 1)
-                values[key] = value
-            return values
-
-        positive_cache = yaml_scalars(root / "github-actions/cache-target-001/workflow-fixture.yml")
-        control_cache = yaml_scalars(root / "github-actions/cache-control-001/workflow-fixture.yml")
+        positive_cache = _yaml_scalars(
+            (root / "github-actions/cache-target-001/workflow-fixture.yml").read_text(encoding="utf-8")
+        )
+        control_cache = _yaml_scalars(
+            (root / "github-actions/cache-control-001/workflow-fixture.yml").read_text(encoding="utf-8")
+        )
         positive_cache["cache_restore_source"] = control_cache["cache_restore_source"]
         self.assertEqual(control_cache, positive_cache)
 
