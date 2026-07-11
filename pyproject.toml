@@ -55,6 +55,7 @@ gra-proofs = "genai_repo_auditor.cli:gra_proofs"
 gra-recon = "genai_repo_auditor.cli:gra_recon"
 gra-remediate = "genai_repo_auditor.cli:gra_remediate"
 gra-research = "genai_repo_auditor.cli:gra_research"
+gra-run = "genai_repo_auditor.cli:gra_run"
 gra-run-state = "genai_repo_auditor.cli:gra_run_state"
 gra-sandbox-check = "genai_repo_auditor.cli:gra_sandbox_check"
 gra-sarif = "genai_repo_auditor.cli:gra_sarif"
@@ -94,3 +95,4 @@ version = { file = "VERSION" }
 "share/genai-repo-auditor/templates/dogfood" = ["templates/dogfood/*"]
 "share/genai-repo-auditor/templates/reports" = ["templates/reports/*"]
 "share/genai-repo-auditor/templates/taxonomies" = ["templates/taxonomies/*.json"]
+"share/genai-repo-auditor/templates/workflows" = ["templates/workflows/*.json"]

@@ -296,6 +296,7 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-recon` | Generate inventory, threat model, and attack surface |
 | `gra-targets` | Generate, list, show, and update target queue |
 | `gra-run-state` | Record paused/resume/blocked run state and guard deep-review starts |
+| `gra-run` | Validate and write a dependency-ordered workflow plan without executing stages |
 | `gra-sandbox-check` | Check sandbox profile readiness before future executable validation workflows |
 | `gra-research` | Research one target with exec or supervised goal mode |
 | `gra-gapfill` | Requeue high-risk targets with incomplete coverage |

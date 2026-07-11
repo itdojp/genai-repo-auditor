@@ -83,7 +83,7 @@ class CliHelpTests(unittest.TestCase):
 
     def test_every_gra_command_exposes_help_without_external_tools(self) -> None:
         commands = self.command_paths()
-        self.assertEqual(34, len(commands))
+        self.assertEqual(35, len(commands))
         for path in commands:
             with self.subTest(command=path.name):
                 cp = self.invoke(path, ["--help"])
@@ -100,7 +100,7 @@ class CliHelpTests(unittest.TestCase):
         expected_version = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").splitlines()[0].strip()
 
         commands = self.command_paths()
-        self.assertEqual(34, len(commands))
+        self.assertEqual(35, len(commands))
         for path in commands:
             with self.subTest(command=path.name):
                 cp = self.invoke(path, ["--version"])
@@ -118,6 +118,7 @@ class CliHelpTests(unittest.TestCase):
             ("gra-issues", [], 2, "the following arguments are required: --run"),
             ("gra-no-findings", [], 2, "the following arguments are required: --run, --rationale"),
             ("gra-remediate", [], 2, "the following arguments are required: --run"),
+            ("gra-run", [], 2, "the following arguments are required: --run, --profile"),
             ("gra-run-state", [], 2, "the following arguments are required: --run"),
             ("gra-sandbox-check", [], 2, "the following arguments are required: --run, --profile"),
             ("gra-targets", [], 2, "the following arguments are required: --run"),

@@ -115,7 +115,7 @@ jobs:
           import genai_repo_auditor as gra
           from genai_repo_auditor.cli import COMMANDS
 
-          assert len(COMMANDS) == 34, COMMANDS
+          assert len(COMMANDS) == 35, COMMANDS
           assert Path(gra.resource_path("VERSION")).is_file()
           assert Path(gra.resource_path("bin", "gra-doctor")).is_file()
           assert Path(gra.resource_path("lib", "agent_worker.py")).is_file()
@@ -126,7 +126,7 @@ jobs:
           '@
           $probe | & $python
           $commands = (& $python -c "from genai_repo_auditor.cli import COMMANDS; print(chr(10).join(COMMANDS))") -split "`n" | Where-Object { $_ }
-          if ($commands.Count -ne 34) { throw "Expected 34 commands, got $($commands.Count): $commands" }
+          if ($commands.Count -ne 35) { throw "Expected 35 commands, got $($commands.Count): $commands" }
           $version = (Get-Content VERSION -TotalCount 1).Trim()
           foreach ($command in $commands) {
             & $command --help | Out-Null
