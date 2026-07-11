@@ -120,6 +120,32 @@ positions. `--from X` includes `X` and its descendants; `--until Y` includes
 only stages on their dependency path closure are selected. Unrelated sibling
 stages are recorded as `out_of_range` and are not executed on resume.
 
+Built-in profiles keep Issue publication outside unattended execution:
+
+| Profile | Approved scope |
+|---|---|
+| `recon-only` | Reconnaissance and optional target generation. |
+| `supply-chain` | Reconnaissance, optional offline Syft planning, and target generation. |
+| `appsec-deep` | Reconnaissance, optional offline Gitleaks planning, target generation, chains, safe proofs, and adversarial validation over existing findings. |
+| `publication-ready` | Local report validation, metrics, evidence graph, dashboard, and SARIF generation over existing findings. |
+| `full` | The combined approved local stages from the profiles above. |
+
+The scanner stages call `gra-scan --plan`; they do not pass scanner
+`--execute`. No profile contains `gra-issues`, remediation, release, GitHub,
+network-enabling, or publication flags. Publishing Issues remains a separate
+human-reviewed command after workflow completion.
+
+Reconnaissance and deep-analysis commands can invoke the configured local
+agent worker and retain their existing local prompt/event/stderr artifacts.
+The orchestrator does not copy those raw artifacts into its checkpoint and
+does not add `--network`; the worker sandbox is configured with network access
+disabled. These local transcripts remain subject to the existing run-artifact
+retention and non-public handling rules.
+
+Direct chain, proof, and adversarial-validation commands resolve outputs under
+the configured `reports_dir`, reject pre-existing symlink output components,
+and atomically replace only regular run-local destination files.
+
 ## Research one target
 
 ```bash

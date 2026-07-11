@@ -11,8 +11,8 @@ from typing import Any
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
-from gralib import env_from_context, find_finding, load_context, load_findings, load_json, render_template, run_codex_exec, slug, write_json, utc_now
-from run_events import append_command_event, start_command_event
+from gralib import env_from_context, find_finding, load_context, load_findings, load_json, render_template, run_codex_exec, safe_run_artifact_destination, slug, utc_now, write_run_artifact_json, write_run_artifact_text
+from run_events import append_command_event, reports_dir as configured_reports_dir, start_command_event
 
 HIGH_SEVERITIES = {'Critical', 'High'}
 VALIDATION_STATUSES = {'Confirmed', 'Probable', 'Potential'}
@@ -23,19 +23,19 @@ UNKNOWN_CONFIDENCE = 'Unknown'
 
 
 def require_findings_file(run_dir: Path) -> None:
-    findings_path = run_dir / 'reports' / 'findings.json'
+    findings_path = configured_reports_dir(run_dir) / 'findings.json'
     if not findings_path.exists():
         raise FileNotFoundError(f'findings.json not found: {findings_path}')
 
 
 def load_chains(run_dir: Path) -> list[dict[str, Any]]:
-    data = load_json(run_dir / 'reports' / 'chains.json', {}) or {}
+    data = load_json(configured_reports_dir(run_dir) / 'chains.json', {}) or {}
     chains = data.get('chains') or []
     return [chain for chain in chains if isinstance(chain, dict)]
 
 
 def find_chain(run_dir: Path, chain_id: str) -> dict[str, Any]:
-    chains_path = run_dir / 'reports' / 'chains.json'
+    chains_path = configured_reports_dir(run_dir) / 'chains.json'
     if not chains_path.exists():
         raise KeyError(f'chains.json not found: {chains_path}')
     for chain in load_chains(run_dir):
@@ -354,7 +354,7 @@ def select_subjects(run_dir: Path, args: argparse.Namespace) -> tuple[str, list[
 
 
 def render_validation_markdown(run_dir: Path, validation_data: dict[str, Any]) -> None:
-    reports = run_dir / 'reports'
+    reports = configured_reports_dir(run_dir)
     requested_votes = validation_data.get('requested_votes')
     vote_policy = str(validation_data.get('vote_policy') or '')
     lines = [
@@ -402,7 +402,7 @@ def render_validation_markdown(run_dir: Path, validation_data: dict[str, Any]) -
                 f"{vote_summary_text} |"
             )
     lines.append('')
-    (reports / 'VALIDATION.md').write_text('\n'.join(lines), encoding='utf-8')
+    write_run_artifact_text(run_dir, reports / 'VALIDATION.md', '\n'.join(lines))
 
 
 def ensure_validation_artifacts(
@@ -413,9 +413,10 @@ def ensure_validation_artifacts(
     votes: int = 1,
     policy: str = 'human-review-on-split',
 ) -> None:
-    validation_path = run_dir / 'reports' / 'validation.json'
+    validation_path = configured_reports_dir(run_dir) / 'validation.json'
     if not validation_path.exists():
         return
+    safe_run_artifact_destination(run_dir, validation_path)
     data = load_json(validation_path, {}) or {}
     if not isinstance(data, dict):
         return
@@ -430,7 +431,7 @@ def ensure_validation_artifacts(
         data.setdefault('vote_policy', policy)
     if selected_subjects:
         apply_owner_routes(data, subject_routes(run_dir, selected_subjects))
-    write_json(validation_path, data)
+    write_run_artifact_json(run_dir, validation_path, data)
     render_validation_markdown(run_dir, data)
 
 
@@ -438,9 +439,9 @@ def read_vote_report(run_dir: Path, vote_path: Path) -> dict[str, Any]:
     if vote_path.exists():
         data = load_json(vote_path, {}) or {}
     else:
-        data = load_json(run_dir / 'reports' / 'validation.json', {}) or {}
+        data = load_json(configured_reports_dir(run_dir) / 'validation.json', {}) or {}
         if isinstance(data, dict):
-            write_json(vote_path, data)
+            write_run_artifact_json(run_dir, vote_path, data)
     return data if isinstance(data, dict) else {}
 
 
@@ -451,7 +452,7 @@ def main() -> int:
     subjects = p.add_mutually_exclusive_group(required=True)
     subjects.add_argument('--finding', help='Finding ID to validate, e.g. SEC-001')
     subjects.add_argument('--all-critical-high', action='store_true', help='Validate all Critical/High findings with Confirmed/Probable/Potential status')
-    subjects.add_argument('--chain', help='Chain ID to validate from reports/chains.json, e.g. CHAIN-001')
+    subjects.add_argument('--chain', help='Chain ID to validate from <reports_dir>/chains.json, e.g. CHAIN-001')
     p.add_argument('--mode', choices=['exec', 'goal'], default='exec')
     p.add_argument('--model', default='gpt-5.5')
     p.add_argument('--effort', default='xhigh')
@@ -464,10 +465,12 @@ def main() -> int:
 
     run_dir = Path(args.run).resolve()
     started_at, started_perf = start_command_event()
+    reports = configured_reports_dir(run_dir)
+    reports_ref = reports.relative_to(run_dir).as_posix()
     input_artifacts = [
         run_dir / 'context.json',
-        run_dir / 'reports' / 'findings.json',
-        run_dir / 'reports' / 'chains.json',
+        reports / 'findings.json',
+        reports / 'chains.json',
     ]
     output_artifacts: list[Path] = []
     event_subject_id = args.finding or args.chain or ('critical-high' if args.all_critical_high else None)
@@ -493,6 +496,13 @@ def main() -> int:
         )
         return exit_code
 
+    try:
+        safe_run_artifact_destination(run_dir, reports / 'validation.json')
+        safe_run_artifact_destination(run_dir, reports / 'VALIDATION.md')
+    except OSError as exc:
+        print(str(exc), file=sys.stderr)
+        return finish(2, error_category='output_validation')
+
     ctx = load_context(run_dir)
     try:
         selection_id, selected_subjects = select_subjects(run_dir, args)
@@ -503,10 +513,25 @@ def main() -> int:
 
     if not selected_subjects:
         print('No matching findings selected for adversarial validation.')
+        empty_validation = {
+            'run_id': ctx.get('run_id', run_dir.name),
+            'repo': ctx.get('repo', ''),
+            'branch': ctx.get('branch', ''),
+            'commit': ctx.get('commit', ''),
+            'generated_at': utc_now(),
+            'requested_votes': args.votes,
+            'vote_policy': args.policy,
+            'validations': [],
+        }
+        validation_json = reports / 'validation.json'
+        validation_markdown = reports / 'VALIDATION.md'
+        write_run_artifact_json(run_dir, validation_json, empty_validation)
+        render_validation_markdown(run_dir, empty_validation)
+        output_artifacts.extend([validation_json, validation_markdown])
         return finish(0, status='skipped')
 
     selection_slug = slug(selection_id)
-    subject_path = run_dir / 'reports' / 'adversarial-validation' / f'{selection_slug}.subjects.json'
+    subject_path = reports / 'adversarial-validation' / f'{selection_slug}.subjects.json'
     subject_payload = {
         'run_id': ctx.get('run_id', run_dir.name),
         'repo': ctx.get('repo', ''),
@@ -518,14 +543,14 @@ def main() -> int:
         'vote_policy': args.policy,
         'subjects': selected_subjects,
     }
-    write_json(subject_path, subject_payload)
+    write_run_artifact_json(run_dir, subject_path, subject_payload)
     output_artifacts.append(subject_path)
 
     env = env_from_context(run_dir, {
         'VALIDATION_SELECTION': selection_id,
         'VALIDATION_SUBJECTS_FILE': str(subject_path.relative_to(run_dir)),
-        'VALIDATION_OUTPUT_JSON': 'reports/validation.json',
-        'VALIDATION_OUTPUT_MD': 'reports/VALIDATION.md',
+        'VALIDATION_OUTPUT_JSON': f'{reports_ref}/validation.json',
+        'VALIDATION_OUTPUT_MD': f'{reports_ref}/VALIDATION.md',
         'VALIDATION_VOTES': str(args.votes),
         'VALIDATION_POLICY': args.policy,
         'VALIDATION_VOTE_ID': 'VOTE-001',
@@ -572,12 +597,12 @@ def main() -> int:
         vote_reports: list[dict[str, Any]] = []
         for vote_index in range(1, args.votes + 1):
             vote_id = f'VOTE-{vote_index:03d}'
-            vote_json_rel = f'reports/adversarial-validation/{selection_slug}-vote-{vote_index:03d}.validation.json'
+            vote_json_rel = f'{reports_ref}/adversarial-validation/{selection_slug}-vote-{vote_index:03d}.validation.json'
             vote_env = env_from_context(run_dir, {
                 'VALIDATION_SELECTION': selection_id,
                 'VALIDATION_SUBJECTS_FILE': str(subject_path.relative_to(run_dir)),
                 'VALIDATION_OUTPUT_JSON': vote_json_rel,
-                'VALIDATION_OUTPUT_MD': f'reports/adversarial-validation/{selection_slug}-vote-{vote_index:03d}.validation.md',
+                'VALIDATION_OUTPUT_MD': f'{reports_ref}/adversarial-validation/{selection_slug}-vote-{vote_index:03d}.validation.md',
                 'VALIDATION_VOTES': str(args.votes),
                 'VALIDATION_POLICY': args.policy,
                 'VALIDATION_VOTE_ID': vote_id,
@@ -586,7 +611,7 @@ def main() -> int:
             prompt = run_dir / 'prompts' / 'exec' / f'adversarial-validate-{selection_slug}-vote-{vote_index:03d}.prompt.md'
             render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'exec' / 'adversarial-validate.prompt.md', prompt, vote_env)
             output_artifacts.append(prompt)
-            fallback_validation = run_dir / 'reports' / 'validation.json'
+            fallback_validation = reports / 'validation.json'
             if fallback_validation.exists():
                 fallback_validation.unlink()
             final_path = run_dir / f'codex-adversarial-validate-{selection_slug}-vote-{vote_index:03d}-final.md'
@@ -615,14 +640,14 @@ def main() -> int:
             vote_reports=vote_reports,
             policy=args.policy,
         )
-        write_json(run_dir / 'reports' / 'validation.json', aggregate)
+        write_run_artifact_json(run_dir, reports / 'validation.json', aggregate)
         render_validation_markdown(run_dir, aggregate)
         status = max(statuses) if statuses else 0
-    output_artifacts.extend([run_dir / 'reports' / 'validation.json', run_dir / 'reports' / 'VALIDATION.md'])
+    output_artifacts.extend([reports / 'validation.json', reports / 'VALIDATION.md'])
     print(f'Codex status: {status}')
     print(f'Validation subjects: {subject_path}')
-    print(f'Validation report: {run_dir / "reports" / "VALIDATION.md"}')
-    print(f'Validation JSON: {run_dir / "reports" / "validation.json"}')
+    print(f'Validation report: {reports / "VALIDATION.md"}')
+    print(f'Validation JSON: {reports / "validation.json"}')
     return finish(status)
 
 

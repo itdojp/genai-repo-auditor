@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import shutil
 import tempfile
 import unittest
@@ -47,6 +48,27 @@ class ReportSafetyTests(unittest.TestCase):
         draft = self.write_draft("nested/SEC-001.md")
         resolved = safe_issue_body_path(self.run_dir, "reports/issue-drafts/nested/SEC-001.md")
         self.assertEqual(resolved, draft.resolve())
+
+    def test_safe_issue_body_path_uses_configured_reports_dir(self) -> None:
+        (self.run_dir / "context.json").write_text(
+            json.dumps({"reports_dir": "artifacts"}) + "\n",
+            encoding="utf-8",
+        )
+        custom_draft = self.run_dir / "artifacts" / "issue-drafts" / "SEC-001.md"
+        custom_draft.parent.mkdir(parents=True)
+        custom_draft.write_text("# Draft\n", encoding="utf-8")
+        default_draft = self.write_draft()
+
+        resolved = safe_issue_body_path(self.run_dir, "artifacts/issue-drafts/SEC-001.md")
+
+        self.assertEqual(custom_draft.resolve(), resolved)
+        self.assert_safety_error("must be under artifacts/issue-drafts", default_draft.relative_to(self.run_dir).as_posix())
+
+        (self.run_dir / "context.json").write_text(
+            json.dumps({"reports_dir": "../outside"}) + "\n",
+            encoding="utf-8",
+        )
+        self.assert_safety_error("unsafe reports_dir", "artifacts/issue-drafts/SEC-001.md")
 
     def test_safe_issue_body_path_rejects_traversal_absolute_non_markdown_and_oversized_files(self) -> None:
         self.write_draft("SEC-001.md")

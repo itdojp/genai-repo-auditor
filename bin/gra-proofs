@@ -9,15 +9,15 @@ from typing import Any
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
-from gralib import env_from_context, find_finding, load_context, load_findings, load_json, render_template, run_codex_exec, slug, utc_now, write_json
-from run_events import append_command_event, start_command_event
+from gralib import env_from_context, find_finding, load_context, load_findings, load_json, render_template, run_codex_exec, safe_run_artifact_destination, slug, utc_now, write_run_artifact_json, write_run_artifact_text
+from run_events import append_command_event, reports_dir as configured_reports_dir, start_command_event
 
 HIGH_SEVERITIES = {'Critical', 'High'}
 PROOFABLE_STATUSES = {'Confirmed', 'Probable', 'Potential'}
 
 
 def require_findings_file(run_dir: Path) -> None:
-    findings_path = run_dir / 'reports' / 'findings.json'
+    findings_path = configured_reports_dir(run_dir) / 'findings.json'
     if not findings_path.exists():
         raise FileNotFoundError(f'findings.json not found: {findings_path}')
 
@@ -47,7 +47,7 @@ def select_findings(run_dir: Path, args: argparse.Namespace) -> tuple[str, list[
 
 
 def render_proofs_markdown(run_dir: Path, proofs_data: dict[str, Any]) -> None:
-    reports = run_dir / 'reports'
+    reports = configured_reports_dir(run_dir)
 
     def bullet_list(value: Any) -> list[str]:
         if not isinstance(value, list):
@@ -106,13 +106,14 @@ def render_proofs_markdown(run_dir: Path, proofs_data: dict[str, Any]) -> None:
         if isinstance(limitations, list) and limitations:
             lines.extend(['', f"Limitations for {proof.get('id', '')}:", *bullet_list(limitations)])
     lines.append('')
-    (reports / 'PROOFS.md').write_text('\n'.join(lines), encoding='utf-8')
+    write_run_artifact_text(run_dir, reports / 'PROOFS.md', '\n'.join(lines))
 
 
 def ensure_proof_artifacts(run_dir: Path, ctx: dict[str, Any]) -> None:
-    proofs_path = run_dir / 'reports' / 'proofs.json'
+    proofs_path = configured_reports_dir(run_dir) / 'proofs.json'
     if not proofs_path.exists():
         return
+    safe_run_artifact_destination(run_dir, proofs_path)
     data = load_json(proofs_path, {}) or {}
     if not isinstance(data, dict):
         return
@@ -122,7 +123,7 @@ def ensure_proof_artifacts(run_dir: Path, ctx: dict[str, Any]) -> None:
     data.setdefault('commit', ctx.get('commit', ''))
     data.setdefault('generated_at', utc_now())
     data.setdefault('proofs', [])
-    write_json(proofs_path, data)
+    write_run_artifact_json(run_dir, proofs_path, data)
     render_proofs_markdown(run_dir, data)
 
 
@@ -141,7 +142,9 @@ def main() -> int:
 
     run_dir = Path(args.run).resolve()
     started_at, started_perf = start_command_event()
-    input_artifacts = [run_dir / 'context.json', run_dir / 'reports' / 'findings.json']
+    reports = configured_reports_dir(run_dir)
+    reports_ref = reports.relative_to(run_dir).as_posix()
+    input_artifacts = [run_dir / 'context.json', reports / 'findings.json']
     output_artifacts: list[Path] = []
     event_subject_id = args.finding or ('critical-high' if args.all_critical_high else None)
 
@@ -166,6 +169,13 @@ def main() -> int:
         )
         return exit_code
 
+    try:
+        safe_run_artifact_destination(run_dir, reports / 'proofs.json')
+        safe_run_artifact_destination(run_dir, reports / 'PROOFS.md')
+    except OSError as exc:
+        print(str(exc), file=sys.stderr)
+        return finish(2, error_category='output_validation')
+
     ctx = load_context(run_dir)
     try:
         selection_id, selected_findings = select_findings(run_dir, args)
@@ -176,10 +186,23 @@ def main() -> int:
 
     if not selected_findings:
         print('No matching findings selected for safe local proof generation.')
+        empty_proofs = {
+            'run_id': ctx.get('run_id', run_dir.name),
+            'repo': ctx.get('repo', ''),
+            'branch': ctx.get('branch', ''),
+            'commit': ctx.get('commit', ''),
+            'generated_at': utc_now(),
+            'proofs': [],
+        }
+        proofs_json = reports / 'proofs.json'
+        proofs_markdown = reports / 'PROOFS.md'
+        write_run_artifact_json(run_dir, proofs_json, empty_proofs)
+        render_proofs_markdown(run_dir, empty_proofs)
+        output_artifacts.extend([proofs_json, proofs_markdown])
         return finish(0, status='skipped')
 
     selection_slug = slug(selection_id)
-    subjects_path = run_dir / 'reports' / 'proofs' / f'{selection_slug}.subjects.json'
+    subjects_path = reports / 'proofs' / f'{selection_slug}.subjects.json'
     subject_payload = {
         'run_id': ctx.get('run_id', run_dir.name),
         'repo': ctx.get('repo', ''),
@@ -189,15 +212,15 @@ def main() -> int:
         'selection': selection_id,
         'subjects': selected_findings,
     }
-    write_json(subjects_path, subject_payload)
+    write_run_artifact_json(run_dir, subjects_path, subject_payload)
     output_artifacts.append(subjects_path)
 
     env = env_from_context(run_dir, {
         'PROOF_SELECTION': selection_id,
         'PROOF_SUBJECTS_FILE': str(subjects_path.relative_to(run_dir)),
-        'PROOFS_OUTPUT_JSON': 'reports/proofs.json',
-        'PROOFS_OUTPUT_MD': 'reports/PROOFS.md',
-        'PROOFS_DIR': 'reports/proofs',
+        'PROOFS_OUTPUT_JSON': f'{reports_ref}/proofs.json',
+        'PROOFS_OUTPUT_MD': f'{reports_ref}/PROOFS.md',
+        'PROOFS_DIR': f'{reports_ref}/proofs',
     })
 
     if args.mode == 'goal':
@@ -232,11 +255,11 @@ def main() -> int:
         stderr_file=stderr_path,
     )
     ensure_proof_artifacts(run_dir, ctx)
-    output_artifacts.extend([final_path, events_path, stderr_path, run_dir / 'reports' / 'proofs.json', run_dir / 'reports' / 'PROOFS.md'])
+    output_artifacts.extend([final_path, events_path, stderr_path, reports / 'proofs.json', reports / 'PROOFS.md'])
     print(f'Codex status: {status}')
     print(f'Proof subjects: {subjects_path}')
-    print(f'Proof report: {run_dir / "reports" / "PROOFS.md"}')
-    print(f'Proof JSON: {run_dir / "reports" / "proofs.json"}')
+    print(f'Proof report: {reports / "PROOFS.md"}')
+    print(f'Proof JSON: {reports / "proofs.json"}')
     return finish(status)
 
 

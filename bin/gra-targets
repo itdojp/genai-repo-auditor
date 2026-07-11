@@ -26,11 +26,11 @@ from provenance_posture import append_provenance_posture_targets
 from scorecard_posture import append_scorecard_posture_targets
 from target_coverage_guardrails import CoverageSerializationError
 from run_state import paused_error
-from run_events import append_command_event, start_command_event
+from run_events import append_command_event, reports_dir as configured_reports_dir, start_command_event
 
 
 def run_taxonomy_preflight(run_dir: Path) -> int:
-    targets = run_dir / "reports" / "targets.json"
+    targets = configured_reports_dir(run_dir) / "targets.json"
     if not targets.exists():
         return 0
     log = run_dir / "taxonomy-preflight-targets.txt"
@@ -58,7 +58,7 @@ def main() -> int:
     p.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
     p.add_argument('--run', required=True, help='Run directory')
     action = p.add_mutually_exclusive_group(required=True)
-    action.add_argument('--generate', action='store_true', help='Run Codex to generate reports/targets.json')
+    action.add_argument('--generate', action='store_true', help='Run Codex to generate <reports_dir>/targets.json')
     action.add_argument('--list', action='store_true', help='List targets')
     action.add_argument('--show', metavar='TGT-ID', help='Show one target as JSON')
     action.add_argument('--mark', nargs=2, metavar=('TGT-ID', 'STATUS'), help='Set target status')
@@ -74,7 +74,7 @@ def main() -> int:
     started_at, started_perf = start_command_event()
     phase = 'target-generation' if args.generate else 'list' if args.list else 'show' if args.show else 'mark'
     ctx = load_context(run_dir)
-    reports = run_dir / ctx.get('reports_dir', 'reports')
+    reports = configured_reports_dir(run_dir)
     input_artifacts = [run_dir / 'context.json', reports / 'targets.json']
     output_artifacts: list[Path] = []
 
@@ -169,7 +169,7 @@ def main() -> int:
         print(f'Codex exited with status {status}', file=sys.stderr)
         return finish(status)
     if not (reports / 'targets.json').exists():
-        print('Codex completed but reports/targets.json is missing', file=sys.stderr)
+        print(f'Codex completed but {reports / "targets.json"} is missing', file=sys.stderr)
         return finish(1, error_category='missing_output')
     try:
         write_targets(run_dir, load_targets(run_dir))

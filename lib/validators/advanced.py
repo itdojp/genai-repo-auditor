@@ -143,6 +143,19 @@ EVIDENCE_GRAPH_NODE_TYPES = {
     "workflow_profile",
     "workflow_stage",
 }
+
+
+def configured_artifact_ref(run_dir: Path, default_ref: Path) -> Path:
+    """Resolve a legacy reports/* reference against the run's configured reports_dir."""
+
+    reports_ref = configured_reports_dir(run_dir).relative_to(run_dir)
+    return reports_ref.joinpath(*default_ref.parts[1:])
+
+
+def configured_artifact_path(run_dir: Path, default_ref: Path) -> Path:
+    return run_dir / configured_artifact_ref(run_dir, default_ref)
+
+
 EVIDENCE_GRAPH_EDGE_TYPES = {
     "produced",
     "supports",
@@ -220,7 +233,7 @@ def expected_vote_decision(vote_decisions: list[str], policy: str) -> str:
 
 
 def validate_dependencies(run_dir: Path, errors: List[str]) -> bool:
-    dependencies_path = run_dir / DEPENDENCIES_PATH
+    dependencies_path = configured_artifact_path(run_dir, DEPENDENCIES_PATH)
     if not dependencies_path.exists():
         return False
     try:
@@ -297,7 +310,7 @@ def validate_dependencies(run_dir: Path, errors: List[str]) -> bool:
 
 
 def target_ids_from_reports(run_dir: Path, errors: List[str]) -> set[str]:
-    targets_path = run_dir / "reports" / "targets.json"
+    targets_path = configured_reports_dir(run_dir) / "targets.json"
     if not targets_path.exists():
         return set()
     try:
@@ -321,11 +334,12 @@ def target_ids_from_reports(run_dir: Path, errors: List[str]) -> set[str]:
 
 
 def scanner_refs_from_index(run_dir: Path, errors: List[str]) -> set[str]:
-    index_path = run_dir / SCANNER_RESULTS_DIR / "scanner-index.json"
+    scanner_results_dir = configured_artifact_ref(run_dir, SCANNER_RESULTS_DIR)
+    index_path = run_dir / scanner_results_dir / "scanner-index.json"
     if not index_path.exists():
         return set()
     try:
-        validate_no_symlink_components(run_dir, SCANNER_RESULTS_DIR / "scanner-index.json", field_path="scanner_index")
+        validate_no_symlink_components(run_dir, scanner_results_dir / "scanner-index.json", field_path="scanner_index")
     except ReportSafetyError as exc:
         errors.append(str(exc))
         return set()
@@ -351,7 +365,7 @@ def scanner_refs_from_index(run_dir: Path, errors: List[str]) -> set[str]:
 
 
 def chain_ids_from_reports(run_dir: Path, errors: List[str]) -> set[str]:
-    chains_path = run_dir / "reports" / "chains.json"
+    chains_path = configured_reports_dir(run_dir) / "chains.json"
     if not chains_path.exists():
         return set()
     try:
@@ -375,7 +389,7 @@ def chain_ids_from_reports(run_dir: Path, errors: List[str]) -> set[str]:
 
 
 def validate_chains(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
-    chains_path = run_dir / CHAINS_PATH
+    chains_path = configured_artifact_path(run_dir, CHAINS_PATH)
     if not chains_path.exists():
         return False
     try:
@@ -464,7 +478,7 @@ def validate_chains(run_dir: Path, findings: list[dict[str, Any]], errors: List[
 
 
 def validate_adversarial_validation(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
-    validation_path = run_dir / VALIDATION_PATH
+    validation_path = configured_artifact_path(run_dir, VALIDATION_PATH)
     if not validation_path.exists():
         return False
     try:
@@ -495,7 +509,7 @@ def validate_adversarial_validation(run_dir: Path, findings: list[dict[str, Any]
         return True
 
     finding_ids = {str(finding.get("id")) for finding in findings if isinstance(finding, dict) and finding.get("id")}
-    chains_path = run_dir / "reports" / "chains.json"
+    chains_path = configured_reports_dir(run_dir) / "chains.json"
     chain_ids: set[str] = set()
     chain_ids_loaded = False
     seen_ids: set[str] = set()
@@ -604,15 +618,16 @@ def validate_proof_artifact_path(run_dir: Path, value: Any, *, field_path: str) 
         raise ReportSafetyError(f"{field_path}: proof artifact path must be relative to the run directory")
     if ".." in rel.parts:
         raise ReportSafetyError(f"{field_path}: proof artifact path must not contain '..'")
-    if rel == PROOFS_DIR or PROOFS_DIR not in (rel, *rel.parents):
-        raise ReportSafetyError(f"{field_path}: proof artifact path must stay under {PROOFS_DIR.as_posix()}")
+    proofs_dir = configured_artifact_ref(run_dir, PROOFS_DIR)
+    if rel == proofs_dir or proofs_dir not in (rel, *rel.parents):
+        raise ReportSafetyError(f"{field_path}: proof artifact path must stay under {proofs_dir.as_posix()}")
     validate_no_symlink_components(run_dir, rel, field_path=field_path)
-    expected_root = (run_dir / PROOFS_DIR).resolve(strict=False)
+    expected_root = (run_dir / proofs_dir).resolve(strict=False)
     resolved_target = (run_dir / rel).resolve(strict=False)
     try:
         resolved_target.relative_to(expected_root)
     except ValueError as exc:
-        raise ReportSafetyError(f"{field_path}: proof artifact path must not escape {PROOFS_DIR.as_posix()}") from exc
+        raise ReportSafetyError(f"{field_path}: proof artifact path must not escape {proofs_dir.as_posix()}") from exc
     if not (run_dir / rel).exists():
         raise ReportSafetyError(f"{field_path}: proof artifact not found: {rel.as_posix()}")
     if not (run_dir / rel).is_file():
@@ -713,7 +728,7 @@ def validate_structured_proof_command(command: Any, *, field_path: str, errors: 
 
 
 def validate_proofs(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
-    proofs_path = run_dir / PROOFS_PATH
+    proofs_path = configured_artifact_path(run_dir, PROOFS_PATH)
     if not proofs_path.exists():
         return False
     try:
@@ -793,17 +808,18 @@ def validate_remediation_artifact_path(
         raise ReportSafetyError(f"{field_path}: remediation artifact path must be relative to the run directory")
     if ".." in rel.parts:
         raise ReportSafetyError(f"{field_path}: remediation artifact path must not contain '..'")
-    if rel == REMEDIATION_DIR or REMEDIATION_DIR not in (rel, *rel.parents):
-        raise ReportSafetyError(f"{field_path}: remediation artifact path must stay under {REMEDIATION_DIR.as_posix()}")
+    remediation_dir = configured_artifact_ref(run_dir, REMEDIATION_DIR)
+    if rel == remediation_dir or remediation_dir not in (rel, *rel.parents):
+        raise ReportSafetyError(f"{field_path}: remediation artifact path must stay under {remediation_dir.as_posix()}")
     if expected_suffix and rel.suffix.lower() != expected_suffix:
         raise ReportSafetyError(f"{field_path}: remediation artifact path must end with {expected_suffix}")
     validate_no_symlink_components(run_dir, rel, field_path=field_path)
-    expected_root = (run_dir / REMEDIATION_DIR).resolve(strict=False)
+    expected_root = (run_dir / remediation_dir).resolve(strict=False)
     resolved_target = (run_dir / rel).resolve(strict=False)
     try:
         resolved_target.relative_to(expected_root)
     except ValueError as exc:
-        raise ReportSafetyError(f"{field_path}: remediation artifact path must not escape {REMEDIATION_DIR.as_posix()}") from exc
+        raise ReportSafetyError(f"{field_path}: remediation artifact path must not escape {remediation_dir.as_posix()}") from exc
     if not (run_dir / rel).exists():
         raise ReportSafetyError(f"{field_path}: remediation artifact not found: {rel.as_posix()}")
     if not (run_dir / rel).is_file():
@@ -811,7 +827,7 @@ def validate_remediation_artifact_path(
 
 
 def validate_remediation_candidates(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
-    remediation_path = run_dir / REMEDIATION_PATH
+    remediation_path = configured_artifact_path(run_dir, REMEDIATION_PATH)
     if not remediation_path.exists():
         return False
     try:
@@ -891,7 +907,7 @@ def validate_remediation_candidates(run_dir: Path, findings: list[dict[str, Any]
 
 
 def validate_patch_validations(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
-    remediation_root = run_dir / REMEDIATION_DIR
+    remediation_root = configured_artifact_path(run_dir, REMEDIATION_DIR)
     if not remediation_root.exists():
         return False
     validation_paths = sorted(remediation_root.rglob(PATCH_VALIDATION_FILENAME))
@@ -900,8 +916,9 @@ def validate_patch_validations(run_dir: Path, findings: list[dict[str, Any]], er
 
     finding_ids = {str(finding.get("id")) for finding in findings if isinstance(finding, dict) and finding.get("id")}
     candidate_records: set[tuple[str, str]] = set()
+    remediation_path = configured_artifact_path(run_dir, REMEDIATION_PATH)
     try:
-        remediation_data = json.loads((run_dir / REMEDIATION_PATH).read_text(encoding="utf-8")) if (run_dir / REMEDIATION_PATH).exists() else {}
+        remediation_data = json.loads(remediation_path.read_text(encoding="utf-8")) if remediation_path.exists() else {}
     except Exception:
         remediation_data = {}
     if isinstance(remediation_data, dict) and isinstance(remediation_data.get("candidates"), list):
@@ -1036,11 +1053,11 @@ def validate_no_forbidden_novelty_payload(value: Any, path: str, errors: List[st
 
 
 def validate_novelty_ledger(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
-    novelty_path = run_dir / NOVELTY_PATH
+    novelty_path = configured_artifact_path(run_dir, NOVELTY_PATH)
     if not novelty_path.exists():
         return False
     try:
-        validate_no_symlink_components(run_dir, NOVELTY_PATH, field_path="known_findings")
+        validate_no_symlink_components(run_dir, configured_artifact_ref(run_dir, NOVELTY_PATH), field_path="known_findings")
     except ReportSafetyError as exc:
         errors.append(str(exc))
         return True
@@ -1132,7 +1149,7 @@ def validate_novelty_ledger(run_dir: Path, findings: list[dict[str, Any]], error
 
 
 def validate_traces(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
-    traces_path = run_dir / TRACES_PATH
+    traces_path = configured_artifact_path(run_dir, TRACES_PATH)
     if not traces_path.exists():
         return False
     try:
@@ -1330,7 +1347,7 @@ def validate_scanner_runs(run_dir: Path, errors: List[str]) -> bool:
 
 
 def validate_metrics(run_dir: Path, errors: List[str]) -> bool:
-    metrics_path = run_dir / METRICS_PATH
+    metrics_path = configured_artifact_path(run_dir, METRICS_PATH)
     if not metrics_path.exists():
         return False
     try:
@@ -1357,11 +1374,11 @@ def validate_metrics(run_dir: Path, errors: List[str]) -> bool:
 
 
 def validate_workflow_profile(run_dir: Path, errors: List[str]) -> bool:
-    profile_path = run_dir / WORKFLOW_PROFILE_PATH
+    profile_path = configured_artifact_path(run_dir, WORKFLOW_PROFILE_PATH)
     if not profile_path.exists():
         return False
     try:
-        validate_no_symlink_components(run_dir, WORKFLOW_PROFILE_PATH, field_path="workflow_profile")
+        validate_no_symlink_components(run_dir, configured_artifact_ref(run_dir, WORKFLOW_PROFILE_PATH), field_path="workflow_profile")
     except ReportSafetyError as exc:
         errors.append(str(exc))
         return True
@@ -1392,7 +1409,7 @@ def validate_benchmark_payload(value: Any, path: str, errors: List[str]) -> None
 
 
 def validate_benchmark(run_dir: Path, errors: List[str]) -> bool:
-    benchmark_path = run_dir / BENCHMARK_PATH
+    benchmark_path = configured_artifact_path(run_dir, BENCHMARK_PATH)
     if not benchmark_path.exists():
         return False
     try:
@@ -1514,11 +1531,11 @@ def validate_evidence_graph_path(run_dir: Path, value: Any, field_path: str, err
 
 
 def validate_evidence_graph(run_dir: Path, errors: List[str]) -> bool:
-    graph_path = run_dir / EVIDENCE_GRAPH_PATH
+    graph_path = configured_artifact_path(run_dir, EVIDENCE_GRAPH_PATH)
     if not graph_path.exists():
         return False
     try:
-        validate_no_symlink_components(run_dir, EVIDENCE_GRAPH_PATH, field_path="evidence_graph")
+        validate_no_symlink_components(run_dir, configured_artifact_ref(run_dir, EVIDENCE_GRAPH_PATH), field_path="evidence_graph")
     except ReportSafetyError as exc:
         errors.append(str(exc))
         return True
@@ -1688,11 +1705,11 @@ def validate_imported_assessments(finding: Dict[str, Any], path: str, errors: Li
 
 
 def validate_imported_findings(run_dir: Path, findings: list[dict[str, Any]], errors: List[str]) -> bool:
-    imported_path = run_dir / IMPORTED_FINDINGS_PATH
+    imported_path = configured_artifact_path(run_dir, IMPORTED_FINDINGS_PATH)
     if not imported_path.exists():
         return False
     try:
-        validate_no_symlink_components(run_dir, IMPORTED_FINDINGS_PATH, field_path="imported_findings")
+        validate_no_symlink_components(run_dir, configured_artifact_ref(run_dir, IMPORTED_FINDINGS_PATH), field_path="imported_findings")
     except ReportSafetyError as exc:
         errors.append(str(exc))
         return True
@@ -1790,7 +1807,7 @@ def validate_imported_findings(run_dir: Path, findings: list[dict[str, Any]], er
 
 
 def validate_issue_ledger(run_dir: Path, errors: List[str]) -> bool:
-    ledger_path = run_dir / ISSUE_LEDGER_PATH
+    ledger_path = configured_artifact_path(run_dir, ISSUE_LEDGER_PATH)
     if not ledger_path.exists():
         return False
     try:
@@ -1816,8 +1833,8 @@ def validate_issue_ledger(run_dir: Path, errors: List[str]) -> bool:
 
 
 def validate_duplicate_decisions(run_dir: Path, errors: List[str]) -> bool:
-    decisions_dir = run_dir / DUPLICATE_DECISIONS_DIR
-    ledger_path = run_dir / ISSUE_LEDGER_PATH
+    decisions_dir = configured_artifact_path(run_dir, DUPLICATE_DECISIONS_DIR)
+    ledger_path = configured_artifact_path(run_dir, ISSUE_LEDGER_PATH)
     ledger_entries: List[Dict[str, Any]] = []
     if ledger_path.exists():
         try:
@@ -1886,7 +1903,7 @@ def validate_duplicate_decisions(run_dir: Path, errors: List[str]) -> bool:
 
 
 def validate_run_state(run_dir: Path, errors: List[str]) -> bool:
-    state_path = run_dir / RUN_STATE_PATH
+    state_path = configured_artifact_path(run_dir, RUN_STATE_PATH)
     if not state_path.exists():
         return False
     try:
@@ -1929,11 +1946,11 @@ def validate_command_event_artifact_path(run_dir: Path, value: Any, *, field_pat
 
 
 def validate_command_events(run_dir: Path, errors: List[str]) -> bool:
-    events_path = run_dir / COMMAND_EVENTS_PATH
+    events_path = configured_artifact_path(run_dir, COMMAND_EVENTS_PATH)
     if not events_path.exists():
         return False
     try:
-        validate_no_symlink_components(run_dir, COMMAND_EVENTS_PATH, field_path="command_events")
+        validate_no_symlink_components(run_dir, configured_artifact_ref(run_dir, COMMAND_EVENTS_PATH), field_path="command_events")
     except ReportSafetyError as exc:
         errors.append(str(exc))
         return True

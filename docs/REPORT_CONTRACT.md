@@ -534,14 +534,16 @@ Important constraints:
   or command transcripts.
 
 `issue_body_file`, when present, must point to a regular `.md` file under
-`reports/issue-drafts/`, for example:
+the configured `<reports_dir>/issue-drafts/`, for example with the default:
 
 ```text
 reports/issue-drafts/SEC-001.md
 ```
 
 Absolute paths, `..` traversal, symlinks, non-Markdown files, and oversized
-issue body files are rejected. If `issue_body_file` is empty, `gra-issues` can
+issue body files are rejected. References to the default `reports/` directory
+are also rejected when the run configures a different `reports_dir`. If
+`issue_body_file` is empty, `gra-issues` can
 render a body from structured finding fields instead of reading a draft file.
 
 ## finding quality bar
