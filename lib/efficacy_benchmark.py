@@ -85,7 +85,7 @@ def render_case_list(loaded: dict[str, Any], selected: list[dict[str, Any]]) -> 
     return "\n".join(lines) + "\n"
 
 
-def _yaml_scalars(text: str) -> dict[str, str]:
+def yaml_scalars(text: str) -> dict[str, str]:
     values: dict[str, str] = {}
     for line in text.splitlines():
         stripped = line.strip()
@@ -135,7 +135,7 @@ def analyze_fixture_case(case: dict[str, Any], texts: dict[str, str]) -> dict[st
             )
     elif category == "github-actions":
         supported = True
-        values = _yaml_scalars(combined)
+        values = yaml_scalars(combined)
         if (
             values.get("permissions_model") == "repository_write"
             and values.get("content_source") == "untrusted_contributor_revision"
@@ -230,7 +230,12 @@ def analyze_fixture_case(case: dict[str, Any], texts: dict[str, str]) -> dict[st
                 }
             )
 
-    predictions.sort(key=lambda item: (item["vulnerability_class"], item["severity"]))
+    predictions.sort(
+        key=lambda item: (
+            item["vulnerability_class"],
+            SEVERITY_ORDER[item["severity"]],
+        )
+    )
     return {
         "predictions": predictions,
         "target_covered": bool(texts),
