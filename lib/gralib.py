@@ -131,7 +131,16 @@ def env_from_context(run_dir: Path, extra: Optional[Dict[str, str]] = None) -> D
 
 def render_template(lab_root: Path, template: Path, out: Path, env: Dict[str, str]) -> None:
     cmd = [sys.executable, str(lab_root / 'lib' / 'render_template.py'), str(template), str(out)]
-    subprocess.run(cmd, check=True, env=env)
+    # CPython on Windows requires SYSTEMROOT in an explicitly supplied child
+    # environment. Preserve only bounded runtime variables; do not inherit PATH,
+    # credential variables, Python module paths, or the rest of the host environment.
+    child_env = {
+        key: os.environ[key]
+        for key in ('SYSTEMROOT', 'WINDIR', 'PYTHONHASHSEED')
+        if key in os.environ
+    }
+    child_env.update(env)
+    subprocess.run(cmd, check=True, env=child_env)
 
 
 def ensure_taxonomy_templates(lab_root: Path, run_dir: Path) -> None:
