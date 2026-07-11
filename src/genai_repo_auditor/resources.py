@@ -24,6 +24,9 @@ def _looks_like_resource_root(path: Path) -> bool:
         and (path / "templates" / "taxonomies" / "owasp-llm-2025.json").is_file()
         and (path / "templates" / "agent-workers" / "codex-cli.json").is_file()
         and (path / "benchmarks" / "corpus" / "core.json").is_file()
+        and (path / "benchmarks" / "corpus" / "case.schema.json").is_file()
+        and (path / "benchmarks" / "corpus" / "corpus.schema.json").is_file()
+        and (path / "benchmarks" / "corpus" / "cases").is_dir()
     )
 
 

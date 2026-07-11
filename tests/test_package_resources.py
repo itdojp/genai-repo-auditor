@@ -73,6 +73,9 @@ class PackageResourceTests(unittest.TestCase):
         (root / "templates" / "agent-workers" / "codex-cli.json").write_text("{}", encoding="utf-8")
         (root / "benchmarks" / "corpus").mkdir(parents=True, exist_ok=True)
         (root / "benchmarks" / "corpus" / "core.json").write_text("{}", encoding="utf-8")
+        (root / "benchmarks" / "corpus" / "case.schema.json").write_text("{}", encoding="utf-8")
+        (root / "benchmarks" / "corpus" / "corpus.schema.json").write_text("{}", encoding="utf-8")
+        (root / "benchmarks" / "corpus" / "cases").mkdir()
 
     def test_package_version_matches_canonical_version_file(self) -> None:
         expected = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").splitlines()[0].strip()
@@ -157,6 +160,27 @@ class PackageResourceTests(unittest.TestCase):
             os.environ[gra_resources.ENV_RESOURCE_ROOT] = str(incomplete)
             with self.assertRaises(ResourceDiscoveryError):
                 resource_root()
+        finally:
+            if original is None:
+                os.environ.pop(gra_resources.ENV_RESOURCE_ROOT, None)
+            else:
+                os.environ[gra_resources.ENV_RESOURCE_ROOT] = original
+
+    def test_resource_root_rejects_an_incomplete_corpus_family(self) -> None:
+        original = os.environ.get(gra_resources.ENV_RESOURCE_ROOT)
+        try:
+            for missing in ("case.schema.json", "corpus.schema.json", "cases"):
+                with self.subTest(missing=missing):
+                    incomplete = self.work_dir / f"incomplete-{missing.replace('.', '-')}"
+                    self.write_minimal_resource_root(incomplete, "prompt")
+                    path = incomplete / "benchmarks" / "corpus" / missing
+                    if path.is_dir():
+                        path.rmdir()
+                    else:
+                        path.unlink()
+                    os.environ[gra_resources.ENV_RESOURCE_ROOT] = str(incomplete)
+                    with self.assertRaises(ResourceDiscoveryError):
+                        resource_root()
         finally:
             if original is None:
                 os.environ.pop(gra_resources.ENV_RESOURCE_ROOT, None)
