@@ -114,7 +114,20 @@ class EfficacyCorpusTests(unittest.TestCase):
         fixture_path.unlink()
         fixture_path.symlink_to(outside)
 
-        with self.assertRaisesRegex(EfficacyCorpusError, "symlink"):
+        real_open = efficacy_corpus.os.open
+
+        def reject_leaf_open(path, flags, mode=0o777, *, dir_fd=None):
+            if Path(path) == fixture_path:
+                raise AssertionError("portable reader opened a symlinked leaf")
+            if dir_fd is None:
+                return real_open(path, flags, mode)
+            return real_open(path, flags, mode, dir_fd=dir_fd)
+
+        with (
+            unittest.mock.patch.object(efficacy_corpus, "OPEN_SUPPORTS_DIR_FD", False),
+            unittest.mock.patch.object(efficacy_corpus.os, "open", side_effect=reject_leaf_open),
+            self.assertRaisesRegex(EfficacyCorpusError, "symlink"),
+        ):
             load_corpus(lab_root)
 
     def test_duplicate_fixture_paths_are_rejected(self) -> None:

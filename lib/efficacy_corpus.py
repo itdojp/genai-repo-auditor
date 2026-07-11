@@ -179,7 +179,8 @@ class _SafeTreeReader:
         ]
         try:
             before = [os.lstat(component) for component in components]
-            if any(stat.S_ISLNK(item.st_mode) for item in before):
+            leaf_before = os.lstat(path)
+            if any(stat.S_ISLNK(item.st_mode) for item in before) or stat.S_ISLNK(leaf_before.st_mode):
                 raise EfficacyCorpusError(f"{label} must not contain symlink components")
             fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
         except OSError as exc:
@@ -192,9 +193,15 @@ class _SafeTreeReader:
             after = [os.lstat(component) for component in components]
             identities_before = [(item.st_dev, item.st_ino, item.st_mode) for item in before]
             identities_after = [(item.st_dev, item.st_ino, item.st_mode) for item in after]
+            leaf_before_identity = (leaf_before.st_dev, leaf_before.st_ino, leaf_before.st_mode)
+            leaf_after_identity = (leaf.st_dev, leaf.st_ino, leaf.st_mode)
             leaf_identity = (leaf.st_dev, leaf.st_ino)
             descriptor_identity = (metadata.st_dev, metadata.st_ino)
-            if identities_before != identities_after or leaf_identity != descriptor_identity:
+            if (
+                identities_before != identities_after
+                or leaf_before_identity != leaf_after_identity
+                or leaf_identity != descriptor_identity
+            ):
                 raise EfficacyCorpusError(f"{label} changed while it was being read")
             return raw, metadata
         except OSError as exc:
