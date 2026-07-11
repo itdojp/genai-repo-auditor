@@ -1,0 +1,5 @@
+{
+  "fixture_only": true,
+  "request_secret_fields_logged": true,
+  "structured_logging_allowlist_enforced": true
+}

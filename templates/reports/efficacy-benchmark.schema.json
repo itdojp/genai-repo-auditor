@@ -52,7 +52,7 @@
       "additionalProperties": false,
       "required": ["detector_id", "selected_case_count", "supported_case_count", "fixture_file_count"],
       "properties": {
-        "detector_id": {"const": "synthetic-reference-rules-v1"},
+        "detector_id": {"const": "synthetic-reference-rules-v2"},
         "selected_case_count": {"type": "integer", "minimum": 1, "maximum": 64},
         "supported_case_count": {"type": "integer", "minimum": 0, "maximum": 64},
         "fixture_file_count": {"type": "integer", "minimum": 1, "maximum": 768}

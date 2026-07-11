@@ -71,7 +71,7 @@ jobs:
           import sys
           sys.path.insert(0, str(root / "lib"))
           from efficacy_corpus import load_corpus
-          assert len(load_corpus(root)["cases"]) >= 8
+          assert len(load_corpus(root)["cases"]) >= 20
           PY
           )
           mock_bin="$RUNNER_TEMP/gra-package-mock-bin"

@@ -1,0 +1,5 @@
+fixture_only: true
+cache_restore_source: reviewed_base_revision
+cache_write_authority: privileged_shared_namespace
+cache_key_binding: reviewed_namespace
+post_restore_step: local_inspection_only

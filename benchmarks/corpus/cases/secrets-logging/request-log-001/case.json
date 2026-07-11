@@ -1,0 +1,90 @@
+{
+  "case_id": "secrets-logging/request-log-001",
+  "case_version": "1.0.0+sha256.1d00502bc8d9fe6a55cfe16bf85216ea7ba8228514d4fc41daee7d76d3094614",
+  "category": "secrets-logging",
+  "classification": "positive",
+  "description": "An inert logging policy marks request secret fields as included in structured logs.",
+  "fixture": {
+    "credentials_included": false,
+    "external_hosts": [],
+    "files": [
+      {
+        "path": "logging-policy.json",
+        "sha256": "4520ae94e7fe0012de11d3ac618a32c506ff8231a5996479b9e0d7d423b0138b"
+      }
+    ],
+    "network_required": false,
+    "non_deployable": true,
+    "root": ".",
+    "weaponized_payloads_included": false
+  },
+  "framework": "logging-policy-fixture",
+  "ground_truth": {
+    "negative_controls": [],
+    "positive_findings": [
+      {
+        "affected_locations": [
+          {
+            "end_line": 4,
+            "file": "logging-policy.json",
+            "line": 3,
+            "symbol": "logging field policy"
+          }
+        ],
+        "entry_point": {
+          "end_line": 3,
+          "file": "logging-policy.json",
+          "line": 3,
+          "symbol": "request_secret_fields_logged"
+        },
+        "id": "GT-010",
+        "safe_remediation_property": "Structured logging must use an explicit non-sensitive field allowlist and exclude request secret fields.",
+        "severity_range": {
+          "maximum": "High",
+          "minimum": "Medium"
+        },
+        "sink": {
+          "end_line": 3,
+          "file": "logging-policy.json",
+          "line": 3,
+          "symbol": "structured log fields"
+        },
+        "taxonomy": [
+          {
+            "id": "CWE-532",
+            "system": "CWE"
+          }
+        ],
+        "trust_boundary": "An inert logging policy marks request secret fields as included in structured logs.",
+        "vulnerability_class": "secret-bearing-log-context"
+      }
+    ]
+  },
+  "language": "json",
+  "limitations": [
+    "This synthetic case is regression evidence only and does not establish production detection performance.",
+    "The fixture is an inert policy or code model, not a deployable service, workflow, or exploit procedure."
+  ],
+  "public_safe": true,
+  "schema_version": "1",
+  "stage_expectations": {
+    "optional": [
+      "recon",
+      "targets",
+      "scanner-plan",
+      "scanner-triage",
+      "chains",
+      "proofs",
+      "evidence-graph"
+    ],
+    "prohibited": [
+      "issue-publication"
+    ],
+    "required": [
+      "target-research",
+      "adversarial-validation",
+      "metrics"
+    ]
+  },
+  "title": "Request secret fields enter logs"
+}

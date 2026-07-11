@@ -1,0 +1,71 @@
+{
+  "case_id": "execution-boundaries/query-control-001",
+  "case_version": "1.0.0+sha256.c6867ab4fe82fb9334d3182477a6633a55c5ef3912ba9bd00ecf7b79eb76939c",
+  "category": "execution-boundaries",
+  "classification": "negative_control",
+  "description": "A lookalike query policy requires parameter binding before caller input reaches the query.",
+  "fixture": {
+    "credentials_included": false,
+    "external_hosts": [],
+    "files": [
+      {
+        "path": "query-policy.json",
+        "sha256": "0077fbf408973c927b1f552737d555702ffa6d053f9fe9d320c7cfbd5a6f283a"
+      }
+    ],
+    "network_required": false,
+    "non_deployable": true,
+    "root": ".",
+    "weaponized_payloads_included": false
+  },
+  "framework": "query-policy-fixture",
+  "ground_truth": {
+    "negative_controls": [
+      {
+        "control_property": "Parameter binding is required while the fixed template and input reachability properties remain identical.",
+        "id": "NC-008",
+        "location": {
+          "end_line": 5,
+          "file": "query-policy.json",
+          "line": 3,
+          "symbol": "bound query policy"
+        },
+        "resembles": "caller input reaching a query boundary",
+        "taxonomy": [
+          {
+            "id": "CWE-89",
+            "system": "CWE"
+          }
+        ]
+      }
+    ],
+    "positive_findings": []
+  },
+  "language": "json",
+  "limitations": [
+    "This synthetic case is regression evidence only and does not establish production detection performance.",
+    "The fixture is an inert policy or code model, not a deployable service, workflow, or exploit procedure."
+  ],
+  "public_safe": true,
+  "schema_version": "1",
+  "stage_expectations": {
+    "optional": [
+      "recon",
+      "targets",
+      "scanner-plan",
+      "scanner-triage",
+      "chains",
+      "proofs",
+      "evidence-graph"
+    ],
+    "prohibited": [
+      "issue-publication"
+    ],
+    "required": [
+      "target-research",
+      "adversarial-validation",
+      "metrics"
+    ]
+  },
+  "title": "Bound query-parameter negative control"
+}

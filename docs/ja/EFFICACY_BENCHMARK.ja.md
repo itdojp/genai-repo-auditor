@@ -11,6 +11,10 @@
 
 reference detector は runner/scoring の smoke baseline であり、製品の検出性能を
 示すものではありません。いずれも人による security review の代替ではありません。
+現在の public corpus は 7 category、positive/control 10 組の計 20 case です。
+reference rule は case ID や filename ではなく、明示された policy field と小さな
+code property を評価します。この拡張は regression coverage の改善であり、production
+efficacy claim の根拠にはなりません。
 
 ## 安全境界
 

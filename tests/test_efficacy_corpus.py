@@ -16,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 from efficacy_corpus import EfficacyCorpusError, load_corpus  # noqa: E402
+from efficacy_benchmark import yaml_scalars  # noqa: E402
 import efficacy_corpus  # noqa: E402
 
 
@@ -54,13 +55,28 @@ class EfficacyCorpusTests(unittest.TestCase):
         self.assertEqual(first, second)
         corpus = first["corpus"]
         cases = first["cases"]
-        self.assertRegex(corpus["corpus_version"], r"^1\.0\.0\+sha256\.[a-f0-9]{64}$")
+        self.assertRegex(corpus["corpus_version"], r"^1\.1\.0\+sha256\.[a-f0-9]{64}$")
         self.assertEqual("core", corpus["default_suite"])
         self.assertEqual(sorted(case["case_id"] for case in cases), [case["case_id"] for case in cases])
         classifications = Counter(case["classification"] for case in cases)
-        self.assertGreaterEqual(classifications["positive"], 5)
-        self.assertGreaterEqual(classifications["negative_control"], 3)
-        self.assertGreaterEqual(len({case["category"] for case in cases}), 3)
+        self.assertEqual(20, len(cases))
+        self.assertEqual(10, classifications["positive"])
+        self.assertEqual(10, classifications["negative_control"])
+        self.assertGreaterEqual(len({case["category"] for case in cases}), 6)
+        paired_cases = {
+            "python-web/authz-001": "python-web/authz-control-001",
+            "python-web/path-001": "python-web/path-control-001",
+            "github-actions/pr-target-001": "github-actions/pr-control-001",
+            "github-actions/cache-target-001": "github-actions/cache-control-001",
+            "ai-agent-mcp/tool-boundary-001": "ai-agent-mcp/tool-control-001",
+            "ai-agent-mcp/indirect-output-001": "ai-agent-mcp/indirect-output-control-001",
+            "dependency-supply-chain/dependency-path-001": "dependency-supply-chain/dependency-control-001",
+            "execution-boundaries/query-001": "execution-boundaries/query-control-001",
+            "webhook-trust/signature-001": "webhook-trust/signature-control-001",
+            "secrets-logging/request-log-001": "secrets-logging/request-log-control-001",
+        }
+        case_ids = {case["case_id"] for case in cases}
+        self.assertEqual(case_ids, set(paired_cases) | set(paired_cases.values()))
         for case in cases:
             self.assertRegex(case["case_version"], r"^1\.0\.0\+sha256\.[a-f0-9]{64}$")
             self.assertTrue(case["public_safe"])
@@ -89,6 +105,60 @@ class EfficacyCorpusTests(unittest.TestCase):
         with self.assertRaisesRegex(EfficacyCorpusError, "closed corpus contract") as raised:
             load_corpus(lab_root)
         self.assertNotIn("uncontracted payload", str(raised.exception))
+
+    def test_new_declarative_controls_change_one_security_property(self) -> None:
+        root = REPO_ROOT / "benchmarks" / "corpus" / "cases"
+        json_pairs = (
+            (
+                "ai-agent-mcp/indirect-output-001/agent-policy.json",
+                "ai-agent-mcp/indirect-output-control-001/agent-policy.json",
+                "untrusted_output_reaches_followup_instruction",
+            ),
+            (
+                "execution-boundaries/query-001/query-policy.json",
+                "execution-boundaries/query-control-001/query-policy.json",
+                "query_parameters_bound",
+            ),
+            (
+                "secrets-logging/request-log-001/logging-policy.json",
+                "secrets-logging/request-log-control-001/logging-policy.json",
+                "request_secret_fields_logged",
+            ),
+            (
+                "webhook-trust/signature-001/webhook-policy.json",
+                "webhook-trust/signature-control-001/webhook-policy.json",
+                "signature_verified_before_parse",
+            ),
+        )
+        for positive_path, control_path, property_name in json_pairs:
+            positive = json.loads((root / positive_path).read_text(encoding="utf-8"))
+            control = json.loads((root / control_path).read_text(encoding="utf-8"))
+            with self.subTest(positive=positive_path):
+                self.assertNotEqual(positive[property_name], control[property_name])
+                positive[property_name] = control[property_name]
+                self.assertEqual(control, positive)
+
+        positive_dependency = json.loads(
+            (root / "dependency-supply-chain/dependency-path-001/dependency-graph.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        control_dependency = json.loads(
+            (root / "dependency-supply-chain/dependency-control-001/dependency-graph.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        positive_dependency["dependencies"][0]["reachable_from"] = []
+        self.assertEqual(control_dependency, positive_dependency)
+
+        positive_cache = yaml_scalars(
+            (root / "github-actions/cache-target-001/workflow-fixture.yml").read_text(encoding="utf-8")
+        )
+        control_cache = yaml_scalars(
+            (root / "github-actions/cache-control-001/workflow-fixture.yml").read_text(encoding="utf-8")
+        )
+        positive_cache["cache_restore_source"] = control_cache["cache_restore_source"]
+        self.assertEqual(control_cache, positive_cache)
 
     def test_fixture_digest_network_marker_and_symlink_checks_fail_closed(self) -> None:
         lab_root = self.copy_corpus("lab-symlink")
@@ -287,7 +357,7 @@ class EfficacyCorpusTests(unittest.TestCase):
         with unittest.mock.patch.object(efficacy_corpus.os, "open", side_effect=racing_open):
             loaded = load_corpus(lab_root)
         self.assertTrue(swapped)
-        self.assertEqual(8, len(loaded["cases"]))
+        self.assertEqual(20, len(loaded["cases"]))
 
 
 if __name__ == "__main__":

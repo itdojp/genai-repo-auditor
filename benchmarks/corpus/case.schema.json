@@ -10,7 +10,7 @@
     "case_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+\\+sha256\\.[a-f0-9]{64}$"},
     "title": {"type": "string", "minLength": 1, "maxLength": 120},
     "classification": {"enum": ["positive", "negative_control"]},
-    "category": {"enum": ["python-web", "github-actions", "ai-agent-mcp", "dependency-supply-chain"]},
+    "category": {"enum": ["python-web", "github-actions", "ai-agent-mcp", "dependency-supply-chain", "execution-boundaries", "webhook-trust", "secrets-logging"]},
     "language": {"enum": ["python", "yaml", "json"]},
     "framework": {"type": "string", "minLength": 1, "maxLength": 64},
     "description": {"type": "string", "minLength": 1, "maxLength": 300},
@@ -86,7 +86,7 @@
       "required": ["id", "vulnerability_class", "taxonomy", "entry_point", "trust_boundary", "sink", "affected_locations", "severity_range", "safe_remediation_property"],
       "properties": {
         "id": {"type": "string", "pattern": "^GT-[0-9]{3}$"},
-        "vulnerability_class": {"enum": ["missing-tenant-authorization", "unsafe-path-normalization", "privileged-workflow-untrusted-content", "untrusted-tool-selection", "reachable-vulnerable-dependency"]},
+        "vulnerability_class": {"enum": ["missing-tenant-authorization", "unsafe-path-normalization", "privileged-workflow-untrusted-content", "untrusted-tool-selection", "reachable-vulnerable-dependency", "untrusted-cache-artifact", "indirect-prompt-output-trust", "unsafe-query-construction", "missing-webhook-signature-validation", "secret-bearing-log-context"]},
         "taxonomy": {"type": "array", "minItems": 1, "maxItems": 4, "items": {"$ref": "#/$defs/taxonomy"}},
         "entry_point": {"$ref": "#/$defs/location"},
         "trust_boundary": {"type": "string", "minLength": 1, "maxLength": 180},

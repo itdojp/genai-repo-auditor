@@ -1,0 +1,75 @@
+{
+  "case_id": "ai-agent-mcp/indirect-output-control-001",
+  "case_version": "1.0.0+sha256.edb3a6deaf51106e8b9545a30d083dc4b08ecf0a49097df339a9e7ff36895ddf",
+  "category": "ai-agent-mcp",
+  "classification": "negative_control",
+  "description": "A lookalike agent policy keeps untrusted tool output outside the follow-up instruction channel.",
+  "fixture": {
+    "credentials_included": false,
+    "external_hosts": [],
+    "files": [
+      {
+        "path": "agent-policy.json",
+        "sha256": "ebf5800a686fc30c597903bb8870673edcaf0bc34419be3a455b3f20d5f9b4d3"
+      }
+    ],
+    "network_required": false,
+    "non_deployable": true,
+    "root": ".",
+    "weaponized_payloads_included": false
+  },
+  "framework": "agent-policy-fixture",
+  "ground_truth": {
+    "negative_controls": [
+      {
+        "control_property": "The untrusted output cannot reach the follow-up instruction channel.",
+        "id": "NC-007",
+        "location": {
+          "end_line": 5,
+          "file": "agent-policy.json",
+          "line": 3,
+          "symbol": "bounded output policy"
+        },
+        "resembles": "indirect content crossing an agent instruction boundary",
+        "taxonomy": [
+          {
+            "id": "LLM01",
+            "system": "OWASP-LLM"
+          },
+          {
+            "id": "CWE-1427",
+            "system": "CWE"
+          }
+        ]
+      }
+    ],
+    "positive_findings": []
+  },
+  "language": "json",
+  "limitations": [
+    "This synthetic case is regression evidence only and does not establish production detection performance.",
+    "The fixture is an inert policy or code model, not a deployable service, workflow, or exploit procedure."
+  ],
+  "public_safe": true,
+  "schema_version": "1",
+  "stage_expectations": {
+    "optional": [
+      "recon",
+      "targets",
+      "scanner-plan",
+      "scanner-triage",
+      "chains",
+      "proofs",
+      "evidence-graph"
+    ],
+    "prohibited": [
+      "issue-publication"
+    ],
+    "required": [
+      "target-research",
+      "adversarial-validation",
+      "metrics"
+    ]
+  },
+  "title": "Bounded tool-output negative control"
+}

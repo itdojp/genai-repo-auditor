@@ -1,0 +1,6 @@
+{
+  "fixture_only": true,
+  "replay_window_enforced": true,
+  "signature_verified_before_parse": false,
+  "untrusted_event_parsed": true
+}

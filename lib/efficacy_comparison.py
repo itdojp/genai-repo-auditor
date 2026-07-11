@@ -30,7 +30,7 @@ REFERENCE_WORKFLOW_STAGES = {
 }
 DEFAULT_CONFIGURATIONS = tuple(REFERENCE_CONFIGURATIONS)
 COMPARISON_LIMITATIONS = [
-    "Configuration deltas on this small synthetic corpus are regression evidence, not product capability claims.",
+    "Configuration deltas on this bounded synthetic corpus are regression evidence, not product capability claims.",
     "Worker-assisted results are non-deterministic and are not comparable across model or prompt "
     + "changes without review.",
     "No benchmark result authorizes finding or Issue publication without repository-specific human validation.",

@@ -1,6 +1,6 @@
 # Security efficacy benchmark corpus
 
-The efficacy corpus is a small, versioned set of synthetic ground-truth cases
+The efficacy corpus is a balanced, versioned set of synthetic ground-truth cases
 for measuring defensive security-review behavior. It is intentionally separate
 from [`gra-benchmark`](BENCHMARKING.md), which remains the workflow-health and
 publication-safety gate for an audit run.
@@ -32,20 +32,27 @@ version and corpus version to change rather than silently replacing a baseline.
 Repository attributes pin all corpus text to LF so the raw-byte integrity hashes
 remain stable across supported checkout platforms.
 
-## Core cases
+## Core cases and paired controls
 
-| Case | Class | Category | Defensive ground truth |
+The public `core` suite contains 20 cases: ten positive cases and ten matched
+negative controls across seven categories. Each row differs at the named
+security boundary; the detector uses explicit fixture semantics rather than
+case IDs, directory names, or opaque filenames.
+
+| Positive case | Negative control | Category | Security-relevant difference |
 |---|---|---|---|
-| `python-web/authz-001` | positive | Python web | A tenant-scoped selector omits the tenant predicate. |
-| `python-web/path-001` | positive | Python web | A local path helper omits normalized-base containment. |
-| `github-actions/pr-target-001` | positive | automation | A fixture workflow model combines privileged authority with untrusted content. |
-| `ai-agent-mcp/tool-boundary-001` | positive | agent/tool boundary | Untrusted selection is not constrained by an allowlist or argument schema. |
-| `dependency-supply-chain/dependency-path-001` | positive | supply chain | A synthetic dependency risk is reachable from a local fixture entry point. |
-| `python-web/authz-control-001` | negative control | Python web | Identifier and authenticated-tenant predicates are both enforced. |
-| `github-actions/pr-control-001` | negative control | automation | Reviewed base content and read-only authority are combined. |
-| `ai-agent-mcp/tool-control-001` | negative control | agent/tool boundary | An explicit tool allowlist and argument schema are enforced. |
+| `python-web/authz-001` | `python-web/authz-control-001` | `python-web` | The control applies the authenticated tenant predicate. |
+| `python-web/path-001` | `python-web/path-control-001` | `python-web` | The control resolves both paths and enforces base containment. |
+| `github-actions/pr-target-001` | `github-actions/pr-control-001` | `github-actions` | The control combines reviewed content with read-only authority. |
+| `github-actions/cache-target-001` | `github-actions/cache-control-001` | `github-actions` | The control restores cache content only from the reviewed base revision. |
+| `ai-agent-mcp/tool-boundary-001` | `ai-agent-mcp/tool-control-001` | `ai-agent-mcp` | The control enforces a tool allowlist and argument schema. |
+| `ai-agent-mcp/indirect-output-001` | `ai-agent-mcp/indirect-output-control-001` | `ai-agent-mcp` | The control prevents untrusted output from entering follow-up instructions. |
+| `dependency-supply-chain/dependency-path-001` | `dependency-supply-chain/dependency-control-001` | `dependency-supply-chain` | The control has no application reachability path. |
+| `execution-boundaries/query-001` | `execution-boundaries/query-control-001` | `execution-boundaries` | The control requires query parameter binding. |
+| `webhook-trust/signature-001` | `webhook-trust/signature-control-001` | `webhook-trust` | The control verifies the signature before parsing. |
+| `secrets-logging/request-log-001` | `secrets-logging/request-log-control-001` | `secrets-logging` | The control excludes request secret fields from logs. |
 
-The fixtures are deliberately small and non-deployable. Automation cases are
+The fixtures are deliberately bounded and non-deployable. Automation cases are
 stored as inert workflow models outside `.github/workflows/`; dependency names
 and advisory IDs are synthetic; agent configurations do not contain executable
 tools or endpoints.
@@ -113,15 +120,20 @@ gra-efficacy-benchmark
    `core.json` and pin the complete manifest SHA-256.
 5. Recompute the corpus content-version suffix after all index entries are final.
 6. Update packaging inventory and this case table.
-7. Run the corpus tests twice and confirm the loaded objects are identical.
-8. Request human security review for any new vulnerability class or fixture.
+7. Keep a positive/control pair different in one security-relevant property
+   where practical; document any justified mismatch in this table.
+8. Add reference rules only for explicit, reviewable fixture semantics. Rules
+   must not branch on a case ID, directory name, or fixture filename.
+9. Run the corpus tests and the documented two-run report comparison; both JSON
+   and Markdown outputs must be byte-identical.
+10. Request human security review for any new vulnerability class or fixture.
 
 Existing case IDs must not be repurposed. If ground truth changes materially,
 increment the case version and corpus version and document why.
 
 ## Interpretation limits
 
-The corpus is too small and synthetic to support claims about overall product,
+The corpus remains synthetic and is not representative enough to support claims about overall product,
 model, scanner, language, framework, or real-world vulnerability-detection
 performance. A result on these cases is regression evidence for the specified
 fixture versions only. It must not be presented as proof of production recall,

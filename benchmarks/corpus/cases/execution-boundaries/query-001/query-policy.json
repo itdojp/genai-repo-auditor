@@ -1,0 +1,6 @@
+{
+  "fixture_only": true,
+  "query_parameters_bound": false,
+  "query_template_fixed": true,
+  "untrusted_input_reaches_query": true
+}

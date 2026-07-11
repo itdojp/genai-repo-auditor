@@ -23,6 +23,9 @@ CATEGORY_SUITES = {
     "github-actions": "automation",
     "ai-agent-mcp": "agentic",
     "dependency-supply-chain": "supply-chain",
+    "execution-boundaries": "appsec",
+    "webhook-trust": "appsec",
+    "secrets-logging": "appsec",
 }
 FORBIDDEN_PUBLIC_MARKERS = (
     "http://",
@@ -566,8 +569,10 @@ def load_corpus(lab_root: Path) -> dict[str, Any]:
             positive_count += case["classification"] == "positive"
             negative_count += case["classification"] == "negative_control"
             categories.add(case["category"])
-        if positive_count < 5 or negative_count < 3 or len(categories) < 3:
-            raise EfficacyCorpusError("core corpus must include five positives, three controls, and three categories")
+        if len(cases) < 20 or positive_count < 10 or negative_count < 10 or len(categories) < 6:
+            raise EfficacyCorpusError(
+                "core corpus must include at least twenty cases, ten positives, ten controls, and six categories"
+            )
         _require_content_version(corpus, "corpus_version", label="corpus version")
         return {"corpus": corpus, "cases": cases}
 

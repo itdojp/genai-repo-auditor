@@ -79,13 +79,13 @@ class EfficacyComparisonTests(unittest.TestCase):
             ["fixture-reference-review", "high-severity-review-gate"],
             high["workflow_stage_ids"],
         )
-        self.assertEqual(5, complete["scores"]["counts"]["true_positives"])
+        self.assertEqual(10, complete["scores"]["counts"]["true_positives"])
         self.assertEqual(0, complete["scores"]["counts"]["false_negatives"])
-        self.assertEqual(3, high["scores"]["counts"]["true_positives"])
-        self.assertEqual(2, high["scores"]["counts"]["false_negatives"])
-        self.assertEqual(0.6, high["scores"]["rates"]["recall"])
-        self.assertEqual(-2, first["comparison"]["deltas"][0]["true_positive_delta"])
-        self.assertEqual(2, first["comparison"]["deltas"][0]["false_negative_delta"])
+        self.assertEqual(7, high["scores"]["counts"]["true_positives"])
+        self.assertEqual(3, high["scores"]["counts"]["false_negatives"])
+        self.assertEqual(0.7, high["scores"]["rates"]["recall"])
+        self.assertEqual(-3, first["comparison"]["deltas"][0]["true_positive_delta"])
+        self.assertEqual(3, first["comparison"]["deltas"][0]["false_negative_delta"])
         self.assertEqual(first["comparison"]["case_ids"], complete["case_ids"])
         self.assertEqual(first["comparison"]["case_ids"], high["case_ids"])
         self.assertFalse(first["safety"]["model_channel_used"])
@@ -117,7 +117,7 @@ class EfficacyComparisonTests(unittest.TestCase):
             caller_order,
             [item["configuration_id"] for item in ordered_report["configurations"]],
         )
-        self.assertEqual(2, ordered_report["comparison"]["deltas"][0]["true_positive_delta"])
+        self.assertEqual(3, ordered_report["comparison"]["deltas"][0]["true_positive_delta"])
         with self.assertRaisesRegex(EfficacyBenchmarkError, "at least two"):
             select_configurations(["reference-review-all-signals-v1"])
         with self.assertRaisesRegex(EfficacyBenchmarkError, "must be unique"):

@@ -20,7 +20,7 @@ from platform_support import dirfd_report_writes_supported
 
 
 REPORT_SCHEMA_VERSION = "1"
-DETECTOR_ID = "synthetic-reference-rules-v1"
+DETECTOR_ID = "synthetic-reference-rules-v2"
 MAX_REPORT_BYTES = 1_000_000
 DIR_FD_OUTPUT_SUPPORTED = dirfd_report_writes_supported()
 SEVERITY_ORDER = {"Low": 0, "Medium": 1, "High": 2, "Critical": 3}
@@ -85,7 +85,7 @@ def render_case_list(loaded: dict[str, Any], selected: list[dict[str, Any]]) -> 
     return "\n".join(lines) + "\n"
 
 
-def _yaml_scalars(text: str) -> dict[str, str]:
+def yaml_scalars(text: str) -> dict[str, str]:
     values: dict[str, str] = {}
     for line in text.splitlines():
         stripped = line.strip()
@@ -135,7 +135,7 @@ def analyze_fixture_case(case: dict[str, Any], texts: dict[str, str]) -> dict[st
             )
     elif category == "github-actions":
         supported = True
-        values = _yaml_scalars(combined)
+        values = yaml_scalars(combined)
         if (
             values.get("permissions_model") == "repository_write"
             and values.get("content_source") == "untrusted_contributor_revision"
@@ -147,6 +147,17 @@ def analyze_fixture_case(case: dict[str, Any], texts: dict[str, str]) -> dict[st
                     "human_review_required": True,
                 }
             )
+        if (
+            values.get("cache_write_authority") == "privileged_shared_namespace"
+            and values.get("cache_restore_source") == "untrusted_contributor_revision"
+        ):
+            predictions.append(
+                {
+                    "vulnerability_class": "untrusted-cache-artifact",
+                    "severity": "High",
+                    "human_review_required": True,
+                }
+            )
     elif category == "ai-agent-mcp":
         supported = True
         value = _json_fixture(texts)
@@ -154,6 +165,14 @@ def analyze_fixture_case(case: dict[str, Any], texts: dict[str, str]) -> dict[st
             predictions.append(
                 {
                     "vulnerability_class": "untrusted-tool-selection",
+                    "severity": "High",
+                    "human_review_required": True,
+                }
+            )
+        if value.get("untrusted_output_reaches_followup_instruction") is True:
+            predictions.append(
+                {
+                    "vulnerability_class": "indirect-prompt-output-trust",
                     "severity": "High",
                     "human_review_required": True,
                 }
@@ -177,8 +196,46 @@ def analyze_fixture_case(case: dict[str, Any], texts: dict[str, str]) -> dict[st
                     "human_review_required": True,
                 }
             )
+    elif category == "execution-boundaries":
+        supported = True
+        value = _json_fixture(texts)
+        if value.get("untrusted_input_reaches_query") is True and value.get("query_parameters_bound") is False:
+            predictions.append(
+                {
+                    "vulnerability_class": "unsafe-query-construction",
+                    "severity": "High",
+                    "human_review_required": True,
+                }
+            )
+    elif category == "webhook-trust":
+        supported = True
+        value = _json_fixture(texts)
+        if value.get("untrusted_event_parsed") is True and value.get("signature_verified_before_parse") is False:
+            predictions.append(
+                {
+                    "vulnerability_class": "missing-webhook-signature-validation",
+                    "severity": "High",
+                    "human_review_required": True,
+                }
+            )
+    elif category == "secrets-logging":
+        supported = True
+        value = _json_fixture(texts)
+        if value.get("request_secret_fields_logged") is True:
+            predictions.append(
+                {
+                    "vulnerability_class": "secret-bearing-log-context",
+                    "severity": "Medium",
+                    "human_review_required": True,
+                }
+            )
 
-    predictions.sort(key=lambda item: (item["vulnerability_class"], item["severity"]))
+    predictions.sort(
+        key=lambda item: (
+            item["vulnerability_class"],
+            SEVERITY_ORDER[item["severity"]],
+        )
+    )
     return {
         "predictions": predictions,
         "target_covered": bool(texts),

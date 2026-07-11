@@ -1,0 +1,71 @@
+{
+  "case_id": "python-web/path-control-001",
+  "case_version": "1.0.0+sha256.1277c3f44c5c7e106e2b8f25b29f690e2aefec49a8f63ab332b7202f3f7b4570",
+  "category": "python-web",
+  "classification": "negative_control",
+  "description": "A lookalike local helper resolves both paths and enforces containment beneath the approved base.",
+  "fixture": {
+    "credentials_included": false,
+    "external_hosts": [],
+    "files": [
+      {
+        "path": "file_helper.py",
+        "sha256": "7b33b976ffbd89122108b2975fd3866686e5da47251f086440f1425966c19983"
+      }
+    ],
+    "network_required": false,
+    "non_deployable": true,
+    "root": ".",
+    "weaponized_payloads_included": false
+  },
+  "framework": "pathlib-fixture",
+  "ground_truth": {
+    "negative_controls": [
+      {
+        "control_property": "The resolved candidate must be relative to the resolved approved base before it is returned.",
+        "id": "NC-004",
+        "location": {
+          "end_line": 8,
+          "file": "file_helper.py",
+          "line": 5,
+          "symbol": "resolved candidate containment"
+        },
+        "resembles": "path construction from a caller-controlled name",
+        "taxonomy": [
+          {
+            "id": "CWE-22",
+            "system": "CWE"
+          }
+        ]
+      }
+    ],
+    "positive_findings": []
+  },
+  "language": "python",
+  "limitations": [
+    "This synthetic case is regression evidence only and does not establish production detection performance.",
+    "The fixture is an inert policy or code model, not a deployable service, workflow, or exploit procedure."
+  ],
+  "public_safe": true,
+  "schema_version": "1",
+  "stage_expectations": {
+    "optional": [
+      "recon",
+      "targets",
+      "scanner-plan",
+      "scanner-triage",
+      "chains",
+      "proofs",
+      "evidence-graph"
+    ],
+    "prohibited": [
+      "issue-publication"
+    ],
+    "required": [
+      "target-research",
+      "adversarial-validation",
+      "metrics"
+    ]
+  },
+  "title": "Contained path negative control"
+}

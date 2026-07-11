@@ -30,6 +30,12 @@ operations and fail closed before creating an output when that support is not
 available. `--list`, `--help`, and `--version` remain available on platforms
 without that support. Reports are limited to 1,000,000 bytes each.
 
+The current public corpus has 20 cases arranged as ten positive/control pairs
+across seven security categories. The deterministic reference detector matches
+explicit policy fields and small auditable code properties; it does not branch
+on case IDs, directories, or fixture filenames. This breadth improves regression
+coverage only and does not change the claim boundary below.
+
 ## List cases and suites
 
 List the default `core` suite:
