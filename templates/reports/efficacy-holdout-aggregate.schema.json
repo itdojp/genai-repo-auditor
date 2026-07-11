@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor aggregate-only private holdout result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "evaluation_id", "command_version", "report_schema_version", "corpus", "configurations", "adjudication", "safety", "publication"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "evaluation_id": {"type": "string", "pattern": "^evaluation-[a-f0-9]{12}$"},
+    "command_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "report_schema_version": {"const": "1"},
+    "corpus": {"$ref": "#/$defs/corpus"},
+    "configurations": {"type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": {"$ref": "#/$defs/configuration"}},
+    "adjudication": {"$ref": "#/$defs/adjudication"},
+    "safety": {"$ref": "#/$defs/safety"},
+    "publication": {"$ref": "#/$defs/publication"}
+  },
+  "$defs": {
+    "corpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["corpus_id", "corpus_version", "case_count", "positive_count", "negative_control_count", "category_count", "balanced_controls", "balance_exception_record_digest"],
+      "properties": {
+        "corpus_id": {"type": "string", "pattern": "^holdout-[a-f0-9]{12}$"},
+        "corpus_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+\\+sha256\\.[a-f0-9]{64}$"},
+        "case_count": {"type": "integer", "minimum": 2, "maximum": 256},
+        "positive_count": {"type": "integer", "minimum": 1, "maximum": 255},
+        "negative_control_count": {"type": "integer", "minimum": 1, "maximum": 255},
+        "category_count": {"type": "integer", "minimum": 1, "maximum": 32},
+        "balanced_controls": {"type": "boolean"},
+        "balance_exception_record_digest": {"type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$"}
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["configuration_id", "workflow_version", "prompt_version", "worker_channel_used", "worker_profile_id", "worker_cli_version", "model_id", "effort", "repeat_runs", "runs", "repeat_variance"],
+      "properties": {
+        "configuration_id": {"type": "string", "pattern": "^config-[a-f0-9]{12}$"},
+        "workflow_version": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "prompt_version": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "worker_channel_used": {"type": "boolean"},
+        "worker_profile_id": {"type": ["string", "null"], "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"},
+        "worker_cli_version": {"type": ["string", "null"], "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "model_id": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+        "effort": {"type": ["string", "null"], "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+        "repeat_runs": {"type": "integer", "minimum": 2, "maximum": 20},
+        "runs": {"type": "array", "minItems": 2, "maxItems": 20, "items": {"$ref": "#/$defs/run"}},
+        "repeat_variance": {"$ref": "#/$defs/variance"}
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_number", "evaluated_negative_control_count", "negative_control_false_positive_case_count", "counts", "rates", "severity_agreement", "target_coverage", "human_review_required_count"],
+      "properties": {
+        "run_number": {"type": "integer", "minimum": 1, "maximum": 20},
+        "evaluated_negative_control_count": {"type": "integer", "minimum": 1, "maximum": 255},
+        "negative_control_false_positive_case_count": {"type": "integer", "minimum": 0, "maximum": 255},
+        "counts": {"$ref": "#/$defs/counts"},
+        "rates": {"$ref": "#/$defs/rates"},
+        "severity_agreement": {"$ref": "#/$defs/severityRatio"},
+        "target_coverage": {"$ref": "#/$defs/coverageRatio"},
+        "human_review_required_count": {"type": "integer", "minimum": 0, "maximum": 256}
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["true_positives", "false_positives", "false_negatives", "true_negatives", "prediction_count"],
+      "properties": {
+        "true_positives": {"type": "integer", "minimum": 0, "maximum": 256},
+        "false_positives": {"type": "integer", "minimum": 0, "maximum": 1024},
+        "false_negatives": {"type": "integer", "minimum": 0, "maximum": 256},
+        "true_negatives": {"type": "integer", "minimum": 0, "maximum": 256},
+        "prediction_count": {"type": "integer", "minimum": 0, "maximum": 1280}
+      }
+    },
+    "rates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["precision", "recall", "f1"],
+      "properties": {
+        "precision": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "recall": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "f1": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+      }
+    },
+    "severityRatio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agreed", "eligible", "rate"],
+      "properties": {
+        "agreed": {"type": "integer", "minimum": 0, "maximum": 256},
+        "eligible": {"type": "integer", "minimum": 0, "maximum": 256},
+        "rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+      }
+    },
+    "coverageRatio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["covered", "selected", "rate"],
+      "properties": {
+        "covered": {"type": "integer", "minimum": 0, "maximum": 256},
+        "selected": {"type": "integer", "minimum": 0, "maximum": 256},
+        "rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+      }
+    },
+    "variance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["precision", "recall", "f1", "severity_agreement", "target_coverage", "human_review_required_count"],
+      "properties": {
+        "precision": {"$ref": "#/$defs/metricSummary"},
+        "recall": {"$ref": "#/$defs/metricSummary"},
+        "f1": {"$ref": "#/$defs/metricSummary"},
+        "severity_agreement": {"$ref": "#/$defs/metricSummary"},
+        "target_coverage": {"$ref": "#/$defs/metricSummary"},
+        "human_review_required_count": {"$ref": "#/$defs/metricSummary"}
+      }
+    },
+    "metricSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["applicable_run_count", "minimum", "maximum", "mean", "population_variance"],
+      "properties": {
+        "applicable_run_count": {"type": "integer", "minimum": 0, "maximum": 20},
+        "minimum": {"type": ["number", "null"], "minimum": 0},
+        "maximum": {"type": ["number", "null"], "minimum": 0},
+        "mean": {"type": ["number", "null"], "minimum": 0},
+        "population_variance": {"type": ["number", "null"], "minimum": 0}
+      }
+    },
+    "adjudication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["completed", "disputed_case_count", "changed_ground_truth_count", "record_digest"],
+      "properties": {
+        "completed": {"const": true},
+        "disputed_case_count": {"type": "integer", "minimum": 0, "maximum": 256},
+        "changed_ground_truth_count": {"type": "integer", "minimum": 0, "maximum": 256},
+        "record_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aggregate_only", "fixture_text_included", "case_ids_included", "evidence_or_locations_included", "prompts_or_transcripts_included", "credentials_included", "absolute_paths_included", "finding_publication_performed"],
+      "properties": {
+        "aggregate_only": {"const": true},
+        "fixture_text_included": {"const": false},
+        "case_ids_included": {"const": false},
+        "evidence_or_locations_included": {"const": false},
+        "prompts_or_transcripts_included": {"const": false},
+        "credentials_included": {"const": false},
+        "absolute_paths_included": {"const": false},
+        "finding_publication_performed": {"const": false}
+      }
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approved", "approval_record_digest", "public_claim_allowed", "production_performance_claim_allowed", "finding_publication_authorized"],
+      "properties": {
+        "approved": {"type": "boolean"},
+        "approval_record_digest": {"type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$"},
+        "public_claim_allowed": {"const": false},
+        "production_performance_claim_allowed": {"const": false},
+        "finding_publication_authorized": {"const": false}
+      }
+    }
+  }
+}

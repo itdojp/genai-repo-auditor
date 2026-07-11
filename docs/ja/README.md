@@ -20,6 +20,7 @@
 - [`ADVANCED_POSTURE_WORKFLOWS.ja.md`](ADVANCED_POSTURE_WORKFLOWS.ja.md): AI agent / MCP surface、taxonomy、provenance、Scorecard、SBOM / dependency、release readiness の高度な posture workflow。
 - [`EFFICACY_BENCHMARK.ja.md`](EFFICACY_BENCHMARK.ja.md): offline synthetic corpus の決定的実行、score、決定性確認、安全境界。
 - [`EFFICACY_CLAIMS_AND_PUBLICATION.ja.md`](EFFICACY_CLAIMS_AND_PUBLICATION.ja.md): efficacy 比較の方法論、禁止 claim、worker 境界、公開判断。
+- [`PRIVATE_HOLDOUT_PROTOCOL.ja.md`](PRIVATE_HOLDOUT_PROTOCOL.ja.md): private holdout の分離、独立 ground-truth review、固定評価、aggregate-only 検証、公開承認。
 - [`CODEX_WORK_INSTRUCTIONS.ja.md`](CODEX_WORK_INSTRUCTIONS.ja.md): Codex CLI でこの repository を保守するための作業指示。
 
 Defensive chain synthesis の詳細は英語版 [`docs/ATTACK_CHAINS.md`](../ATTACK_CHAINS.md) を canonical source として参照してください。

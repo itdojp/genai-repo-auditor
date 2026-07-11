@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor private holdout metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "corpus", "separation", "ground_truth_review", "evaluation_plan"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "corpus": {"$ref": "#/$defs/corpus"},
+    "separation": {"$ref": "#/$defs/separation"},
+    "ground_truth_review": {"$ref": "#/$defs/review"},
+    "evaluation_plan": {"$ref": "#/$defs/plan"}
+  },
+  "$defs": {
+    "corpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["corpus_id", "corpus_version", "case_count", "positive_count", "negative_control_count", "category_count", "balanced_controls", "balance_exception_record_digest"],
+      "properties": {
+        "corpus_id": {"type": "string", "pattern": "^holdout-[a-f0-9]{12}$"},
+        "corpus_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+\\+sha256\\.[a-f0-9]{64}$"},
+        "case_count": {"type": "integer", "minimum": 2, "maximum": 256},
+        "positive_count": {"type": "integer", "minimum": 1, "maximum": 255},
+        "negative_control_count": {"type": "integer", "minimum": 1, "maximum": 255},
+        "category_count": {"type": "integer", "minimum": 1, "maximum": 32},
+        "balanced_controls": {"type": "boolean"},
+        "balance_exception_record_digest": {"type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$"}
+      }
+    },
+    "separation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["private_not_tracked", "public_corpus_reused", "real_repository_content_included", "storage_access_controlled"],
+      "properties": {
+        "private_not_tracked": {"const": true},
+        "public_corpus_reused": {"const": false},
+        "real_repository_content_included": {"const": false},
+        "storage_access_controlled": {"const": true}
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["review_method", "reviewer_count", "independent_from_evaluation", "completed", "review_record_digests"],
+      "properties": {
+        "review_method": {"enum": ["two-person", "documented-independent"]},
+        "reviewer_count": {"type": "integer", "minimum": 1, "maximum": 10},
+        "independent_from_evaluation": {"const": true},
+        "completed": {"const": true},
+        "review_record_digests": {"type": "array", "minItems": 1, "maxItems": 10, "uniqueItems": true, "items": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}}
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command_version", "report_schema_version", "adjudication_required", "configurations"],
+      "properties": {
+        "command_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "report_schema_version": {"const": "1"},
+        "adjudication_required": {"const": true},
+        "configurations": {"type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": {"$ref": "#/$defs/configuration"}}
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["configuration_id", "workflow_version", "prompt_version", "worker_channel_used", "worker_profile_id", "worker_cli_version", "model_id", "effort", "repeat_runs"],
+      "properties": {
+        "configuration_id": {"type": "string", "pattern": "^config-[a-f0-9]{12}$"},
+        "workflow_version": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "prompt_version": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "worker_channel_used": {"type": "boolean"},
+        "worker_profile_id": {"type": ["string", "null"], "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"},
+        "worker_cli_version": {"type": ["string", "null"], "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "model_id": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+        "effort": {"type": ["string", "null"], "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+        "repeat_runs": {"type": "integer", "minimum": 2, "maximum": 20}
+      }
+    }
+  }
+}

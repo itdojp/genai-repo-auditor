@@ -41,6 +41,10 @@ FORBIDDEN_PUBLIC_MARKERS = (
     "child_process",
 )
 FORBIDDEN_PUBLIC_HELPER_RE = re.compile(r"(?<![a-z0-9_-])(?:curl|wget)(?![a-z0-9_-])")
+FORBIDDEN_CREDENTIAL_PREFIX_RE = re.compile(
+    r"(?<![a-z0-9])(?:gh[pousr]_|github_pat_|glpat-|xox[a-z]-|sk-(?:proj-)?|[rs]k_live_|npm_|pypi-)"
+    r"|(?<![a-z0-9])(?:akia|asia)[a-z0-9]{16}(?![a-z0-9])"
+)
 SUPPORTED_SCHEMA_KEYS = {
     "$defs",
     "$ref",
@@ -108,9 +112,15 @@ def _safe_relative_path(relative: Any, *, label: str) -> PurePosixPath:
 class _SafeTreeReader:
     """Read files relative to one directory handle without following symlinks."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        expected_root_identity: tuple[int, int, int] | None = None,
+    ) -> None:
         self.root = root.resolve(strict=True)
         self._root_fd: int | None = None
+        self._expected_root_identity = expected_root_identity
         if OPEN_SUPPORTS_DIR_FD:
             try:
                 self._root_fd = os.open(
@@ -119,6 +129,16 @@ class _SafeTreeReader:
                 )
             except OSError as exc:
                 raise EfficacyCorpusError("corpus root must be a readable directory") from exc
+            metadata = os.fstat(self._root_fd)
+            identity = (metadata.st_dev, metadata.st_ino, metadata.st_mode)
+            if expected_root_identity is not None and identity != expected_root_identity:
+                self.close()
+                raise EfficacyCorpusError("JSON object root changed after validation")
+        elif expected_root_identity is not None:
+            metadata = os.lstat(self.root)
+            identity = (metadata.st_dev, metadata.st_ino, metadata.st_mode)
+            if identity != expected_root_identity:
+                raise EfficacyCorpusError("JSON object root changed after validation")
 
     def close(self) -> None:
         if self._root_fd is not None:
@@ -201,7 +221,11 @@ class _SafeTreeReader:
             leaf_identity = (leaf.st_dev, leaf.st_ino)
             descriptor_identity = (metadata.st_dev, metadata.st_ino)
             if (
-                identities_before != identities_after
+                (
+                    self._expected_root_identity is not None
+                    and identities_before[0] != self._expected_root_identity
+                )
+                or identities_before != identities_after
                 or leaf_before_identity != leaf_after_identity
                 or leaf_identity != descriptor_identity
             ):
@@ -246,8 +270,10 @@ def _contains_forbidden_public_marker(text: str) -> bool:
         if updated == normalized:
             break
         normalized = updated
-    return any(marker in normalized for marker in FORBIDDEN_PUBLIC_MARKERS) or bool(
-        FORBIDDEN_PUBLIC_HELPER_RE.search(normalized)
+    return (
+        any(marker in normalized for marker in FORBIDDEN_PUBLIC_MARKERS)
+        or bool(FORBIDDEN_PUBLIC_HELPER_RE.search(normalized))
+        or bool(FORBIDDEN_CREDENTIAL_PREFIX_RE.search(normalized))
     )
 
 
@@ -436,6 +462,54 @@ def load_schema_object(lab_root: Path, relative: Any, *, label: str) -> dict[str
         schema, _raw = _load_json(reader, relative, label=label)
     _require_supported_schema(schema, label=label)
     return schema
+
+
+def load_bounded_json_object(
+    root: Path,
+    relative: Any,
+    *,
+    label: str,
+    maximum: int = MAX_JSON_BYTES,
+) -> dict[str, Any]:
+    """Load one bounded JSON object below ``root`` without following symlinks."""
+
+    if maximum < 1 or maximum > MAX_JSON_BYTES:
+        raise EfficacyCorpusError("JSON object size limit is outside the supported range")
+    with _SafeTreeReader(root) as reader:
+        value, _raw = _load_json(reader, relative, label=label)
+        if len(_raw) > maximum:
+            raise EfficacyCorpusError(f"{label} exceeds the {maximum}-byte limit")
+    return value
+
+
+def load_bounded_json_objects(
+    root: Path,
+    specifications: tuple[tuple[Any, str, int], ...],
+    *,
+    expected_root_identity: tuple[int, int, int],
+) -> list[dict[str, Any]]:
+    """Load multiple bounded JSON objects through one identity-pinned tree reader."""
+
+    values: list[dict[str, Any]] = []
+    with _SafeTreeReader(root, expected_root_identity=expected_root_identity) as reader:
+        for relative, label, maximum in specifications:
+            if maximum < 1 or maximum > MAX_JSON_BYTES:
+                raise EfficacyCorpusError("JSON object size limit is outside the supported range")
+            raw, _metadata = reader.read(relative, maximum=maximum, label=label)
+            try:
+                value = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise EfficacyCorpusError(f"{label} must contain valid UTF-8 JSON") from exc
+            if not isinstance(value, dict):
+                raise EfficacyCorpusError(f"{label} must contain a JSON object")
+            values.append(value)
+    return values
+
+
+def require_public_safe_json(value: Any, *, label: str) -> None:
+    """Reject live-network, credential-like, or execution markers in JSON strings."""
+
+    _require_public_safe_json(value, label=label)
 
 
 def _require_content_version(value: dict[str, Any], field: str, *, label: str) -> None:
