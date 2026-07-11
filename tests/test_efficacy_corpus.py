@@ -232,6 +232,11 @@ class EfficacyCorpusTests(unittest.TestCase):
                 with self.assertRaisesRegex(EfficacyCorpusError, "fixture file contains a prohibited"):
                     load_corpus(lab_root)
 
+    def test_missing_category_suite_mapping_fails_closed(self) -> None:
+        with unittest.mock.patch.dict(efficacy_corpus.CATEGORY_SUITES, {}, clear=True):
+            with self.assertRaisesRegex(EfficacyCorpusError, "canonical suite"):
+                load_corpus(REPO_ROOT)
+
     @unittest.skipUnless(efficacy_corpus.OPEN_SUPPORTS_DIR_FD, "requires openat-style dir_fd support")
     def test_directory_handle_read_resists_ancestor_symlink_swap(self) -> None:
         lab_root = self.copy_corpus()

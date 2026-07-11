@@ -14,8 +14,18 @@ DEFAULT_CORPUS_REL = Path("benchmarks/corpus/core.json")
 MAX_JSON_BYTES = 512_000
 MAX_FIXTURE_BYTES = 128_000
 CONTENT_VERSION_RE = re.compile(r"^(?P<release>[0-9]+\.[0-9]+\.[0-9]+)\+sha256\.(?P<digest>[a-f0-9]{64})$")
-OPEN_SUPPORTS_DIR_FD = os.open in os.supports_dir_fd and bool(getattr(os, "O_DIRECTORY", 0))
+OPEN_SUPPORTS_DIR_FD = (
+    os.open in os.supports_dir_fd
+    and bool(getattr(os, "O_DIRECTORY", 0))
+    and bool(getattr(os, "O_NOFOLLOW", 0))
+)
 SEVERITY_ORDER = {"Low": 0, "Medium": 1, "High": 2, "Critical": 3}
+CATEGORY_SUITES = {
+    "python-web": "appsec",
+    "github-actions": "automation",
+    "ai-agent-mcp": "agentic",
+    "dependency-supply-chain": "supply-chain",
+}
 FORBIDDEN_PUBLIC_MARKERS = (
     "http://",
     "https://",
@@ -509,12 +519,6 @@ def load_corpus(lab_root: Path, corpus_rel: Path = DEFAULT_CORPUS_REL) -> dict[s
         positive_count = 0
         negative_count = 0
         categories: set[str] = set()
-        category_suites = {
-            "python-web": "appsec",
-            "github-actions": "automation",
-            "ai-agent-mcp": "agentic",
-            "dependency-supply-chain": "supply-chain",
-        }
         for entry in entries:
             manifest = _safe_relative_path(entry["manifest"], label="case manifest")
             expected_manifest = PurePosixPath("cases") / entry["case_id"] / "case.json"
@@ -530,7 +534,10 @@ def load_corpus(lab_root: Path, corpus_rel: Path = DEFAULT_CORPUS_REL) -> dict[s
             identity_fields = ("case_id", "case_version", "classification", "category")
             if any(case[field] != entry[field] for field in identity_fields):
                 raise EfficacyCorpusError("case manifest identity does not match the corpus index")
-            if entry["suites"] != ["core", category_suites[entry["category"]]]:
+            category_suite = CATEGORY_SUITES.get(entry["category"])
+            if category_suite is None:
+                raise EfficacyCorpusError("case category does not have a canonical suite")
+            if entry["suites"] != ["core", category_suite]:
                 raise EfficacyCorpusError("case suites must contain core and the canonical category suite")
             _validate_case_semantics(case, reader, manifest_relative.parent)
             _require_content_version(case, "case_version", label="case version")
