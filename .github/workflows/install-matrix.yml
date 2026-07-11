@@ -64,6 +64,7 @@ jobs:
           import os
           import stat
           import sys
+          import zipfile
 
           root = Path(os.environ["GRA_MOCK_BIN"])
           root.mkdir(parents=True, exist_ok=True)
@@ -141,6 +142,44 @@ jobs:
           raise SystemExit(98)
           '''
           (root / "mock_tool.py").write_text(script, encoding="utf-8")
+          entry_script = '''
+          from pathlib import Path
+          import runpy
+          import sys
+
+          def _run(tool):
+              original = sys.argv
+              sys.argv = [str(Path(__file__).with_name("mock_tool.py")), tool, *original[1:]]
+              try:
+                  runpy.run_path(sys.argv[0], run_name="__main__")
+              except SystemExit as exc:
+                  return exc.code
+              finally:
+                  sys.argv = original
+
+          def gh():
+              return _run("gh")
+
+          def git():
+              return _run("git")
+
+          def codex():
+              return _run("codex")
+          '''
+          (root / "mock_entry.py").write_text(entry_script, encoding="utf-8")
+          wheel = root / "gra_install_matrix_mocks-0.0.0-py3-none-any.whl"
+          dist_info = "gra_install_matrix_mocks-0.0.0.dist-info"
+          entries = {
+              "mock_tool.py": script,
+              "mock_entry.py": entry_script,
+              f"{dist_info}/METADATA": "Metadata-Version: 2.1\nName: gra-install-matrix-mocks\nVersion: 0.0.0\n",
+              f"{dist_info}/WHEEL": "Wheel-Version: 1.0\nGenerator: install-matrix\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+              f"{dist_info}/entry_points.txt": "[console_scripts]\ngh = mock_entry:gh\ngit = mock_entry:git\ncodex = mock_entry:codex\n",
+          }
+          entries[f"{dist_info}/RECORD"] = "".join(f"{name},,\n" for name in [*entries, f"{dist_info}/RECORD"])
+          with zipfile.ZipFile(wheel, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+              for name, value in entries.items():
+                  archive.writestr(name, value)
           for tool in ["gh", "git", "codex"]:
               if os.name == "nt":
                   (root / f"{tool}.cmd").write_text(f'@echo off\r\npython "%~dp0mock_tool.py" {tool} %*\r\n', encoding="ascii")
@@ -151,6 +190,8 @@ jobs:
           '@
           $env:GRA_MOCK_BIN = $mockBin
           $mockBuilder | python
+          $mockWheel = Join-Path $mockBin "gra_install_matrix_mocks-0.0.0-py3-none-any.whl"
+          & $python -m pip install --no-index --no-deps $mockWheel
           $env:PATH = "$bin$([System.IO.Path]::PathSeparator)$mockBin$([System.IO.Path]::PathSeparator)$env:PATH"
           $probe = @'
           from pathlib import Path
