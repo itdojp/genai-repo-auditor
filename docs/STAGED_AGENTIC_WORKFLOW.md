@@ -93,6 +93,33 @@ queue mutations are guarded: `gra-research`, `gra-gapfill --generate`,
 `gra-gapfill --target`, `gra-targets --generate`, and `gra-targets --mark`
 refuse to proceed until the pause is cleared.
 
+## Declarative workflow execution and checkpoints
+
+`gra-run` plans by default. Use `--execute` only after reviewing the generated
+stage order. Execution uses the profile's exact approved local argv, never adds
+network or publication flags, and stops dependents after a failed stage.
+
+```bash
+gra-run --run runs/OWNER__REPO/RUN_ID --profile recon-only
+gra-run --run runs/OWNER__REPO/RUN_ID --profile recon-only --execute --until recon
+gra-run --run runs/OWNER__REPO/RUN_ID --profile recon-only --resume
+```
+
+The checkpoint is `<reports_dir>/workflow-checkpoint.json`. Resume verifies the
+run, profile, plan fingerprint, and hashes of successful outputs before it runs
+the exact resume stage. Successful stages are not repeated. Use `--from` only
+for a supervised range with the required prior-stage artifacts already present;
+those external prerequisites are hashed into the checkpoint. A new execution
+also rejects declared outputs that already exist, avoiding accidental reuse of
+stale stage results. A paused or
+blocked `gra-run-state` prevents both new execution and resume.
+
+Ranges follow DAG dependency closure rather than incidental topological list
+positions. `--from X` includes `X` and its descendants; `--until Y` includes
+`Y` and its ancestors. With both options, `Y` must be `X` or a descendant and
+only stages on their dependency path closure are selected. Unrelated sibling
+stages are recorded as `out_of_range` and are not executed on resume.
+
 ## Research one target
 
 ```bash

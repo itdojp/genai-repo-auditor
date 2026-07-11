@@ -56,6 +56,26 @@ class WorkflowOrchestratorWorkflowTests(CliWorkflowTestCase):
         self.assertIn("must not overlap", cp.stderr)
         self.assertFalse((run_dir / "repo" / "reports").exists())
 
+    def test_paused_or_blocked_execution_does_not_write_plan(self) -> None:
+        for status in ("paused", "blocked"):
+            with self.subTest(status=status):
+                run_dir = self.copy_fixture_run("minimal-run")
+                (run_dir / "repo").mkdir()
+                reports = run_dir / "reports"
+                (reports / "workflow-plan.json").unlink(missing_ok=True)
+                (reports / "run-state.json").write_text(json.dumps({"status": status}) + "\n", encoding="utf-8")
+
+                cp = self.run_cmd([
+                    REPO_ROOT / "bin" / "gra-run",
+                    "--run", run_dir,
+                    "--profile", "recon-only",
+                    "--execute",
+                ])
+
+                self.assertEqual(2, cp.returncode)
+                self.assertIn(status, cp.stderr)
+                self.assertFalse((reports / "workflow-plan.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

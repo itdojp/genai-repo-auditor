@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor Workflow Checkpoint",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "repo", "generated_at", "source", "profile", "profile_version", "definition_sha256", "plan_fingerprint", "reports_dir", "status", "requested_from", "requested_until", "requested_skips", "resume_stage", "command_implementations", "external_input_artifacts", "stages"],
+  "properties": {
+    "schema_version": {"const": "1"}, "run_id": {"type": "string"}, "repo": {"type": "string"},
+    "generated_at": {"type": "string"}, "source": {"const": "gra-run-checkpoint"},
+    "profile": {"type": "string"}, "profile_version": {"type": "string"},
+    "definition_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "plan_fingerprint": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "reports_dir": {"type": "string", "minLength": 1, "maxLength": 240},
+    "status": {"enum": ["running", "paused", "blocked", "succeeded"]},
+    "requested_from": {"type": ["string", "null"]}, "requested_until": {"type": ["string", "null"]},
+    "requested_skips": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "resume_stage": {"type": ["string", "null"]},
+    "command_implementations": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["command", "sha256"], "properties": {"command": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}},
+    "external_input_artifacts": {"type": "array", "items": {"$ref": "#/$defs/artifact"}},
+    "stages": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/$defs/stage"}}
+  },
+  "$defs": {
+    "artifact": {"type": "object", "additionalProperties": false, "required": ["path", "size", "sha256"], "properties": {"path": {"type": "string"}, "size": {"type": "integer", "minimum": 0, "maximum": 33554432}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}},
+    "stage": {"type": "object", "additionalProperties": false, "required": ["id", "status", "attempt", "started_at", "ended_at", "exit_code", "error_category", "output_artifacts"], "properties": {"id": {"type": "string"}, "status": {"enum": ["pending", "running", "succeeded", "failed", "blocked_dependency", "external_prerequisite", "skipped_by_scope", "out_of_range"]}, "attempt": {"type": "integer", "minimum": 0}, "started_at": {"type": ["string", "null"]}, "ended_at": {"type": ["string", "null"]}, "exit_code": {"type": ["integer", "null"]}, "error_category": {"enum": [null, "stage_exit", "interrupted", "missing_or_unsafe_output"]}, "output_artifacts": {"type": "array", "items": {"$ref": "#/$defs/artifact"}}}}
+  }
+}
