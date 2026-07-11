@@ -16,7 +16,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 - Non-interactive `codex exec` invocations set approval behavior through `-c 'approval_policy="never"'` rather than the interactive-only `--ask-for-approval` flag, preserving compatibility with `codex-cli 0.135.0`.
 - Codex-driven commands derive the default executable name from the built-in `codex-cli` worker profile while preserving the tested `codex exec` argument construction in `lib/gralib.py`. `gra-agent-check` can list profiles and check whether the required local worker executable is available without running the worker. `gra-doctor` combines those local readiness checks with redacted package, Git/GitHub CLI availability, opt-in authentication-state probes, sandbox-runtime, and writable-run-directory diagnostics.
 - Executable target-code validation should be gated by an explicit sandbox profile. `gra-sandbox-check` records readiness for `source-only`, `local-test`, `container`, `gvisor`, and `vm` profiles without executing target code.
-- Environment-variable model/effort defaults are limited to `gra-audit` and `gra-batch`, whether invoked from source-checkout wrappers or installed package console scripts. They read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-trace`, `gra-no-findings`, `gra-workflow-profile`, `gra-metrics`, `gra-benchmark`, `gra-evidence-graph`, `gra-import-findings`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
+- Environment-variable model/effort defaults are limited to `gra-audit` and `gra-batch`, whether invoked from source-checkout wrappers or installed package console scripts. They read `GRA_MODEL`, `CODEX_MODEL`, `GRA_REASONING_EFFORT`, and `CODEX_REASONING_EFFORT`. Staged Python commands such as `gra-recon`, `gra-targets`, `gra-research`, `gra-gapfill`, `gra-variant`, `gra-chains`, `gra-proofs`, `gra-trace`, `gra-no-findings`, `gra-workflow-profile`, `gra-metrics`, `gra-benchmark`, `gra-efficacy-benchmark`, `gra-evidence-graph`, `gra-import-findings`, `gra-adversarial-validate`, and `gra-scanner-triage` ignore those environment variables and require explicit CLI options.
 - Python commands use `argparse`; missing required arguments or invalid choices normally exit with status `2`.
 - Generated audit artifacts, cloned target repositories, scanner raw outputs, issue drafts, and local stores should remain local and should not be committed.
 
@@ -41,7 +41,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Cross-repo trace reachability | `gra-trace` | Experimental/P3 trace prompt, subject seed JSON, `reports/traces.json`, `reports/TRACE.md` |
 | Scanner planning/execution / external finding import | `gra-scan`, `gra-ingest`, `gra-import-findings`, `gra-scanner-triage` | Non-executing adapter inventory/plans, explicit bounded offline scanner execution, raw scanner copies, redacted normalized leads, scanner index, review-only imported finding artifacts, Scorecard posture artifacts, dependency posture artifacts, triage output |
 | Validation | `gra-no-findings`, `gra-workflow-profile`, `gra-taxonomy-preflight`, `gra-validate-report` | Explicit no-confirmed-finding artifact, workflow scope profile, controlled taxonomy preflight, report contract validation result |
-| Reporting / persistence | `gra-metrics`, `gra-benchmark`, `gra-evidence-graph`, `gra-dashboard`, `gra-sarif`, `gra-store`, `gra-index` | Local metrics, dogfood benchmark gates, evidence graph, HTML dashboard, SARIF, SQLite store, run index |
+| Reporting / persistence | `gra-metrics`, `gra-benchmark`, `gra-efficacy-benchmark`, `gra-evidence-graph`, `gra-dashboard`, `gra-sarif`, `gra-store`, `gra-index` | Local metrics, dogfood benchmark gates, synthetic efficacy scoring, evidence graph, HTML dashboard, SARIF, SQLite store, run index |
 | Issue workflow | `gra-issues` | Dry-run previews, canonical issue ledger, duplicate decision records, ledger verification, or GitHub Issues after human review |
 
 ## `gra-agent-check`
@@ -656,6 +656,27 @@ Examples:
 gra-benchmark --fixture advanced
 gra-benchmark --run runs/OWNER__REPO/RUN_ID
 gra-benchmark --run runs/OWNER__REPO/RUN_ID --max-chains 10
+```
+
+## `gra-efficacy-benchmark`
+
+| Field | Details |
+|---|---|
+| Purpose | Run the versioned synthetic security corpus with deterministic reference rules and generate bounded efficacy-scoring smoke reports without changing `gra-benchmark` workflow-health semantics. |
+| Workflow category | Offline synthetic efficacy regression workflow. |
+| Required inputs | None for the default `core` suite. Corpus resources under `benchmarks/corpus/` and the report schema must be present and integrity-valid. |
+| Key options | `--list`; `--suite SUITE`; repeatable `--case CASE_ID` (mutually exclusive with `--suite`); `--mode fixture`; `--out-json OUT`; and `--out-md OUT`. |
+| Generated outputs | `reports/efficacy-benchmark.json` and `reports/EFFICACY_BENCHMARK.md` by default. Reports contain only bounded identifiers, TP/FP/FN/TN, precision/recall/F1, severity agreement, target coverage, human-review counts, versions, safety metadata, and interpretation limits. |
+| Exit status behavior | `0` for successful listing or report generation; `2` for usage, corpus integrity, unknown selection, closed-schema validation, unsafe/symlink output path, unavailable directory-relative write support, or bounded-write failures. `--list` remains available when safe report writes are unsupported. |
+| Security / disclosure cautions | Fixture mode does not invoke a model, worker, scanner, shell command, GitHub, network, Issue publication, or target repository. Raw fixture content, ground-truth locations, remediation text, and finding bodies are excluded. Report writes use directory-handle-relative operations and fail closed before output on platforms without the required support; native Windows users should list locally and generate reports in a supported Linux/macOS environment. The reference detector is a runner/scoring smoke baseline, not a product-efficacy claim; every predicted signal remains subject to human review. |
+| Related docs | [`docs/EFFICACY_BENCHMARK.md`](EFFICACY_BENCHMARK.md), [`docs/EFFICACY_BENCHMARK_CORPUS.md`](EFFICACY_BENCHMARK_CORPUS.md), [`docs/BENCHMARKING.md`](BENCHMARKING.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
+
+Examples:
+
+```bash
+gra-efficacy-benchmark --list
+gra-efficacy-benchmark --suite appsec
+gra-efficacy-benchmark --case python-web/authz-001 --case python-web/authz-control-001
 ```
 
 ## `gra-evidence-graph`

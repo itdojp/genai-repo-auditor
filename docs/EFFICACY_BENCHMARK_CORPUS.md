@@ -7,7 +7,8 @@ publication-safety gate for an audit run.
 
 The corpus contract does not run a model, scanner, GitHub operation, or network
 request. It provides deterministic fixture data and a fail-closed local loader
-for later benchmark runners.
+for benchmark runners. The packaged deterministic runner and scoring contract
+are documented in [`EFFICACY_BENCHMARK.md`](EFFICACY_BENCHMARK.md).
 
 ## Layout
 
@@ -91,6 +92,14 @@ A local source checkout can verify the contract without network access:
 
 ```bash
 python3 -m unittest tests.test_efficacy_corpus -v
+```
+
+List or run the deterministic reference baseline without changing
+`gra-benchmark` semantics:
+
+```bash
+gra-efficacy-benchmark --list
+gra-efficacy-benchmark
 ```
 
 ## Adding or changing a case

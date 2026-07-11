@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / "lib"))
+
+from efficacy_benchmark import (  # noqa: E402
+    EfficacyBenchmarkError,
+    build_fixture_report,
+    render_case_list,
+    select_cases,
+    write_report,
+)
+from efficacy_corpus import EfficacyCorpusError, load_corpus  # noqa: E402
+from version import auditor_version  # noqa: E402
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Run the offline synthetic security-efficacy benchmark without changing gra-benchmark semantics"
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {auditor_version(LAB_ROOT)}")
+    parser.add_argument("--list", action="store_true", help="List selected corpus cases without executing fixtures")
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--suite", help="Select a declared suite. Default: core")
+    selection.add_argument("--case", action="append", dest="case_ids", help="Select one case ID; repeat as needed")
+    parser.add_argument("--mode", choices=["fixture"], default="fixture", help="Execution mode. Default: fixture")
+    parser.add_argument(
+        "--out-json",
+        default="reports/efficacy-benchmark.json",
+        help="Bounded JSON output. Default: reports/efficacy-benchmark.json",
+    )
+    parser.add_argument(
+        "--out-md",
+        default="reports/EFFICACY_BENCHMARK.md",
+        help="Bounded Markdown output. Default: reports/EFFICACY_BENCHMARK.md",
+    )
+    args = parser.parse_args()
+
+    try:
+        loaded = load_corpus(LAB_ROOT)
+        selected, _selection = select_cases(loaded, suite=args.suite, case_ids=args.case_ids)
+        if args.list:
+            print(render_case_list(loaded, selected), end="")
+            return 0
+        report = build_fixture_report(LAB_ROOT, suite=args.suite, case_ids=args.case_ids)
+        json_path, markdown_path = write_report(report, Path(args.out_json), Path(args.out_md))
+    except (OSError, ValueError, EfficacyCorpusError, EfficacyBenchmarkError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    scores = report["scores"]
+    counts = scores["counts"]
+    rates = scores["rates"]
+    print(f"Efficacy benchmark JSON: {json_path}")
+    print(f"Efficacy benchmark Markdown: {markdown_path}")
+    print(f"Selected cases: {report['execution']['selected_case_count']}")
+    print(
+        "TP/FP/FN: "
+        f"{counts['true_positives']}/{counts['false_positives']}/{counts['false_negatives']}"
+    )
+    print(f"Precision/recall/F1: {rates['precision']}/{rates['recall']}/{rates['f1']}")
+    print(f"Human review required: {scores['human_review_required_count']}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
