@@ -206,6 +206,7 @@ class WorkflowHardeningTests(unittest.TestCase):
         self.assertIn('(clone_dir / "AGENTS.md").write_text(', package_install)
         self.assertIn('gra_install_matrix_mocks-0.0.0-py3-none-any.whl', package_install)
         self.assertIn('& $python -m pip install --no-index --no-deps $mockWheel', package_install)
+        self.assertIn('$env:PYTHONHASHSEED = "0"', package_install)
         self.assertIn("print(chr(10).join(COMMANDS))", package_install)
         self.assertIn("assert len(COMMANDS) == 36, COMMANDS", package_install)
         self.assertIn('assert Path(gra.resource_path("VERSION")).is_file()', package_install)

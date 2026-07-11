@@ -193,6 +193,11 @@ jobs:
           $mockWheel = Join-Path $mockBin "gra_install_matrix_mocks-0.0.0-py3-none-any.whl"
           & $python -m pip install --no-index --no-deps $mockWheel
           $env:PATH = "$bin$([System.IO.Path]::PathSeparator)$mockBin$([System.IO.Path]::PathSeparator)$env:PATH"
+          if ($IsWindows) {
+            # Keep the process-heavy offline fixture deterministic and avoid CPython 3.10
+            # runner failures while initializing hash randomization in child processes.
+            $env:PYTHONHASHSEED = "0"
+          }
           $probe = @'
           from pathlib import Path
           import genai_repo_auditor as gra
