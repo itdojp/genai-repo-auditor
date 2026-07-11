@@ -23,6 +23,7 @@ def _looks_like_resource_root(path: Path) -> bool:
         and (path / "templates" / "reports" / "findings.schema.json").is_file()
         and (path / "templates" / "taxonomies" / "owasp-llm-2025.json").is_file()
         and (path / "templates" / "agent-workers" / "codex-cli.json").is_file()
+        and (path / "benchmarks" / "corpus" / "core.json").is_file()
     )
 
 
@@ -129,6 +130,10 @@ def taxonomy_path(name: str) -> Path:
 
 def agent_worker_profile_path(name: str) -> Path:
     return template_path("agent-workers", name)
+
+
+def efficacy_corpus_path(*parts: str, must_exist: bool = True) -> Path:
+    return resource_path("benchmarks", "corpus", *parts, must_exist=must_exist)
 
 
 def read_resource_text(*parts: str, encoding: str = "utf-8") -> str:

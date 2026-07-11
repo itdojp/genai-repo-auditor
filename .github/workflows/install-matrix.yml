@@ -123,6 +123,11 @@ jobs:
           assert Path(gra.report_schema_path("findings.schema.json")).is_file()
           assert Path(gra.taxonomy_path("owasp-llm-2025.json")).is_file()
           assert Path(gra.agent_worker_profile_path("codex-cli.json")).is_file()
+          assert Path(gra.efficacy_corpus_path("core.json")).is_file()
+          import sys
+          sys.path.insert(0, str(gra.resource_root() / "lib"))
+          from efficacy_corpus import load_corpus
+          assert len(load_corpus(gra.resource_root())["cases"]) == 8
           '@
           $probe | & $python
           $commands = (& $python -c "from genai_repo_auditor.cli import COMMANDS; print(chr(10).join(COMMANDS))") -split "`n" | Where-Object { $_ }

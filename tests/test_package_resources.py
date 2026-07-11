@@ -18,6 +18,7 @@ from genai_repo_auditor import (  # noqa: E402
     ResourceDiscoveryError,
     __version__,
     agent_worker_profile_path,
+    efficacy_corpus_path,
     package_version,
     prompt_path,
     read_resource_text,
@@ -70,6 +71,8 @@ class PackageResourceTests(unittest.TestCase):
         (root / "templates" / "taxonomies" / "owasp-llm-2025.json").write_text("{}", encoding="utf-8")
         (root / "templates" / "agent-workers").mkdir(parents=True, exist_ok=True)
         (root / "templates" / "agent-workers" / "codex-cli.json").write_text("{}", encoding="utf-8")
+        (root / "benchmarks" / "corpus").mkdir(parents=True, exist_ok=True)
+        (root / "benchmarks" / "corpus" / "core.json").write_text("{}", encoding="utf-8")
 
     def test_package_version_matches_canonical_version_file(self) -> None:
         expected = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").splitlines()[0].strip()
@@ -116,6 +119,7 @@ class PackageResourceTests(unittest.TestCase):
             REPO_ROOT / "templates" / "agent-workers" / "codex-cli.json",
             agent_worker_profile_path("codex-cli.json"),
         )
+        self.assertEqual(REPO_ROOT / "benchmarks" / "corpus" / "core.json", efficacy_corpus_path("core.json"))
         self.assertIn("severity", read_resource_text("templates", "reports", "findings.schema.json"))
 
     def test_resource_path_rejects_absolute_and_traversal_components(self) -> None:
@@ -144,6 +148,21 @@ class PackageResourceTests(unittest.TestCase):
             else:
                 os.environ[gra_resources.ENV_RESOURCE_ROOT] = original
 
+    def test_resource_root_rejects_an_installation_without_the_corpus(self) -> None:
+        incomplete = self.work_dir / "incomplete"
+        self.write_minimal_resource_root(incomplete, "prompt")
+        shutil.rmtree(incomplete / "benchmarks")
+        original = os.environ.get(gra_resources.ENV_RESOURCE_ROOT)
+        try:
+            os.environ[gra_resources.ENV_RESOURCE_ROOT] = str(incomplete)
+            with self.assertRaises(ResourceDiscoveryError):
+                resource_root()
+        finally:
+            if original is None:
+                os.environ.pop(gra_resources.ENV_RESOURCE_ROOT, None)
+            else:
+                os.environ[gra_resources.ENV_RESOURCE_ROOT] = original
+
     def test_installed_distribution_resources_are_not_hijacked_by_ancestor_checkout_layout(self) -> None:
         fake_ancestor = self.work_dir / "fake-ancestor"
         fake_ancestor.mkdir()
@@ -162,6 +181,7 @@ class PackageResourceTests(unittest.TestCase):
             self.assertIsNone(gra_resources._source_root())
             self.assertEqual(fake_installed_share.resolve(), resource_root())
             self.assertEqual("installed prompt", prompt_path("AGENTS.audit.md").read_text(encoding="utf-8"))
+            self.assertEqual(fake_installed_share / "benchmarks" / "corpus" / "core.json", efficacy_corpus_path("core.json"))
         finally:
             gra_resources.__file__ = original_file
             gra_resources._distribution_resource_roots = original_distribution_roots
@@ -210,6 +230,15 @@ class PackageResourceTests(unittest.TestCase):
             "share/genai-repo-auditor/templates/reports",
             "share/genai-repo-auditor/templates/taxonomies",
             "share/genai-repo-auditor/templates/workflows",
+            "share/genai-repo-auditor/benchmarks/corpus",
+            "share/genai-repo-auditor/benchmarks/corpus/cases/python-web/authz-001",
+            "share/genai-repo-auditor/benchmarks/corpus/cases/python-web/path-001",
+            "share/genai-repo-auditor/benchmarks/corpus/cases/python-web/authz-control-001",
+            "share/genai-repo-auditor/benchmarks/corpus/cases/github-actions/pr-target-001",
+            "share/genai-repo-auditor/benchmarks/corpus/cases/github-actions/pr-control-001",
+            "share/genai-repo-auditor/benchmarks/corpus/cases/ai-agent-mcp/tool-boundary-001",
+            "share/genai-repo-auditor/benchmarks/corpus/cases/ai-agent-mcp/tool-control-001",
+            "share/genai-repo-auditor/benchmarks/corpus/cases/dependency-supply-chain/dependency-path-001",
         }
         self.assertEqual(expected_destinations, data_files)
         serialized = pyproject
@@ -239,6 +268,7 @@ class PackageResourceTests(unittest.TestCase):
         for directive in [
             "recursive-include bin gra-*",
             "recursive-include lib *.py",
+            "recursive-include benchmarks/corpus *",
             "prune .codex-local",
             "prune .test-tmp",
             "prune audits",

@@ -3,6 +3,7 @@ recursive-include bin gra-*
 recursive-include lib *.py
 recursive-include prompts *.md
 recursive-include templates *
+recursive-include benchmarks/corpus *
 prune .codex-local
 prune .test-tmp
 prune audits

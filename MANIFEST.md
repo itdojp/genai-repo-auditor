@@ -153,6 +153,30 @@ templates/dogfood/public-safe-report-template.md
 templates/dogfood/run-record.example.json
 ```
 
+## Security efficacy benchmark corpus
+
+```text
+benchmarks/corpus/case.schema.json
+benchmarks/corpus/corpus.schema.json
+benchmarks/corpus/core.json
+benchmarks/corpus/cases/python-web/authz-001/case.json
+benchmarks/corpus/cases/python-web/authz-001/app.py
+benchmarks/corpus/cases/python-web/path-001/case.json
+benchmarks/corpus/cases/python-web/path-001/file_helper.py
+benchmarks/corpus/cases/python-web/authz-control-001/case.json
+benchmarks/corpus/cases/python-web/authz-control-001/app.py
+benchmarks/corpus/cases/github-actions/pr-target-001/case.json
+benchmarks/corpus/cases/github-actions/pr-target-001/workflow-fixture.yml
+benchmarks/corpus/cases/github-actions/pr-control-001/case.json
+benchmarks/corpus/cases/github-actions/pr-control-001/workflow-fixture.yml
+benchmarks/corpus/cases/ai-agent-mcp/tool-boundary-001/case.json
+benchmarks/corpus/cases/ai-agent-mcp/tool-boundary-001/agent-config.json
+benchmarks/corpus/cases/ai-agent-mcp/tool-control-001/case.json
+benchmarks/corpus/cases/ai-agent-mcp/tool-control-001/agent-config.json
+benchmarks/corpus/cases/dependency-supply-chain/dependency-path-001/case.json
+benchmarks/corpus/cases/dependency-supply-chain/dependency-path-001/dependency-graph.json
+```
+
 ## Agent worker profiles
 
 ```text
@@ -191,6 +215,7 @@ docs/AGENT_WORKERS.md
 docs/ARCHITECTURE.md
 docs/ATTACK_CHAINS.md
 docs/BENCHMARKING.md
+docs/EFFICACY_BENCHMARK_CORPUS.md
 docs/CODEX_WORK_INSTRUCTIONS.md
 docs/COMMAND_REFERENCE.md
 docs/CUSTOMER_AUDIT_RUNBOOK.md

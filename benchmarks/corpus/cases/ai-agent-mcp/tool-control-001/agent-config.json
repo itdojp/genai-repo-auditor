@@ -1,0 +1,7 @@
+{
+  "fixture_only": true,
+  "tool_selection_source": "untrusted_request",
+  "tool_allowlist_enforced": true,
+  "tool_arguments_schema_enforced": true,
+  "allowed_tools": ["read_fixture_record"]
+}

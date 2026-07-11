@@ -65,6 +65,11 @@ jobs:
           assert Path(gra.report_schema_path("findings.schema.json")).is_file()
           assert Path(gra.taxonomy_path("owasp-llm-2025.json")).is_file()
           assert Path(gra.agent_worker_profile_path("codex-cli.json")).is_file()
+          assert Path(gra.efficacy_corpus_path("core.json")).is_file()
+          import sys
+          sys.path.insert(0, str(root / "lib"))
+          from efficacy_corpus import load_corpus
+          assert len(load_corpus(root)["cases"]) == 8
           PY
           )
           mock_bin="$RUNNER_TEMP/gra-package-mock-bin"

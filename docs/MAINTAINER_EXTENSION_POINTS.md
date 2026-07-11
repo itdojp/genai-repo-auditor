@@ -44,18 +44,20 @@ Package metadata is declared in [`pyproject.toml`](../pyproject.toml), with
 source files under [`src/genai_repo_auditor/`](../src/genai_repo_auditor/).
 The package intentionally has no runtime third-party dependencies. The
 declared build backend installs all public `gra-*` console scripts and packages
-the legacy `bin/` command surface, `lib/` helper modules, prompt families, and
-template resource families under `share/genai-repo-auditor/` so installed code
-can locate them without relying on a source checkout.
+the legacy `bin/` command surface, `lib/` helper modules, prompt families,
+template resource families, and the synthetic efficacy corpus under
+`share/genai-repo-auditor/` so installed code can locate them without relying
+on a source checkout.
 
 Use the canonical resource API for new package-aware code:
 
 ```python
-from genai_repo_auditor import prompt_path, report_schema_path, resource_root
+from genai_repo_auditor import efficacy_corpus_path, prompt_path, report_schema_path, resource_root
 
 root = resource_root()
 prompt = prompt_path("exec", "full-audit.prompt.md")
 findings_schema = report_schema_path("findings.schema.json")
+corpus_index = efficacy_corpus_path("core.json")
 ```
 
 Compatibility invariants:
@@ -66,7 +68,8 @@ Compatibility invariants:
   entry point in `pyproject.toml` and a callable in
   `genai_repo_auditor.cli.COMMANDS`.
 - Packaged resources must include `VERSION`, `bin/`, `lib/`, prompts, report
-  schemas/templates, taxonomies, and agent worker profiles.
+  schemas/templates, taxonomies, agent worker profiles, and the synthetic
+  efficacy corpus.
 - Console-script wrappers must preserve public command names in `--help` and
   `--version` output, including when executed outside the source checkout.
 - Console-script wrappers that execute bundled code must ignore

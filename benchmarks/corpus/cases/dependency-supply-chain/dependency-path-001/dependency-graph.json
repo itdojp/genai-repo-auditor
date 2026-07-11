@@ -1,0 +1,12 @@
+{
+  "fixture_only": true,
+  "application_entry": "parse_request",
+  "dependencies": [
+    {
+      "name": "synthetic-legacy-parser",
+      "version": "0.0.1-fixture",
+      "reachable_from": ["parse_request"],
+      "advisory_id": "SYNTHETIC-DEPENDENCY-001"
+    }
+  ]
+}

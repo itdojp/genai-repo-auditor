@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor efficacy benchmark case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "case_id", "case_version", "title", "classification", "category", "language", "framework", "description", "public_safe", "ground_truth", "stage_expectations", "fixture", "limitations"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "case_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,47}/[a-z][a-z0-9-]{1,63}$"},
+    "case_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+\\+sha256\\.[a-f0-9]{64}$"},
+    "title": {"type": "string", "minLength": 1, "maxLength": 120},
+    "classification": {"enum": ["positive", "negative_control"]},
+    "category": {"enum": ["python-web", "github-actions", "ai-agent-mcp", "dependency-supply-chain"]},
+    "language": {"enum": ["python", "yaml", "json"]},
+    "framework": {"type": "string", "minLength": 1, "maxLength": 64},
+    "description": {"type": "string", "minLength": 1, "maxLength": 300},
+    "public_safe": {"const": true},
+    "ground_truth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["positive_findings", "negative_controls"],
+      "properties": {
+        "positive_findings": {"type": "array", "maxItems": 4, "items": {"$ref": "#/$defs/positiveFinding"}},
+        "negative_controls": {"type": "array", "maxItems": 4, "items": {"$ref": "#/$defs/negativeControl"}}
+      }
+    },
+    "stage_expectations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "optional", "prohibited"],
+      "properties": {
+        "required": {"$ref": "#/$defs/stageList"},
+        "optional": {"$ref": "#/$defs/stageList"},
+        "prohibited": {"$ref": "#/$defs/stageList"}
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "files", "non_deployable", "network_required", "external_hosts", "credentials_included", "weaponized_payloads_included"],
+      "properties": {
+        "root": {"const": "."},
+        "files": {"type": "array", "minItems": 1, "maxItems": 12, "uniqueItems": true, "items": {"$ref": "#/$defs/fixtureFile"}},
+        "non_deployable": {"const": true},
+        "network_required": {"const": false},
+        "external_hosts": {"type": "array", "maxItems": 0},
+        "credentials_included": {"const": false},
+        "weaponized_payloads_included": {"const": false}
+      }
+    },
+    "limitations": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "string", "minLength": 1, "maxLength": 200}}
+  },
+  "$defs": {
+    "taxonomy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "id"],
+      "properties": {
+        "system": {"enum": ["CWE", "OWASP-CI-CD", "OWASP-LLM", "SUPPLY-CHAIN"]},
+        "id": {"type": "string", "pattern": "^[A-Z0-9][A-Z0-9._-]{1,63}$"}
+      }
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "symbol", "line", "end_line"],
+      "properties": {
+        "file": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\]+$"},
+        "symbol": {"type": "string", "minLength": 1, "maxLength": 100},
+        "line": {"type": "integer", "minimum": 1},
+        "end_line": {"type": "integer", "minimum": 1}
+      }
+    },
+    "severityRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum", "maximum"],
+      "properties": {
+        "minimum": {"enum": ["Low", "Medium", "High", "Critical"]},
+        "maximum": {"enum": ["Low", "Medium", "High", "Critical"]}
+      }
+    },
+    "positiveFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "vulnerability_class", "taxonomy", "entry_point", "trust_boundary", "sink", "affected_locations", "severity_range", "safe_remediation_property"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^GT-[0-9]{3}$"},
+        "vulnerability_class": {"enum": ["missing-tenant-authorization", "unsafe-path-normalization", "privileged-workflow-untrusted-content", "untrusted-tool-selection", "reachable-vulnerable-dependency"]},
+        "taxonomy": {"type": "array", "minItems": 1, "maxItems": 4, "items": {"$ref": "#/$defs/taxonomy"}},
+        "entry_point": {"$ref": "#/$defs/location"},
+        "trust_boundary": {"type": "string", "minLength": 1, "maxLength": 180},
+        "sink": {"$ref": "#/$defs/location"},
+        "affected_locations": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"$ref": "#/$defs/location"}},
+        "severity_range": {"$ref": "#/$defs/severityRange"},
+        "safe_remediation_property": {"type": "string", "minLength": 1, "maxLength": 220}
+      }
+    },
+    "negativeControl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "resembles", "taxonomy", "location", "control_property"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^NC-[0-9]{3}$"},
+        "resembles": {"type": "string", "minLength": 1, "maxLength": 120},
+        "taxonomy": {"type": "array", "minItems": 1, "maxItems": 4, "items": {"$ref": "#/$defs/taxonomy"}},
+        "location": {"$ref": "#/$defs/location"},
+        "control_property": {"type": "string", "minLength": 1, "maxLength": 220}
+      }
+    },
+    "stageList": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 12,
+      "items": {"enum": ["recon", "targets", "scanner-plan", "scanner-triage", "target-research", "chains", "proofs", "adversarial-validation", "metrics", "evidence-graph", "issue-publication"]}
+    },
+    "fixtureFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\]+$"},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    }
+  }
+}

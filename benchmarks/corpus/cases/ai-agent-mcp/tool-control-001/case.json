@@ -1,0 +1,75 @@
+{
+  "case_id": "ai-agent-mcp/tool-control-001",
+  "case_version": "1.0.0+sha256.3f7a900604f0357df936b1a3b8ccfe9ea27c2fd18f9304387a9688e96e1c7573",
+  "category": "ai-agent-mcp",
+  "classification": "negative_control",
+  "description": "A lookalike fixture agent configuration enforces a narrow tool allowlist and argument schema.",
+  "fixture": {
+    "credentials_included": false,
+    "external_hosts": [],
+    "files": [
+      {
+        "path": "agent-config.json",
+        "sha256": "260c0afea45747908de09815abfa3cc8437646dd2ba8352d92f8e53655a2885d"
+      }
+    ],
+    "network_required": false,
+    "non_deployable": true,
+    "root": ".",
+    "weaponized_payloads_included": false
+  },
+  "framework": "agent-config-fixture",
+  "ground_truth": {
+    "negative_controls": [
+      {
+        "control_property": "Untrusted selection is constrained by an explicit one-tool allowlist and argument-schema enforcement.",
+        "id": "NC-003",
+        "location": {
+          "end_line": 6,
+          "file": "agent-config.json",
+          "line": 3,
+          "symbol": "tool boundary controls"
+        },
+        "resembles": "untrusted request selecting an agent tool",
+        "taxonomy": [
+          {
+            "id": "LLM08",
+            "system": "OWASP-LLM"
+          },
+          {
+            "id": "CWE-749",
+            "system": "CWE"
+          }
+        ]
+      }
+    ],
+    "positive_findings": []
+  },
+  "language": "json",
+  "limitations": [
+    "This small synthetic case does not establish performance on production repositories.",
+    "The fixture models one defensive review decision and is not a deployable service or workflow."
+  ],
+  "public_safe": true,
+  "schema_version": "1",
+  "stage_expectations": {
+    "optional": [
+      "recon",
+      "targets",
+      "scanner-plan",
+      "scanner-triage",
+      "chains",
+      "proofs",
+      "evidence-graph"
+    ],
+    "prohibited": [
+      "issue-publication"
+    ],
+    "required": [
+      "target-research",
+      "adversarial-validation",
+      "metrics"
+    ]
+  },
+  "title": "Allowlisted tool boundary negative control"
+}

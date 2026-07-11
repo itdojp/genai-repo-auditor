@@ -1,0 +1,5 @@
+fixture_only: true
+trigger_model: privileged_change_request
+permissions_model: repository_write
+content_source: untrusted_contributor_revision
+post_content_step: local_review_script

@@ -1,0 +1,5 @@
+fixture_only: true
+trigger_model: unprivileged_change_request
+permissions_model: repository_read
+content_source: reviewed_base_revision
+post_content_step: none

@@ -367,6 +367,7 @@ Do not use this project for:
 - [`docs/TRACE_REACHABILITY.md`](docs/TRACE_REACHABILITY.md)
 - [`docs/METRICS.md`](docs/METRICS.md)
 - [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md)
+- [`docs/EFFICACY_BENCHMARK_CORPUS.md`](docs/EFFICACY_BENCHMARK_CORPUS.md)
 - [`docs/EVIDENCE_GRAPH.md`](docs/EVIDENCE_GRAPH.md)
 - [`docs/SCANNER_INTEGRATION.md`](docs/SCANNER_INTEGRATION.md)
 - [`docs/SCORECARD_INGESTION.md`](docs/SCORECARD_INGESTION.md)
