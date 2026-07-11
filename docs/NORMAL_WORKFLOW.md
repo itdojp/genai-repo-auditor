@@ -1,8 +1,10 @@
-# 通常使用ワークフロー: `codex exec` による汎用セキュリティ監査
+# 通常使用ワークフロー: 宣言的 `gra-run` による監査
 
 このワークフローは、複数リポジトリを継続的に監査し、ローカルにレポートを残し、必要なものだけ GitHub Issue 化するための標準運用です。
 
-通常使用では `/goal` は使いません。`codex exec` で非対話実行し、run ごとの成果物を機械的に保存します。
+通常使用では、`gra-audit --mode prepare` で run を作成し、`gra-run` の
+plan-review-execute-resume 手順を使用します。個別 command と `/goal` は、target
+選択後の supervised deep dive として使用します。
 
 ## 目的
 
@@ -17,17 +19,17 @@
 ```text
 1. repo指定
    ↓
-2. gra-audit が run directory を作成
+2. gra-audit --mode prepare が run directory を作成
    ↓
 3. 対象repoを runs/.../repo/ に clone
    ↓
-4. Codexを run directory で codex exec 実行
+4. gra-run が planning-only の workflow plan を生成
    ↓
-5. reports/ に監査レポートと findings.json を生成
+5. 人間が plan を確認してから限定範囲を --execute
    ↓
-6. gra-taxonomy-preflight と gra-validate-report で taxonomy とレポート契約を検証
+6. WORKFLOW_EXECUTION.md を確認し、同じ checkpoint を --resume
    ↓
-7. 必要に応じて gra-gapfill で shallow coverage を requeue
+7. target queue を確認し、必要な target を supervised command で調査
    ↓
 8. gra-chains で既存 evidence の defensive chain を整理
    ↓
@@ -72,30 +74,48 @@ flock
 
 ## 単一リポジトリ監査
 
-最小実行:
+readiness を確認し、worker を実行しない `prepare` mode で run を作成します。
 
 ```bash
-gra-audit --repo OWNER/REPO --mode exec
+RUNS_DIR="$PWD/runs"
+gra-doctor --json --runs-dir "$RUNS_DIR"
+gra-audit --repo OWNER/REPO --mode prepare --run-id first-audit --runs-dir "$RUNS_DIR"
+RUN_DIR="$RUNS_DIR/OWNER__REPO/first-audit"
 ```
 
-GPT-5.5 / xhigh を明示:
+planning は stage を実行しません。plan の exact command と dependency order を確認後、
+限定範囲を実行し、同じ checkpoint を resume します。
 
 ```bash
-gra-audit \
-  --repo OWNER/REPO \
-  --mode exec \
-  --model gpt-5.5 \
-  --effort xhigh
+gra-run --run "$RUN_DIR" --profile recon-only
+cat "$RUN_DIR/reports/WORKFLOW_PLAN.md"
+gra-run --run "$RUN_DIR" --profile recon-only --execute --until recon
+cat "$RUN_DIR/reports/WORKFLOW_EXECUTION.md"
+gra-run --run "$RUN_DIR" --profile recon-only --resume
+gra-targets --run "$RUN_DIR" --list
 ```
 
-特定ブランチまたは ref:
+`--resume` は成功済み stage を繰り返しません。1 checkpoint は 1 profile に対応するため、
+同じ checkpoint で別 profile を開始しないでください。`appsec-deep`、
+`publication-ready`、`full` は `findings.json` などの required input が存在する workflow checkpoint が存在しない互換性のある run、または前提成果物を確認した supervised `--from` range で使用します。
+
+reporting profile の terminal completion 後は、最終 execution state と completion event
+を反映します。
 
 ```bash
-gra-audit \
-  --repo OWNER/REPO \
-  --branch main \
-  --mode exec
+gra-metrics --run "$RUN_DIR"
+gra-evidence-graph --run "$RUN_DIR"
+gra-validate-report --run "$RUN_DIR"
 ```
+
+scanner profile stage は `gra-scan --plan` のみです。Issue 公開、remediation、release、
+network 有効化は profile 外の人手管理手順です。
+
+### 高度な supervised 実行
+
+対象 branch/ref の指定、単発の `gra-audit --mode exec`、個別 `gra-research`、`/goal`、
+remediation validation は、要件を理解した運用者向けの supervised path として維持されます。
+これらを unattended profile の一部として扱わないでください。
 
 ## 実行ディレクトリ構成
 

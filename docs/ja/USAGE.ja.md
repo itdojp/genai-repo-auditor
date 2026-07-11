@@ -9,70 +9,54 @@
 - `--mode exec` は非対話実行です。既定では Codex sandbox の network access は無効です。
 - GitHub Issue 作成は監査とは独立した opt-in 手順です。必ず dry-run と人間の確認を先に行います。
 
-## install -> first audit -> validation -> issue dry-run
+## install -> plan -> review -> execute -> resume
 
-初回導入は [`LOCAL_INSTALL_AND_AUDIT.ja.md`](LOCAL_INSTALL_AND_AUDIT.ja.md) に沿ってください。概要は以下です。
+初回導入は [`LOCAL_INSTALL_AND_AUDIT.ja.md`](LOCAL_INSTALL_AND_AUDIT.ja.md) に沿ってください。
+readiness 確認後、`prepare` mode で run を生成します。worker はまだ実行されません。
 
 ```bash
-export GRA_HOME="$HOME/.local/opt/genai-repo-auditor"
-git clone https://github.com/itdojp/genai-repo-auditor.git "$GRA_HOME"
-export PATH="$GRA_HOME/bin:$PATH"
+RUNS_DIR="$HOME/.local/state/genai-repo-auditor/runs"
+gra-doctor --json --runs-dir "$RUNS_DIR"
+gra-audit --repo OWNER/REPO --mode prepare --run-id first-audit --runs-dir "$RUNS_DIR"
+RUN_DIR="$RUNS_DIR/OWNER__REPO/first-audit"
 ```
 
-対象 repository へアクセスできることを確認します。
+planning は stage を実行しません。plan を確認してから reconnaissance までの限定範囲を
+実行し、execution report を確認して同じ checkpoint を resume します。
 
 ```bash
-gh auth status
-gh repo view OWNER/REPO --json nameWithOwner,visibility,defaultBranchRef
+gra-run --run "$RUN_DIR" --profile recon-only
+cat "$RUN_DIR/reports/WORKFLOW_PLAN.md"
+gra-run --run "$RUN_DIR" --profile recon-only --execute --until recon
+cat "$RUN_DIR/reports/WORKFLOW_EXECUTION.md"
+gra-run --run "$RUN_DIR" --profile recon-only --resume
+gra-targets --run "$RUN_DIR" --list
 ```
 
-最初は `prepare` mode で clone と prompt 生成だけを確認します。Codex は実行されません。
+`--resume` は成功済み stage を再実行しません。1 checkpoint は 1 profile に対応します。
+別 profile を同じ checkpoint 上で順次実行しないでください。`appsec-deep`、
+`publication-ready`、`full` は required input がそろった workflow checkpoint が存在しない互換性のある run、または
+supervised `--from` range で選択します。
+
+target queue の確認後は、`gra-research` などの個別 command または `/goal` を supervised
+path として使用します。reporting profile の完了後は次を再生成します。
 
 ```bash
-gra-audit \
-  --repo OWNER/REPO \
-  --mode prepare \
-  --run-id first-prepare
-```
-
-full audit は `exec` mode で実行します。
-
-```bash
-gra-audit \
-  --repo OWNER/REPO \
-  --mode exec \
-  --model gpt-5.5 \
-  --effort xhigh
-```
-
-`gra-audit` が表示した run directory を `RUN_DIR` として扱います。
-
-```bash
-RUN_DIR="$GRA_HOME/runs/OWNER__REPO/RUN_ID"
+gra-metrics --run "$RUN_DIR"
+gra-evidence-graph --run "$RUN_DIR"
 gra-validate-report --run "$RUN_DIR"
-gra-gapfill --run "$RUN_DIR" --generate
-gra-chains --run "$RUN_DIR"
-gra-proofs --run "$RUN_DIR" --all-critical-high
-# shared-library / producer finding の consumer 到達可能性を確認する場合:
-# gra-trace --producer-run "$RUN_DIR" --finding SEC-001 --consumer-repo OWNER/consumer --mode prepare
-# gra-trace --producer-run "$RUN_DIR" --finding SEC-001 --consumer-run "$RUN_DIR/trace-consumers/OWNER__consumer" --mode exec
-gra-adversarial-validate --run "$RUN_DIR" --all-critical-high --votes 3 --policy human-review-on-split
-gra-validate-report --run "$RUN_DIR"
+```
+
+scanner stage は計画のみです。Issue 公開、remediation、release、GitHub mutation、network
+有効化は unattended profile の対象外です。Issue dry-run も、finding、evidence、Issue
+draft が生成・検証された後に別途実行します。
+
+```bash
 gra-issues --run "$RUN_DIR" --dry-run
 ```
 
-Issue 作成は、finding、evidence、non-public by default の
-`reports/COVERAGE.md`、`reports/gapfill-targets.json`、
-`reports/ATTACK_CHAINS.md`、local/private by default の
-`reports/PROOFS.md`、experimental/P3 の reachability evidence である
-`reports/TRACE.md`、`reports/VALIDATION.md`、
-`reports/issue-drafts/*.md`、公開可否を人間が確認した後だけ実行します。
-
-```bash
-gra-issues --run "$RUN_DIR" --apply --create-labels
-```
-
-public repository への Issue 作成はデフォルトで拒否されます。公開が意図され、組織ポリシー上承認済みの場合だけ `--allow-public` を併用してください。
+実際の Issue 作成は公開可否を人間が承認した後だけ実行してください。public repository
+への作成はデフォルトで拒否され、承認済みの場合だけ `--allow-public` を併用します。
 
 ## 監査 run の一時停止と再開
 

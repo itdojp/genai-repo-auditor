@@ -198,116 +198,111 @@ gh repo view OWNER/REPO --json nameWithOwner,visibility,defaultBranchRef
 
 Replace `OWNER/REPO` with the GitHub repository you are authorized to audit, for example `my-org/my-service`.
 
-## Recommended first smoke test
+## Recommended first audit: declarative plan and execution
 
-Before running a full AI audit, use `prepare` mode. It clones the target repository and renders prompts, but does not execute Codex.
+Start with `prepare` mode. It clones the authorized target and renders run
+context without executing the configured agent worker.
 
 ```bash
+RUNS_DIR="$GRA_HOME/runs"
+gra-doctor --json --runs-dir "$RUNS_DIR"
 gra-audit \
   --repo OWNER/REPO \
   --mode prepare \
-  --run-id first-prepare
+  --run-id first-audit \
+  --runs-dir "$RUNS_DIR"
+RUN_DIR="$RUNS_DIR/OWNER__REPO/first-audit"
 ```
 
-Expected output includes an absolute audit run directory. Unless `--runs-dir` is supplied, the default location is under the install root:
-
-```text
-$GRA_HOME/runs/OWNER__REPO/first-prepare/
-```
-
-Inspect the generated context with the absolute path:
+Review the generated context, then create a `recon-only` workflow plan. Planning
+is the default and does not execute a stage.
 
 ```bash
-RUN_DIR="$GRA_HOME/runs/OWNER__REPO/first-prepare"
 cat "$RUN_DIR/context.json"
-ls "$RUN_DIR/prompts/"
+gra-run --run "$RUN_DIR" --profile recon-only
+cat "$RUN_DIR/reports/WORKFLOW_PLAN.md"
 ```
 
-If the target repository clones successfully and the run directory is created, proceed to a full audit.
-
-## Run a full audit
-
-Run a non-interactive audit with the default model and reasoning effort configured by the project:
+After reviewing the exact stage order and sanitized commands, execute a bounded
+range and inspect its checkpoint report. Resume then continues the same plan
+without repeating the successful reconnaissance stage.
 
 ```bash
-gra-audit \
-  --repo OWNER/REPO \
-  --mode exec
+gra-run --run "$RUN_DIR" --profile recon-only --execute --until recon
+cat "$RUN_DIR/reports/WORKFLOW_EXECUTION.md"
+gra-run --run "$RUN_DIR" --profile recon-only --resume
+gra-targets --run "$RUN_DIR" --list
 ```
 
-Or set model and effort explicitly:
+The machine-readable checkpoint is
+`$RUN_DIR/reports/workflow-checkpoint.json`. A failed or interrupted execution
+uses the same inspection-and-`--resume` sequence. Do not start a different
+profile on that checkpoint: one workflow execution selects one profile and an
+existing checkpoint requires `--resume`.
+
+The `appsec-deep`, `publication-ready`, and `full` profiles require existing
+inputs such as `reports/findings.json`. Select them only for a compatible fresh
+run or a supervised `--from` range with all prerequisite artifacts. They are
+not follow-on profiles to run sequentially after `recon-only` in the same run.
+
+For a reporting profile, refresh terminal reports after successful completion
+so the final workflow state and completion event are included:
 
 ```bash
-gra-audit \
-  --repo OWNER/REPO \
-  --mode exec \
-  --model gpt-5.5 \
-  --effort xhigh
-```
-
-To audit a specific branch or ref:
-
-```bash
-gra-audit \
-  --repo OWNER/REPO \
-  --branch main \
-  --mode exec
-```
-
-By default, output is written under the install root, not the caller's current directory:
-
-```text
-$GRA_HOME/runs/OWNER__REPO/RUN_ID/
-```
-
-Where `RUN_ID` is a UTC timestamp plus process identifiers unless `--run-id` is provided. Use the exact absolute run directory printed by `gra-audit` in follow-up commands.
-
-## Review the results
-
-After the audit completes, locate the run directory printed by `gra-audit`. The key files are:
-
-```text
-$GRA_HOME/runs/OWNER__REPO/RUN_ID/
-  context.json
-  repo/                 # cloned target repository; treat as untrusted input
-  reports/
-    AUDIT_SUMMARY.md
-    FINDINGS.md
-    findings.json
-    issue-drafts/
-  codex-final.md
-  codex-events.jsonl
-  report-validation.txt
-```
-
-Run validation manually if needed:
-
-```bash
-RUN_DIR="$GRA_HOME/runs/OWNER__REPO/RUN_ID"  # replace RUN_ID with the actual value printed by gra-audit
+gra-metrics --run "$RUN_DIR"
+gra-evidence-graph --run "$RUN_DIR"
 gra-validate-report --run "$RUN_DIR"
 ```
 
-Generate optional local outputs:
+Built-in profiles are offline and local-artifacts-only. Scanner stages use
+`gra-scan --plan`, not scanner execution. Issue publication, remediation,
+release publication, GitHub mutation, and network-enabling actions remain
+outside unattended profiles.
+
+## Advanced supervised commands
+
+After the target queue is reviewed, individual commands remain available for
+operator-selected target research and other deep dives. These commands may
+invoke the configured worker and are not an automatic continuation of
+`gra-run`:
 
 ```bash
+gra-research --run "$RUN_DIR" --target TGT-001
 gra-gapfill --run "$RUN_DIR" --generate
 gra-chains --run "$RUN_DIR"
 gra-proofs --run "$RUN_DIR" --all-critical-high
-# Optional for shared-library / producer findings:
-# gra-trace --producer-run "$RUN_DIR" --finding SEC-001 --consumer-repo OWNER/consumer --mode prepare
-# gra-trace --producer-run "$RUN_DIR" --finding SEC-001 --consumer-run "$RUN_DIR/trace-consumers/OWNER__consumer" --mode exec
 gra-adversarial-validate --run "$RUN_DIR" --all-critical-high --votes 3 --policy human-review-on-split
 gra-validate-report --run "$RUN_DIR"
-gra-benchmark --run "$RUN_DIR"
 gra-dashboard --run "$RUN_DIR"
 gra-sarif --run "$RUN_DIR"
 gra-store --run "$RUN_DIR"
 ```
 
-Review `reports/FINDINGS.md`, `reports/findings.json`, `reports/COVERAGE.md`,
-`reports/gapfill-targets.json`, `reports/ATTACK_CHAINS.md`,
-`reports/PROOFS.md`, `reports/TRACE.md`, `reports/VALIDATION.md`, `reports/BENCHMARK.md`, and `reports/issue-drafts/` before
-taking action. Treat AI output as analysis that requires human verification.
+Treat all AI output as review input. Validate `reports/findings.json`, evidence,
+and Issue drafts before any publication decision.
+
+## Review the results
+
+The primary workflow artifacts are:
+
+```text
+$GRA_HOME/runs/OWNER__REPO/RUN_ID/
+  context.json
+  repo/                         # cloned target; treat as untrusted input
+  reports/
+    workflow-plan.json
+    WORKFLOW_PLAN.md
+    workflow-checkpoint.json
+    workflow-execution.json
+    WORKFLOW_EXECUTION.md
+    targets.json
+    findings.json               # present only after finding-producing work
+    issue-drafts/
+```
+
+Inspect the plan and execution report first. When findings exist, review
+`reports/FINDINGS.md`, `reports/findings.json`, chain/proof/validation outputs,
+and `reports/issue-drafts/` before taking action.
 
 ## Optional GitHub Issue workflow
 

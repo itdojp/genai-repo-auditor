@@ -2,34 +2,47 @@
 
 この文書は主要ワークフローの概要です。全 `gra-*` コマンドの詳細オプション、成果物、exit status、注意事項は [`docs/COMMAND_REFERENCE.md`](COMMAND_REFERENCE.md) を参照してください。
 
-## 通常使用: 単一repo監査
+## 通常使用: 宣言的 workflow による単一 repo 監査
+
+初回は readiness を確認し、`prepare` で run を作成してから、既定の planning-only
+`gra-run` で実行計画を確認します。
 
 ```bash
-gra-audit --repo OWNER/REPO --mode exec --model gpt-5.5 --effort xhigh
+RUNS_DIR="$PWD/runs"
+gra-doctor --json --runs-dir "$RUNS_DIR"
+gra-audit --repo OWNER/REPO --mode prepare --run-id first-audit --runs-dir "$RUNS_DIR"
+RUN_DIR="$RUNS_DIR/OWNER__REPO/first-audit"
+gra-run --run "$RUN_DIR" --profile recon-only
+cat "$RUN_DIR/reports/WORKFLOW_PLAN.md"
 ```
 
-主なオプション:
+確認後に限定範囲を実行し、同じ checkpoint を resume します。成功済み stage は
+再実行されません。
 
-```text
---repo OWNER/REPO          対象repo。必須
---branch REF               branch/ref指定
---mode exec|goal           既定: exec
---model MODEL              既定: gpt-5.5
---effort EFFORT            既定: xhigh
---depth N                  既定: 1
---run-id ID                run IDを明示
---runs-dir DIR             run保存先
---codex-json               codex exec のJSON event出力を保存
---network                  Codex sandbox内ネットワークを許可。通常は使わない
---no-lock                  同一repo lockを無効化。通常は使わない
---allow-invalid-report     findings.json 不在または validation failure でも成功扱いにする。
-                           CI / batch automation では通常使わない
+```bash
+gra-run --run "$RUN_DIR" --profile recon-only --execute --until recon
+cat "$RUN_DIR/reports/WORKFLOW_EXECUTION.md"
+gra-run --run "$RUN_DIR" --profile recon-only --resume
+gra-targets --run "$RUN_DIR" --list
 ```
 
-`--mode exec` は、Codex が成功しても `reports/findings.json` が不在、taxonomy
-preflight、または `gra-validate-report` が失敗した場合は既定で non-zero exit
-します。`run-summary.txt` には `codex_status`、`taxonomy_preflight_status`、
-`validation_status`、`final_status` が記録されます。
+`gra-run` の plan は command を実行しません。`--execute` / `--resume` だけが profile
+内の offline / local-artifacts-only command を実行します。1 checkpoint は 1 profile
+に対応し、別 profile へ切り替える用途には使えません。`appsec-deep`、
+`publication-ready`、`full` は `findings.json` などの required input が存在する workflow checkpoint が存在しない互換性のある run、または supervised `--from` range で選択します。
+
+scanner stage は `gra-scan --plan` のみです。Issue 公開、remediation、release、network
+有効化は profile 外にあり、個別 command と人間の承認が必要です。target research や
+project-specific validation には、後述の個別 command または `/goal` を supervised path
+として使用します。
+
+reporting profile の terminal completion 後は、最終 execution state を反映します。
+
+```bash
+gra-metrics --run "$RUN_DIR"
+gra-evidence-graph --run "$RUN_DIR"
+gra-validate-report --run "$RUN_DIR"
+```
 
 ## 通常使用の成果物
 

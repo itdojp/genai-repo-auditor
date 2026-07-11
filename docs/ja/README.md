@@ -5,9 +5,9 @@
 ## 最初に読む文書
 
 1. [`LOCAL_INSTALL_AND_AUDIT.ja.md`](LOCAL_INSTALL_AND_AUDIT.ja.md)
-   ローカルインストール、最初の `prepare` / `exec` audit、結果確認、Issue dry-run までの導入手順です。
+   ローカルインストール、最初の `prepare`、`gra-run` の plan / execute / resume、結果確認、Issue dry-run までの導入手順です。
 2. [`USAGE.ja.md`](USAGE.ja.md)
-   日常運用で使う主要コマンドと、install -> first audit -> validation -> issue dry-run の流れです。
+   日常運用で使う主要コマンドと、install -> plan -> review -> execute -> resume の流れです。
 3. [`SECURITY_MODEL.ja.md`](SECURITY_MODEL.ja.md)
    trust boundary、secret handling、public disclosure、scanner output の扱いを説明します。
 

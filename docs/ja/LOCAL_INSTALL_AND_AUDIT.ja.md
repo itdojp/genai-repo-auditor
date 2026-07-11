@@ -199,104 +199,76 @@ gh repo view OWNER/REPO --json nameWithOwner,visibility,defaultBranchRef
 
 `OWNER/REPO` は、監査権限のある GitHub リポジトリに置き換えてください。例: `my-org/my-service`。
 
-## 推奨される最初の smoke test
+## 推奨される最初の監査: 宣言的な計画と実行
 
-full AI audit の前に `prepare` mode を使うことを推奨します。`prepare` mode は対象リポジトリを clone し、prompt を生成しますが、Codex は実行しません。
+最初に `prepare` mode を実行します。認可された対象を clone して run context を
+生成しますが、設定済み agent worker は実行しません。
 
 ```bash
+RUNS_DIR="$GRA_HOME/runs"
+gra-doctor --json --runs-dir "$RUNS_DIR"
 gra-audit \
   --repo OWNER/REPO \
   --mode prepare \
-  --run-id first-prepare
+  --run-id first-audit \
+  --runs-dir "$RUNS_DIR"
+RUN_DIR="$RUNS_DIR/OWNER__REPO/first-audit"
 ```
 
-絶対パスの audit run directory が表示されます。`--runs-dir` を指定しない場合、既定の保存先はインストール root 配下です。
-
-```text
-$GRA_HOME/runs/OWNER__REPO/first-prepare/
-```
-
-生成された context を絶対パスで確認します。
+context を確認してから `recon-only` workflow plan を生成します。planning が
+デフォルトであり、この時点では stage を実行しません。
 
 ```bash
-RUN_DIR="$GRA_HOME/runs/OWNER__REPO/first-prepare"
 cat "$RUN_DIR/context.json"
-ls "$RUN_DIR/prompts/"
+gra-run --run "$RUN_DIR" --profile recon-only
+cat "$RUN_DIR/reports/WORKFLOW_PLAN.md"
 ```
 
-対象リポジトリの clone と run directory 作成が成功したら、full audit に進みます。
-
-## full audit の実行
-
-プロジェクト既定の model / reasoning effort で非対話監査を実行します。
+stage 順序と sanitized command を確認した後、限定範囲を実行して checkpoint report
+を確認します。`--resume` は同じ plan を継続し、成功済み reconnaissance stage を
+再実行しません。
 
 ```bash
-gra-audit \
-  --repo OWNER/REPO \
-  --mode exec
+gra-run --run "$RUN_DIR" --profile recon-only --execute --until recon
+cat "$RUN_DIR/reports/WORKFLOW_EXECUTION.md"
+gra-run --run "$RUN_DIR" --profile recon-only --resume
+gra-targets --run "$RUN_DIR" --list
 ```
 
-model と effort を明示する場合:
+機械可読 checkpoint は `$RUN_DIR/reports/workflow-checkpoint.json` です。失敗または
+中断時も同じ確認と `--resume` の手順を使います。既存 checkpoint で別 profile を
+開始しないでください。1 回の workflow execution では 1 profile を選択し、既存
+checkpoint は `--resume` でのみ継続します。
+
+`appsec-deep`、`publication-ready`、`full` は `reports/findings.json` などの既存入力を
+必要とします。必要な成果物がそろったworkflow checkpoint が存在しない互換性のある run、または前提成果物を
+確認した supervised `--from` range でのみ選択してください。同じ run で
+`recon-only` の後に順次実行する follow-on profile ではありません。
+
+reporting profile の完了後は、terminal workflow state と completion event を反映する
+ため、次の順序で report を更新します。
 
 ```bash
-gra-audit \
-  --repo OWNER/REPO \
-  --mode exec \
-  --model gpt-5.5 \
-  --effort xhigh
-```
-
-特定 branch または ref を監査する場合:
-
-```bash
-gra-audit \
-  --repo OWNER/REPO \
-  --branch main \
-  --mode exec
-```
-
-既定では、出力はコマンド実行時の current directory ではなく、インストール root 配下に保存されます。
-
-```text
-$GRA_HOME/runs/OWNER__REPO/RUN_ID/
-```
-
-`RUN_ID` は、`--run-id` を指定しない限り UTC timestamp と process identifier から生成されます。後続コマンドでは、`gra-audit` が表示した絶対パスを使ってください。
-
-## 結果確認
-
-`gra-audit` が表示した run directory を確認してください。主要ファイルは以下です。
-
-```text
-$GRA_HOME/runs/OWNER__REPO/RUN_ID/
-  context.json
-  repo/                 # clone された対象リポジトリ。untrusted input として扱う
-  reports/
-    AUDIT_SUMMARY.md
-    FINDINGS.md
-    findings.json
-    issue-drafts/
-  codex-final.md
-  codex-events.jsonl
-  report-validation.txt
-```
-
-必要に応じて手動で検証します。
-
-```bash
-RUN_DIR="$GRA_HOME/runs/OWNER__REPO/RUN_ID"  # RUN_ID は gra-audit が表示した実際の値に置き換える
+gra-metrics --run "$RUN_DIR"
+gra-evidence-graph --run "$RUN_DIR"
 gra-validate-report --run "$RUN_DIR"
 ```
 
-任意のローカル成果物を生成します。
+組み込み profile は offline / local-artifacts-only です。scanner stage は
+`gra-scan --plan` を使用し、scanner を実行しません。Issue 公開、remediation、release
+公開、GitHub mutation、network 有効化は unattended profile の対象外です。
+
+## 高度な supervised command
+
+target queue の確認後は、運用者が選択した target research や deep dive に個別 command
+を使用できます。これらは設定済み worker を実行する場合があり、`gra-run` の自動的な
+継続ではありません。
 
 ```bash
+gra-research --run "$RUN_DIR" --target TGT-001
 gra-gapfill --run "$RUN_DIR" --generate
 gra-chains --run "$RUN_DIR"
 gra-proofs --run "$RUN_DIR" --all-critical-high
-# shared-library / producer finding の consumer 到達可能性を確認する場合:
-# gra-trace --producer-run "$RUN_DIR" --finding SEC-001 --consumer-repo OWNER/consumer --mode prepare
-# gra-trace --producer-run "$RUN_DIR" --finding SEC-001 --consumer-run "$RUN_DIR/trace-consumers/OWNER__consumer" --mode exec
 gra-adversarial-validate --run "$RUN_DIR" --all-critical-high --votes 3 --policy human-review-on-split
 gra-validate-report --run "$RUN_DIR"
 gra-dashboard --run "$RUN_DIR"
@@ -304,10 +276,31 @@ gra-sarif --run "$RUN_DIR"
 gra-store --run "$RUN_DIR"
 ```
 
-対応前に `reports/FINDINGS.md`、`reports/findings.json`、`reports/COVERAGE.md`、
-`reports/gapfill-targets.json`、`reports/ATTACK_CHAINS.md`、
-`reports/PROOFS.md`、`reports/TRACE.md`、`reports/VALIDATION.md`、`reports/issue-drafts/` を確認して
-ください。AI 出力は人間による検証が必要な分析結果として扱います。
+AI 出力は review input として扱います。公開判断の前に `reports/findings.json`、evidence、
+Issue draft を検証してください。
+
+## 結果確認
+
+primary workflow の主要成果物は以下です。
+
+```text
+$GRA_HOME/runs/OWNER__REPO/RUN_ID/
+  context.json
+  repo/                         # clone された対象。untrusted input として扱う
+  reports/
+    workflow-plan.json
+    WORKFLOW_PLAN.md
+    workflow-checkpoint.json
+    workflow-execution.json
+    WORKFLOW_EXECUTION.md
+    targets.json
+    findings.json               # finding 生成作業後にのみ存在する
+    issue-drafts/
+```
+
+最初に plan と execution report を確認します。finding が存在する場合は、対応前に
+`reports/FINDINGS.md`、`reports/findings.json`、chain/proof/validation output、
+`reports/issue-drafts/` を確認してください。
 
 ## 任意の GitHub Issue workflow
 

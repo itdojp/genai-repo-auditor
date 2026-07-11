@@ -1,6 +1,6 @@
 # staged agentic Defensive Workflow
 
-This lab uses an staged agentic-inspired structure, but it is deliberately defensive.
+This lab uses a staged agentic-inspired structure, but it is deliberately defensive.
 It does not include exploit generation, external DAST, production probing, or autonomous fix application.
 
 ## Pipeline
@@ -22,6 +22,27 @@ prepare
   -> human review
   -> GitHub Issues
 ```
+
+## Recommended primary path
+
+New operators should use the declarative plan-review-execute-resume path before
+the individual commands documented later in this guide:
+
+```bash
+RUNS_DIR="$PWD/runs"
+gra-doctor --json --runs-dir "$RUNS_DIR"
+gra-audit --repo OWNER/REPO --mode prepare --run-id first-audit --runs-dir "$RUNS_DIR"
+RUN_DIR="$RUNS_DIR/OWNER__REPO/first-audit"
+gra-run --run "$RUN_DIR" --profile recon-only
+cat "$RUN_DIR/reports/WORKFLOW_PLAN.md"
+gra-run --run "$RUN_DIR" --profile recon-only --execute --until recon
+cat "$RUN_DIR/reports/WORKFLOW_EXECUTION.md"
+gra-run --run "$RUN_DIR" --profile recon-only --resume
+```
+
+The remaining sections document supervised individual-command operation and
+the artifacts behind each stage. They are useful for deep dives but are not a
+requirement to bypass workflow planning.
 
 ## Prepare
 
@@ -144,6 +165,14 @@ gra-run --run runs/OWNER__REPO/RUN_ID --profile recon-only --execute --until rec
 cat runs/OWNER__REPO/RUN_ID/reports/WORKFLOW_EXECUTION.md
 gra-run --run runs/OWNER__REPO/RUN_ID --profile recon-only --resume
 ```
+
+One checkpoint belongs to one selected profile. A checkpoint is continued with
+`--resume`, not by starting another profile. Profiles with deep-analysis or
+reporting stages require existing inputs such as `findings.json`; use them on a
+compatible run without a workflow checkpoint or as a supervised `--from` range with verified
+prerequisite artifacts. In particular, do not execute `recon-only`,
+`appsec-deep`, and `publication-ready` sequentially against the same
+checkpoint.
 
 For profiles that generate metrics or an evidence graph, refresh those reports
 after terminal workflow completion. A reporting stage executed inside the DAG
