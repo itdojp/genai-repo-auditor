@@ -33,6 +33,8 @@ Use a narrative demo built from public docs and help output:
 
 ```bash
 gra-audit --help
+gra-doctor --help
+gra-run --help
 gra-targets --help
 gra-validate-report --help
 gra-issues --help
@@ -52,11 +54,16 @@ Use this only for an authorized disposable or operator-owned repository. Replace
 `OWNER/REPO` before the demo and keep the run directory private.
 
 ```bash
-gra-audit --repo OWNER/REPO --mode prepare --model MODEL --effort EFFORT
-RUN=runs/OWNER__REPO/RUN_ID
+RUNS_DIR="$PWD/runs"
+gra-audit --repo OWNER/REPO --mode prepare --model MODEL --effort EFFORT --runs-dir "$RUNS_DIR"
+RUN="$RUNS_DIR/OWNER__REPO/RUN_ID"
 
-gra-recon --run "$RUN" --model MODEL --effort EFFORT
-gra-targets --run "$RUN" --generate --model MODEL --effort EFFORT
+gra-run --run "$RUN" --profile recon-only
+# Review the sanitized plan privately before continuing; do not display the
+# local path or report body in a public demo.
+gra-run --run "$RUN" --profile recon-only --execute --until recon
+# Review the bounded execution report privately, then resume the same profile.
+gra-run --run "$RUN" --profile recon-only --resume
 gra-targets --run "$RUN" --list
 
 # Stop here for public demos unless a reviewer approves the selected target.
@@ -71,8 +78,10 @@ gra-evidence-graph --run "$RUN"
 
 Narration points:
 
-- `prepare` creates local workspace boundaries.
-- `recon` and `target queue` organize the review before deep analysis.
+- `prepare` creates local workspace boundaries without running the worker.
+- `gra-run` plans by default; the operator reviews the plan before execution.
+- the checkpoint supports bounded execution and resume without repeating a
+  successful stage.
 - `validate`, `metrics`, `benchmark`, and `evidence graph` are deterministic
   checkpoints.
 - Public narration may discuss `gra-issues --dry-run` using approved case-study

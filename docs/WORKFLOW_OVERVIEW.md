@@ -2,14 +2,17 @@
 
 ## 結論
 
-通常運用は `codex exec` を使います。`/goal` は、通常監査で出た重要findingや特定カテゴリを深く検証するための supervised deep dive として使います。
+通常運用は `gra-audit --mode prepare` と宣言的 `gra-run` を使います。plan を確認してから
+`--execute` し、必要時は同じ checkpoint を `--resume` します。個別 `codex exec` 相当の
+command と `/goal` は、重要 finding や特定カテゴリを深く検証する supervised deep dive
+として使います。
 
-| 観点 | 通常使用: `codex exec` | 深掘り: `/goal` |
+| 観点 | 通常使用: `gra-run` | 深掘り: 個別 command / `/goal` |
 |---|---|---|
 | 主目的 | 一次監査、複数repo、定期実行 | 単一repo・単一finding・単一カテゴリの精査 |
 | 実行形態 | 非対話 | 対話・監督あり |
 | 推奨対象 | すべてのrepo | 重要repo、Critical/High候補、Needs human review |
-| 成果物 | reports一式、findings.json、issue drafts | 通常成果物に加え、validation強化、deep-dives/*.md |
+| 成果物 | workflow plan/checkpoint、recon、target queue | findings、validation、deep-dives/*.md |
 | 同時実行 | repo分離すれば限定的に可能 | 原則しない |
 | Issue作成 | 監査後に別コマンド | goal後に別コマンド |
 | 修正 | 別PR・別run | 同じgoalに混ぜない |
@@ -19,7 +22,13 @@
 ```text
 新規repoまたは定期監査
   ↓
-gra-audit --mode exec
+gra-doctor → gra-audit --mode prepare
+  ↓
+gra-run planning → 人間が plan を確認
+  ↓
+gra-run --execute / --resume
+  ↓
+target queue を確認し、選択 target を supervised command で調査
   ↓
 findings.json を検証
   ↓
@@ -47,8 +56,20 @@ Critical / High が十分に裏付けられている?
 通常使用:
 
 ```bash
-gra-audit --repo OWNER/REPO --mode exec --model gpt-5.5 --effort xhigh
+RUNS_DIR="$PWD/runs"
+gra-doctor --json --runs-dir "$RUNS_DIR"
+gra-audit --repo OWNER/REPO --mode prepare --run-id first-audit --runs-dir "$RUNS_DIR"
+RUN_DIR="$RUNS_DIR/OWNER__REPO/first-audit"
+gra-run --run "$RUN_DIR" --profile recon-only
+cat "$RUN_DIR/reports/WORKFLOW_PLAN.md"
+gra-run --run "$RUN_DIR" --profile recon-only --execute --until recon
+cat "$RUN_DIR/reports/WORKFLOW_EXECUTION.md"
+gra-run --run "$RUN_DIR" --profile recon-only --resume
 ```
+
+planning は非実行です。`--resume` は成功済み stage を繰り返しません。既存 checkpoint
+は profile 切り替えには使えません。scanner execution、Issue 公開、remediation、
+release、network 有効化は unattended profile の対象外です。
 
 深掘り:
 

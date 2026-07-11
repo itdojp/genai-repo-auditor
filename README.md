@@ -22,8 +22,9 @@ The current implementation is designed to run with OpenAI Codex CLI where availa
 
 ```text
 prepare
-  -> recon
-  -> target queue
+  -> gra-run plan review
+  -> bounded execute / checkpoint resume
+  -> recon / target queue
   -> target research
   -> validation
   -> variant analysis
@@ -87,17 +88,58 @@ Verify checksums and attestations before installing a downloaded release. See
 [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md) for the artifact contents,
 verification commands, and the explicit human-controlled publication process.
 
-## Quick start: full audit
+## Quick start: plan, review, execute, and resume
 
 ```bash
-gra-audit \
-  --repo OWNER/REPO \
-  --mode exec \
-  --model gpt-5.5 \
-  --effort xhigh
+RUNS_DIR="$PWD/runs"
+gra-doctor --json --runs-dir "$RUNS_DIR"
+gra-audit --repo OWNER/REPO --mode prepare --run-id first-audit --runs-dir "$RUNS_DIR"
+RUN_DIR="$RUNS_DIR/OWNER__REPO/first-audit"
+
+# Planning is the default. No workflow stage runs here.
+gra-run --run "$RUN_DIR" --profile recon-only
+cat "$RUN_DIR/reports/WORKFLOW_PLAN.md"
+
+# Execute a bounded first stage only after reviewing the plan.
+gra-run --run "$RUN_DIR" --profile recon-only --execute --until recon
+cat "$RUN_DIR/reports/WORKFLOW_EXECUTION.md"
+
+# Resume the same plan/checkpoint. Successful stages are not repeated.
+gra-run --run "$RUN_DIR" --profile recon-only --resume
+gra-targets --run "$RUN_DIR" --list
 ```
 
-A run directory is created under `runs/`:
+`gra-audit --mode prepare` creates the run without starting the agent worker.
+`gra-run` then writes a sanitized plan by default; only `--execute` or
+`--resume` runs approved stages. The checkpoint is
+`reports/workflow-checkpoint.json`, and the bounded operator view is
+`reports/WORKFLOW_EXECUTION.md`.
+
+Choose one profile for a new execution. A run with an existing workflow
+checkpoint must be continued with `--resume`; it is not a profile-chaining
+mechanism. `appsec-deep`, `publication-ready`, and `full` also require existing
+validated inputs such as `reports/findings.json`. Use those profiles only on a
+compatible run without a workflow checkpoint or for a supervised `--from` range whose prerequisite
+artifacts already exist. Do not run the example profiles sequentially against
+the same checkpoint.
+
+For reporting profiles, refresh terminal reports after workflow completion so
+they include the final execution state and the `gra-run` completion event:
+
+```bash
+gra-metrics --run "$RUN_DIR"
+gra-evidence-graph --run "$RUN_DIR"
+gra-validate-report --run "$RUN_DIR"
+```
+
+The built-in profiles remain offline and local-artifacts-only. Scanner stages
+plan approved adapters but never add scanner `--execute`. They do not contain
+Issue publication, remediation, release, GitHub mutation, or network-enabling
+commands. `gra-issues --dry-run` remains a separate human-reviewed step and is
+useful only after validated findings and Issue drafts exist.
+
+A prepared run directory has this layout, with workflow artifacts added under
+`reports/` as planning and execution proceed:
 
 ```text
 runs/OWNER__REPO/RUN_ID/
@@ -111,54 +153,38 @@ runs/OWNER__REPO/RUN_ID/
   codex-final.md
 ```
 
-Validate, synthesize defensive chain context, and render reports:
+## Advanced supervised flow
+
+After reviewing the generated target queue, use individual commands for target
+research, project-specific validation, remediation experiments, cross-repo
+tracing, or other work that is deliberately outside the unattended profiles.
+The following is a reference sequence, not part of the quick start:
 
 ```bash
-gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID --fix
-gra-validate-report --run runs/OWNER__REPO/RUN_ID
-gra-gapfill --run runs/OWNER__REPO/RUN_ID --generate
-gra-chains --run runs/OWNER__REPO/RUN_ID
-gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
-gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --mode goal
+gra-research --run "$RUN_DIR" --target TGT-001 --model gpt-5.5 --effort xhigh
+gra-gapfill --run "$RUN_DIR" --generate
+gra-chains --run "$RUN_DIR"
+gra-proofs --run "$RUN_DIR" --all-critical-high
+gra-remediate --run "$RUN_DIR" --all-critical-high --mode goal
 # Add project-specific Python build/test commands; otherwise final_status remains needs-human-review.
-gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --validate --sandbox-profile local-test --build-command "python3 -m py_compile repo/app.py" --test-command "python3 -m py_compile repo/app.py"
+gra-remediate --run "$RUN_DIR" --all-critical-high --validate --sandbox-profile local-test --build-command "python3 -m py_compile repo/app.py" --test-command "python3 -m py_compile repo/app.py"
 # Optional for shared-library / producer findings:
-# gra-trace --producer-run runs/OWNER__REPO/RUN_ID --finding SEC-001 --consumer-repo OWNER/consumer --mode prepare
-# gra-trace --producer-run runs/OWNER__REPO/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__REPO/RUN_ID/trace-consumers/OWNER__consumer --mode exec
-gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high --votes 3 --policy human-review-on-split
-gra-validate-report --run runs/OWNER__REPO/RUN_ID
-gra-metrics --run runs/OWNER__REPO/RUN_ID
-gra-benchmark --run runs/OWNER__REPO/RUN_ID
-gra-evidence-graph --run runs/OWNER__REPO/RUN_ID
-gra-dashboard --run runs/OWNER__REPO/RUN_ID
-gra-sarif --run runs/OWNER__REPO/RUN_ID
-gra-store --run runs/OWNER__REPO/RUN_ID
+# gra-trace --producer-run "$RUN_DIR" --finding SEC-001 --consumer-repo OWNER/consumer --mode prepare
+gra-adversarial-validate --run "$RUN_DIR" --all-critical-high --votes 3 --policy human-review-on-split
+gra-taxonomy-preflight --run "$RUN_DIR" --fix
+gra-validate-report --run "$RUN_DIR"
+gra-issues --run "$RUN_DIR" --dry-run
 ```
 
-Create GitHub Issues only after human review:
+Issue mutation remains an explicit operator action after review. Public
+repository Issue creation is denied by default. Use `gra-issues --apply` and
+`--allow-public` only when publication is intentional and approved.
 
-```bash
-gra-chains --run runs/OWNER__REPO/RUN_ID
-gra-proofs --run runs/OWNER__REPO/RUN_ID --all-critical-high
-gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --mode goal
-# Add project-specific Python build/test commands; otherwise final_status remains needs-human-review.
-gra-remediate --run runs/OWNER__REPO/RUN_ID --all-critical-high --validate --sandbox-profile local-test --build-command "python3 -m py_compile repo/app.py" --test-command "python3 -m py_compile repo/app.py"
-# Optional for shared-library / producer findings:
-# gra-trace --producer-run runs/OWNER__REPO/RUN_ID --finding SEC-001 --consumer-repo OWNER/consumer --mode prepare
-# gra-trace --producer-run runs/OWNER__REPO/RUN_ID --finding SEC-001 --consumer-run runs/OWNER__REPO/RUN_ID/trace-consumers/OWNER__consumer --mode exec
-gra-adversarial-validate --run runs/OWNER__REPO/RUN_ID --all-critical-high --votes 3 --policy human-review-on-split
-gra-taxonomy-preflight --run runs/OWNER__REPO/RUN_ID --fix
-gra-validate-report --run runs/OWNER__REPO/RUN_ID
-gra-evidence-graph --run runs/OWNER__REPO/RUN_ID
-gra-issues --run runs/OWNER__REPO/RUN_ID --dry-run
-gra-issues --run runs/OWNER__REPO/RUN_ID --apply --create-labels
-```
+## Advanced staged audit for large repositories
 
-Public repository Issue creation is denied by default. Use `--allow-public` only when public disclosure is intentional and approved.
-
-## Staged audit for large repositories
-
-For large or high-value repositories, prefer the staged workflow.
+For large or high-value repositories, use the primary `gra-run` path above for
+reconnaissance and target generation. The following individual commands remain
+available for supervised control and deep research.
 
 Prepare a run:
 
@@ -296,7 +322,7 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-recon` | Generate inventory, threat model, and attack surface |
 | `gra-targets` | Generate, list, show, and update target queue |
 | `gra-run-state` | Record paused/resume/blocked run state and guard deep-review starts |
-| `gra-run` | Validate and write a dependency-ordered workflow plan without executing stages |
+| `gra-run` | Plan by default; explicitly execute or resume an approved dependency-ordered workflow |
 | `gra-sandbox-check` | Check sandbox profile readiness before future executable validation workflows |
 | `gra-research` | Research one target with exec or supervised goal mode |
 | `gra-gapfill` | Requeue high-risk targets with incomplete coverage |

@@ -146,6 +146,96 @@ class DocsConsistencyTests(unittest.TestCase):
         }
         self.assertTrue(required.issubset(linked_targets), f"missing README doc links: {sorted(required - linked_targets)}")
 
+    def test_primary_onboarding_uses_plan_review_execute_resume(self) -> None:
+        sections = {
+            "README.md": ("## Quick start: plan, review, execute, and resume", "## Advanced supervised flow"),
+            "docs/LOCAL_INSTALL_AND_AUDIT.md": (
+                "## Recommended first audit: declarative plan and execution",
+                "## Advanced supervised commands",
+            ),
+            "docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md": (
+                "## 推奨される最初の監査: 宣言的な計画と実行",
+                "## 高度な supervised command",
+            ),
+            "docs/ja/USAGE.ja.md": (
+                "## install -> plan -> review -> execute -> resume",
+                "## 監査 run の一時停止と再開",
+            ),
+            "docs/USAGE.md": (
+                "## 通常使用: 宣言的 workflow による単一 repo 監査",
+                "## 通常使用の成果物",
+            ),
+            "docs/NORMAL_WORKFLOW.md": ("## 単一リポジトリ監査", "## 実行ディレクトリ構成"),
+            "docs/NORMAL_OPERATION.md": ("## 単一リポジトリ監査", "## 実行ディレクトリ構成"),
+            "docs/WORKFLOW_OVERVIEW.md": ("## 使うコマンド", "## 参照ドキュメント"),
+            "docs/WORKFLOWS.md": ("## 使うコマンド", "## 参照ドキュメント"),
+            "docs/STAGED_AGENTIC_WORKFLOW.md": ("## Recommended primary path", "## Prepare"),
+        }
+        failures = []
+        required = (
+            "gra-doctor",
+            "gra-audit",
+            "--mode prepare",
+            "gra-run --run",
+            "--profile recon-only",
+            "WORKFLOW_PLAN.md",
+            "--execute --until recon",
+            "WORKFLOW_EXECUTION.md",
+            "--resume",
+        )
+        for relative, (start, end) in sections.items():
+            text = (REPO_ROOT / relative).read_text(encoding="utf-8")
+            try:
+                section = text[text.index(start):text.index(end, text.index(start) + len(start))]
+            except ValueError:
+                failures.append(f"{relative}: missing primary onboarding section boundary")
+                continue
+            missing = [item for item in required if item not in section]
+            if missing:
+                failures.append(f"{relative}: missing primary onboarding markers: {', '.join(missing)}")
+            if section.count('--runs-dir "$RUNS_DIR"') < 2:
+                failures.append(f"{relative}: doctor and audit must share explicit RUNS_DIR")
+            if 'RUN_DIR="$RUNS_DIR/OWNER__REPO/first-audit"' not in section:
+                failures.append(f"{relative}: RUN_DIR must derive from the same explicit RUNS_DIR")
+        self.assertEqual([], failures)
+
+    def test_primary_onboarding_preserves_unattended_safety_boundaries(self) -> None:
+        required_terms = {
+            "README.md": ("scanner", "Issue publication", "remediation", "release", "network"),
+            "docs/LOCAL_INSTALL_AND_AUDIT.md": ("Scanner", "Issue publication", "remediation", "release", "network"),
+            "docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md": ("scanner", "Issue 公開", "remediation", "release", "network"),
+            "docs/ja/USAGE.ja.md": ("scanner", "Issue 公開", "remediation", "release", "network"),
+        }
+        failures = []
+        for relative, terms in required_terms.items():
+            text = (REPO_ROOT / relative).read_text(encoding="utf-8")
+            missing = [term for term in terms if term not in text]
+            if missing:
+                failures.append(f"{relative}: missing unattended safety terms: {', '.join(missing)}")
+            if re.search(r"gra-run[^\n]*--profile\s+\S+[^\n]*(?:--network|--apply|--publish)", text):
+                failures.append(f"{relative}: gra-run example contains a network/publication flag")
+        self.assertEqual([], failures)
+
+    def test_demo_and_dogfood_primary_paths_use_gra_run(self) -> None:
+        failures = []
+        for relative in ("docs/DOGFOOD_RUNBOOK.md", "docs/dogfood/DEMO_SCRIPT.md"):
+            text = (REPO_ROOT / relative).read_text(encoding="utf-8")
+            for marker in ("gra-audit", "--mode prepare", "gra-run --run", "--profile recon-only"):
+                if marker not in text:
+                    failures.append(f"{relative}: missing declarative dogfood marker {marker}")
+            minimum = 2 if relative == "docs/DOGFOOD_RUNBOOK.md" else 1
+            if text.count('--runs-dir "$RUNS_DIR"') < minimum:
+                failures.append(f"{relative}: audit examples must consume the declared RUNS_DIR")
+            run_refs = (
+                ('RUN="$RUNS_DIR/itdojp__genai-repo-auditor/RUN_ID"', 'RUN="$RUNS_DIR/itdojp__ITDO_ERP4/RUN_ID"')
+                if relative == "docs/DOGFOOD_RUNBOOK.md"
+                else ('RUN="$RUNS_DIR/OWNER__REPO/RUN_ID"',)
+            )
+            missing_refs = [ref for ref in run_refs if ref not in text]
+            if missing_refs:
+                failures.append(f"{relative}: run path must derive from RUNS_DIR: {', '.join(missing_refs)}")
+        self.assertEqual([], failures)
+
     def test_dangerous_access_terms_are_documented_as_non_default(self) -> None:
         caution_terms = ["do not", "not recommended", "avoid", "never", "forbidden", "禁止", "使わない", "通常使わない", "デフォルト", "基本"]
         failures = []

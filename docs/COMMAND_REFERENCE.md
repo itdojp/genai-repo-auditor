@@ -827,7 +827,7 @@ gra-issues --run runs/OWNER__REPO/RUN_ID --apply --create-labels
 The repository currently has no alternate executable aliases for `gra-*` commands. For end-to-end flows, start with:
 
 - [`docs/LOCAL_INSTALL_AND_AUDIT.md`](LOCAL_INSTALL_AND_AUDIT.md) for first-run setup.
-- [`docs/NORMAL_WORKFLOW.md`](NORMAL_WORKFLOW.md) for single-repository `exec` mode.
+- [`docs/NORMAL_WORKFLOW.md`](NORMAL_WORKFLOW.md) for the primary single-repository plan-review-execute-resume workflow.
 - [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md) for staged recon, target, and research workflows.
 - [`docs/SCANNER_INTEGRATION.md`](SCANNER_INTEGRATION.md) for scanner ingestion and triage.
 - [`docs/TRACE_REACHABILITY.md`](TRACE_REACHABILITY.md) for experimental/P3 cross-repo trace reachability.

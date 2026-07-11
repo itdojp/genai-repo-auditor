@@ -32,12 +32,16 @@ primary objective is product feedback: workflow reliability, safety boundaries,
 operator UX, and report quality.
 
 ```bash
-gra-audit --repo itdojp/genai-repo-auditor --mode prepare --model gpt-5.5 --effort xhigh
+RUNS_DIR="$PWD/runs"
+gra-audit --repo itdojp/genai-repo-auditor --mode prepare --model gpt-5.5 --effort xhigh --runs-dir "$RUNS_DIR"
 
-RUN=runs/itdojp__genai-repo-auditor/RUN_ID
+RUN="$RUNS_DIR/itdojp__genai-repo-auditor/RUN_ID"
 
-gra-recon --run "$RUN" --model gpt-5.5 --effort xhigh
-gra-targets --run "$RUN" --generate --model gpt-5.5 --effort xhigh
+gra-run --run "$RUN" --profile recon-only
+cat "$RUN/reports/WORKFLOW_PLAN.md"
+gra-run --run "$RUN" --profile recon-only --execute --until recon
+cat "$RUN/reports/WORKFLOW_EXECUTION.md"
+gra-run --run "$RUN" --profile recon-only --resume
 gra-targets --run "$RUN" --list
 
 # Recon-only stop path:
@@ -58,6 +62,8 @@ gra-targets --run "$RUN" --list
 # gra-issues --run "$RUN" --dry-run
 
 # Deeper review path:
+# Individual commands below are supervised work after the declarative
+# reconnaissance workflow; they are not injected into the gra-run profile.
 gra-gapfill --run "$RUN" --generate
 gra-adversarial-validate --run "$RUN" --all-critical-high --votes 3 --policy human-review-on-split
 gra-validate-report --run "$RUN"
@@ -84,12 +90,16 @@ invoice, timesheet, Agent-First evidence, CI/security posture, and storage or AV
 paths when present.
 
 ```bash
-gra-audit --repo itdojp/ITDO_ERP4 --mode prepare --model gpt-5.5 --effort xhigh
+RUNS_DIR="$PWD/runs"
+gra-audit --repo itdojp/ITDO_ERP4 --mode prepare --model gpt-5.5 --effort xhigh --runs-dir "$RUNS_DIR"
 
-RUN=runs/itdojp__ITDO_ERP4/RUN_ID
+RUN="$RUNS_DIR/itdojp__ITDO_ERP4/RUN_ID"
 
-gra-recon --run "$RUN" --model gpt-5.5 --effort xhigh
-gra-targets --run "$RUN" --generate --model gpt-5.5 --effort xhigh
+gra-run --run "$RUN" --profile recon-only
+cat "$RUN/reports/WORKFLOW_PLAN.md"
+gra-run --run "$RUN" --profile recon-only --execute --until recon
+cat "$RUN/reports/WORKFLOW_EXECUTION.md"
+gra-run --run "$RUN" --profile recon-only --resume
 gra-targets --run "$RUN" --list
 
 # Human review narrows targets before deep research.
@@ -104,6 +114,11 @@ gra-dashboard --run "$RUN"
 gra-validate-report --run "$RUN"
 gra-issues --run "$RUN" --dry-run
 ```
+
+The checkpoint belongs to the selected `recon-only` profile. Continue it with
+`--resume`; do not switch to another profile on the same checkpoint. Scanner
+execution, Issue publication, remediation, releases, and network enabling stay
+outside this unattended dogfood profile.
 
 `gra-issues --dry-run` is an operator preview tool. It does not write
 `reports/issue-publication-plan.json`. Use `gra-issues --plan` only after
