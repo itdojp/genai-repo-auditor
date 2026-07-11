@@ -133,6 +133,21 @@ gra-batch --repo-list repos.txt --concurrency 1 --mode exec
 
 1 件以上失敗した場合、既定では batch 全体も non-zero exit になります。失敗を許容する場合のみ `--allow-failures` を使います。
 
+## workflow DAG の計画
+
+`gra-run` は既定で planning-only です。version 固定の profile resource、dependency
+order、required input、scoped skip を検証し、stage command は実行しません。
+
+```bash
+gra-run --run "$RUN_DIR" --profile recon-only
+gra-run --run "$RUN_DIR" --profile recon-only --skip targets --json
+```
+
+`<reports_dir>/workflow-plan.json` と `WORKFLOW_PLAN.md` には sanitized argv と
+run-relative artifact ref のみを記録します。network、GitHub Issue mutation、release、
+raw prompt/finding/evidence/credential は plan に含めません。workflow execution と
+resume/checkpoint は後続フェーズの機能であり、この planning command では実行されません。
+
 ## scanner output の取り込み
 
 実行前に、non-executing な adapter list/plan で command、sandbox、network、path、

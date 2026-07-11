@@ -51,7 +51,7 @@ class ConsoleScriptTests(unittest.TestCase):
 
     def test_console_script_registry_matches_current_command_surface(self) -> None:
         commands = self.command_names()
-        self.assertEqual(34, len(commands))
+        self.assertEqual(35, len(commands))
         self.assertEqual(commands, list(cli.COMMANDS))
 
         scripts = pyproject_scripts((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))

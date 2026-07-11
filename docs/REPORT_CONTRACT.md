@@ -31,6 +31,9 @@ advanced workflow metrics artifact です。`BENCHMARK.md` /
 `WORKFLOW_PROFILE.md` / `workflow-profile.json` は `gra-workflow-profile` が
 recon-only などの scoped workflow intent と `skipped_by_scope` stage status
 を記録する local artifact です。
+`WORKFLOW_PLAN.md` / `workflow-plan.json` は `gra-run` が versioned workflow
+definition から生成する planning-only DAG artifact であり、stage command は
+実行しません。
 `IMPORTED_FINDINGS.md` / `imported-findings.json` は
 `gra-import-findings` が vendor-neutral external finding JSON を review-only
 lead artifact として正規化する import artifact です。
@@ -220,6 +223,16 @@ values.
 reconnaissance/setup stages and advanced stages that are intentionally
 `skipped_by_scope`. It is stage intent metadata only; it does not prove skipped
 stages are safe, does not create findings, and does not publish Issues.
+
+`workflow-plan.json` is a bounded planning-only artifact produced by `gra-run`.
+It records the versioned profile resource digest, validated dependency order,
+explicit scoped skips, sanitized argv templates, and run-relative input/output
+references. Its safety flags require that no stage command was executed, no
+network or GitHub mutation was allowed, and no raw prompt, finding, evidence,
+credential, or private reasoning was copied. Unknown/cyclic dependencies,
+unsatisfied inputs, unsafe paths, and mutation-capable stages fail closed.
+This artifact is distinct from `workflow-profile.json`, which records audit
+scope/status rather than a future execution plan.
 
 `benchmark.json` is a local-only dogfood benchmark artifact produced by
 `gra-benchmark`. It records bounded summaries for report validation, obvious

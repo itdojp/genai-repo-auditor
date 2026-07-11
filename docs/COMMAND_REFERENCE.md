@@ -29,6 +29,7 @@ All examples use placeholder repositories and local run paths. Do not paste real
 | Batch operation | `gra-batch` | Batch metadata, per-repository logs, `batch-results.json` |
 | Target queue | `gra-targets` | `reports/targets.json`, target queue updates |
 | Run state / pause guard | `gra-run-state` | `reports/run-state.json`, pause/resume/block status |
+| Workflow planning | `gra-run` | `<reports_dir>/workflow-plan.json`, `<reports_dir>/WORKFLOW_PLAN.md` |
 | Sandbox readiness | `gra-sandbox-check` | `reports/sandbox-readiness.json`, `reports/SANDBOX_READINESS.md` |
 | Worktree separation check | `gra-worktree-check` | Final worktree report classifying in-scope and unrelated changes |
 | Target coverage gapfill | `gra-gapfill` | `reports/COVERAGE.md`, `reports/gapfill-targets.json`, bounded gapfill target research |
@@ -175,6 +176,24 @@ Examples:
 gra-targets --run runs/OWNER__REPO/RUN_ID --generate
 gra-targets --run runs/OWNER__REPO/RUN_ID --list
 gra-targets --run runs/OWNER__REPO/RUN_ID --mark TGT-001 reviewed
+```
+
+## `gra-run`
+
+| Field | Details |
+|---|---|
+| Purpose | Validate a versioned declarative workflow DAG and write its exact bounded plan without executing stage commands. |
+| Workflow category | Local workflow planning. |
+| Required inputs | `--run RUN_DIR --profile PROFILE`; the initial built-in planning profile is `recon-only`. Planning is the default and `--plan` is an optional explicit marker. |
+| Key options | Repeat `--skip STAGE` only for a profile stage declared skippable; `--json` prints the machine-readable plan. |
+| Generated outputs | `<reports_dir>/workflow-plan.json` and `<reports_dir>/WORKFLOW_PLAN.md`, containing profile/version/digest, dependency order, scoped skips, sanitized argv, run-relative input/output refs, and safety flags. |
+| Exit status behavior | `0` for a valid plan; `2` for unknown/invalid profiles, cycles, unknown dependencies, missing required inputs, invalid skips, unsafe paths, network-enabled definitions, or mutation-capable commands. |
+| Security / disclosure cautions | This release is planning-only: `gra-run` does not execute subprocesses, enable network, or perform GitHub/Issue/release mutations. Execution, checkpoints, and resume are introduced by later orchestrator stages and remain explicit. Existing `gra-*` commands stay independently usable. |
+| Related docs | [`docs/WORKFLOWS.md`](WORKFLOWS.md), [`docs/REPORT_CONTRACT.md`](REPORT_CONTRACT.md), [`docs/STAGED_AGENTIC_WORKFLOW.md`](STAGED_AGENTIC_WORKFLOW.md). |
+
+```bash
+gra-run --run runs/OWNER__REPO/RUN_ID --profile recon-only
+gra-run --run runs/OWNER__REPO/RUN_ID --profile recon-only --skip targets --json
 ```
 
 ## `gra-run-state`

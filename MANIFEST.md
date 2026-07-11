@@ -28,6 +28,7 @@ bin/gra-proofs
 bin/gra-recon
 bin/gra-remediate
 bin/gra-research
+bin/gra-run
 bin/gra-run-state
 bin/gra-sandbox-check
 bin/gra-sarif
@@ -128,6 +129,14 @@ templates/reports/targets.schema.json
 templates/reports/traces.schema.json
 templates/reports/validation.schema.json
 templates/reports/workflow-profile.schema.json
+templates/reports/workflow-plan.schema.json
+```
+
+## Workflow definitions
+
+```text
+templates/workflows/recon-only.json
+templates/workflows/workflow-definition.schema.json
 ```
 
 ## Dogfood templates

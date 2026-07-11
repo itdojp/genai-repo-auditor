@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+LAB_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(LAB_ROOT / "lib"))
+from version import auditor_version  # noqa: E402
+from workflow_orchestrator import WorkflowPlanError, build_plan, load_profile, write_plan  # noqa: E402
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Plan approved declarative audit workflows without executing stages")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {auditor_version(LAB_ROOT)}")
+    parser.add_argument("--run", required=True, type=Path, help="Run directory")
+    parser.add_argument("--profile", required=True, help="Built-in workflow profile id")
+    parser.add_argument("--plan", action="store_true", help="Plan only; this is the default")
+    parser.add_argument("--skip", action="append", default=[], metavar="STAGE", help="Explicitly skip a skippable scoped stage")
+    parser.add_argument("--json", action="store_true", help="Print the machine-readable plan")
+    args = parser.parse_args()
+    try:
+        definition, path, digest = load_profile(LAB_ROOT, args.profile)
+        plan = build_plan(
+            args.run,
+            definition,
+            definition_ref=path.relative_to(LAB_ROOT).as_posix(),
+            digest=digest,
+            skips=args.skip,
+        )
+        json_path, markdown_path = write_plan(args.run, plan)
+    except (OSError, ValueError, WorkflowPlanError) as exc:
+        print(f"gra-run: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(plan, indent=2, sort_keys=True))
+    else:
+        print("Workflow plan (no stages executed):")
+        print(f"Profile: {plan['profile']} {plan['profile_version']}")
+        for stage in plan["stages"]:
+            print(f"- {stage['id']}: {stage['status']} ({' '.join(stage['command'])})")
+        print(f"JSON: {json_path}")
+        print(f"Markdown: {markdown_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

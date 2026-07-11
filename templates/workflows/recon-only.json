@@ -1,0 +1,30 @@
+{
+  "schema_version": "1",
+  "profile": "recon-only",
+  "profile_version": "1.0.0",
+  "description": "Plan repository reconnaissance and optional target queue generation without execution.",
+  "stages": [
+    {
+      "id": "recon",
+      "command": ["gra-recon", "--run", "{run}"],
+      "depends_on": [],
+      "required_inputs": ["context.json", "{target_repo_dir}"],
+      "outputs": ["{reports_dir}/AUDIT_SUMMARY.md", "{reports_dir}/THREAT_MODEL.md", "{reports_dir}/ATTACK_SURFACE.md"],
+      "skippable": false,
+      "skip_reason": null,
+      "network_allowed": false,
+      "mutation": "local-artifacts-only"
+    },
+    {
+      "id": "targets",
+      "command": ["gra-targets", "--run", "{run}", "--generate"],
+      "depends_on": ["recon"],
+      "required_inputs": ["context.json", "{reports_dir}/ATTACK_SURFACE.md"],
+      "outputs": ["{reports_dir}/targets.json"],
+      "skippable": true,
+      "skip_reason": "Target queue generation is optional in a reconnaissance-only scope.",
+      "network_allowed": false,
+      "mutation": "local-artifacts-only"
+    }
+  ]
+}

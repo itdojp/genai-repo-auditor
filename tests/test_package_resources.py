@@ -209,6 +209,7 @@ class PackageResourceTests(unittest.TestCase):
             "share/genai-repo-auditor/templates/dogfood",
             "share/genai-repo-auditor/templates/reports",
             "share/genai-repo-auditor/templates/taxonomies",
+            "share/genai-repo-auditor/templates/workflows",
         }
         self.assertEqual(expected_destinations, data_files)
         serialized = pyproject
