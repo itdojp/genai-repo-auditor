@@ -609,6 +609,7 @@ def _commit_staged_outputs(staged_outputs: list[_StagedOutput]) -> None:
             try:
                 _unlink_leaf(staged, staged.destination.name)
             except FileNotFoundError:
+                # A concurrent removal already achieved this rollback step.
                 pass
             except OSError as rollback_exc:
                 rollback_errors.append(rollback_exc)
