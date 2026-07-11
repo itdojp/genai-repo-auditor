@@ -9,19 +9,39 @@ from pathlib import Path
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
 from version import auditor_version  # noqa: E402
+from workflow_executor import (  # noqa: E402
+    WorkflowExecutionError,
+    checkpoint_path,
+    ensure_run_state_active,
+    execute_workflow,
+    resume_skip_set,
+)
 from workflow_orchestrator import WorkflowPlanError, build_plan, load_profile, write_plan  # noqa: E402
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Plan approved declarative audit workflows without executing stages")
+    parser = argparse.ArgumentParser(description="Plan or explicitly execute approved declarative audit workflows")
     parser.add_argument("--version", action="version", version=f"%(prog)s {auditor_version(LAB_ROOT)}")
     parser.add_argument("--run", required=True, type=Path, help="Run directory")
     parser.add_argument("--profile", required=True, help="Built-in workflow profile id")
-    parser.add_argument("--plan", action="store_true", help="Plan only; this is the default")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--plan", action="store_true", help="Plan only; this is the default")
+    mode.add_argument("--execute", action="store_true", help="Explicitly execute the approved offline stage plan")
+    mode.add_argument("--resume", action="store_true", help="Resume from the exact safe checkpoint without repeating successful stages")
+    parser.add_argument("--from", dest="from_stage", metavar="STAGE", help="Start an explicit execution range at STAGE")
+    parser.add_argument("--until", dest="until_stage", metavar="STAGE", help="Stop an explicit execution range after STAGE")
     parser.add_argument("--skip", action="append", default=[], metavar="STAGE", help="Explicitly skip a skippable scoped stage")
     parser.add_argument("--json", action="store_true", help="Print the machine-readable plan")
     args = parser.parse_args()
+    if not (args.execute or args.resume) and (args.from_stage or args.until_stage):
+        parser.error("--from/--until require --execute")
+    if args.resume and (args.from_stage or args.until_stage):
+        parser.error("--resume uses the checkpoint range; do not pass --from/--until")
+    if args.resume and args.skip:
+        parser.error("--resume uses the checkpoint skip set; do not pass --skip")
     try:
+        if args.resume:
+            args.skip = resume_skip_set(args.run)
         definition, path, digest = load_profile(LAB_ROOT, args.profile)
         plan = build_plan(
             args.run,
@@ -30,8 +50,27 @@ def main() -> int:
             digest=digest,
             skips=args.skip,
         )
+        if args.execute or args.resume:
+            ensure_run_state_active(args.run)
         json_path, markdown_path = write_plan(args.run, plan)
-    except (OSError, ValueError, WorkflowPlanError) as exc:
+        if args.execute or args.resume:
+            checkpoint, exit_code = execute_workflow(
+                args.run,
+                plan,
+                lab_root=LAB_ROOT,
+                resume=args.resume,
+                from_stage=args.from_stage,
+                until_stage=args.until_stage,
+            )
+            checkpoint_file = checkpoint_path(args.run.resolve(), plan)
+            if args.json:
+                print(json.dumps(checkpoint, indent=2, sort_keys=True))
+            else:
+                print(f"Workflow execution: {checkpoint['status']}")
+                print(f"Resume stage: {checkpoint['resume_stage'] or '-'}")
+                print(f"Checkpoint: {checkpoint_file}")
+            return exit_code
+    except (OSError, ValueError, WorkflowPlanError, WorkflowExecutionError) as exc:
         print(f"gra-run: {exc}", file=sys.stderr)
         return 2
     if args.json:

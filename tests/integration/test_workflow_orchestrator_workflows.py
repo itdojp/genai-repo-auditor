@@ -39,7 +39,14 @@ class WorkflowOrchestratorWorkflowTests(CliWorkflowTestCase):
 
         plan = json.loads((run_dir / "artifacts" / "workflow-plan.json").read_text(encoding="utf-8"))
         self.assertEqual("skipped_by_scope", plan["stages"][1]["status"])
-        self.assertEqual(["artifacts/ATTACK_SURFACE.md"], plan["stages"][1]["required_inputs"][1:])
+        self.assertEqual(
+            [
+                "artifacts/ATTACK_SURFACE.md",
+                "artifacts/agent-surface.json",
+                "artifacts/provenance-posture.json",
+            ],
+            plan["stages"][1]["required_inputs"][1:],
+        )
         self.assertFalse((run_dir / "reports" / "workflow-plan.json").exists())
 
     def test_reports_dir_under_target_is_rejected_before_plan_writes(self) -> None:
@@ -55,6 +62,26 @@ class WorkflowOrchestratorWorkflowTests(CliWorkflowTestCase):
         self.assertEqual(2, cp.returncode)
         self.assertIn("must not overlap", cp.stderr)
         self.assertFalse((run_dir / "repo" / "reports").exists())
+
+    def test_paused_or_blocked_execution_does_not_write_plan(self) -> None:
+        for status in ("paused", "blocked"):
+            with self.subTest(status=status):
+                run_dir = self.copy_fixture_run("minimal-run")
+                (run_dir / "repo").mkdir()
+                reports = run_dir / "reports"
+                (reports / "workflow-plan.json").unlink(missing_ok=True)
+                (reports / "run-state.json").write_text(json.dumps({"status": status}) + "\n", encoding="utf-8")
+
+                cp = self.run_cmd([
+                    REPO_ROOT / "bin" / "gra-run",
+                    "--run", run_dir,
+                    "--profile", "recon-only",
+                    "--execute",
+                ])
+
+                self.assertEqual(2, cp.returncode)
+                self.assertIn(status, cp.stderr)
+                self.assertFalse((reports / "workflow-plan.json").exists())
 
 
 if __name__ == "__main__":

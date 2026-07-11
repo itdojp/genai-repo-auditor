@@ -93,6 +93,23 @@ paused 中は read-only status check のみに制限してください。`gra-re
 `gra-gapfill --generate`、`gra-gapfill --target`、`gra-targets --generate`、
 `gra-targets --mark` は paused state を検出すると開始を拒否します。
 
+## 宣言的 workflow の実行と再開
+
+`gra-run` はデフォルトでは計画のみを生成します。計画を確認した後、明示的な
+`--execute` でのみ、profile で承認されたローカル command を依存順に実行します。
+
+```bash
+gra-run --run "$RUN_DIR" --profile recon-only
+gra-run --run "$RUN_DIR" --profile recon-only --execute --until recon
+gra-run --run "$RUN_DIR" --profile recon-only --resume
+```
+
+実行状態は `<reports_dir>/workflow-checkpoint.json` に保存されます。`--resume` は
+run/profile/plan と成功済み出力の SHA-256 を照合し、成功済み stage を再実行せず、
+記録済み resume stage から再開します。run state が `paused` または `blocked` の
+場合は実行を拒否します。orchestrator は network flag や Issue/release/remediation
+publication command を暗黙に追加しません。
+
 ## 主要成果物
 
 ```text
