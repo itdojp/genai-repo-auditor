@@ -277,7 +277,7 @@ def _require_supported_schema(schema: dict[str, Any], *, label: str) -> None:
             return
         schema_type = node.get("type")
         schema_types = schema_type if isinstance(schema_type, list) else [schema_type]
-        allowed_types = {"array", "boolean", "integer", "null", "object", "string"}
+        allowed_types = {"array", "boolean", "integer", "null", "number", "object", "string"}
         if schema_type is not None and (
             not schema_types
             or any(not isinstance(item, str) or item not in allowed_types for item in schema_types)
@@ -330,6 +330,8 @@ def _json_type(value: Any, expected: str) -> bool:
         return isinstance(value, str)
     if expected == "integer":
         return isinstance(value, int) and not isinstance(value, bool)
+    if expected == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
     if expected == "boolean":
         return isinstance(value, bool)
     if expected == "null":
@@ -403,11 +405,11 @@ def _validate_schema(
             errors.append(f"{path}: string is too long")
         if isinstance(schema.get("pattern"), str) and re.search(schema["pattern"], value) is None:
             errors.append(f"{path}: string does not match the corpus pattern")
-    if isinstance(value, int) and not isinstance(value, bool):
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
         if isinstance(schema.get("minimum"), int) and value < schema["minimum"]:
-            errors.append(f"{path}: integer is below the minimum")
+            errors.append(f"{path}: number is below the minimum")
         if isinstance(schema.get("maximum"), int) and value > schema["maximum"]:
-            errors.append(f"{path}: integer exceeds the maximum")
+            errors.append(f"{path}: number exceeds the maximum")
 
 
 def _require_schema(value: dict[str, Any], schema: dict[str, Any], *, label: str) -> None:
@@ -415,6 +417,22 @@ def _require_schema(value: dict[str, Any], schema: dict[str, Any], *, label: str
     _validate_schema(value, schema, schema, label, errors)
     if errors:
         raise EfficacyCorpusError("; ".join(errors))
+
+
+def validate_schema_object(value: dict[str, Any], schema: dict[str, Any], *, label: str) -> None:
+    """Validate a closed document against the supported offline schema subset."""
+
+    _require_supported_schema(schema, label=f"{label} schema")
+    _require_schema(value, schema, label=label)
+
+
+def load_schema_object(lab_root: Path, relative: Any, *, label: str) -> dict[str, Any]:
+    """Load a bounded local schema without following path components through symlinks."""
+
+    with _SafeTreeReader(lab_root) as reader:
+        schema, _raw = _load_json(reader, relative, label=label)
+    _require_supported_schema(schema, label=label)
+    return schema
 
 
 def _require_content_version(value: dict[str, Any], field: str, *, label: str) -> None:
@@ -552,3 +570,36 @@ def load_corpus(lab_root: Path) -> dict[str, Any]:
             raise EfficacyCorpusError("core corpus must include five positives, three controls, and three categories")
         _require_content_version(corpus, "corpus_version", label="corpus version")
         return {"corpus": corpus, "cases": cases}
+
+
+def load_corpus_fixture_texts(lab_root: Path) -> tuple[dict[str, Any], dict[str, dict[str, str]]]:
+    """Load the validated corpus and its declared UTF-8 fixture files."""
+
+    loaded = load_corpus(lab_root)
+    fixture_texts: dict[str, dict[str, str]] = {}
+    corpus_prefix = PurePosixPath("benchmarks/corpus/cases")
+    with _SafeTreeReader(lab_root) as reader:
+        for case in loaded["cases"]:
+            case_prefix = corpus_prefix / case["case_id"]
+            case_files: dict[str, str] = {}
+            for item in case["fixture"]["files"]:
+                fixture_relative = _safe_relative_path(item["path"], label="fixture file")
+                raw, metadata = reader.read(
+                    case_prefix / fixture_relative,
+                    maximum=MAX_FIXTURE_BYTES,
+                    label="fixture file",
+                )
+                if hashlib.sha256(raw).hexdigest() != item["sha256"]:
+                    raise EfficacyCorpusError("fixture file digest does not match its case manifest")
+                if metadata.st_mode & 0o111:
+                    raise EfficacyCorpusError("fixture files must not be executable")
+                text = _require_public_safe_text(raw, label="fixture file")
+                if fixture_relative.suffix == ".json":
+                    try:
+                        fixture_json = json.loads(text)
+                    except json.JSONDecodeError as exc:
+                        raise EfficacyCorpusError("JSON fixture file must contain valid JSON") from exc
+                    _require_public_safe_json(fixture_json, label="fixture file")
+                case_files[item["path"]] = text
+            fixture_texts[case["case_id"]] = case_files
+    return loaded, fixture_texts

@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor security efficacy benchmark",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "benchmark_id", "mode", "corpus", "safety", "execution", "scores", "cases", "limitations"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "benchmark_id": {"const": "genai-repo-auditor-security-efficacy"},
+    "mode": {"const": "deterministic-fixture"},
+    "corpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["corpus_id", "corpus_version", "selection"],
+      "properties": {
+        "corpus_id": {"type": "string", "minLength": 1, "maxLength": 100},
+        "corpus_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+\\+sha256\\.[a-f0-9]{64}$"},
+        "selection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "suite", "case_ids"],
+          "properties": {
+            "kind": {"enum": ["suite", "cases"]},
+            "suite": {"type": ["string", "null"]},
+            "case_ids": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 64,
+              "uniqueItems": true,
+              "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,47}/[a-z][a-z0-9-]{1,63}$"}
+            }
+          }
+        }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["local_synthetic_fixtures_only", "network_accessed", "github_accessed", "model_channel_used", "issue_publication_performed", "raw_fixture_content_included", "bounded_summary_only"],
+      "properties": {
+        "local_synthetic_fixtures_only": {"const": true},
+        "network_accessed": {"const": false},
+        "github_accessed": {"const": false},
+        "model_channel_used": {"const": false},
+        "issue_publication_performed": {"const": false},
+        "raw_fixture_content_included": {"const": false},
+        "bounded_summary_only": {"const": true}
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["detector_id", "selected_case_count", "supported_case_count", "fixture_file_count"],
+      "properties": {
+        "detector_id": {"const": "synthetic-reference-rules-v1"},
+        "selected_case_count": {"type": "integer", "minimum": 1, "maximum": 64},
+        "supported_case_count": {"type": "integer", "minimum": 0, "maximum": 64},
+        "fixture_file_count": {"type": "integer", "minimum": 1, "maximum": 768}
+      }
+    },
+    "scores": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["counts", "rates", "severity_agreement", "target_coverage", "human_review_required_count"],
+      "properties": {
+        "counts": {"$ref": "#/$defs/counts"},
+        "rates": {"$ref": "#/$defs/rates"},
+        "severity_agreement": {"$ref": "#/$defs/agreement"},
+        "target_coverage": {"$ref": "#/$defs/coverage"},
+        "human_review_required_count": {"type": "integer", "minimum": 0, "maximum": 64}
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {"$ref": "#/$defs/caseResult"}
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {"type": "string", "minLength": 1, "maxLength": 240}
+    }
+  },
+  "$defs": {
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["true_positives", "false_positives", "false_negatives", "true_negatives", "prediction_count"],
+      "properties": {
+        "true_positives": {"type": "integer", "minimum": 0},
+        "false_positives": {"type": "integer", "minimum": 0},
+        "false_negatives": {"type": "integer", "minimum": 0},
+        "true_negatives": {"type": "integer", "minimum": 0},
+        "prediction_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "rates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["precision", "recall", "f1"],
+      "properties": {
+        "precision": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "recall": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "f1": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+      }
+    },
+    "agreement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agreed", "eligible", "rate"],
+      "properties": {
+        "agreed": {"type": "integer", "minimum": 0},
+        "eligible": {"type": "integer", "minimum": 0},
+        "rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["covered", "selected", "rate"],
+      "properties": {
+        "covered": {"type": "integer", "minimum": 0},
+        "selected": {"type": "integer", "minimum": 1},
+        "rate": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "caseResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_id", "case_version", "classification", "category", "outcome", "true_positives", "false_positives", "false_negatives", "predicted_finding_count", "severity_agreement", "target_covered", "human_review_required", "rule_supported"],
+      "properties": {
+        "case_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,47}/[a-z][a-z0-9-]{1,63}$"},
+        "case_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+\\+sha256\\.[a-f0-9]{64}$"},
+        "classification": {"enum": ["positive", "negative_control"]},
+        "category": {"type": "string", "minLength": 1, "maxLength": 64},
+        "outcome": {"enum": ["true_positive", "true_negative", "false_positive", "false_negative", "mixed"]},
+        "true_positives": {"type": "integer", "minimum": 0},
+        "false_positives": {"type": "integer", "minimum": 0},
+        "false_negatives": {"type": "integer", "minimum": 0},
+        "predicted_finding_count": {"type": "integer", "minimum": 0},
+        "severity_agreement": {"$ref": "#/$defs/agreement"},
+        "target_covered": {"type": "boolean"},
+        "human_review_required": {"type": "boolean"},
+        "rule_supported": {"type": "boolean"}
+      }
+    }
+  }
+}

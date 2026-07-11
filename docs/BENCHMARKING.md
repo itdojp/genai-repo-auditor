@@ -6,8 +6,10 @@ turning audit output into follow-up work.
 
 This command measures workflow health, not vulnerability-detection efficacy.
 The separate versioned synthetic ground-truth format is documented in
-[Security efficacy benchmark corpus](EFFICACY_BENCHMARK_CORPUS.md). Adding that
-corpus does not change the meaning or outputs of `gra-benchmark`.
+[Security efficacy benchmark corpus](EFFICACY_BENCHMARK_CORPUS.md), and its
+deterministic runner is documented in
+[Deterministic security efficacy benchmark](EFFICACY_BENCHMARK.md). Adding or
+running that corpus does not change the meaning or outputs of `gra-benchmark`.
 
 Outputs:
 

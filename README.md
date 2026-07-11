@@ -309,6 +309,7 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-trace` | Trace experimental/P3 cross-repo reachability for shared-library findings |
 | `gra-metrics` | Generate local advanced workflow metrics without raw evidence |
 | `gra-benchmark` | Score local dogfood quality gates from metrics or fixture runs |
+| `gra-efficacy-benchmark` | Score the offline synthetic security corpus with deterministic reference rules |
 | `gra-evidence-graph` | Generate a local bounded evidence graph across report artifacts |
 | `gra-scan` | List/plan adapters or explicitly execute approved offline scanners in a bounded local container |
 | `gra-ingest` | Ingest scanner outputs |
@@ -367,6 +368,7 @@ Do not use this project for:
 - [`docs/TRACE_REACHABILITY.md`](docs/TRACE_REACHABILITY.md)
 - [`docs/METRICS.md`](docs/METRICS.md)
 - [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md)
+- [`docs/EFFICACY_BENCHMARK.md`](docs/EFFICACY_BENCHMARK.md)
 - [`docs/EFFICACY_BENCHMARK_CORPUS.md`](docs/EFFICACY_BENCHMARK_CORPUS.md)
 - [`docs/EVIDENCE_GRAPH.md`](docs/EVIDENCE_GRAPH.md)
 - [`docs/SCANNER_INTEGRATION.md`](docs/SCANNER_INTEGRATION.md)

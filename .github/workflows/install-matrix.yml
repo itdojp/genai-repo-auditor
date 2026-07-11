@@ -45,6 +45,8 @@ jobs:
           $auditRuns = Join-Path $env:RUNNER_TEMP "gra-installed-runs"
           $batchRuns = Join-Path $env:RUNNER_TEMP "gra-installed-batch-runs"
           $repoList = Join-Path $env:RUNNER_TEMP "gra-package-repos.txt"
+          $efficacyJson = Join-Path $env:RUNNER_TEMP "gra-efficacy.json"
+          $efficacyMarkdown = Join-Path $env:RUNNER_TEMP "gra-efficacy.md"
           New-Item -ItemType Directory -Force -Path $mockBin | Out-Null
           python -m venv $venv
           if ($IsWindows) {
@@ -115,7 +117,7 @@ jobs:
           import genai_repo_auditor as gra
           from genai_repo_auditor.cli import COMMANDS
 
-          assert len(COMMANDS) == 35, COMMANDS
+          assert len(COMMANDS) == 36, COMMANDS
           assert Path(gra.resource_path("VERSION")).is_file()
           assert Path(gra.resource_path("bin", "gra-doctor")).is_file()
           assert Path(gra.resource_path("lib", "agent_worker.py")).is_file()
@@ -131,7 +133,7 @@ jobs:
           '@
           $probe | & $python
           $commands = (& $python -c "from genai_repo_auditor.cli import COMMANDS; print(chr(10).join(COMMANDS))") -split "`n" | Where-Object { $_ }
-          if ($commands.Count -ne 35) { throw "Expected 35 commands, got $($commands.Count): $commands" }
+          if ($commands.Count -ne 36) { throw "Expected 36 commands, got $($commands.Count): $commands" }
           $version = (Get-Content VERSION -TotalCount 1).Trim()
           foreach ($command in $commands) {
             & $command --help | Out-Null
@@ -142,6 +144,12 @@ jobs:
           }
           gra-doctor --json --runs-dir $runs | Out-Null
           gra-agent-check --list --json | Out-Null
+          if ($IsWindows) {
+            gra-efficacy-benchmark --list | Out-Null
+          } else {
+            gra-efficacy-benchmark --out-json $efficacyJson --out-md $efficacyMarkdown | Out-Null
+            if (-not (Test-Path $efficacyJson) -or -not (Test-Path $efficacyMarkdown)) { throw "missing installed efficacy benchmark outputs" }
+          }
           Copy-Item -Recurse tests/fixtures/minimal-run $fixture
           gra-validate-report --run $fixture | Out-Null
           if (-not $IsWindows) {

@@ -15,6 +15,7 @@ bin/gra-benchmark
 bin/gra-chains
 bin/gra-dashboard
 bin/gra-doctor
+bin/gra-efficacy-benchmark
 bin/gra-evidence-graph
 bin/gra-gapfill
 bin/gra-index
@@ -111,6 +112,7 @@ templates/reports/command-event.schema.json
 templates/reports/dependencies.schema.json
 templates/reports/duplicate-decision.schema.json
 templates/reports/evidence-graph.schema.json
+templates/reports/efficacy-benchmark.schema.json
 templates/reports/imported-findings.schema.json
 templates/reports/findings.schema.json
 templates/reports/issue-ledger.schema.json
@@ -215,6 +217,7 @@ docs/AGENT_WORKERS.md
 docs/ARCHITECTURE.md
 docs/ATTACK_CHAINS.md
 docs/BENCHMARKING.md
+docs/EFFICACY_BENCHMARK.md
 docs/EFFICACY_BENCHMARK_CORPUS.md
 docs/CODEX_WORK_INSTRUCTIONS.md
 docs/COMMAND_REFERENCE.md
@@ -276,6 +279,7 @@ docs/dogfood/SELF_DOGFOOD_BACKLOG.md
 docs/dogfood/SELF_DOGFOOD_SUMMARY.md
 docs/ja/ADVANCED_POSTURE_WORKFLOWS.ja.md
 docs/ja/CODEX_WORK_INSTRUCTIONS.ja.md
+docs/ja/EFFICACY_BENCHMARK.ja.md
 docs/ja/ISSUE_WORKFLOW.ja.md
 docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md
 docs/ja/README.md
