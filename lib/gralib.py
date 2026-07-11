@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from agent_worker import codex_worker_executable
+from run_events import reports_dir as configured_reports_dir
 from template_env import validate_template_env_key
 
 
@@ -228,8 +229,7 @@ def normalize_repo_slug(repo: str) -> str:
 
 
 def load_targets(run_dir: Path) -> List[Dict[str, Any]]:
-    ctx = load_context(run_dir)
-    data = load_json(run_dir / ctx.get('reports_dir', 'reports') / 'targets.json', {}) or {}
+    data = load_json(configured_reports_dir(run_dir) / 'targets.json', {}) or {}
     targets = data.get('targets') or []
     return [t for t in targets if isinstance(t, dict)]
 
@@ -238,7 +238,7 @@ def write_targets(run_dir: Path, targets: List[Dict[str, Any]]) -> None:
     from target_coverage_guardrails import append_coverage_normalization_log, normalize_targets_coverage_for_write
 
     ctx = load_context(run_dir)
-    reports_dir = run_dir / ctx.get('reports_dir', 'reports')
+    reports_dir = configured_reports_dir(run_dir)
     data = load_json(reports_dir / 'targets.json', {}) or {}
     normalized_targets, coverage_changes = normalize_targets_coverage_for_write(targets)
     data.update({
@@ -261,8 +261,7 @@ def find_target(run_dir: Path, target_id: str) -> Dict[str, Any]:
 
 
 def load_findings(run_dir: Path) -> List[Dict[str, Any]]:
-    ctx = load_context(run_dir)
-    data = load_json(run_dir / ctx.get('reports_dir', 'reports') / 'findings.json', {}) or {}
+    data = load_json(configured_reports_dir(run_dir) / 'findings.json', {}) or {}
     findings = data.get('findings') or []
     return [f for f in findings if isinstance(f, dict)]
 
