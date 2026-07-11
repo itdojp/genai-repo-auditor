@@ -206,6 +206,14 @@ class EfficacyCorpusTests(unittest.TestCase):
         with self.assertRaisesRegex(EfficacyCorpusError, "unsupported schema keywords"):
             load_corpus(lab_root)
 
+        lab_root = self.copy_corpus("lab-open-schema")
+        schema_path = lab_root / "benchmarks" / "corpus" / "case.schema.json"
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        del schema["properties"]["ground_truth"]["additionalProperties"]
+        self.write_json(schema_path, schema)
+        with self.assertRaisesRegex(EfficacyCorpusError, "requires closed object contracts"):
+            load_corpus(lab_root)
+
     @unittest.skipUnless(efficacy_corpus.OPEN_SUPPORTS_DIR_FD, "requires openat-style dir_fd support")
     def test_directory_handle_read_resists_ancestor_symlink_swap(self) -> None:
         lab_root = self.copy_corpus()

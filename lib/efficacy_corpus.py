@@ -256,7 +256,7 @@ def _require_supported_schema(schema: dict[str, Any], *, label: str) -> None:
             or len(schema_types) != len(set(schema_types))
         ):
             raise EfficacyCorpusError(f"{label} contains an unsupported type contract at {path}")
-        if "additionalProperties" in node and node["additionalProperties"] is not False:
+        if "object" in schema_types and node.get("additionalProperties") is not False:
             raise EfficacyCorpusError(f"{label} requires closed object contracts at {path}")
         if "enum" in node and (not isinstance(node["enum"], list) or not node["enum"]):
             raise EfficacyCorpusError(f"{label} contains an invalid enum at {path}")
