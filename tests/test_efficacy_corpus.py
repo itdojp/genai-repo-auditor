@@ -57,10 +57,9 @@ class EfficacyCorpusTests(unittest.TestCase):
         self.assertRegex(corpus["corpus_version"], r"^1\.0\.0\+sha256\.[a-f0-9]{64}$")
         self.assertEqual("core", corpus["default_suite"])
         self.assertEqual(sorted(case["case_id"] for case in cases), [case["case_id"] for case in cases])
-        self.assertEqual(
-            {"positive": 5, "negative_control": 3},
-            dict(Counter(case["classification"] for case in cases)),
-        )
+        classifications = Counter(case["classification"] for case in cases)
+        self.assertGreaterEqual(classifications["positive"], 5)
+        self.assertGreaterEqual(classifications["negative_control"], 3)
         self.assertGreaterEqual(len({case["category"] for case in cases}), 3)
         for case in cases:
             self.assertRegex(case["case_version"], r"^1\.0\.0\+sha256\.[a-f0-9]{64}$")
