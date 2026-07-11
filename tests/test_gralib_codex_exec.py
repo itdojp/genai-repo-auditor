@@ -45,6 +45,34 @@ class CodexExecArgsTests(unittest.TestCase):
 
         self.assertIn('approval_policy="on-request"', args)
         self.assertIn("sandbox_workspace_write.network_access=true", args)
+
+    def test_build_codex_exec_args_supports_read_only_worker_sandbox(self) -> None:
+        args = build_codex_exec_args(
+            run_dir=Path("run"),
+            model="fixture-model",
+            effort="medium",
+            output_last=Path("last.txt"),
+            sandbox="read-only",
+            ephemeral=True,
+            ignore_user_config=True,
+            ignore_rules=True,
+            output_schema=Path("response-schema.json"),
+        )
+
+        self.assertEqual("read-only", args[args.index("--sandbox") + 1])
+        self.assertIn("sandbox_workspace_write.network_access=false", args)
+        self.assertIn("--ephemeral", args)
+        self.assertIn("--ignore-user-config", args)
+        self.assertIn("--ignore-rules", args)
+        self.assertEqual("response-schema.json", args[args.index("--output-schema") + 1])
+        with self.assertRaisesRegex(ValueError, "unsupported Codex sandbox"):
+            build_codex_exec_args(
+                run_dir=Path("run"),
+                model="fixture-model",
+                effort="medium",
+                output_last=Path("last.txt"),
+                sandbox="danger-full-access",
+            )
         self.assertNotIn("--ask-for-approval", args)
 
     def test_codex_config_arg_renders_toml_safe_string_values(self) -> None:

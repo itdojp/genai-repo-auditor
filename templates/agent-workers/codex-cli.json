@@ -10,6 +10,7 @@
   "default_model": "gpt-5.5",
   "default_effort": "xhigh",
   "sandbox_modes": [
+    "read-only",
     "workspace-write"
   ],
   "network_default": false,

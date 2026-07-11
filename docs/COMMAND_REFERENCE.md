@@ -662,21 +662,25 @@ gra-benchmark --run runs/OWNER__REPO/RUN_ID --max-chains 10
 
 | Field | Details |
 |---|---|
-| Purpose | Run the versioned synthetic security corpus with deterministic reference rules and generate bounded efficacy-scoring smoke reports without changing `gra-benchmark` workflow-health semantics. |
-| Workflow category | Offline synthetic efficacy regression workflow. |
-| Required inputs | None for the default `core` suite. Corpus resources under `benchmarks/corpus/` and the report schema must be present and integrity-valid. |
-| Key options | `--list`; `--suite SUITE`; repeatable `--case CASE_ID` (mutually exclusive with `--suite`); `--mode fixture`; `--out-json OUT`; and `--out-md OUT`. |
-| Generated outputs | `reports/efficacy-benchmark.json` and `reports/EFFICACY_BENCHMARK.md` by default. Reports contain only bounded identifiers, TP/FP/FN/TN, precision/recall/F1, severity agreement, target coverage, human-review counts, versions, safety metadata, and interpretation limits. |
-| Exit status behavior | `0` for successful listing or report generation; `2` for usage, corpus integrity, unknown selection, closed-schema validation, unsafe/symlink output path, unavailable directory-relative write support, or bounded-write failures. `--list` remains available when safe report writes are unsupported. |
-| Security / disclosure cautions | Fixture mode does not invoke a model, worker, scanner, shell command, GitHub, network, Issue publication, or target repository. Raw fixture content, ground-truth locations, remediation text, and finding bodies are excluded. Report writes use directory-handle-relative operations and fail closed before output on platforms without the required support; native Windows users should list locally and generate reports in a supported Linux/macOS environment. The reference detector is a runner/scoring smoke baseline, not a product-efficacy claim; every predicted signal remains subject to human review. |
-| Related docs | [`docs/EFFICACY_BENCHMARK.md`](EFFICACY_BENCHMARK.md), [`docs/EFFICACY_BENCHMARK_CORPUS.md`](EFFICACY_BENCHMARK_CORPUS.md), [`docs/BENCHMARKING.md`](BENCHMARKING.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
+| Purpose | Run the versioned synthetic security corpus with deterministic reference rules, compare pinned configurations, and optionally add one explicitly opted-in worker row without changing `gra-benchmark` workflow-health semantics. |
+| Workflow category | Offline synthetic efficacy regression and supervised comparison workflow. |
+| Required inputs | None for the default `core` fixture or deterministic comparison. Corpus resources and report schemas must be present and integrity-valid. Worker mode additionally requires `--compare --worker --worker-dir EXISTING_NON_SYMLINK_DIR_BELOW_CWD`, Codex CLI 0.135.0 or newer, and the built-in worker executable. The worker command enforces the version; `gra-agent-check` only checks executable availability. |
+| Key options | `--list`; `--list-configurations`; `--suite SUITE`; repeatable `--case CASE_ID`; `--compare`; repeatable `--configuration ID`; explicit `--worker`; `--worker-profile codex-cli`; `--worker-dir DIR`; `--model`; `--effort`; `--worker-timeout`; `--out-json`; and `--out-md`. There is no worker sandbox-network enable flag. |
+| Generated outputs | Fixture mode defaults to `reports/efficacy-benchmark.json` / `reports/EFFICACY_BENCHMARK.md`. Comparison mode defaults to `reports/efficacy-comparison.json` / `reports/EFFICACY_COMPARISON.md`, with configuration/case IDs, aggregate metrics, bounded case outcomes/deltas, worker model/effort/CLI metadata, and claim guardrails. Worker prompt/response-schema/events/response/stderr and CLI-version probe files remain only under the explicit local worker directory and are excluded from reports. |
+| Exit status behavior | `0` for successful listing or report generation; `2` for usage/opt-in errors, corpus/profile/worker/response failures, unknown selections/configurations, closed-schema validation, unsafe paths, unavailable directory-relative write support, timeout, or bounded-write failures. Listing remains available when safe report writes are unsupported. |
+| Security / disclosure cautions | Default fixture/comparison modes do not invoke a model, worker, scanner, shell command, GitHub, network, Issue publication, or target repository. Worker mode is explicit and uses approval `never`, a read-only sandbox, disabled web search, sandbox network `false`, an ephemeral session, ignored user configuration/project rules, a reduced child environment, and in-process output-limit monitoring; its configured model/control-plane channel is still used. The operator-provided `PATH`, resolved `codex` executable, model service, and required model-auth/proxy variables remain trusted dependencies. Read-only sandboxing is not a confidentiality boundary for every host-readable file, so use external host/container isolation where required. Reports exclude raw fixtures, ground-truth locations, remediation, finding bodies, prompts, transcripts, and local worker paths. Synthetic results prohibit product/production capability claims and never authorize finding or Issue publication. |
+| Related docs | [`docs/EFFICACY_BENCHMARK.md`](EFFICACY_BENCHMARK.md), [`docs/EFFICACY_CLAIMS_AND_PUBLICATION.md`](EFFICACY_CLAIMS_AND_PUBLICATION.md), [`docs/EFFICACY_BENCHMARK_CORPUS.md`](EFFICACY_BENCHMARK_CORPUS.md), [`docs/AGENT_WORKERS.md`](AGENT_WORKERS.md), [`docs/BENCHMARKING.md`](BENCHMARKING.md), [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md). |
 
 Examples:
 
 ```bash
 gra-efficacy-benchmark --list
+gra-efficacy-benchmark --list-configurations
+gra-efficacy-benchmark --compare
 gra-efficacy-benchmark --suite appsec
 gra-efficacy-benchmark --case python-web/authz-001 --case python-web/authz-control-001
+mkdir -m 700 .test-tmp/efficacy-worker
+gra-efficacy-benchmark --compare --worker --worker-dir .test-tmp/efficacy-worker
 ```
 
 ## `gra-evidence-graph`

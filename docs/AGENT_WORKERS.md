@@ -27,7 +27,7 @@ A profile contains:
   "supports_json_events": true,
   "default_model": "gpt-5.5",
   "default_effort": "xhigh",
-  "sandbox_modes": ["workspace-write"],
+  "sandbox_modes": ["read-only", "workspace-write"],
   "network_default": false,
   "command_templates": {
     "exec": "...",
@@ -67,6 +67,22 @@ gra-agent-check --profile codex-cli --json
 ## Execution scope
 
 This profile layer is intentionally small:
+
+`gra-efficacy-benchmark --compare --worker` is the only efficacy path that
+invokes a worker. It accepts only the built-in `codex-cli` profile, requires an
+explicit non-symlink worker directory below the current working directory and
+Codex CLI 0.135.0 or newer, forces the `read-only` sandbox, approval
+`never`, disabled web search, sandbox network access `false`, an ephemeral
+session, ignored user configuration and ignored project/user rules, and retains
+its synthetic artifacts locally. The model/control-plane channel remains in
+use; worker mode is not offline. Read-only sandboxing does not establish host
+file confidentiality, so stronger isolation remains an operator responsibility.
+The operator must provide a trusted `PATH`; the resolved `codex` executable and
+model service are trusted dependencies, while unrelated token variables are
+removed from the child environment. See
+[`EFFICACY_CLAIMS_AND_PUBLICATION.md`](EFFICACY_CLAIMS_AND_PUBLICATION.md).
+`gra-agent-check` is intentionally a non-executing availability check; the
+efficacy worker command performs the minimum-version gate before model use.
 
 - Existing Codex-driven commands continue to use the current `codex exec` argument behavior.
 - `codex-cli` is the only built-in profile.

@@ -88,3 +88,26 @@ report 生成は対応する Linux/macOS 環境で実行してください。
 
 corpus の構造と変更手順は英語 canonical 文書
 [`EFFICACY_BENCHMARK_CORPUS.md`](../EFFICACY_BENCHMARK_CORPUS.md) を参照してください。
+
+## configuration 比較
+
+```bash
+gra-efficacy-benchmark --list-configurations
+gra-efficacy-benchmark --compare
+```
+
+default comparison は 2 つの決定的 reference configuration を同じ case で比較し、
+`reports/efficacy-comparison.json` と `reports/EFFICACY_COMPARISON.md` を生成します。
+worker は実行しません。
+
+worker-assisted comparison は `--compare --worker --worker-dir DIR` の明示 opt-in と Codex CLI
+0.135.0 以上が必要です。DIR は current working directory 配下の既存 non-symlink directory とし、
+cwd 自体は指定せず、version control で ignore してください。
+read-only sandbox と sandbox network disabled を固定し、ephemeral session を使用して user
+configuration と project/user rule を読み込みません。model/control-plane channel は使用します。
+artifact は指定した local directory に保持され、worker row は非決定的です。read-only sandbox は
+host-readable file 全体の confidentiality boundary ではないため、必要なら別の host isolation を
+使用してください。
+
+方法論、禁止 claim、公開判断は
+[`EFFICACY_CLAIMS_AND_PUBLICATION.ja.md`](EFFICACY_CLAIMS_AND_PUBLICATION.ja.md) を参照してください。

@@ -15,8 +15,14 @@ from efficacy_benchmark import (  # noqa: E402
     render_case_list,
     select_cases,
     write_report,
+    write_report_pair,
 )
-from efficacy_corpus import EfficacyCorpusError, load_corpus  # noqa: E402
+from efficacy_comparison import (  # noqa: E402
+    build_comparison_report,
+    list_configurations,
+    render_comparison_markdown,
+)
+from efficacy_corpus import EfficacyCorpusError, load_corpus, load_corpus_fixture_texts  # noqa: E402
 from version import auditor_version  # noqa: E402
 
 
@@ -25,34 +31,122 @@ def main() -> int:
         description="Run the offline synthetic security-efficacy benchmark without changing gra-benchmark semantics"
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {auditor_version(LAB_ROOT)}")
-    parser.add_argument("--list", action="store_true", help="List selected corpus cases without executing fixtures")
+    actions = parser.add_mutually_exclusive_group()
+    actions.add_argument("--list", action="store_true", help="List selected corpus cases without executing fixtures")
+    actions.add_argument(
+        "--list-configurations",
+        action="store_true",
+        help="List deterministic comparison configurations without executing fixtures",
+    )
+    actions.add_argument("--compare", action="store_true", help="Compare at least two configurations")
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--suite", help="Select a declared suite. Default: core")
     selection.add_argument("--case", action="append", dest="case_ids", help="Select one case ID; repeat as needed")
     parser.add_argument("--mode", choices=["fixture"], default="fixture", help="Execution mode. Default: fixture")
     parser.add_argument(
+        "--configuration",
+        action="append",
+        dest="configuration_ids",
+        help="Select one deterministic comparison configuration; repeat as needed",
+    )
+    parser.add_argument(
+        "--worker",
+        action="store_true",
+        help="Explicitly opt in to one worker-backed comparison configuration",
+    )
+    parser.add_argument("--worker-profile", help="Built-in worker profile. Worker mode currently requires codex-cli")
+    parser.add_argument(
+        "--worker-dir",
+        help="Existing non-symlink directory below the current working directory for retained worker artifacts",
+    )
+    parser.add_argument("--model", help="Explicit worker model ID; defaults to the selected profile")
+    parser.add_argument("--effort", help="Explicit worker reasoning effort; defaults to the selected profile")
+    parser.add_argument(
+        "--worker-timeout",
+        type=int,
+        help="Worker timeout in seconds, 30-3600. Default: 900",
+    )
+    parser.add_argument(
         "--out-json",
-        default="reports/efficacy-benchmark.json",
-        help="Bounded JSON output. Default: reports/efficacy-benchmark.json",
+        help="Bounded JSON output. Defaults depend on benchmark or comparison mode",
     )
     parser.add_argument(
         "--out-md",
-        default="reports/EFFICACY_BENCHMARK.md",
-        help="Bounded Markdown output. Default: reports/EFFICACY_BENCHMARK.md",
+        help="Bounded Markdown output. Defaults depend on benchmark or comparison mode",
     )
     args = parser.parse_args()
 
     try:
+        worker_options_used = any(
+            value is not None
+            for value in (args.worker_profile, args.worker_dir, args.model, args.effort, args.worker_timeout)
+        )
+        if args.worker and not args.compare:
+            raise EfficacyBenchmarkError("--worker requires --compare")
+        if args.worker and not args.worker_dir:
+            raise EfficacyBenchmarkError("--worker requires --worker-dir")
+        if not args.worker and worker_options_used:
+            raise EfficacyBenchmarkError("worker options require explicit --worker opt-in")
+        if args.configuration_ids and not args.compare:
+            raise EfficacyBenchmarkError("--configuration requires --compare")
+        if args.list_configurations:
+            print(list_configurations(), end="")
+            return 0
         loaded = load_corpus(LAB_ROOT)
         selected, _selection = select_cases(loaded, suite=args.suite, case_ids=args.case_ids)
         if args.list:
             print(render_case_list(loaded, selected), end="")
             return 0
-        report = build_fixture_report(LAB_ROOT, suite=args.suite, case_ids=args.case_ids)
-        json_path, markdown_path = write_report(report, Path(args.out_json), Path(args.out_md))
+        if args.compare:
+            worker_result = None
+            if args.worker:
+                from efficacy_worker import run_worker_configuration
+
+                worker_loaded, fixture_texts = load_corpus_fixture_texts(LAB_ROOT)
+                worker_cases, _ = select_cases(worker_loaded, suite=args.suite, case_ids=args.case_ids)
+                worker_result = run_worker_configuration(
+                    LAB_ROOT,
+                    cases=worker_cases,
+                    fixture_texts=fixture_texts,
+                    worker_dir=Path(args.worker_dir),
+                    profile_id=args.worker_profile or "codex-cli",
+                    model=args.model,
+                    effort=args.effort,
+                    timeout_seconds=args.worker_timeout if args.worker_timeout is not None else 900,
+                )
+            report = build_comparison_report(
+                LAB_ROOT,
+                suite=args.suite,
+                case_ids=args.case_ids,
+                configuration_ids=args.configuration_ids,
+                worker_result=worker_result,
+            )
+            json_path, markdown_path = write_report_pair(
+                report,
+                Path(args.out_json or "reports/efficacy-comparison.json"),
+                Path(args.out_md or "reports/EFFICACY_COMPARISON.md"),
+                render_comparison_markdown(report),
+            )
+        else:
+            report = build_fixture_report(LAB_ROOT, suite=args.suite, case_ids=args.case_ids)
+            json_path, markdown_path = write_report(
+                report,
+                Path(args.out_json or "reports/efficacy-benchmark.json"),
+                Path(args.out_md or "reports/EFFICACY_BENCHMARK.md"),
+            )
     except (OSError, ValueError, EfficacyCorpusError, EfficacyBenchmarkError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
+
+    if args.compare:
+        print(f"Efficacy comparison JSON: {json_path}")
+        print(f"Efficacy comparison Markdown: {markdown_path}")
+        print(f"Configurations: {len(report['configurations'])}")
+        print(f"Selected cases: {len(report['comparison']['case_ids'])}")
+        print(f"Model channel used: {str(report['safety']['model_channel_used']).lower()}")
+        if worker_result is not None:
+            print(f"Worker artifacts: {worker_result['artifacts_dir']}")
+        return 0
 
     scores = report["scores"]
     counts = scores["counts"]

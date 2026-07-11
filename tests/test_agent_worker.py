@@ -42,6 +42,7 @@ class AgentWorkerProfileTests(unittest.TestCase):
         self.assertTrue(codex.supports_json_events)
         self.assertIn("workspace-write", codex.sandbox_modes)
         self.assertFalse(codex.network_default)
+        self.assertIn("read-only", codex.sandbox_modes)
         self.assertIn("exec", codex.command_templates)
         self.assertIn("goal", codex.command_templates)
         self.assertIn('approval_policy="{approval}"', codex.command_templates["exec"])

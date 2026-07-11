@@ -63,6 +63,8 @@ jobs:
           assert Path(gra.resource_path("lib", "version.py")).is_file()
           assert Path(gra.prompt_path("exec", "full-audit.prompt.md")).is_file()
           assert Path(gra.report_schema_path("findings.schema.json")).is_file()
+          assert Path(gra.report_schema_path("efficacy-comparison.schema.json")).is_file()
+          assert Path(gra.report_schema_path("efficacy-worker-response.schema.json")).is_file()
           assert Path(gra.taxonomy_path("owasp-llm-2025.json")).is_file()
           assert Path(gra.agent_worker_profile_path("codex-cli.json")).is_file()
           assert Path(gra.efficacy_corpus_path("core.json")).is_file()
@@ -128,6 +130,9 @@ jobs:
           (cd "$RUNNER_TEMP" && "$RUNNER_TEMP/gra-package-venv/bin/gra-efficacy-benchmark" --out-json "$RUNNER_TEMP/gra-efficacy.json" --out-md "$RUNNER_TEMP/gra-efficacy.md" >/dev/null)
           test -s "$RUNNER_TEMP/gra-efficacy.json"
           test -s "$RUNNER_TEMP/gra-efficacy.md"
+          (cd "$RUNNER_TEMP" && "$RUNNER_TEMP/gra-package-venv/bin/gra-efficacy-benchmark" --compare --out-json "$RUNNER_TEMP/gra-efficacy-comparison.json" --out-md "$RUNNER_TEMP/gra-efficacy-comparison.md" >/dev/null)
+          test -s "$RUNNER_TEMP/gra-efficacy-comparison.json"
+          test -s "$RUNNER_TEMP/gra-efficacy-comparison.md"
           (cd "$RUNNER_TEMP" && "$RUNNER_TEMP/gra-package-venv/bin/gra-doctor" --json --runs-dir "$RUNNER_TEMP/gra-doctor-runs" >/dev/null)
           (cd "$RUNNER_TEMP" && "$RUNNER_TEMP/gra-package-venv/bin/gra-validate-report" --run "$RUNNER_TEMP/gra-minimal-run" >/dev/null)
           (cd "$RUNNER_TEMP" && PATH="$mock_bin:$PATH" "$RUNNER_TEMP/gra-package-venv/bin/gra-audit" --repo acme/api --mode prepare --runs-dir "$RUNNER_TEMP/gra-installed-runs" --run-id installed-prepare >/dev/null)
