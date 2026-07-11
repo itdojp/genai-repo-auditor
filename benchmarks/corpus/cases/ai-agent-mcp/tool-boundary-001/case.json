@@ -1,0 +1,94 @@
+{
+  "case_id": "ai-agent-mcp/tool-boundary-001",
+  "case_version": "1.0.0+sha256.4679d7bd4fde5612e15c77db416292f1e659ae24d00613f7373d386390484a48",
+  "category": "ai-agent-mcp",
+  "classification": "positive",
+  "description": "A fixture agent configuration accepts untrusted tool selection without allowlist or argument-schema enforcement.",
+  "fixture": {
+    "credentials_included": false,
+    "external_hosts": [],
+    "files": [
+      {
+        "path": "agent-config.json",
+        "sha256": "470346d4aebb96f11a2137cc96a83ff3afbb3b145080d1139439b5356aaf1461"
+      }
+    ],
+    "network_required": false,
+    "non_deployable": true,
+    "root": ".",
+    "weaponized_payloads_included": false
+  },
+  "framework": "agent-config-fixture",
+  "ground_truth": {
+    "negative_controls": [],
+    "positive_findings": [
+      {
+        "affected_locations": [
+          {
+            "end_line": 5,
+            "file": "agent-config.json",
+            "line": 3,
+            "symbol": "tool boundary policy"
+          }
+        ],
+        "entry_point": {
+          "end_line": 3,
+          "file": "agent-config.json",
+          "line": 3,
+          "symbol": "tool_selection_source"
+        },
+        "id": "GT-004",
+        "safe_remediation_property": "Tool identifiers must be selected from an explicit allowlist and arguments must satisfy a bounded schema.",
+        "severity_range": {
+          "maximum": "Critical",
+          "minimum": "High"
+        },
+        "sink": {
+          "end_line": 5,
+          "file": "agent-config.json",
+          "line": 4,
+          "symbol": "tool_allowlist_enforced"
+        },
+        "taxonomy": [
+          {
+            "id": "LLM08",
+            "system": "OWASP-LLM"
+          },
+          {
+            "id": "CWE-749",
+            "system": "CWE"
+          }
+        ],
+        "trust_boundary": "Untrusted request data crosses into agent tool selection and argument construction.",
+        "vulnerability_class": "untrusted-tool-selection"
+      }
+    ]
+  },
+  "language": "json",
+  "limitations": [
+    "This small synthetic case does not establish performance on production repositories.",
+    "The fixture models one defensive review decision and is not a deployable service or workflow."
+  ],
+  "public_safe": true,
+  "schema_version": "1",
+  "stage_expectations": {
+    "optional": [
+      "recon",
+      "targets",
+      "scanner-plan",
+      "scanner-triage",
+      "chains",
+      "proofs",
+      "evidence-graph"
+    ],
+    "prohibited": [
+      "issue-publication"
+    ],
+    "required": [
+      "target-research",
+      "adversarial-validation",
+      "metrics"
+    ]
+  },
+  "title": "Untrusted request selects unrestricted tool"
+}

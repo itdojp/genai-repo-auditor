@@ -1,0 +1,90 @@
+{
+  "case_id": "python-web/path-001",
+  "case_version": "1.0.0+sha256.863ad90a94bf3a0ced3df7d283890a3b79c2d22ac8da12bdf0853ca26d3dc1ea",
+  "category": "python-web",
+  "classification": "positive",
+  "description": "A local helper joins a caller-controlled name to a base path without normalization and containment validation.",
+  "fixture": {
+    "credentials_included": false,
+    "external_hosts": [],
+    "files": [
+      {
+        "path": "file_helper.py",
+        "sha256": "7e1ac76a0300d8cd7341bcb03ba25919106ac5ab243a06cb7603b72c419f69ae"
+      }
+    ],
+    "network_required": false,
+    "non_deployable": true,
+    "root": ".",
+    "weaponized_payloads_included": false
+  },
+  "framework": "pathlib-fixture",
+  "ground_truth": {
+    "negative_controls": [],
+    "positive_findings": [
+      {
+        "affected_locations": [
+          {
+            "end_line": 5,
+            "file": "file_helper.py",
+            "line": 4,
+            "symbol": "candidate_path"
+          }
+        ],
+        "entry_point": {
+          "end_line": 4,
+          "file": "file_helper.py",
+          "line": 4,
+          "symbol": "candidate_path.user_name"
+        },
+        "id": "GT-002",
+        "safe_remediation_property": "The resolved candidate must remain beneath the resolved approved base directory.",
+        "severity_range": {
+          "maximum": "High",
+          "minimum": "Medium"
+        },
+        "sink": {
+          "end_line": 5,
+          "file": "file_helper.py",
+          "line": 5,
+          "symbol": "base path join"
+        },
+        "taxonomy": [
+          {
+            "id": "CWE-22",
+            "system": "CWE"
+          }
+        ],
+        "trust_boundary": "A caller-controlled relative name crosses into local path construction.",
+        "vulnerability_class": "unsafe-path-normalization"
+      }
+    ]
+  },
+  "language": "python",
+  "limitations": [
+    "This small synthetic case does not establish performance on production repositories.",
+    "The fixture models one defensive review decision and is not a deployable service or workflow."
+  ],
+  "public_safe": true,
+  "schema_version": "1",
+  "stage_expectations": {
+    "optional": [
+      "recon",
+      "targets",
+      "scanner-plan",
+      "scanner-triage",
+      "chains",
+      "proofs",
+      "evidence-graph"
+    ],
+    "prohibited": [
+      "issue-publication"
+    ],
+    "required": [
+      "target-research",
+      "adversarial-validation",
+      "metrics"
+    ]
+  },
+  "title": "Missing path containment validation"
+}

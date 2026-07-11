@@ -1,0 +1,106 @@
+{
+  "cases": [
+    {
+      "case_id": "ai-agent-mcp/tool-boundary-001",
+      "case_version": "1.0.0+sha256.4679d7bd4fde5612e15c77db416292f1e659ae24d00613f7373d386390484a48",
+      "category": "ai-agent-mcp",
+      "classification": "positive",
+      "manifest": "cases/ai-agent-mcp/tool-boundary-001/case.json",
+      "manifest_sha256": "1c5431b26eb71b5781a8c1349a155736f2742893e0f474c656106046dcee9524",
+      "suites": [
+        "core",
+        "agentic"
+      ]
+    },
+    {
+      "case_id": "ai-agent-mcp/tool-control-001",
+      "case_version": "1.0.0+sha256.3f7a900604f0357df936b1a3b8ccfe9ea27c2fd18f9304387a9688e96e1c7573",
+      "category": "ai-agent-mcp",
+      "classification": "negative_control",
+      "manifest": "cases/ai-agent-mcp/tool-control-001/case.json",
+      "manifest_sha256": "25fc2c58dae8b3f73b52d4e600e0da62073960e42969339380661c7d55c5bc28",
+      "suites": [
+        "core",
+        "agentic"
+      ]
+    },
+    {
+      "case_id": "dependency-supply-chain/dependency-path-001",
+      "case_version": "1.0.0+sha256.f81ca835f117e72281b4222fb682528dc2c5f11a42d4f30fb02715f5ba5b11bf",
+      "category": "dependency-supply-chain",
+      "classification": "positive",
+      "manifest": "cases/dependency-supply-chain/dependency-path-001/case.json",
+      "manifest_sha256": "203fa36ae08605013f91411ba157c13727a3442c04c958a484216c0f44d25460",
+      "suites": [
+        "core",
+        "supply-chain"
+      ]
+    },
+    {
+      "case_id": "github-actions/pr-control-001",
+      "case_version": "1.0.0+sha256.7c35aa89091e981f0a059ba51c678aa92b8b97e18f605af95ea9e303a351f56a",
+      "category": "github-actions",
+      "classification": "negative_control",
+      "manifest": "cases/github-actions/pr-control-001/case.json",
+      "manifest_sha256": "86bf69fca25bfe29876027baef2334329429b230717a501707b80baa1916ef72",
+      "suites": [
+        "core",
+        "automation"
+      ]
+    },
+    {
+      "case_id": "github-actions/pr-target-001",
+      "case_version": "1.0.0+sha256.1ac4cc1d06cdd3dcaa90e9b117344b9265cd5f583636ef1fca00a944f8ff20e1",
+      "category": "github-actions",
+      "classification": "positive",
+      "manifest": "cases/github-actions/pr-target-001/case.json",
+      "manifest_sha256": "d57cd9b8cd2799120f495e880bc35e4d5e06fccb761969eecddcba13f876bade",
+      "suites": [
+        "core",
+        "automation"
+      ]
+    },
+    {
+      "case_id": "python-web/authz-001",
+      "case_version": "1.0.0+sha256.c50b85f8b2a209898e5359b07c03c779ea337d7051ff098e1c7b9b9dc18787dd",
+      "category": "python-web",
+      "classification": "positive",
+      "manifest": "cases/python-web/authz-001/case.json",
+      "manifest_sha256": "01b62614cef1c34e38734159808a712004791d659a27d68bb210058e90a82984",
+      "suites": [
+        "core",
+        "appsec"
+      ]
+    },
+    {
+      "case_id": "python-web/authz-control-001",
+      "case_version": "1.0.0+sha256.335950f30f7bd7f3b7d3ff12b528dba9fda570bcc215b34fdd984975f0320f44",
+      "category": "python-web",
+      "classification": "negative_control",
+      "manifest": "cases/python-web/authz-control-001/case.json",
+      "manifest_sha256": "630afea49ffe0409822f3f036dfa850a9eebfe0e42ae76469af146f5a9a91b5a",
+      "suites": [
+        "core",
+        "appsec"
+      ]
+    },
+    {
+      "case_id": "python-web/path-001",
+      "case_version": "1.0.0+sha256.863ad90a94bf3a0ced3df7d283890a3b79c2d22ac8da12bdf0853ca26d3dc1ea",
+      "category": "python-web",
+      "classification": "positive",
+      "manifest": "cases/python-web/path-001/case.json",
+      "manifest_sha256": "6432d30079a28e207a3d1ec13dd510f7ae72695ce6f3950fc80654dbeb3af48a",
+      "suites": [
+        "core",
+        "appsec"
+      ]
+    }
+  ],
+  "corpus_id": "genai-repo-auditor-synthetic-core",
+  "corpus_version": "1.0.0+sha256.64bd403ce8cf97cef3d3f8301aca171f1281bc1edf11a0678a680ee0b38879f0",
+  "default_suite": "core",
+  "description": "Small deterministic defensive fixtures for measuring review efficacy without live targets or exploit payloads.",
+  "public_safe": true,
+  "schema_version": "1"
+}

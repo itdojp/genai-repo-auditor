@@ -1,0 +1,71 @@
+{
+  "case_id": "python-web/authz-control-001",
+  "case_version": "1.0.0+sha256.335950f30f7bd7f3b7d3ff12b528dba9fda570bcc215b34fdd984975f0320f44",
+  "category": "python-web",
+  "classification": "negative_control",
+  "description": "A lookalike local selector applies both record identifier and authenticated tenant predicates.",
+  "fixture": {
+    "credentials_included": false,
+    "external_hosts": [],
+    "files": [
+      {
+        "path": "app.py",
+        "sha256": "2b55812e725d0a96db69577f9fc53b962000c591215f71c34612a1555c53a7bc"
+      }
+    ],
+    "network_required": false,
+    "non_deployable": true,
+    "root": ".",
+    "weaponized_payloads_included": false
+  },
+  "framework": "stdlib-fixture",
+  "ground_truth": {
+    "negative_controls": [
+      {
+        "control_property": "The selector requires the record tenant identifier to equal the authenticated tenant identifier.",
+        "id": "NC-001",
+        "location": {
+          "end_line": 9,
+          "file": "app.py",
+          "line": 9,
+          "symbol": "select_invoice tenant predicate"
+        },
+        "resembles": "missing tenant authorization",
+        "taxonomy": [
+          {
+            "id": "CWE-862",
+            "system": "CWE"
+          }
+        ]
+      }
+    ],
+    "positive_findings": []
+  },
+  "language": "python",
+  "limitations": [
+    "This small synthetic case does not establish performance on production repositories.",
+    "The fixture models one defensive review decision and is not a deployable service or workflow."
+  ],
+  "public_safe": true,
+  "schema_version": "1",
+  "stage_expectations": {
+    "optional": [
+      "recon",
+      "targets",
+      "scanner-plan",
+      "scanner-triage",
+      "chains",
+      "proofs",
+      "evidence-graph"
+    ],
+    "prohibited": [
+      "issue-publication"
+    ],
+    "required": [
+      "target-research",
+      "adversarial-validation",
+      "metrics"
+    ]
+  },
+  "title": "Tenant-scoped selector negative control"
+}

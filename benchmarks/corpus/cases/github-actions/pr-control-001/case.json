@@ -1,0 +1,71 @@
+{
+  "case_id": "github-actions/pr-control-001",
+  "case_version": "1.0.0+sha256.7c35aa89091e981f0a059ba51c678aa92b8b97e18f605af95ea9e303a351f56a",
+  "category": "github-actions",
+  "classification": "negative_control",
+  "description": "A non-executable workflow model uses reviewed base content and read-only repository authority.",
+  "fixture": {
+    "credentials_included": false,
+    "external_hosts": [],
+    "files": [
+      {
+        "path": "workflow-fixture.yml",
+        "sha256": "c0ea15b2d66a3ddb8aee931dd6cda56795dbce0814f26fe6cb8844eed68a7d51"
+      }
+    ],
+    "network_required": false,
+    "non_deployable": true,
+    "root": ".",
+    "weaponized_payloads_included": false
+  },
+  "framework": "workflow-model-fixture",
+  "ground_truth": {
+    "negative_controls": [
+      {
+        "control_property": "The model combines reviewed base content with read-only repository permissions and no post-content execution.",
+        "id": "NC-002",
+        "location": {
+          "end_line": 5,
+          "file": "workflow-fixture.yml",
+          "line": 2,
+          "symbol": "reviewed workflow model"
+        },
+        "resembles": "privileged workflow handling contributor content",
+        "taxonomy": [
+          {
+            "id": "CICD-SEC-4",
+            "system": "OWASP-CI-CD"
+          }
+        ]
+      }
+    ],
+    "positive_findings": []
+  },
+  "language": "yaml",
+  "limitations": [
+    "This small synthetic case does not establish performance on production repositories.",
+    "The fixture models one defensive review decision and is not a deployable service or workflow."
+  ],
+  "public_safe": true,
+  "schema_version": "1",
+  "stage_expectations": {
+    "optional": [
+      "recon",
+      "targets",
+      "scanner-plan",
+      "scanner-triage",
+      "chains",
+      "proofs",
+      "evidence-graph"
+    ],
+    "prohibited": [
+      "issue-publication"
+    ],
+    "required": [
+      "target-research",
+      "adversarial-validation",
+      "metrics"
+    ]
+  },
+  "title": "Read-only reviewed workflow negative control"
+}

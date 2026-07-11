@@ -1,0 +1,90 @@
+{
+  "case_id": "dependency-supply-chain/dependency-path-001",
+  "case_version": "1.0.0+sha256.f81ca835f117e72281b4222fb682528dc2c5f11a42d4f30fb02715f5ba5b11bf",
+  "category": "dependency-supply-chain",
+  "classification": "positive",
+  "description": "A synthetic dependency graph records a local application path to a fixture-only vulnerable component.",
+  "fixture": {
+    "credentials_included": false,
+    "external_hosts": [],
+    "files": [
+      {
+        "path": "dependency-graph.json",
+        "sha256": "dd6e68c6c759dd9a8ad7de4785ee1783e356a587ca47064b743f837df3b9653e"
+      }
+    ],
+    "network_required": false,
+    "non_deployable": true,
+    "root": ".",
+    "weaponized_payloads_included": false
+  },
+  "framework": "dependency-graph-fixture",
+  "ground_truth": {
+    "negative_controls": [],
+    "positive_findings": [
+      {
+        "affected_locations": [
+          {
+            "end_line": 10,
+            "file": "dependency-graph.json",
+            "line": 3,
+            "symbol": "dependency path"
+          }
+        ],
+        "entry_point": {
+          "end_line": 3,
+          "file": "dependency-graph.json",
+          "line": 3,
+          "symbol": "application_entry"
+        },
+        "id": "GT-005",
+        "safe_remediation_property": "The reachable dependency path must resolve to a reviewed non-vulnerable component version or be removed.",
+        "severity_range": {
+          "maximum": "High",
+          "minimum": "Medium"
+        },
+        "sink": {
+          "end_line": 9,
+          "file": "dependency-graph.json",
+          "line": 6,
+          "symbol": "synthetic-legacy-parser dependency"
+        },
+        "taxonomy": [
+          {
+            "id": "SC-REACHABLE-DEPENDENCY",
+            "system": "SUPPLY-CHAIN"
+          }
+        ],
+        "trust_boundary": "Application input reaches a parser dependency represented by local fixture metadata.",
+        "vulnerability_class": "reachable-vulnerable-dependency"
+      }
+    ]
+  },
+  "language": "json",
+  "limitations": [
+    "This small synthetic case does not establish performance on production repositories.",
+    "The fixture models one defensive review decision and is not a deployable service or workflow."
+  ],
+  "public_safe": true,
+  "schema_version": "1",
+  "stage_expectations": {
+    "optional": [
+      "recon",
+      "targets",
+      "scanner-plan",
+      "scanner-triage",
+      "chains",
+      "proofs",
+      "evidence-graph"
+    ],
+    "prohibited": [
+      "issue-publication"
+    ],
+    "required": [
+      "target-research",
+      "adversarial-validation",
+      "metrics"
+    ]
+  },
+  "title": "Reachable synthetic vulnerable dependency"
+}

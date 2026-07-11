@@ -4,6 +4,11 @@
 It is intended for dogfooding the advanced workflow before releases and before
 turning audit output into follow-up work.
 
+This command measures workflow health, not vulnerability-detection efficacy.
+The separate versioned synthetic ground-truth format is documented in
+[Security efficacy benchmark corpus](EFFICACY_BENCHMARK_CORPUS.md). Adding that
+corpus does not change the meaning or outputs of `gra-benchmark`.
+
 Outputs:
 
 ```text

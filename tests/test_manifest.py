@@ -93,6 +93,12 @@ class ManifestTests(unittest.TestCase):
     def test_manifest_lists_dogfood_templates(self) -> None:
         self.assert_manifest_section("Dogfood templates", relative_files("templates", "dogfood"))
 
+    def test_manifest_lists_security_efficacy_corpus(self) -> None:
+        self.assert_manifest_section(
+            "Security efficacy benchmark corpus",
+            relative_files("benchmarks", "corpus"),
+        )
+
     def test_manifest_lists_agent_worker_profiles(self) -> None:
         self.assert_manifest_section("Agent worker profiles", relative_files("templates", "agent-workers"))
 

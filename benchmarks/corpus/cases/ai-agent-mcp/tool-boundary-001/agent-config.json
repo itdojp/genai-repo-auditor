@@ -1,0 +1,6 @@
+{
+  "fixture_only": true,
+  "tool_selection_source": "untrusted_request",
+  "tool_allowlist_enforced": false,
+  "tool_arguments_schema_enforced": false
+}
