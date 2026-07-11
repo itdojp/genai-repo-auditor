@@ -19,6 +19,7 @@ COMMAND = REPO_ROOT / "bin" / "gra-efficacy-holdout"
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 from efficacy_benchmark import EfficacyBenchmarkError  # noqa: E402
+from efficacy_corpus import EfficacyCorpusError, load_bounded_json_object  # noqa: E402
 from efficacy_holdout import load_and_validate_holdout_records, render_holdout_summary  # noqa: E402
 import efficacy_holdout  # noqa: E402
 
@@ -235,6 +236,16 @@ class EfficacyHoldoutTests(unittest.TestCase):
         (self.records_root / "holdout-aggregate.json").write_bytes(b" " * 512_001)
         with self.assertRaisesRegex(EfficacyBenchmarkError, "512000-byte limit"):
             load_and_validate_holdout_records(REPO_ROOT, self.records_root)
+
+        bounded = self.records_root / "bounded.json"
+        bounded.write_text(json.dumps({"payload": "x" * 64}), encoding="utf-8")
+        with self.assertRaisesRegex(EfficacyCorpusError, "32-byte limit"):
+            load_bounded_json_object(
+                self.records_root,
+                "bounded.json",
+                label="bounded object",
+                maximum=32,
+            )
 
     def test_plan_run_worker_and_publication_semantics_fail_closed(self) -> None:
         self.aggregate["corpus"]["case_count"] = 5

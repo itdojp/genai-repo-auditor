@@ -476,9 +476,13 @@ def load_bounded_json_object(
     if maximum < 1 or maximum > MAX_JSON_BYTES:
         raise EfficacyCorpusError("JSON object size limit is outside the supported range")
     with _SafeTreeReader(root) as reader:
-        value, _raw = _load_json(reader, relative, label=label)
-        if len(_raw) > maximum:
-            raise EfficacyCorpusError(f"{label} exceeds the {maximum}-byte limit")
+        raw, _metadata = reader.read(relative, maximum=maximum, label=label)
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise EfficacyCorpusError(f"{label} must contain valid UTF-8 JSON") from exc
+    if not isinstance(value, dict):
+        raise EfficacyCorpusError(f"{label} must contain a JSON object")
     return value
 
 
