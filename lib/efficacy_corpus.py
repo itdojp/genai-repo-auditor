@@ -571,7 +571,7 @@ def load_corpus(lab_root: Path) -> dict[str, Any]:
             categories.add(case["category"])
         if len(cases) < 20 or positive_count < 10 or negative_count < 10 or len(categories) < 6:
             raise EfficacyCorpusError(
-                "core corpus must include twenty cases, ten positives, ten controls, and six categories"
+                "core corpus must include at least twenty cases, ten positives, ten controls, and six categories"
             )
         _require_content_version(corpus, "corpus_version", label="corpus version")
         return {"corpus": corpus, "cases": cases}

@@ -151,7 +151,14 @@ class EfficacyCorpusTests(unittest.TestCase):
         self.assertEqual(control_dependency, positive_dependency)
 
         def yaml_scalars(path: Path) -> dict[str, str]:
-            return dict(line.split(": ", 1) for line in path.read_text(encoding="utf-8").splitlines())
+            values: dict[str, str] = {}
+            for line in path.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#") or ": " not in stripped:
+                    continue
+                key, value = stripped.split(": ", 1)
+                values[key] = value
+            return values
 
         positive_cache = yaml_scalars(root / "github-actions/cache-target-001/workflow-fixture.yml")
         control_cache = yaml_scalars(root / "github-actions/cache-control-001/workflow-fixture.yml")
