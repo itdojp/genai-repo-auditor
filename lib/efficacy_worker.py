@@ -69,7 +69,7 @@ def _worker_base(path: Path) -> Path:
             if candidate_cwd.samefile(physical_cwd):
                 logical_cwd = candidate_cwd
         except OSError:
-            pass
+            logical_cwd = physical_cwd
     candidate = path.expanduser()
     if not candidate.is_absolute():
         candidate = logical_cwd / candidate
@@ -143,6 +143,20 @@ def _artifact_size(path: Path, *, label: str) -> int:
     return metadata.st_size
 
 
+def _kill_and_reap(process: subprocess.Popen[Any]) -> bool:
+    kill_failed = False
+    if process.poll() is None:
+        try:
+            process.kill()
+        except OSError:
+            kill_failed = True
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        return False
+    return not kill_failed
+
+
 def _wait_bounded_process(
     process: subprocess.Popen[Any],
     *,
@@ -161,15 +175,12 @@ def _wait_bounded_process(
                         failure = f"exceeded the {label} size limit"
                         break
             if failure is not None:
-                process.kill()
-                process.wait(timeout=10)
+                _kill_and_reap(process)
                 return process.returncode if process.returncode is not None else -1, failure
             time.sleep(WORKER_POLL_SECONDS)
         return process.returncode if process.returncode is not None else -1, None
     except (Exception, KeyboardInterrupt):
-        if process.poll() is None:
-            process.kill()
-            process.wait(timeout=10)
+        _kill_and_reap(process)
         raise
 
 
@@ -396,16 +407,14 @@ def run_worker_configuration(
                 ),
             )
     except (EfficacyBenchmarkError, KeyboardInterrupt) as exc:
-        if process is not None and process.poll() is None:
-            process.kill()
-            process.wait(timeout=10)
+        if process is not None:
+            _kill_and_reap(process)
         if isinstance(exc, KeyboardInterrupt):
             raise EfficacyBenchmarkError("efficacy worker execution was interrupted") from exc
         raise
     except (OSError, subprocess.SubprocessError) as exc:
-        if process is not None and process.poll() is None:
-            process.kill()
-            process.wait(timeout=10)
+        if process is not None:
+            _kill_and_reap(process)
         raise EfficacyBenchmarkError("unable to execute the efficacy worker") from exc
     if failure is not None:
         raise EfficacyBenchmarkError(f"efficacy worker {failure}")

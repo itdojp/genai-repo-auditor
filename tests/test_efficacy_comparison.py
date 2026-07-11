@@ -23,7 +23,12 @@ from efficacy_comparison import (  # noqa: E402
     select_configurations,
 )
 from efficacy_corpus import load_corpus_fixture_texts  # noqa: E402
-from efficacy_worker import _validate_worker_response, _worker_base, run_worker_configuration  # noqa: E402
+from efficacy_worker import (  # noqa: E402
+    _kill_and_reap,
+    _validate_worker_response,
+    _worker_base,
+    run_worker_configuration,
+)
 
 
 class EfficacyComparisonTests(unittest.TestCase):
@@ -392,6 +397,14 @@ print(json.dumps({'type': 'result', 'status': 'ok'}))
                     effort="medium",
                     timeout_seconds=60,
                 )
+
+    def test_worker_cleanup_does_not_mask_failure_when_killed_process_cannot_be_reaped(self) -> None:
+        process = unittest.mock.Mock()
+        process.poll.return_value = None
+        process.wait.side_effect = subprocess.TimeoutExpired(cmd="codex", timeout=10)
+
+        self.assertFalse(_kill_and_reap(process))
+        process.kill.assert_called_once_with()
 
 
 if __name__ == "__main__":
