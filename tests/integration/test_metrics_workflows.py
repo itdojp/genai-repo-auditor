@@ -548,6 +548,33 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
     def test_gra_evidence_graph_links_advanced_artifacts_without_raw_payloads(self) -> None:
         run_dir = self.copy_fixture_run("advanced-workflow-run")
         self.copy_advanced_workflow_outputs(run_dir)
+        scanner_runs = {
+            "schema_version": "1",
+            "run_id": "advanced-workflow-run",
+            "repo": "example/advanced-workflow",
+            "generated_at": "2026-05-28T00:00:00Z",
+            "source": "local-scanner-execution",
+            "safety": {
+                "public_safe": True,
+                "raw_scanner_bodies_copied": False,
+                "secret_values_copied": False,
+                "review_only": True,
+            },
+            "summary": {
+                "run_count": 0,
+                "by_status": {},
+                "by_adapter": {},
+                "total_duration_ms": 0,
+                "maximum_duration_ms": 0,
+                "result_count": 0,
+                "normalized_leads_count": 0,
+                "redaction_count": 0,
+            },
+            "runs": [],
+        }
+        (run_dir / "reports" / "scanner-runs.json").write_text(
+            json.dumps(scanner_runs, indent=2) + "\n", encoding="utf-8"
+        )
         findings_path = run_dir / "reports" / "findings.json"
         findings = json.loads(findings_path.read_text(encoding="utf-8"))
         findings["findings"][0]["evidence"] = "SHOULD_NOT_COPY_EVIDENCE_GRAPH_FINDING"

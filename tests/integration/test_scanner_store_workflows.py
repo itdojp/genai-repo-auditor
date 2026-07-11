@@ -11,6 +11,47 @@ from scanner_reporting import append_scanner_run, build_scanner_run_record  # no
 
 
 class ScannerStoreWorkflowTests(CliWorkflowTestCase):
+    def test_evidence_graph_distinguishes_absent_and_empty_scanner_run_report(self) -> None:
+        absent_run = self.copy_fixture_run("minimal-run")
+        self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", absent_run], check=True)
+        absent_graph = json.loads((absent_run / "reports" / "evidence-graph.json").read_text(encoding="utf-8"))
+        self.assertFalse(absent_graph["summary"]["scanner_runs"]["artifact_present"])
+        self.assertIn("reports/scanner-runs.json", absent_graph["summary"]["missing_optional_artifacts"])
+
+        empty_run = self.copy_fixture_run("minimal-run")
+        empty_report = {
+            "schema_version": "1",
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "generated_at": "2026-07-11T00:00:00Z",
+            "source": "local-scanner-execution",
+            "safety": {
+                "public_safe": True,
+                "raw_scanner_bodies_copied": False,
+                "secret_values_copied": False,
+                "review_only": True,
+            },
+            "summary": {
+                "run_count": 0,
+                "by_status": {},
+                "by_adapter": {},
+                "total_duration_ms": 0,
+                "maximum_duration_ms": 0,
+                "result_count": 0,
+                "normalized_leads_count": 0,
+                "redaction_count": 0,
+            },
+            "runs": [],
+        }
+        (empty_run / "reports" / "scanner-runs.json").write_text(
+            json.dumps(empty_report) + "\n", encoding="utf-8"
+        )
+        self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", empty_run], check=True)
+        empty_graph = json.loads((empty_run / "reports" / "evidence-graph.json").read_text(encoding="utf-8"))
+        self.assertTrue(empty_graph["summary"]["scanner_runs"]["artifact_present"])
+        self.assertEqual(0, empty_graph["summary"]["scanner_runs"]["run_count"])
+        self.assertNotIn("reports/scanner-runs.json", empty_graph["summary"]["missing_optional_artifacts"])
+
     def test_metrics_and_evidence_graph_reject_noncanonical_scanner_run_refs(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         (run_dir / "reports").rename(run_dir / "artifacts")

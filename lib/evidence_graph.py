@@ -159,6 +159,7 @@ class EvidenceGraphBuilder:
         self.targets: list[dict[str, Any]] = []
         self.scanner_leads: list[dict[str, Any]] = []
         self.scanner_runs: list[dict[str, Any]] = []
+        self.scanner_runs_present = False
         self.chains: list[dict[str, Any]] = []
         self.proofs: list[dict[str, Any]] = []
         self.validations: list[dict[str, Any]] = []
@@ -232,12 +233,15 @@ class EvidenceGraphBuilder:
             self.missing_optional_artifacts.append(rel_to_run(self.run_dir, scanner_path))
         scanner_runs_path = self.reports / "scanner-runs.json"
         if scanner_runs_path.exists():
+            self.scanner_runs_present = True
             try:
                 scanner_runs = load_json(scanner_runs_path, {}) or {}
                 validate_scanner_runs_for_run(self.run_dir, scanner_runs)
             except (OSError, json.JSONDecodeError, ScannerReportError) as exc:
                 raise EvidenceGraphSafetyError(f"scanner-runs.json is not public-safe: {exc}") from exc
             self.scanner_runs = list(scanner_runs["runs"])
+        else:
+            self.missing_optional_artifacts.append(rel_to_run(self.run_dir, scanner_runs_path))
         self.chains = self.load_report_array("chains.json", "chains")
         self.proofs = self.load_report_array("proofs.json", "proofs")
         self.validations = self.load_report_array("validation.json", "validations")
@@ -560,7 +564,7 @@ class EvidenceGraphBuilder:
             "missing_optional_artifacts": sorted(set(self.missing_optional_artifacts)),
             "workflow_profile": summarize_workflow_profile(self.workflow_profile),
             "scanner_runs": {
-                "artifact_present": bool(self.scanner_runs),
+                "artifact_present": self.scanner_runs_present,
                 "run_count": len(self.scanner_runs),
                 "by_status": dict(sorted(scanner_statuses.items())),
                 "total_duration_ms": sum(scanner_durations),
