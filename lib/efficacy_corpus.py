@@ -97,6 +97,7 @@ def _safe_relative_path(relative: Any, *, label: str) -> PurePosixPath:
         or "." in pure.parts
         or ".." in pure.parts
         or "\\" in relative
+        or ":" in relative
     ):
         raise EfficacyCorpusError(f"{label} must stay under the corpus root")
     return pure

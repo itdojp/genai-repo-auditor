@@ -143,6 +143,17 @@ class EfficacyCorpusTests(unittest.TestCase):
         with self.assertRaisesRegex(EfficacyCorpusError, "fixture file paths must be unique"):
             load_corpus(lab_root)
 
+    def test_drive_qualified_fixture_paths_are_rejected(self) -> None:
+        lab_root = self.copy_corpus()
+        manifest_path = lab_root / "benchmarks" / "corpus" / "cases" / "python-web" / "authz-001" / "case.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["fixture"]["files"][0]["path"] = "C:app.py"
+        self.write_json(manifest_path, manifest)
+        self.refresh_manifest_digest(lab_root, manifest_path)
+
+        with self.assertRaisesRegex(EfficacyCorpusError, "stay under the corpus root"):
+            load_corpus(lab_root)
+
     def test_content_changes_require_case_and_corpus_version_changes(self) -> None:
         lab_root = self.copy_corpus()
         case_root = lab_root / "benchmarks" / "corpus" / "cases" / "python-web" / "path-001"
