@@ -10,7 +10,6 @@ from typing import Any
 
 
 CORPUS_SCHEMA_VERSION = "1"
-DEFAULT_CORPUS_REL = Path("benchmarks/corpus/core.json")
 MAX_JSON_BYTES = 512_000
 MAX_FIXTURE_BYTES = 128_000
 CONTENT_VERSION_RE = re.compile(r"^(?P<release>[0-9]+\.[0-9]+\.[0-9]+)\+sha256\.(?P<digest>[a-f0-9]{64})$")
@@ -493,13 +492,10 @@ def _validate_case_semantics(
             raise EfficacyCorpusError("ground-truth location must reference a line in a declared fixture file")
 
 
-def load_corpus(lab_root: Path, corpus_rel: Path = DEFAULT_CORPUS_REL) -> dict[str, Any]:
+def load_corpus(lab_root: Path) -> dict[str, Any]:
     """Load and validate the immutable synthetic efficacy corpus without network access."""
 
-    corpus_path = _safe_relative_path(corpus_rel.as_posix(), label="corpus index")
-    expected_corpus_path = PurePosixPath("benchmarks/corpus/core.json")
-    if corpus_path != expected_corpus_path:
-        raise EfficacyCorpusError("corpus index must be stored at the corpus root")
+    corpus_path = PurePosixPath("benchmarks/corpus/core.json")
     corpus_prefix = PurePosixPath("benchmarks/corpus")
     with _SafeTreeReader(lab_root) as reader:
         corpus_schema, _ = _load_json(reader, corpus_prefix / "corpus.schema.json", label="corpus schema")
