@@ -92,6 +92,14 @@ def platform_support_report() -> dict[str, Any]:
         "linux": "supported-local-docker-or-podman",
         "macos": "experimental-local-docker",
     }.get(environment, "unsupported")
+    if environment == "unsupported":
+        efficacy_report_generation = "unsupported"
+    elif not dirfd:
+        efficacy_report_generation = "unsupported-fail-closed"
+    elif environment == "wsl-unknown":
+        efficacy_report_generation = "experimental-untested-wsl"
+    else:
+        efficacy_report_generation = "supported"
     return {
         "status": (
             "warning"
@@ -107,11 +115,7 @@ def platform_support_report() -> dict[str, Any]:
             "audit_prepare": "supported" if environment not in {"wsl-unknown", "unsupported"} else "unsupported",
             "workflow_plan_execute_resume": "supported" if environment not in {"wsl-unknown", "unsupported"} else "unsupported",
             "efficacy_listing": "supported" if environment not in {"wsl-unknown", "unsupported"} else "unsupported",
-            "efficacy_report_generation": (
-                "experimental-untested-wsl"
-                if environment == "wsl-unknown"
-                else "supported" if dirfd else "unsupported-fail-closed"
-            ),
+            "efficacy_report_generation": efficacy_report_generation,
             "scanner_planning": "supported" if environment not in {"wsl-unknown", "unsupported"} else "unsupported",
             "scanner_execution": scanner_execution,
         },

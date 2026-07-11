@@ -109,6 +109,29 @@ class PlatformSupportTests(unittest.TestCase):
             self.assertEqual("warning", report["status"])
             self.assertEqual("unsupported-fail-closed", report["features"]["efficacy_report_generation"])
 
+    def test_unsupported_environment_never_claims_efficacy_generation(self) -> None:
+        for dirfd in (False, True):
+            with self.subTest(dirfd=dirfd), unittest.mock.patch.object(
+                platform_support, "detect_environment", return_value="unsupported"
+            ), unittest.mock.patch.object(
+                platform_support, "dirfd_report_writes_supported", return_value=dirfd
+            ):
+                report = platform_support.platform_support_report()
+
+            self.assertEqual("warning", report["status"])
+            self.assertEqual("unsupported", report["features"]["efficacy_report_generation"])
+
+    def test_unconfirmed_wsl_without_dirfd_capabilities_fails_closed(self) -> None:
+        with unittest.mock.patch.object(
+            platform_support, "detect_environment", return_value="wsl-unknown"
+        ), unittest.mock.patch.object(
+            platform_support, "dirfd_report_writes_supported", return_value=False
+        ):
+            report = platform_support.platform_support_report()
+
+        self.assertEqual("warning", report["status"])
+        self.assertEqual("unsupported-fail-closed", report["features"]["efficacy_report_generation"])
+
     def test_support_matrix_documents_required_platform_boundaries(self) -> None:
         english = (REPO_ROOT / "docs" / "WINDOWS_WSL_SUPPORT.md").read_text(encoding="utf-8")
         japanese = (REPO_ROOT / "docs" / "ja" / "WINDOWS_WSL_SUPPORT.ja.md").read_text(encoding="utf-8")

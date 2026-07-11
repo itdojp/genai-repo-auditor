@@ -328,6 +328,8 @@ def execute_scan(
     if sandbox_profile not in EXECUTION_PROFILES:
         raise ScannerExecutionError("execution requires the container or gvisor sandbox profile")
     execution_environment = detect_environment()
+    if execution_environment == "unsupported":
+        raise ScannerExecutionError("scanner execution is unsupported on this operating system")
     if execution_environment == "wsl-unknown":
         raise ScannerExecutionError("scanner execution requires confirmed WSL2; WSL1 and unconfirmed WSL are unsupported")
     if sandbox_profile == "gvisor" and execution_environment not in {"linux", "wsl2"}:

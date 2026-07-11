@@ -153,6 +153,12 @@ class ScannerAdapterTests(unittest.TestCase):
         ), self.assertRaisesRegex(ScannerAdapterError, "confirmed WSL2"):
             build_scan_plan(self.run_dir, adapter_id="gitleaks", sandbox_profile="container")
 
+    def test_scanner_plan_rejects_unsupported_environment(self) -> None:
+        with mock.patch(
+            "scanner_adapters.detect_environment", return_value="unsupported"
+        ), self.assertRaisesRegex(ScannerAdapterError, "unsupported on this operating system"):
+            build_scan_plan(self.run_dir, adapter_id="gitleaks", sandbox_profile="container")
+
     def test_plan_rejects_leading_dash_path_components(self) -> None:
         context_path = self.run_dir / "context.json"
         context = json.loads(context_path.read_text(encoding="utf-8"))

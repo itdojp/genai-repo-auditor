@@ -318,6 +318,8 @@ def build_scan_plan(
     if sandbox_profile not in adapter.approved_sandbox_profiles:
         raise ScannerAdapterError(f"adapter {adapter.id} is not approved for sandbox profile {sandbox_profile}")
     execution_environment = detect_environment()
+    if execution_environment == "unsupported":
+        raise ScannerAdapterError("scanner planning is unsupported on this operating system")
     if execution_environment == "wsl-unknown":
         raise ScannerAdapterError("scanner planning requires confirmed WSL2; WSL1 and unconfirmed WSL are unsupported")
     if sandbox_profile == "gvisor" and execution_environment not in {"linux", "wsl2"}:

@@ -89,6 +89,22 @@ class ScannerRunnerTests(TestCase):
             with contextlib.suppress(OSError):
                 tmp_parent.rmdir()
 
+    def test_scanner_execution_rejects_unsupported_environment(self) -> None:
+        tmp_parent = REPO_ROOT / ".test-tmp"
+        tmp_parent.mkdir(exist_ok=True)
+        try:
+            with tempfile.TemporaryDirectory(dir=tmp_parent) as tmp, mock.patch(
+                "scanner_runner.detect_environment", return_value="unsupported"
+            ), self.assertRaisesRegex(ScannerExecutionError, "unsupported on this operating system"):
+                execute_scan(
+                    Path(tmp),
+                    adapter_id="gitleaks",
+                    sandbox_profile="container",
+                )
+        finally:
+            with contextlib.suppress(OSError):
+                tmp_parent.rmdir()
+
     def test_runtime_specific_user_mapping_is_safe_for_rootless_podman(self) -> None:
         common = {
             "profile": "container",
