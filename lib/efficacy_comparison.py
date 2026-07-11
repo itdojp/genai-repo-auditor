@@ -45,7 +45,7 @@ def list_configurations() -> str:
 
 
 def select_configurations(configuration_ids: list[str] | None) -> list[str]:
-    selected = list(DEFAULT_CONFIGURATIONS) if not configuration_ids else sorted(configuration_ids)
+    selected = list(DEFAULT_CONFIGURATIONS) if not configuration_ids else list(configuration_ids)
     if len(selected) != len(set(selected)):
         raise EfficacyBenchmarkError("--configuration values must be unique")
     unknown = sorted(set(selected) - set(REFERENCE_CONFIGURATIONS))

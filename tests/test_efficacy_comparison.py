@@ -101,6 +101,18 @@ class EfficacyComparisonTests(unittest.TestCase):
             ["reference-review-all-signals-v1", "reference-review-high-severity-gate-v1"],
             select_configurations(None),
         )
+        caller_order = [
+            "reference-review-high-severity-gate-v1",
+            "reference-review-all-signals-v1",
+        ]
+        self.assertEqual(caller_order, select_configurations(caller_order))
+        ordered_report = build_comparison_report(REPO_ROOT, configuration_ids=caller_order)
+        self.assertEqual(caller_order[0], ordered_report["comparison"]["baseline_configuration_id"])
+        self.assertEqual(
+            caller_order,
+            [item["configuration_id"] for item in ordered_report["configurations"]],
+        )
+        self.assertEqual(2, ordered_report["comparison"]["deltas"][0]["true_positive_delta"])
         with self.assertRaisesRegex(EfficacyBenchmarkError, "at least two"):
             select_configurations(["reference-review-all-signals-v1"])
         with self.assertRaisesRegex(EfficacyBenchmarkError, "must be unique"):
