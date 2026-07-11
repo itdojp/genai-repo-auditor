@@ -51,6 +51,8 @@ class WorkflowExecutorTests(unittest.TestCase):
         if command == "gra-recon":
             for name in ("AUDIT_SUMMARY.md", "THREAT_MODEL.md", "ATTACK_SURFACE.md"):
                 (reports / name).write_text(f"# {name}\n", encoding="utf-8")
+            for name in ("agent-surface.json", "provenance-posture.json"):
+                (reports / name).write_text("{}\n", encoding="utf-8")
             return 0
         if self.fail_targets:
             return 7
@@ -108,6 +110,13 @@ class WorkflowExecutorTests(unittest.TestCase):
         with self.assertRaisesRegex(WorkflowExecutionError, "stale or mismatched"):
             self.execute(resume=True)
 
+    def test_resume_rejects_stale_posture_input_consumed_by_targets(self) -> None:
+        self.execute(until_stage="recon")
+        (self.run / "reports" / "agent-surface.json").write_text('{"changed": true}\n', encoding="utf-8")
+
+        with self.assertRaisesRegex(WorkflowExecutionError, "stale or mismatched"):
+            self.execute(resume=True)
+
     def test_resume_rejects_missing_declared_output_stamp(self) -> None:
         self.execute(until_stage="recon")
         checkpoint_path = self.run / "reports" / "workflow-checkpoint.json"
@@ -152,13 +161,22 @@ class WorkflowExecutorTests(unittest.TestCase):
         reports = self.run / "reports"
         reports.mkdir(exist_ok=True)
         (reports / "ATTACK_SURFACE.md").write_text("existing\n", encoding="utf-8")
+        (reports / "agent-surface.json").write_text("{}\n", encoding="utf-8")
+        (reports / "provenance-posture.json").write_text("{}\n", encoding="utf-8")
 
         checkpoint, exit_code = self.execute(from_stage="targets")
 
         self.assertEqual(0, exit_code)
         self.assertEqual(["gra-targets"], self.calls)
         self.assertEqual("external_prerequisite", checkpoint["stages"][0]["status"])
-        self.assertEqual(["reports/ATTACK_SURFACE.md"], [x["path"] for x in checkpoint["external_input_artifacts"]])
+        self.assertEqual(
+            [
+                "reports/ATTACK_SURFACE.md",
+                "reports/agent-surface.json",
+                "reports/provenance-posture.json",
+            ],
+            [x["path"] for x in checkpoint["external_input_artifacts"]],
+        )
 
     def test_from_rejects_missing_external_prerequisite(self) -> None:
         with self.assertRaisesRegex(WorkflowExecutionError, "artifact is missing"):

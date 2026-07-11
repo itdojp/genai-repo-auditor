@@ -32,6 +32,12 @@ class WorkflowExecutionError(RuntimeError):
     pass
 
 
+class RunStateGateError(WorkflowExecutionError):
+    def __init__(self, message: str, *, status: str = "invalid") -> None:
+        super().__init__(message)
+        self.status = status
+
+
 Runner = Callable[[list[str], Path], int]
 
 
@@ -172,20 +178,26 @@ def _run_state_gate(run_dir: Path) -> None:
     try:
         state_path = run_state_path(run_dir)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
-        raise WorkflowExecutionError(f"run state path could not be resolved safely: {exc}") from exc
+        raise RunStateGateError(f"run state path could not be resolved safely: {exc}") from exc
     if state_path.is_symlink():
-        raise WorkflowExecutionError("run state must not be a symlink")
+        raise RunStateGateError("run state must not be a symlink")
     try:
         state = load_run_state(run_dir)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
-        raise WorkflowExecutionError(f"run state could not be read safely: {exc}") from exc
+        raise RunStateGateError(f"run state could not be read safely: {exc}") from exc
     status = str(state.get("status") or "")
     if status == PAUSED:
-        raise WorkflowExecutionError("run is paused; inspect and clear the pause with gra-run-state before execution")
+        raise RunStateGateError(
+            "run is paused; inspect and clear the pause with gra-run-state before execution",
+            status="paused",
+        )
     if status == BLOCKED:
-        raise WorkflowExecutionError("run is blocked; an operator must update run state before execution")
+        raise RunStateGateError(
+            "run is blocked; an operator must update run state before execution",
+            status="blocked",
+        )
     if status != ACTIVE:
-        raise WorkflowExecutionError(f"run state is unsupported: {status}")
+        raise RunStateGateError(f"run state is unsupported: {status}")
 
 
 def ensure_run_state_active(run_dir: Path) -> None:
@@ -463,21 +475,21 @@ def execute_workflow(
                 continue
             try:
                 _run_state_gate(run_dir)
-            except WorkflowExecutionError as exc:
-                gate_status = "paused" if "paused" in str(exc) else "blocked"
+            except RunStateGateError as exc:
+                gate_status = exc.status if exc.status in {"paused", "blocked"} else "blocked"
                 checkpoint.update({"status": gate_status, "resume_stage": stage_id})
                 _write_checkpoint(path, checkpoint)
-                return checkpoint, 5
+                return checkpoint, 5 if exc.status in {"paused", "blocked"} else 2
             if checkpoint["command_implementations"] != _command_implementations(lab_root, plan):
                 checkpoint.update({"status": "blocked", "resume_stage": stage_id})
                 _write_checkpoint(path, checkpoint)
-                return checkpoint, 1
+                return checkpoint, 2
             unsatisfied = [dep for dep in stage["depends_on"] if records[dep]["status"] not in TERMINAL_SUCCESS]
             if unsatisfied:
                 record["status"] = "blocked_dependency"
                 checkpoint.update({"status": "blocked", "resume_stage": stage_id})
                 _write_checkpoint(path, checkpoint)
-                return checkpoint, 1
+                return checkpoint, 2
             for dependency in stage["depends_on"]:
                 if records[dependency]["status"] == "succeeded":
                     try:
@@ -486,7 +498,7 @@ def execute_workflow(
                     except WorkflowExecutionError:
                         checkpoint.update({"status": "blocked", "resume_stage": stage_id})
                         _write_checkpoint(path, checkpoint)
-                        return checkpoint, 1
+                        return checkpoint, 2
             record.update({"status": "running", "attempt": record["attempt"] + 1, "started_at": _utc_now(), "ended_at": None, "exit_code": None, "error_category": None, "output_artifacts": []})
             checkpoint["resume_stage"] = stage_id
             _write_checkpoint(path, checkpoint)
@@ -512,7 +524,7 @@ def execute_workflow(
                 record.update({"status": "failed", "exit_code": 1, "error_category": "missing_or_unsafe_output"})
                 checkpoint.update({"status": "blocked", "resume_stage": stage_id})
                 _write_checkpoint(path, checkpoint)
-                return checkpoint, 1
+                return checkpoint, 2
             record["status"] = "succeeded"
             record["error_category"] = None
             next_pending = next(

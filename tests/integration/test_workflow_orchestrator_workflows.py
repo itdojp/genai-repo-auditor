@@ -39,7 +39,14 @@ class WorkflowOrchestratorWorkflowTests(CliWorkflowTestCase):
 
         plan = json.loads((run_dir / "artifacts" / "workflow-plan.json").read_text(encoding="utf-8"))
         self.assertEqual("skipped_by_scope", plan["stages"][1]["status"])
-        self.assertEqual(["artifacts/ATTACK_SURFACE.md"], plan["stages"][1]["required_inputs"][1:])
+        self.assertEqual(
+            [
+                "artifacts/ATTACK_SURFACE.md",
+                "artifacts/agent-surface.json",
+                "artifacts/provenance-posture.json",
+            ],
+            plan["stages"][1]["required_inputs"][1:],
+        )
         self.assertFalse((run_dir / "reports" / "workflow-plan.json").exists())
 
     def test_reports_dir_under_target_is_rejected_before_plan_writes(self) -> None:
