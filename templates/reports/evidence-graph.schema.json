@@ -53,6 +53,7 @@
             "failed_stages": {"type": "array", "items": {"type": "string"}}
           }
         },
+        "workflow_execution": {"$ref": "#/$defs/workflowExecutionSummary"},
         "scanner_runs": {
           "type": "object",
           "required": ["artifact_present", "run_count", "by_status", "total_duration_ms", "maximum_duration_ms"],
@@ -76,7 +77,7 @@
         "required": ["id", "type", "ref_id", "label", "path", "summary"],
         "properties": {
           "id": {"type": "string"},
-          "type": {"enum": ["target", "scanner_run", "scanner_lead", "finding", "chain", "proof", "validation", "trace", "remediation_candidate", "patch_validation", "issue_plan_entry", "metric", "workflow_profile", "workflow_stage"]},
+          "type": {"enum": ["target", "scanner_run", "scanner_lead", "finding", "chain", "proof", "validation", "trace", "remediation_candidate", "patch_validation", "issue_plan_entry", "metric", "workflow_profile", "workflow_execution", "workflow_stage"]},
           "ref_id": {"type": "string"},
           "label": {"type": "string"},
           "severity": {"type": "string"},
@@ -101,6 +102,32 @@
           "reason": {"type": "string", "maxLength": 200},
           "path": {"type": "string"}
         }
+      }
+    }
+  },
+  "$defs": {
+    "workflowExecutionSummary": {
+      "type": "object",
+      "required": ["artifact_present", "absence_reason", "status", "profile", "stage_count", "by_status", "total_duration_ms", "maximum_duration_ms", "failed_count", "failed_stages", "skipped_by_scope_count", "scoped_skip_stages", "blocked_dependency_count", "blocked_dependency_stages", "absent_stage_count", "absence_reasons", "resume_available", "resume_stage"],
+      "properties": {
+        "artifact_present": {"type": "boolean"},
+        "absence_reason": {"type": ["string", "null"]},
+        "status": {"type": "string"},
+        "profile": {"type": "string"},
+        "stage_count": {"type": "integer", "minimum": 0},
+        "by_status": {"type": "object"},
+        "total_duration_ms": {"type": "integer", "minimum": 0},
+        "maximum_duration_ms": {"type": "integer", "minimum": 0},
+        "failed_count": {"type": "integer", "minimum": 0},
+        "failed_stages": {"type": "array", "items": {"type": "string"}},
+        "skipped_by_scope_count": {"type": "integer", "minimum": 0},
+        "scoped_skip_stages": {"type": "array", "items": {"type": "string"}},
+        "blocked_dependency_count": {"type": "integer", "minimum": 0},
+        "blocked_dependency_stages": {"type": "array", "items": {"type": "string"}},
+        "absent_stage_count": {"type": "integer", "minimum": 0},
+        "absence_reasons": {"type": "object"},
+        "resume_available": {"type": "boolean"},
+        "resume_stage": {"type": ["string", "null"]}
       }
     }
   }

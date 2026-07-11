@@ -105,9 +105,19 @@ gra-run --run runs/OWNER__REPO/RUN_ID --profile recon-only --execute --until rec
 gra-run --run runs/OWNER__REPO/RUN_ID --profile recon-only --resume
 ```
 
-The checkpoint is `<reports_dir>/workflow-checkpoint.json`. Resume verifies the
+The checkpoint is `<reports_dir>/workflow-checkpoint.json`. Each checkpoint
+transition also refreshes `<reports_dir>/workflow-execution.json`
+and `<reports_dir>/WORKFLOW_EXECUTION.md`. These bounded reports expose stage
+status and duration, sanitized failure categories, explicit scoped skips,
+blocked dependencies, reasons for stages that did not run, and the safe resume
+stage. They exclude prompts, findings, evidence, credentials, private
+reasoning, command stdout/stderr, and Issue publication.
+
+Resume verifies the
 run, profile, plan fingerprint, and hashes of successful outputs before it runs
-the exact resume stage. Successful stages are not repeated. Use `--from` only
+the exact resume stage. It consumes the existing plan without rewriting it;
+invalid resume metadata therefore fails before plan mutation. Successful stages
+are not repeated. Use `--from` only
 for a supervised range with the required prior-stage artifacts already present;
 those external prerequisites are hashed into the checkpoint. A new execution
 also rejects declared outputs that already exist, avoiding accidental reuse of
@@ -119,6 +129,39 @@ positions. `--from X` includes `X` and its descendants; `--until Y` includes
 `Y` and its ancestors. With both options, `Y` must be `X` or a descendant and
 only stages on their dependency path closure are selected. Unrelated sibling
 stages are recorded as `out_of_range` and are not executed on resume.
+
+Typical supervised sequences are:
+
+```bash
+# Normal execution after plan review.
+gra-run --run runs/OWNER__REPO/RUN_ID --profile publication-ready
+gra-run --run runs/OWNER__REPO/RUN_ID --profile publication-ready --execute
+
+# A bounded range; stages beyond --until are recorded for continuation.
+gra-run --run runs/OWNER__REPO/RUN_ID --profile recon-only --execute --until recon
+
+# Inspect a failed, interrupted, or bounded execution before resuming.
+cat runs/OWNER__REPO/RUN_ID/reports/WORKFLOW_EXECUTION.md
+gra-run --run runs/OWNER__REPO/RUN_ID --profile recon-only --resume
+```
+
+For profiles that generate metrics or an evidence graph, refresh those reports
+after terminal workflow completion. A reporting stage executed inside the DAG
+necessarily observes the execution state from before that stage completed, and
+the `gra-run` completion event is appended only after the terminal execution
+report is written.
+
+```bash
+gra-metrics --run runs/OWNER__REPO/RUN_ID
+gra-evidence-graph --run runs/OWNER__REPO/RUN_ID
+gra-validate-report --run runs/OWNER__REPO/RUN_ID
+```
+
+An optional stage that did not run is not silently omitted: its status and a
+bounded reason such as `operator_scoped_skip`, `outside_selected_range`,
+`range_continuation`, or `blocked_by_dependency` remain in the execution
+report. Issue publication remains a separate human-controlled decision even
+when all workflow stages succeeded.
 
 Built-in profiles keep Issue publication outside unattended execution:
 

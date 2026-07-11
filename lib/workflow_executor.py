@@ -15,6 +15,7 @@ from typing import Any
 from report_safety import iter_secret_findings
 from gralib import load_context, utc_now
 from run_state import ACTIVE, BLOCKED, PAUSED, load_run_state, run_state_path
+from workflow_execution import WorkflowExecutionReportError, write_workflow_execution
 from workflow_orchestrator import _safe_rel
 
 
@@ -137,11 +138,20 @@ def _atomic_write(path: Path, payload: dict[str, Any]) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def _write_checkpoint(path: Path, checkpoint: dict[str, Any]) -> None:
+def _write_checkpoint(
+    run_dir: Path,
+    path: Path,
+    checkpoint: dict[str, Any],
+    plan: dict[str, Any],
+) -> None:
     checkpoint["generated_at"] = _utc_now()
     if list(iter_secret_findings(checkpoint, field_path="workflow_checkpoint")):
         raise WorkflowExecutionError("workflow checkpoint contains secret-like values")
     _atomic_write(path, checkpoint)
+    try:
+        write_workflow_execution(run_dir, checkpoint, plan)
+    except (OSError, ValueError, WorkflowExecutionReportError) as exc:
+        raise WorkflowExecutionError(f"workflow execution report write failed: {exc}") from exc
 
 
 def _utc_now() -> str:
@@ -390,6 +400,12 @@ def _load_checkpoint(run_dir: Path, plan: dict[str, Any], lab_root: Path) -> dic
     return checkpoint
 
 
+def preflight_resume_checkpoint(run_dir: Path, plan: dict[str, Any], lab_root: Path) -> None:
+    """Validate a resume checkpoint and its artifact stamps without writing state."""
+
+    _load_checkpoint(run_dir.resolve(strict=True), plan, lab_root)
+
+
 def _external_prerequisite_stamps(run_dir: Path, plan: dict[str, Any], checkpoint: dict[str, Any], selected: list[str]) -> list[dict[str, Any]]:
     selected_set = set(selected)
     output_producers = {output: stage["id"] for stage in plan["stages"] for output in stage["outputs"]}
@@ -467,7 +483,7 @@ def execute_workflow(
         by_plan = {stage["id"]: stage for stage in plan["stages"]}
         records = {record["id"]: record for record in checkpoint["stages"]}
         run_stage = runner or _default_runner
-        _write_checkpoint(path, checkpoint)
+        _write_checkpoint(run_dir, path, checkpoint, plan)
         for stage in plan["stages"]:
             stage_id = stage["id"]
             record = records[stage_id]
@@ -478,17 +494,17 @@ def execute_workflow(
             except RunStateGateError as exc:
                 gate_status = exc.status if exc.status in {"paused", "blocked"} else "blocked"
                 checkpoint.update({"status": gate_status, "resume_stage": stage_id})
-                _write_checkpoint(path, checkpoint)
+                _write_checkpoint(run_dir, path, checkpoint, plan)
                 return checkpoint, 5 if exc.status in {"paused", "blocked"} else 2
             if checkpoint["command_implementations"] != _command_implementations(lab_root, plan):
                 checkpoint.update({"status": "blocked", "resume_stage": stage_id})
-                _write_checkpoint(path, checkpoint)
+                _write_checkpoint(run_dir, path, checkpoint, plan)
                 return checkpoint, 2
             unsatisfied = [dep for dep in stage["depends_on"] if records[dep]["status"] not in TERMINAL_SUCCESS]
             if unsatisfied:
                 record["status"] = "blocked_dependency"
                 checkpoint.update({"status": "blocked", "resume_stage": stage_id})
-                _write_checkpoint(path, checkpoint)
+                _write_checkpoint(run_dir, path, checkpoint, plan)
                 return checkpoint, 2
             for dependency in stage["depends_on"]:
                 if records[dependency]["status"] == "succeeded":
@@ -497,17 +513,17 @@ def execute_workflow(
                             _validate_stamp(run_dir, stamp)
                     except WorkflowExecutionError:
                         checkpoint.update({"status": "blocked", "resume_stage": stage_id})
-                        _write_checkpoint(path, checkpoint)
+                        _write_checkpoint(run_dir, path, checkpoint, plan)
                         return checkpoint, 2
             record.update({"status": "running", "attempt": record["attempt"] + 1, "started_at": _utc_now(), "ended_at": None, "exit_code": None, "error_category": None, "output_artifacts": []})
             checkpoint["resume_stage"] = stage_id
-            _write_checkpoint(path, checkpoint)
+            _write_checkpoint(run_dir, path, checkpoint, plan)
             try:
                 exit_code = int(run_stage(_command_argv(lab_root, stage), run_dir))
             except KeyboardInterrupt:
                 record.update({"status": "pending", "ended_at": _utc_now(), "exit_code": 130, "error_category": "interrupted"})
                 checkpoint.update({"status": "paused", "resume_stage": stage_id})
-                _write_checkpoint(path, checkpoint)
+                _write_checkpoint(run_dir, path, checkpoint, plan)
                 return checkpoint, 130
             record.update({"ended_at": _utc_now(), "exit_code": exit_code})
             if exit_code != 0:
@@ -516,14 +532,14 @@ def execute_workflow(
                     if later["status"] == "pending" and stage_id in by_plan[later["id"]]["depends_on"]:
                         later["status"] = "blocked_dependency"
                 checkpoint.update({"status": "blocked", "resume_stage": stage_id})
-                _write_checkpoint(path, checkpoint)
+                _write_checkpoint(run_dir, path, checkpoint, plan)
                 return checkpoint, exit_code if 0 < exit_code < 126 else 1
             try:
                 record["output_artifacts"] = [artifact_stamp(run_dir, ref) for ref in stage["outputs"]]
             except WorkflowExecutionError:
                 record.update({"status": "failed", "exit_code": 1, "error_category": "missing_or_unsafe_output"})
                 checkpoint.update({"status": "blocked", "resume_stage": stage_id})
-                _write_checkpoint(path, checkpoint)
+                _write_checkpoint(run_dir, path, checkpoint, plan)
                 return checkpoint, 2
             record["status"] = "succeeded"
             record["error_category"] = None
@@ -532,13 +548,13 @@ def execute_workflow(
                 None,
             )
             checkpoint["resume_stage"] = next_pending
-            _write_checkpoint(path, checkpoint)
+            _write_checkpoint(run_dir, path, checkpoint, plan)
         remaining = [record["id"] for record in checkpoint["stages"] if record["status"] in {"pending", "blocked_dependency", "failed", "running"}]
         if remaining:
             checkpoint.update({"status": "paused", "resume_stage": remaining[0]})
         else:
             checkpoint.update({"status": "succeeded", "resume_stage": None})
-        _write_checkpoint(path, checkpoint)
+        _write_checkpoint(run_dir, path, checkpoint, plan)
         return checkpoint, 0
     finally:
         with contextlib.suppress(FileNotFoundError):

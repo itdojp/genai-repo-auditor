@@ -212,6 +212,9 @@ fi
 if [[ -f "$LAB_ROOT/templates/reports/workflow-profile.schema.json" ]]; then
   cp "$LAB_ROOT/templates/reports/workflow-profile.schema.json" "$RUN_DIR/workflow-profile.schema.json"
 fi
+if [[ -f "$LAB_ROOT/templates/reports/workflow-execution.schema.json" ]]; then
+  cp "$LAB_ROOT/templates/reports/workflow-execution.schema.json" "$RUN_DIR/workflow-execution.schema.json"
+fi
 if [[ -f "$LAB_ROOT/templates/reports/imported-findings.schema.json" ]]; then
   cp "$LAB_ROOT/templates/reports/imported-findings.schema.json" "$RUN_DIR/imported-findings.schema.json"
 fi

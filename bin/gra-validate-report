@@ -129,6 +129,7 @@ def main() -> int:
     traces_validated = validation_results["traces"]
     metrics_validated = validation_results["metrics"]
     workflow_profile_validated = validation_results["workflow_profile"]
+    workflow_execution_validated = validation_results["workflow_execution"]
     benchmark_validated = validation_results["benchmark"]
     evidence_graph_validated = validation_results["evidence_graph"]
     imported_findings_validated = validation_results["imported_findings"]
@@ -170,6 +171,8 @@ def main() -> int:
         print("Metrics: validated")
     if workflow_profile_validated:
         print("Workflow profile: validated")
+    if workflow_execution_validated:
+        print("Workflow execution: validated")
     if benchmark_validated:
         print("Benchmark: validated")
     if evidence_graph_validated:

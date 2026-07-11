@@ -371,6 +371,7 @@ class RunEventsTests(unittest.TestCase):
             "gra-recon",
             "gra-remediate",
             "gra-research",
+            "gra-run",
             "gra-sarif",
             "gra-scan",
             "gra-scanner-triage",

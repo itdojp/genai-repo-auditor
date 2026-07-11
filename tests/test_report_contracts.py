@@ -23,6 +23,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 from benchmark import validate_benchmark_payload as validate_benchmark_payload_internal  # noqa: E402
 from run_events import COMMAND_EVENT_COMMANDS, COMMAND_EVENT_PHASES, COMMAND_EVENT_STATUSES, append_command_event, start_command_event  # noqa: E402
 from scanner_adapters import list_adapters  # noqa: E402
+from workflow_execution import build_workflow_execution  # noqa: E402
 from validators.advanced import IMPORTED_FINDING_APPEND_STATUSES  # noqa: E402
 from validators.common import load_schema as load_schema_from_root, validate_schema  # noqa: E402
 from validators.findings import REQUIRED_FINDING, REQUIRED_TOP  # noqa: E402
@@ -187,6 +188,7 @@ class ReportContractTests(unittest.TestCase):
         benchmark_schema = self.load_json(SCHEMAS / "benchmark.schema.json")
         evidence_graph_schema = self.load_json(SCHEMAS / "evidence-graph.schema.json")
         workflow_profile_schema = self.load_json(SCHEMAS / "workflow-profile.schema.json")
+        workflow_execution_schema = self.load_json(SCHEMAS / "workflow-execution.schema.json")
         imported_findings_schema = self.load_json(SCHEMAS / "imported-findings.schema.json")
         issue_ledger_schema = self.load_json(SCHEMAS / "issue-ledger.schema.json")
         duplicate_decision_schema = self.load_json(SCHEMAS / "duplicate-decision.schema.json")
@@ -664,6 +666,20 @@ class ReportContractTests(unittest.TestCase):
             workflow_profile_schema["properties"]["stages"]["items"]["properties"]["status"]["enum"],
         )
         self.assertEqual(
+            {
+                "schema_version", "run_id", "repo", "generated_at", "source",
+                "profile", "profile_version", "status", "requested_range",
+                "requested_skips", "resume", "safety", "summary", "stages",
+            },
+            set(workflow_execution_schema["required"]),
+        )
+        execution_safety = workflow_execution_schema["properties"]["safety"]["properties"]
+        for field in [
+            "raw_prompts_copied", "raw_findings_copied", "raw_evidence_copied",
+            "credentials_copied", "private_reasoning_copied", "issue_publication_included",
+        ]:
+            self.assertEqual(False, execution_safety[field]["const"])
+        self.assertEqual(
             {"schema_version", "run_id", "repo", "generated_at", "source", "safety", "summary", "nodes", "edges"},
             set(evidence_graph_schema["required"]),
         )
@@ -688,11 +704,13 @@ class ReportContractTests(unittest.TestCase):
                 "issue_plan_entry",
                 "metric",
                 "workflow_profile",
+                "workflow_execution",
                 "workflow_stage",
             ],
             evidence_graph_schema["properties"]["nodes"]["items"]["properties"]["type"]["enum"],
         )
         self.assertIn("workflow_profile", evidence_graph_schema["properties"]["summary"]["properties"])
+        self.assertIn("workflow_execution", evidence_graph_schema["properties"]["summary"]["properties"])
         self.assertEqual(
             [
                 "produced",
@@ -989,6 +1007,78 @@ class ReportContractTests(unittest.TestCase):
         cp = self.run_validator(run_dir)
         self.assertNotEqual(cp.returncode, 0)
         self.assertIn("artifact path must not contain symlink components", cp.stderr)
+
+    def test_workflow_execution_validates_summary_and_rejects_private_payloads(self) -> None:
+        run_dir = self.copy_run()
+        checkpoint = {
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "profile": "recon-only",
+            "profile_version": "1.0.0",
+            "status": "succeeded",
+            "requested_from": None,
+            "requested_until": None,
+            "requested_skips": [],
+            "resume_stage": None,
+            "stages": [{
+                "id": "recon",
+                "status": "succeeded",
+                "attempt": 1,
+                "started_at": "2026-07-11T00:00:00Z",
+                "ended_at": "2026-07-11T00:00:01Z",
+                "exit_code": 0,
+                "error_category": None,
+                "output_artifacts": [],
+            }],
+        }
+        plan = {"stages": [{"id": "recon", "depends_on": []}]}
+        report = build_workflow_execution(checkpoint, plan)
+        report_path = run_dir / "reports" / "workflow-execution.json"
+        self.write_json(report_path, report)
+
+        valid = self.run_validator(run_dir)
+        self.assertEqual(0, valid.returncode, valid.stderr)
+        self.assertIn("Workflow execution: validated", valid.stdout)
+
+        for field, value in (("run_id", "other-run"), ("repo", "other/repo")):
+            with self.subTest(context_mismatch=field):
+                mismatched = json.loads(json.dumps(report))
+                mismatched[field] = value
+                self.write_json(report_path, mismatched)
+                invalid_context = self.run_validator(run_dir)
+                self.assertEqual(1, invalid_context.returncode)
+                self.assertIn(f"workflow_execution.{field}: must match context.json", invalid_context.stderr)
+
+        drifted = json.loads(json.dumps(report))
+        drifted["summary"]["failed_count"] = 1
+        self.write_json(report_path, drifted)
+        invalid_summary = self.run_validator(run_dir)
+        self.assertEqual(1, invalid_summary.returncode)
+        self.assertIn("workflow_execution.summary.failed_count", invalid_summary.stderr)
+
+        private_payload = json.loads(json.dumps(report))
+        private_payload["private_reasoning"] = "must not be copied"
+        self.write_json(report_path, private_payload)
+        invalid_private = self.run_validator(run_dir)
+        self.assertEqual(1, invalid_private.returncode)
+        self.assertIn("private_reasoning", invalid_private.stderr)
+
+        unknown_fields = json.loads(json.dumps(report))
+        unknown_fields["details"] = "uncontracted top-level payload"
+        unknown_fields["stages"][0]["details"] = "uncontracted stage payload"
+        self.write_json(report_path, unknown_fields)
+        invalid_unknown = self.run_validator(run_dir)
+        self.assertEqual(1, invalid_unknown.returncode)
+        self.assertIn(
+            "workflow_execution: contains fields outside the closed workflow execution contract",
+            invalid_unknown.stderr,
+        )
+        self.assertIn(
+            "workflow_execution.stages[0]: contains fields outside the closed workflow execution contract",
+            invalid_unknown.stderr,
+        )
+        self.assertNotIn("uncontracted top-level payload", invalid_unknown.stderr)
+        self.assertNotIn("uncontracted stage payload", invalid_unknown.stderr)
 
     def test_metrics_rejects_raw_evidence_fields_and_safety_flag_drift(self) -> None:
         run_dir = self.copy_run()
