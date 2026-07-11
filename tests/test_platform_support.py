@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import sys
 import unittest
+import unittest.mock
 from pathlib import Path
-from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -46,8 +46,8 @@ class PlatformSupportTests(unittest.TestCase):
 
     def test_native_windows_report_is_explicit_and_fail_closed_for_missing_dirfd(self) -> None:
         with (
-            mock.patch.object(platform_support, "detect_environment", return_value="native-windows"),
-            mock.patch.object(platform_support, "dirfd_report_writes_supported", return_value=False),
+            unittest.mock.patch.object(platform_support, "detect_environment", return_value="native-windows"),
+            unittest.mock.patch.object(platform_support, "dirfd_report_writes_supported", return_value=False),
         ):
             report = platform_support.platform_support_report()
 
@@ -63,8 +63,8 @@ class PlatformSupportTests(unittest.TestCase):
 
     def test_wsl2_uses_linux_scanner_boundary(self) -> None:
         with (
-            mock.patch.object(platform_support, "detect_environment", return_value="wsl2"),
-            mock.patch.object(platform_support, "dirfd_report_writes_supported", return_value=True),
+            unittest.mock.patch.object(platform_support, "detect_environment", return_value="wsl2"),
+            unittest.mock.patch.object(platform_support, "dirfd_report_writes_supported", return_value=True),
         ):
             report = platform_support.platform_support_report()
 
@@ -76,8 +76,8 @@ class PlatformSupportTests(unittest.TestCase):
 
     def test_unconfirmed_wsl_does_not_claim_wsl2_support(self) -> None:
         with (
-            mock.patch.object(platform_support, "detect_environment", return_value="wsl-unknown"),
-            mock.patch.object(platform_support, "dirfd_report_writes_supported", return_value=True),
+            unittest.mock.patch.object(platform_support, "detect_environment", return_value="wsl-unknown"),
+            unittest.mock.patch.object(platform_support, "dirfd_report_writes_supported", return_value=True),
         ):
             report = platform_support.platform_support_report()
 
@@ -90,12 +90,24 @@ class PlatformSupportTests(unittest.TestCase):
 
     def test_macos_scanner_execution_remains_experimental(self) -> None:
         with (
-            mock.patch.object(platform_support, "detect_environment", return_value="macos"),
-            mock.patch.object(platform_support, "dirfd_report_writes_supported", return_value=True),
+            unittest.mock.patch.object(platform_support, "detect_environment", return_value="macos"),
+            unittest.mock.patch.object(platform_support, "dirfd_report_writes_supported", return_value=True),
         ):
             report = platform_support.platform_support_report()
 
         self.assertEqual("experimental-local-docker", report["features"]["scanner_execution"])
+
+    def test_missing_dirfd_capabilities_warn_on_other_supported_platforms(self) -> None:
+        for environment in ("linux", "macos"):
+            with self.subTest(environment=environment), unittest.mock.patch.object(
+                platform_support, "detect_environment", return_value=environment
+            ), unittest.mock.patch.object(
+                platform_support, "dirfd_report_writes_supported", return_value=False
+            ):
+                report = platform_support.platform_support_report()
+
+            self.assertEqual("warning", report["status"])
+            self.assertEqual("unsupported-fail-closed", report["features"]["efficacy_report_generation"])
 
     def test_support_matrix_documents_required_platform_boundaries(self) -> None:
         english = (REPO_ROOT / "docs" / "WINDOWS_WSL_SUPPORT.md").read_text(encoding="utf-8")

@@ -50,6 +50,7 @@ def detect_environment() -> str:
         try:
             osrelease = Path("/proc/sys/kernel/osrelease").read_text(encoding="ascii", errors="ignore")
         except OSError:
+            # Restricted or non-procfs Linux environments may not expose this optional hint.
             pass
     return classify_environment(
         system=platform.system(),
@@ -92,7 +93,11 @@ def platform_support_report() -> dict[str, Any]:
         "macos": "experimental-local-docker",
     }.get(environment, "unsupported")
     return {
-        "status": "warning" if diagnostics and environment in {"native-windows", "wsl-unknown", "unsupported"} else "ok",
+        "status": (
+            "warning"
+            if not dirfd or environment in {"native-windows", "wsl-unknown", "unsupported"}
+            else "ok"
+        ),
         "environment": environment,
         "wsl_detected": environment in {"wsl2", "wsl-unknown"},
         "wsl2_confirmed": environment == "wsl2",
