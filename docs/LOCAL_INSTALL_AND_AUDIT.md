@@ -49,7 +49,13 @@ Choose one of the installation modes below.
 | `uv tool` | You use `uv` for isolated tool installs. | `uv tool install .` |
 | Virtual environment | You need deterministic CI or locked-down workstation setup without `pipx`/`uv`. | `python -m venv`, `pip install .` |
 
-The packaging install matrix is exercised in CI on Ubuntu, macOS, and Windows with Python 3.10, 3.11, and 3.12. The source-checkout wrappers remain the preferred development workflow; packaged console scripts are the preferred operator workflow when you do not need to edit repository files.
+The packaging install matrix is exercised in CI on Ubuntu, macOS, and Windows
+with Python 3.10, 3.11, and 3.12. Platform support varies by workflow; read the
+[`Windows, WSL2, and PowerShell support matrix`](WINDOWS_WSL_SUPPORT.md) before
+using native Windows execution or container-backed scanners. The source-checkout
+wrappers remain the preferred development workflow; packaged console scripts
+are the preferred operator workflow when you do not need to edit repository
+files.
 
 ### Source checkout install
 
@@ -166,7 +172,14 @@ On Windows PowerShell:
 gra-doctor --json --runs-dir "$env:LOCALAPPDATA\genai-repo-auditor\runs"
 ```
 
-`gra-doctor` checks Python version, Git/GitHub CLI availability, the configured worker executable, optional sandbox runtimes, a writable run directory, packaged resources, and the installed GenAI Repo Auditor version. By default it does not execute `git`, `gh`, audits, workers, clone repositories, modify GitHub state, or print credential values. The run-directory check only creates and removes a temporary local probe file under `--runs-dir`. Add `--strict` when CI should fail on required readiness errors.
+`gra-doctor` checks Python version, platform support, Git/GitHub CLI availability,
+the configured worker executable, optional sandbox runtimes, a writable run
+directory, packaged resources, and the installed GenAI Repo Auditor version. It
+reports only the names of present `GH_TOKEN` / `GITHUB_TOKEN` variables and
+their precedence, never their values. By default it does not execute `git`,
+`gh`, audits, workers, clone repositories, or modify GitHub state. The
+run-directory check only creates and removes a temporary local probe file under
+`--runs-dir`. Add `--strict` when CI should fail on required readiness errors.
 
 After confirming that `PATH` resolves `git` and `gh` to trusted local binaries, use the opt-in external probe to include tool versions and GitHub authentication state. The probe does not pass credential-like environment variables to child processes, discards `gh auth status` output, and records only redacted diagnostics.
 
@@ -334,7 +347,10 @@ chmod +x bin/* scripts/*.sh
 |---|---|---|
 | `Missing required command: gh` | `gh --version` | Install GitHub CLI and retry. |
 | `gh repo clone` fails | `gh auth status`; `gh repo view OWNER/REPO` | Authenticate with `gh auth login` or use an account with repository access. |
+| Stored GitHub CLI auth is valid but `gh` still fails | Inspect only the names `GH_TOKEN` / `GITHUB_TOKEN`; run `gra-doctor --probe-external-tools --json` | Remove an unintended stale variable without printing it; `GH_TOKEN` precedes `GITHUB_TOKEN`, and both precede stored auth. |
 | `Missing required command: codex` | `codex --help` | Install and configure a compatible Codex CLI. |
+| Native Windows efficacy report generation exits `2` | `gra-efficacy-benchmark --list`; inspect `platform_support` from `gra-doctor --json` | Keep list/inspection on Windows and run report generation in WSL2/Linux/macOS. Do not bypass dirfd safeguards. |
+| Native Windows scanner execution is unavailable | Docker Desktop Linux-container mode and local named pipe | Use WSL2 for supported Docker/Podman operation; native Windows execution is experimental. |
 | No reports are produced | `codex-final.md`; `codex-stderr.txt` | Inspect the run directory for model, auth, or sandbox errors. |
 | Report validation fails | `report-validation.txt`; `reports/findings.json` | Fix or regenerate invalid report data before creating issues. |
 | Another audit is already running | `runs/.locks/` | Wait for the current audit or use `--no-lock` only when you are sure no conflicting run exists. |

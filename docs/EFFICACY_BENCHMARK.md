@@ -132,7 +132,10 @@ usage, corpus validation, selection, schema validation, or output safety failed.
 On failure, inspect stderr, correct the local contract or destination, and rerun.
 Do not bypass integrity, symlink, or missing-dirfd failures. On native Windows
 CPython where the required directory-relative operations are unavailable, use
-`--list` and run report generation in a supported Linux/macOS environment.
+`--list` and run report generation in WSL2/Linux/macOS. The same boundary
+applies to deterministic comparison and optional worker mode because both must
+publish the final report pair safely. See
+[`WINDOWS_WSL_SUPPORT.md`](WINDOWS_WSL_SUPPORT.md).
 
 The corpus structure and case-maintenance procedure are documented in
 [`EFFICACY_BENCHMARK_CORPUS.md`](EFFICACY_BENCHMARK_CORPUS.md).

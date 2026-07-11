@@ -84,7 +84,9 @@ exit status `0` は一覧または report 生成の成功です。status `2` は
 schema、output safety の異常です。stderr を確認して local contract または出力先を修正し、
 再実行してください。integrity error や symlink error を迂回してはいけません。
 native Windows CPython など必要な dirfd operation がない環境では `--list` を使用し、
-report 生成は対応する Linux/macOS 環境で実行してください。
+report 生成は WSL2/Linux/macOS で実行してください。comparison と optional worker mode
+も最終 report pair を同じ安全境界で publish するため、native Windows では未対応です。
+[`WINDOWS_WSL_SUPPORT.ja.md`](WINDOWS_WSL_SUPPORT.ja.md) を参照してください。
 
 corpus の構造と変更手順は英語 canonical 文書
 [`EFFICACY_BENCHMARK_CORPUS.md`](../EFFICACY_BENCHMARK_CORPUS.md) を参照してください。

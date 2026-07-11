@@ -20,6 +20,7 @@ from scanner_runner import (  # noqa: E402
     _publish_output,
     _runtime_prefix,
     _safe_runtime_environment,
+    execute_scan,
 )
 
 
@@ -52,6 +53,41 @@ class ScannerRunnerTests(TestCase):
         with mock.patch("scanner_runner.shutil.which", return_value=None):
             with self.assertRaisesRegex(ScannerExecutionError, "Podman or Docker"):
                 _runtime_prefix("/missing", {})
+
+    def test_gvisor_execution_is_rejected_outside_linux_and_wsl2(self) -> None:
+        tmp_parent = REPO_ROOT / ".test-tmp"
+        tmp_parent.mkdir(exist_ok=True)
+        try:
+            for environment in ("native-windows", "macos"):
+                with self.subTest(environment=environment), tempfile.TemporaryDirectory(
+                    dir=tmp_parent
+                ) as tmp, mock.patch(
+                    "scanner_runner.detect_environment", return_value=environment
+                ), self.assertRaisesRegex(ScannerExecutionError, "Linux or WSL2"):
+                    execute_scan(
+                        Path(tmp),
+                        adapter_id="gitleaks",
+                        sandbox_profile="gvisor",
+                    )
+        finally:
+            with contextlib.suppress(OSError):
+                tmp_parent.rmdir()
+
+    def test_scanner_execution_rejects_unconfirmed_wsl(self) -> None:
+        tmp_parent = REPO_ROOT / ".test-tmp"
+        tmp_parent.mkdir(exist_ok=True)
+        try:
+            with tempfile.TemporaryDirectory(dir=tmp_parent) as tmp, mock.patch(
+                "scanner_runner.detect_environment", return_value="wsl-unknown"
+            ), self.assertRaisesRegex(ScannerExecutionError, "confirmed WSL2"):
+                execute_scan(
+                    Path(tmp),
+                    adapter_id="gitleaks",
+                    sandbox_profile="container",
+                )
+        finally:
+            with contextlib.suppress(OSError):
+                tmp_parent.rmdir()
 
     def test_runtime_specific_user_mapping_is_safe_for_rootless_podman(self) -> None:
         common = {

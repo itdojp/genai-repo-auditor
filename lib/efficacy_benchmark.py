@@ -16,21 +16,13 @@ from efficacy_corpus import (
     load_schema_object,
     validate_schema_object,
 )
+from platform_support import dirfd_report_writes_supported
 
 
 REPORT_SCHEMA_VERSION = "1"
 DETECTOR_ID = "synthetic-reference-rules-v1"
 MAX_REPORT_BYTES = 1_000_000
-DIR_FD_OUTPUT_SUPPORTED = (
-    os.open in os.supports_dir_fd
-    and os.mkdir in os.supports_dir_fd
-    and os.rename in os.supports_dir_fd
-    and os.stat in os.supports_dir_fd
-    and os.stat in os.supports_follow_symlinks
-    and os.unlink in os.supports_dir_fd
-    and bool(getattr(os, "O_DIRECTORY", 0))
-    and bool(getattr(os, "O_NOFOLLOW", 0))
-)
+DIR_FD_OUTPUT_SUPPORTED = dirfd_report_writes_supported()
 SEVERITY_ORDER = {"Low": 0, "Medium": 1, "High": 2, "Critical": 3}
 LIMITATIONS = [
     "The deterministic fixture detector is a runner/scoring smoke baseline, not a product efficacy claim.",
@@ -453,7 +445,7 @@ def _destination(path: Path) -> Path:
 def _open_output_parent(destination: Path) -> tuple[int, tuple[tuple[int, int, int], ...]]:
     if not DIR_FD_OUTPUT_SUPPORTED:
         raise EfficacyBenchmarkError(
-            "safe efficacy benchmark report writes require dirfd support; use --list on this platform"
+            "safe efficacy benchmark report writes require dirfd support; use --list or run report generation in WSL2/Linux/macOS"
         )
     directory_fd: int | None = None
     try:

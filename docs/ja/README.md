@@ -10,6 +10,8 @@
    日常運用で使う主要コマンドと、install -> plan -> review -> execute -> resume の流れです。
 3. [`SECURITY_MODEL.ja.md`](SECURITY_MODEL.ja.md)
    trust boundary、secret handling、public disclosure、scanner output の扱いを説明します。
+4. [`WINDOWS_WSL_SUPPORT.ja.md`](WINDOWS_WSL_SUPPORT.ja.md)
+   native Windows、WSL2、PowerShell、efficacy、container scanner の tested support boundary を説明します。
 
 ## ワークフロー別ドキュメント
 

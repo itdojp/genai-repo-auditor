@@ -14,6 +14,13 @@ Source review and report generation remain local-first and source-only. They do 
 | `gvisor` | Yes | Scanner execution supported when configured; target-code validation diagnostic | Bounded offline `gra-scan --execute` with `runsc`; future hardened build/test validation. |
 | `vm` | Yes | Contract only | Future VM isolation. VM orchestration is not implemented in this release. |
 
+Platform runtime selection is narrower than profile availability. Native
+Windows container execution is experimental and uses local Docker Desktop with
+Linux containers; native Podman and gVisor are unsupported. WSL2 follows the
+Linux boundary and supports local Docker/Podman, with gVisor only when `runsc`
+is configured. macOS execution selects local Docker. See
+[`WINDOWS_WSL_SUPPORT.md`](WINDOWS_WSL_SUPPORT.md).
+
 ## Phase separation
 
 Use the profiles across three phases:

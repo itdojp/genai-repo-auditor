@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from sandbox_profiles import PROFILE_IDS
+from platform_support import detect_environment
 
 SCHEMA_VERSION = "1"
 NETWORK_POLICIES = ("disabled", "explicit-allow")
@@ -316,6 +317,11 @@ def build_scan_plan(
     adapter = adapter_by_id(adapter_id)
     if sandbox_profile not in adapter.approved_sandbox_profiles:
         raise ScannerAdapterError(f"adapter {adapter.id} is not approved for sandbox profile {sandbox_profile}")
+    execution_environment = detect_environment()
+    if execution_environment == "wsl-unknown":
+        raise ScannerAdapterError("scanner planning requires confirmed WSL2; WSL1 and unconfirmed WSL are unsupported")
+    if sandbox_profile == "gvisor" and execution_environment not in {"linux", "wsl2"}:
+        raise ScannerAdapterError("gvisor scanner planning is supported only on Linux or WSL2")
     if adapter.network_required and network_policy != "explicit-allow":
         raise ScannerAdapterError(f"adapter {adapter.id} requires explicit network approval")
     if not adapter.network_required and network_policy != "disabled":

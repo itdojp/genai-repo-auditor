@@ -69,6 +69,8 @@ jobs:
           root.mkdir(parents=True, exist_ok=True)
           script = r'''
           from pathlib import Path
+          import json
+          import os
           import sys
 
           tool = sys.argv[1]
@@ -98,6 +100,37 @@ jobs:
               if args[:1] == ["--help"]:
                   print("codex help")
                   raise SystemExit(0)
+              if args[:1] == ["exec"] and "--cd" in args and "--output-last-message" in args:
+                  run_dir = Path(args[args.index("--cd") + 1])
+                  output = Path(args[args.index("--output-last-message") + 1])
+                  output.parent.mkdir(parents=True, exist_ok=True)
+                  failure_marker = os.environ.get("GRA_MOCK_CODEX_FAIL_ONCE_FILE")
+                  if output.name == "codex-targets-final.md" and failure_marker and not Path(failure_marker).exists():
+                      Path(failure_marker).write_text("failed once\n", encoding="utf-8")
+                      print("offline requested worker failure", file=sys.stderr)
+                      raise SystemExit(9)
+                  output.write_text("offline install-matrix worker fixture\n", encoding="utf-8")
+                  reports = run_dir / "reports"
+                  reports.mkdir(parents=True, exist_ok=True)
+                  if output.name == "codex-recon-final.md":
+                      for name in ["AUDIT_SUMMARY.md", "THREAT_MODEL.md", "ATTACK_SURFACE.md"]:
+                          (reports / name).write_text(f"# {name}\n\nOffline install-matrix fixture.\n", encoding="utf-8")
+                  elif output.name == "codex-targets-final.md":
+                      context = json.loads((run_dir / "context.json").read_text(encoding="utf-8"))
+                      targets = {
+                          "run_id": context["run_id"],
+                          "repo": context["repo"],
+                          "branch": context.get("branch"),
+                          "commit": context["commit"],
+                          "generated_at": "2026-01-01T00:00:00Z",
+                          "targets": [],
+                      }
+                      (reports / "targets.json").write_text(json.dumps(targets) + "\n", encoding="utf-8")
+                  else:
+                      print("unexpected codex output path: " + output.name, file=sys.stderr)
+                      raise SystemExit(97)
+                  print("{}")
+                  raise SystemExit(0)
               print("codex mock should not be executed", file=sys.stderr)
               raise SystemExit(97)
           raise SystemExit(98)
@@ -123,6 +156,7 @@ jobs:
           assert Path(gra.resource_path("VERSION")).is_file()
           assert Path(gra.resource_path("bin", "gra-doctor")).is_file()
           assert Path(gra.resource_path("lib", "agent_worker.py")).is_file()
+          assert Path(gra.resource_path("lib", "platform_support.py")).is_file()
           assert Path(gra.prompt_path("exec", "full-audit.prompt.md")).is_file()
           assert Path(gra.report_schema_path("findings.schema.json")).is_file()
           assert Path(gra.report_schema_path("efficacy-comparison.schema.json")).is_file()
@@ -146,11 +180,28 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "$command --version failed with $LASTEXITCODE" }
             if ($output -ne "$command $version") { throw "$command --version output '$output', expected '$command $version'" }
           }
-          gra-doctor --json --runs-dir $runs | Out-Null
+          $doctorReport = (gra-doctor --json --runs-dir $runs | Out-String) | ConvertFrom-Json
+          if ($IsWindows) {
+            if ($doctorReport.checks.platform_support.environment -ne "native-windows") { throw "gra-doctor did not classify native Windows" }
+            if ($doctorReport.checks.platform_support.features.efficacy_report_generation -ne "unsupported-fail-closed") { throw "gra-doctor did not report native Windows efficacy boundary" }
+          } elseif ($IsMacOS) {
+            if ($doctorReport.checks.platform_support.environment -ne "macos") { throw "gra-doctor did not classify macOS" }
+          } else {
+            if ($doctorReport.checks.platform_support.environment -ne "linux") { throw "gra-doctor did not classify Linux" }
+          }
+          if ($doctorReport.checks.platform_support.features.workflow_plan_execute_resume -ne "supported") { throw "gra-doctor did not report workflow support" }
           gra-agent-check --list --json | Out-Null
           if ($IsWindows) {
             gra-efficacy-benchmark --list | Out-Null
             gra-efficacy-benchmark --list-configurations | Out-Null
+            $efficacyError = Join-Path $env:RUNNER_TEMP "gra-efficacy-windows-error.txt"
+            $ErrorActionPreference = "Continue"
+            & gra-efficacy-benchmark --out-json $efficacyJson --out-md $efficacyMarkdown 2> $efficacyError
+            $efficacyStatus = $LASTEXITCODE
+            $ErrorActionPreference = "Stop"
+            if ($efficacyStatus -ne 2) { throw "native Windows efficacy generation must fail closed with status 2, got $efficacyStatus" }
+            if ((Get-Content $efficacyError -Raw) -notmatch "WSL2/Linux/macOS") { throw "native Windows efficacy diagnostic must recommend a supported environment" }
+            if ((Test-Path $efficacyJson) -or (Test-Path $efficacyMarkdown)) { throw "native Windows efficacy failure created report outputs" }
           } else {
             gra-efficacy-benchmark --out-json $efficacyJson --out-md $efficacyMarkdown | Out-Null
             if (-not (Test-Path $efficacyJson) -or -not (Test-Path $efficacyMarkdown)) { throw "missing installed efficacy benchmark outputs" }
@@ -159,9 +210,33 @@ jobs:
           }
           Copy-Item -Recurse tests/fixtures/minimal-run $fixture
           gra-validate-report --run $fixture | Out-Null
+          gra-audit --repo acme/api --mode prepare --runs-dir $auditRuns --run-id installed-prepare | Out-Null
+          $workflowRun = Join-Path $auditRuns "acme__api/installed-prepare"
+          if (-not (Test-Path (Join-Path $workflowRun "run-manifest.json"))) { throw "missing installed gra-audit run manifest" }
+          gra-run --run $workflowRun --profile recon-only | Out-Null
+          if (-not (Test-Path (Join-Path $workflowRun "reports/workflow-plan.json"))) { throw "missing installed gra-run plan" }
+          gra-run --run $workflowRun --profile recon-only --execute --until recon | Out-Null
+          $pausedCheckpoint = Get-Content (Join-Path $workflowRun "reports/workflow-checkpoint.json") -Raw | ConvertFrom-Json
+          if ($pausedCheckpoint.status -ne "paused" -or $pausedCheckpoint.resume_stage -ne "targets") { throw "unexpected bounded gra-run checkpoint" }
+          gra-run --run $workflowRun --profile recon-only --resume | Out-Null
+          $finalCheckpoint = Get-Content (Join-Path $workflowRun "reports/workflow-checkpoint.json") -Raw | ConvertFrom-Json
+          if ($finalCheckpoint.status -ne "succeeded" -or $null -ne $finalCheckpoint.resume_stage) { throw "unexpected resumed gra-run checkpoint" }
+          gra-scan --run $workflowRun --tool gitleaks --plan --sandbox-profile container --json | Out-Null
+          gra-audit --repo acme/api --mode prepare --runs-dir $auditRuns --run-id installed-failure-resume | Out-Null
+          $failureRun = Join-Path $auditRuns "acme__api/installed-failure-resume"
+          $env:GRA_MOCK_CODEX_FAIL_ONCE_FILE = Join-Path $env:RUNNER_TEMP "gra-worker-failed-once.txt"
+          $ErrorActionPreference = "Continue"
+          & gra-run --run $failureRun --profile recon-only --execute | Out-Null
+          $failureStatus = $LASTEXITCODE
+          $ErrorActionPreference = "Stop"
+          if ($failureStatus -ne 9) { throw "expected bounded workflow stage failure status 9, got $failureStatus" }
+          $failedCheckpoint = Get-Content (Join-Path $failureRun "reports/workflow-checkpoint.json") -Raw | ConvertFrom-Json
+          if ($failedCheckpoint.status -ne "blocked" -or $failedCheckpoint.resume_stage -ne "targets") { throw "unexpected failed gra-run checkpoint" }
+          gra-run --run $failureRun --profile recon-only --resume | Out-Null
+          Remove-Item Env:GRA_MOCK_CODEX_FAIL_ONCE_FILE
+          $recoveredCheckpoint = Get-Content (Join-Path $failureRun "reports/workflow-checkpoint.json") -Raw | ConvertFrom-Json
+          if ($recoveredCheckpoint.status -ne "succeeded" -or $null -ne $recoveredCheckpoint.resume_stage) { throw "unexpected recovered gra-run checkpoint" }
           if (-not $IsWindows) {
-            gra-audit --repo acme/api --mode prepare --runs-dir $auditRuns --run-id installed-prepare | Out-Null
-            if (-not (Test-Path (Join-Path $auditRuns "acme__api/installed-prepare/run-manifest.json"))) { throw "missing installed gra-audit run manifest" }
             Set-Content -Path $repoList -Value "acme/api"
             gra-batch --repo-list $repoList --mode goal --runs-dir $batchRuns --batch-id installed-batch | Out-Null
             if (-not (Test-Path (Join-Path $batchRuns "_batches/installed-batch/batch-results.json"))) { throw "missing installed gra-batch results" }

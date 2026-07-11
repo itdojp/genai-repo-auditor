@@ -39,6 +39,11 @@ confirmed finding や Issue 推奨には自動昇格しません。成功した 
 `gra-ingest` と共通の normalization/redaction/indexing boundary を通り、
 `reports/scanner-results/normalized/` の bounded lead と scanner index に反映されます。
 
+platform boundary は [`WINDOWS_WSL_SUPPORT.ja.md`](WINDOWS_WSL_SUPPORT.ja.md) を参照して
+ください。native Windows の planning は対応しますが、execution は Docker Desktop の
+Linux-container mode のみ experimental です。WSL2/Linux は local Docker/Podman、macOS
+は local Docker を使用します。gVisor は `runsc` を設定した Linux/WSL2 のみです。
+
 run/tool/report preflight を通過した各 `--execute` は sanitized `gra-scan` command event を追記し、次の public-safe な
 実行 metadata report を更新します。
 

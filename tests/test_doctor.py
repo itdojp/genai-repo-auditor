@@ -82,6 +82,9 @@ class DoctorTests(unittest.TestCase):
         self.assertTrue(data["checks"]["gh"]["version_checked"])
         self.assertTrue(data["checks"]["gh_auth"]["authenticated"])
         self.assertTrue(data["checks"]["gh_auth"]["checked"])
+        self.assertEqual(["GITHUB_TOKEN"], data["checks"]["github_token_environment"]["present_names"])
+        self.assertEqual("GITHUB_TOKEN", data["checks"]["github_token_environment"]["effective_name"])
+        self.assertFalse(data["checks"]["github_token_environment"]["values_exposed"])
         self.assertTrue(data["checks"]["worker"]["available"])
         self.assertTrue(data["checks"]["run_directory"]["writable"])
         self.assertEqual("ok", data["checks"]["packaged_resources"]["status"])
@@ -102,6 +105,27 @@ class DoctorTests(unittest.TestCase):
         self.assertFalse(data["checks"]["gh"]["version_checked"])
         self.assertIsNone(data["checks"]["gh_auth"]["authenticated"])
         self.assertFalse(data["checks"]["gh_auth"]["checked"])
+        self.assertIn(data["checks"]["platform_support"]["environment"], {"linux", "wsl2", "macos", "native-windows"})
+
+    def test_gra_doctor_reports_github_token_name_precedence_without_values(self) -> None:
+        self.write_mock_command("git", "exit 0\n")
+        self.write_mock_command("gh", "exit 0\n")
+        self.write_mock_command("codex", "exit 0\n")
+        env = self.doctor_env()
+        env["GH_TOKEN"] = "ghp_primary-secret-value"
+        env["GITHUB_TOKEN"] = "ghp_secondary-secret-value"
+
+        cp = self.run_doctor("--json", "--runs-dir", str(self.work_dir / "runs"), env=env)
+
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertNotIn("primary-secret", cp.stdout)
+        self.assertNotIn("secondary-secret", cp.stdout)
+        data = json.loads(cp.stdout)
+        check = data["checks"]["github_token_environment"]
+        self.assertEqual(["GH_TOKEN", "GITHUB_TOKEN"], check["present_names"])
+        self.assertEqual("GH_TOKEN", check["effective_name"])
+        self.assertFalse(check["values_exposed"])
+        self.assertTrue(any("stored gh credentials" in item for item in check["diagnostics"]))
 
     def test_gra_doctor_external_probe_redacts_command_output_and_strips_secret_env(self) -> None:
         self.write_mock_command(
