@@ -1063,6 +1063,23 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual(1, invalid_private.returncode)
         self.assertIn("private_reasoning", invalid_private.stderr)
 
+        unknown_fields = json.loads(json.dumps(report))
+        unknown_fields["details"] = "uncontracted top-level payload"
+        unknown_fields["stages"][0]["details"] = "uncontracted stage payload"
+        self.write_json(report_path, unknown_fields)
+        invalid_unknown = self.run_validator(run_dir)
+        self.assertEqual(1, invalid_unknown.returncode)
+        self.assertIn(
+            "workflow_execution: contains fields outside the closed workflow execution contract",
+            invalid_unknown.stderr,
+        )
+        self.assertIn(
+            "workflow_execution.stages[0]: contains fields outside the closed workflow execution contract",
+            invalid_unknown.stderr,
+        )
+        self.assertNotIn("uncontracted top-level payload", invalid_unknown.stderr)
+        self.assertNotIn("uncontracted stage payload", invalid_unknown.stderr)
+
     def test_metrics_rejects_raw_evidence_fields_and_safety_flag_drift(self) -> None:
         run_dir = self.copy_run()
         metrics = {

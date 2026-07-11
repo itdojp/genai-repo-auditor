@@ -1575,6 +1575,22 @@ def validate_workflow_execution_payload(value: Any, path: str, errors: List[str]
             validate_workflow_execution_payload(item, f"{path}[{index}]", errors)
 
 
+def validate_closed_schema_fields(value: Any, schema: dict[str, Any], path: str, errors: List[str]) -> None:
+    """Enforce closed object fields for the workflow report schema subset."""
+
+    if isinstance(value, dict):
+        properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
+        if schema.get("additionalProperties") is False and set(value) - set(properties):
+            errors.append(f"{path}: contains fields outside the closed workflow execution contract")
+        for key, item in value.items():
+            subschema = properties.get(key)
+            if isinstance(subschema, dict):
+                validate_closed_schema_fields(item, subschema, f"{path}.{key}", errors)
+    elif isinstance(value, list) and isinstance(schema.get("items"), dict):
+        for index, item in enumerate(value):
+            validate_closed_schema_fields(item, schema["items"], f"{path}[{index}]", errors)
+
+
 def validate_workflow_execution(run_dir: Path, errors: List[str]) -> bool:
     execution_path = configured_artifact_path(run_dir, WORKFLOW_EXECUTION_PATH)
     if not execution_path.exists():
@@ -1596,7 +1612,9 @@ def validate_workflow_execution(run_dir: Path, errors: List[str]) -> bool:
     if not isinstance(execution, dict):
         errors.append(f"workflow_execution: expected type object, got {json_type_name(execution)}")
         return True
-    validate_schema(execution, load_schema("workflow-execution.schema.json"), "workflow_execution", errors)
+    execution_schema = load_schema("workflow-execution.schema.json")
+    validate_schema(execution, execution_schema, "workflow_execution", errors)
+    validate_closed_schema_fields(execution, execution_schema, "workflow_execution", errors)
     validate_generated_at(execution.get("generated_at"), "workflow_execution.generated_at", errors)
     validate_workflow_execution_payload(execution, "workflow_execution", errors)
     for secret_error in iter_secret_findings(execution, field_path="workflow_execution"):
