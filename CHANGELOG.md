@@ -5,6 +5,7 @@
 Workflow orchestration, cross-platform packaging, and security-efficacy evaluation update.
 
 - Added Python package metadata, installed `gra-*` console scripts, resource discovery, and a Linux/macOS/Windows Python 3.10-3.12 install matrix with installed prepare, workflow execute/failure/resume, and efficacy-validation smoke coverage.
+- Added TestPyPI-first OIDC trusted-publishing readiness with exact tag/version/main/GitHub-Release binding, hash-locked build tooling, fail-closed protected-environment markers, wheel/sdist validation and independent install smoke tests, no long-lived PyPI token, and explicit human account/project activation; Python package metadata now fails closed outside the tested Python 3.10-3.12 window.
 - Added `gra-doctor` platform, filesystem-safety, runtime, and credential-source-name diagnostics, plus explicit native Windows, WSL2, Linux, macOS, PowerShell, container, and gVisor support boundaries.
 - Added `gra-run` declarative workflow profiles with non-executing plans, explicit bounded execution, dependency-aware stage ranges/skips, immutable command fingerprints, safe checkpoints, exact resume, and local-only execution summaries.
 - Added workflow execution and expanded v2 command-event reporting so metrics and evidence graphs distinguish succeeded, failed, externally blocked, scoped-out, and resumed work without copying prompts, findings, evidence, credentials, or private reasoning.

@@ -250,6 +250,39 @@ The release workflow pins third-party action execution to reviewed commit SHAs;
 the adjacent version comments are maintained through reviewed dependency
 updates.
 
+## PyPI as an additional distribution channel
+
+PyPI does not replace the source archives, checksums, SBOM, GitHub attestations,
+or GitHub Release review above. The repository-side OIDC workflow, readiness
+decision, archive validation, TestPyPI-first rollout, and human account setup
+are defined in [`PYPI_DISTRIBUTION.md`](PYPI_DISTRIBUTION.md).
+
+Production PyPI upload uses the same exact annotated `v$VERSION` tag and is
+blocked until the matching GitHub Release's exact asset set, checksums, manifest
+tag, and source commit are verified and then rechecked against live release
+assets immediately before publication. TestPyPI may be used first to validate
+package metadata and installed behavior, but it also requires the same
+annotated tag and a separately protected `testpypi` environment. The production
+job uses the protected `pypi` environment. Each environment must contain its
+exact environment-scoped readiness marker only after required reviewers,
+self-review prevention, and the single `v*` tag deployment policy are configured;
+the workflow verifies these controls through the read-only GitHub API.
+Both publishers must be configured externally for the exact repository,
+workflow filename, and environment; no long-lived PyPI token is permitted.
+
+The PyPI workflow can validate package candidates without upload from `main`:
+
+```bash
+gh workflow run publish-pypi.yml \
+  --ref main \
+  -f publish=false \
+  -f index=testpypi
+```
+
+Upload remains a later explicit human action from the release tag. Do not add a
+PyPI package URL or index install command to README until ownership, metadata,
+the first upload, and installed smoke checks are approved.
+
 References:
 
 - [Using artifact attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations)

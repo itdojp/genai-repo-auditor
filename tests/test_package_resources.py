@@ -308,6 +308,7 @@ class PackageResourceTests(unittest.TestCase):
             "prune reports",
             "prune runs",
             "prune src/genai_repo_auditor.egg-info",
+            "prune tests",
             "prune worktrees",
             "global-exclude __pycache__ *.py[cod] *.sqlite *.sqlite3 *.sarif",
             "global-exclude codex-events.jsonl codex-final.md codex-stderr.txt codex-transcript.txt",

@@ -57,6 +57,13 @@ wrappers remain the preferred development workflow; packaged console scripts
 are the preferred operator workflow when you do not need to edit repository
 files.
 
+PyPI publication is not yet an approved installation source. Repository-side
+trusted-publishing controls are documented in
+[`PYPI_DISTRIBUTION.md`](PYPI_DISTRIBUTION.md), but the project name, ownership,
+and public package URL remain human-verified external state. Until that document
+records an approved URL through a later reviewed change, install from a reviewed
+checkout or GitHub release archive as shown below.
+
 ### Source checkout install
 
 Choose a user-owned install directory. This example uses `$HOME/.local/opt`. Keep `GRA_HOME` set when following the examples so run paths are absolute and do not depend on your current directory.

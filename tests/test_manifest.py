@@ -63,7 +63,14 @@ class ManifestTests(unittest.TestCase):
     def test_manifest_lists_release_tooling(self) -> None:
         self.assert_manifest_section(
             "Release tooling",
-            {".github/workflows/release.yml", "scripts/build_release.py"},
+            {
+                ".github/requirements/publish-build.in",
+                ".github/requirements/publish-build.txt",
+                ".github/workflows/publish-pypi.yml",
+                ".github/workflows/release.yml",
+                "scripts/build_release.py",
+                "scripts/validate_python_distribution.py",
+            },
         )
 
     def test_manifest_lists_packaging_metadata(self) -> None:
