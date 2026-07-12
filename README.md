@@ -89,6 +89,13 @@ Verify checksums and attestations before installing a downloaded release. See
 [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md) for the artifact contents,
 verification commands, and the explicit human-controlled publication process.
 
+PyPI trusted-publishing support is repository-ready but not externally
+activated. The project name, owner configuration, and public package URL remain
+unverified until a maintainer completes the TestPyPI-first account workflow.
+Do not use an index install command until an approved package URL is recorded.
+See [`docs/PYPI_DISTRIBUTION.md`](docs/PYPI_DISTRIBUTION.md) for the readiness
+decision, OIDC threat model, exact human setup, and package verification steps.
+
 ## Quick start: plan, review, execute, and resume
 
 ```bash

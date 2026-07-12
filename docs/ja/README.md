@@ -12,6 +12,8 @@
    trust boundary、secret handling、public disclosure、scanner output の扱いを説明します。
 4. [`WINDOWS_WSL_SUPPORT.ja.md`](WINDOWS_WSL_SUPPORT.ja.md)
    native Windows、WSL2、PowerShell、efficacy、container scanner の tested support boundary を説明します。
+5. [`PYPI_DISTRIBUTION.ja.md`](PYPI_DISTRIBUTION.ja.md)
+   PyPI / TestPyPI trusted publishing の readiness、OIDC 境界、人手による外部設定、package 検証を説明します。
 
 ## ワークフロー別ドキュメント
 

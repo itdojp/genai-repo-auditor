@@ -57,6 +57,13 @@ execution または container scanner の前に
 [`Windows / WSL2 support matrix`](WINDOWS_WSL_SUPPORT.ja.md) を確認してください。開発用途では
 source checkout wrapper、編集を伴わない運用用途では packaged console scripts を推奨します。
 
+PyPI は、現時点では承認済みの install source ではありません。repository
+側の trusted publishing control は
+[`PYPI_DISTRIBUTION.ja.md`](PYPI_DISTRIBUTION.ja.md) に記載しますが、project
+name、ownership、公開 package URL は人間が確認する外部状態です。後続の
+reviewed change で承認済み URL が記録されるまでは、以下の reviewed checkout
+または GitHub release archive から install してください。
+
 ### Source checkout install
 
 ユーザーが書き込めるインストール先を決めます。この例では `$HOME/.local/opt` を使います。以降の例で current directory に依存しないよう、`GRA_HOME` を設定して絶対パスで扱います。

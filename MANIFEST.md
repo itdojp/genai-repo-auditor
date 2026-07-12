@@ -50,7 +50,11 @@ bin/gra-worktree-check
 
 ```text
 .github/workflows/release.yml
+.github/workflows/publish-pypi.yml
+.github/requirements/publish-build.in
+.github/requirements/publish-build.txt
 scripts/build_release.py
+scripts/validate_python_distribution.py
 ```
 
 
@@ -275,6 +279,7 @@ docs/NORMAL_WORKFLOW.md
 docs/NOVELTY_LEDGER.md
 docs/OPERATING_MODEL.md
 docs/PRIVATE_HOLDOUT_PROTOCOL.md
+docs/PYPI_DISTRIBUTION.md
 docs/PROVENANCE_POSTURE.md
 docs/RELEASE_PROCESS.md
 docs/REMEDIATION_CANDIDATES.md
@@ -321,6 +326,7 @@ docs/ja/EFFICACY_CLAIMS_AND_PUBLICATION.ja.md
 docs/ja/ISSUE_WORKFLOW.ja.md
 docs/ja/LOCAL_INSTALL_AND_AUDIT.ja.md
 docs/ja/PRIVATE_HOLDOUT_PROTOCOL.ja.md
+docs/ja/PYPI_DISTRIBUTION.ja.md
 docs/ja/README.md
 docs/ja/SCANNER_INTEGRATION.ja.md
 docs/ja/SECURITY_MODEL.ja.md
