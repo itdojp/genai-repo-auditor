@@ -147,8 +147,8 @@ def _project_config(repo_root: Path) -> tuple[dict[str, object], str]:
     return project, version
 
 
-def validate_metadata(archive: Archive, metadata_suffix: str, repo_root: Path) -> None:
-    _name, metadata = _metadata(archive, metadata_suffix)
+def validate_metadata(archive: Archive, metadata_suffix: str, repo_root: Path) -> str:
+    metadata_name, metadata = _metadata(archive, metadata_suffix)
     project, version = _project_config(repo_root)
     expected_python = project["requires-python"]
     if _canonical_name(metadata["Name"] or "") != PROJECT_NAME:
@@ -172,6 +172,7 @@ def validate_metadata(archive: Archive, metadata_suffix: str, repo_root: Path) -
     missing = sorted(required_labels - labels)
     if missing:
         raise DistributionValidationError(f"missing Project-URL labels: {', '.join(missing)}")
+    return metadata_name
 
 
 def _runtime_resources(repo_root: Path) -> set[str]:
@@ -223,23 +224,23 @@ def _reject_private_paths(relative_paths: set[str], archive_name: str) -> None:
 
 
 def validate_wheel(archive: Archive, repo_root: Path) -> None:
-    validate_metadata(archive, ".dist-info/METADATA", repo_root)
+    metadata_name = validate_metadata(archive, ".dist-info/METADATA", repo_root)
     _reject_private_paths(set(archive.files), archive.path.name)
-    entry_name, entry_body = next(
-        (
-            (name, body)
-            for name, body in archive.files.items()
-            if name.endswith(".dist-info/entry_points.txt")
-        ),
-        ("", b""),
+    dist_info = metadata_name.removesuffix("/METADATA")
+    expected_entry_name = f"{dist_info}/entry_points.txt"
+    entry_names = sorted(
+        name for name in archive.files if name.endswith(".dist-info/entry_points.txt")
     )
-    if not entry_name:
-        raise DistributionValidationError("wheel is missing dist-info/entry_points.txt")
+    if entry_names != [expected_entry_name]:
+        raise DistributionValidationError(
+            "wheel must contain exactly one entry_points.txt in the validated dist-info directory"
+        )
+    entry_body = archive.files[expected_entry_name]
     parser = configparser.ConfigParser()
     parser.read_string(entry_body.decode("utf-8"))
-    actual_commands = set(parser["console_scripts"] if parser.has_section("console_scripts") else ())
+    actual_commands = dict(parser.items("console_scripts")) if parser.has_section("console_scripts") else {}
     project, _version = _project_config(repo_root)
-    expected_commands = set(project["scripts"])
+    expected_commands = project["scripts"]
     if actual_commands != expected_commands:
         raise DistributionValidationError("wheel console scripts do not match pyproject.toml")
 

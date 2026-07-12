@@ -144,6 +144,27 @@ class PythonDistributionValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(validator.DistributionValidationError, "does not match VERSION"):
             validator.validate_dist_dir(self.dist, REPO_ROOT)
 
+    def test_rejects_entry_points_from_an_additional_dist_info_tree(self) -> None:
+        files = self._wheel_files()
+        files["unexpected-1.0.dist-info/entry_points.txt"] = self._entry_points()
+        self._write_wheel(files)
+        self._write_sdist()
+        with self.assertRaisesRegex(validator.DistributionValidationError, "exactly one entry_points"):
+            validator.validate_dist_dir(self.dist, REPO_ROOT)
+
+    def test_rejects_console_script_target_mismatch(self) -> None:
+        files = self._wheel_files()
+        entry_name = next(name for name in files if name.endswith(".dist-info/entry_points.txt"))
+        files[entry_name] = files[entry_name].replace(
+            b"genai_repo_auditor.cli:gra_audit",
+            b"genai_repo_auditor.cli:gra_run",
+            1,
+        )
+        self._write_wheel(files)
+        self._write_sdist()
+        with self.assertRaisesRegex(validator.DistributionValidationError, "console scripts"):
+            validator.validate_dist_dir(self.dist, REPO_ROOT)
+
     def test_rejects_zip_traversal(self) -> None:
         self._write_sdist()
         path = self.dist / f"genai_repo_auditor-{CURRENT_VERSION}-py3-none-any.whl"
