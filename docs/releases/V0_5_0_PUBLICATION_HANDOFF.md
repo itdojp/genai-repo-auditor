@@ -2,10 +2,11 @@
 
 ## Status and boundary
 
-**Status: pending human publication.** As of 2026-07-12, neither the annotated
-`v0.5.0` tag nor the matching GitHub Release exists. This record completes the
-repository-local release checks and stops at the human-only gate. It is not a
-claim that publication, environment approval, or attestation has occurred.
+**Status: pending human publication.** During the pre-publication inspection
+recorded in this handoff on 2026-07-12, neither the annotated `v0.5.0` tag nor
+the matching GitHub Release existed. This record completes the repository-local
+release checks and stops at the human-only gate. It is not a claim that
+publication, environment approval, or attestation has occurred.
 
 Codex and repository automation must not create, move, push, or delete the tag;
 dispatch `publish=true`; approve the `release` environment; or create the

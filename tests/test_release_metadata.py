@@ -148,7 +148,8 @@ class ReleaseMetadataTests(unittest.TestCase):
                 "dff06c49f7cbde8a47c9272b47e57f8ce2ea4409b42ca24b18e9447539b5afa3",
             ),
         }
-        self.assertIn("**Status: pending human publication.**", text)
+        self.assertIn("pending human publication", text)
+        self.assertIn("During the pre-publication inspection", text)
         self.assertIn(f"| Source commit | `{source_commit}` |", text)
         self.assertIn(f"and source commit `{source_commit}`.", text)
         self.assertIn(f"--source-digest {source_commit}", text)
