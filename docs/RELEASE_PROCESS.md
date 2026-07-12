@@ -24,7 +24,7 @@ explicitly dispatch publication.
 ## Versioning policy
 
 Tags and GitHub Releases use the canonical version with a leading `v`, for
-example `VERSION=0.4.0` and tag `v0.4.0`.
+example `VERSION=0.5.0` and tag `v0.5.0`.
 
 Until the project reaches `1.0.0`, use a conservative SemVer-style policy:
 
@@ -79,7 +79,7 @@ manifest. `RELEASE_NOTES.md` is workflow input derived from the reviewed
 changelog section; it is not uploaded as a separate release asset.
 
 The CycloneDX file describes this source distribution and its source revision.
-The v0.4.0 source tree has no mandatory third-party Python package dependency,
+The current source tree has no mandatory third-party Python package dependency,
 so it does not invent dependency components. It is not an SBOM for audited
 targets, optional scanners, AI workers, containers, or operator environments.
 
