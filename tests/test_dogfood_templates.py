@@ -321,7 +321,7 @@ class DogfoodTemplateTests(unittest.TestCase):
         ]
         leaked = [term for term in forbidden if term.lower() in summary_lower]
         self.assertEqual([], leaked)
-        self.assertIsNone(re.search(r"\b[0-9a-f]{40}\b", summary))
+        self.assertIsNone(re.search(r"\b[0-9a-f]{40}\b", summary, re.IGNORECASE))
         self.assertIsNone(re.search(r"\b20\d{6}T\d{6}[+-]\d{4}\b", summary))
 
     def test_public_self_dogfood_case_study_is_public_safe(self) -> None:
