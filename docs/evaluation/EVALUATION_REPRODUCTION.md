@@ -14,24 +14,24 @@ scanner, GitHub mutation, or network helper.
 
 ## 1. Check out and verify the source
 
-~~~bash
+```bash
 git checkout 960dd1de42c129a524acbb2437f3a4406024bda9
 test "$(cat VERSION)" = "0.4.0"
 python3 -m unittest tests.test_efficacy_corpus tests.test_efficacy_benchmark
-~~~
+```
 
 Use a clean checkout. Do not run these commands in a directory containing
 private holdout material or target-repository artifacts.
 
 ## 2. Run the public benchmark twice
 
-~~~bash
+```bash
 mkdir -p .test-tmp/public-evaluation
 bin/gra-efficacy-benchmark   --out-json .test-tmp/public-evaluation/public-a.json   --out-md .test-tmp/public-evaluation/public-a.md
 bin/gra-efficacy-benchmark   --out-json .test-tmp/public-evaluation/public-b.json   --out-md .test-tmp/public-evaluation/public-b.md
 cmp .test-tmp/public-evaluation/public-a.json     .test-tmp/public-evaluation/public-b.json
 cmp .test-tmp/public-evaluation/public-a.md     .test-tmp/public-evaluation/public-b.md
-~~~
+```
 
 The default selection is the core suite. The expected content-bound corpus
 version is
@@ -39,7 +39,7 @@ version is
 
 ## 3. Verify the aggregate row
 
-~~~bash
+```bash
 python3 - .test-tmp/public-evaluation/public-a.json <<'PY'
 import json
 import sys
@@ -77,17 +77,17 @@ assert report["safety"]["network_accessed"] is False
 assert report["safety"]["model_channel_used"] is False
 assert report["safety"]["issue_publication_performed"] is False
 PY
-~~~
+```
 
 ## 4. Reproduce the fixed configuration comparison
 
-~~~bash
+```bash
 bin/gra-efficacy-benchmark --compare   --out-json .test-tmp/public-evaluation/comparison.json   --out-md .test-tmp/public-evaluation/comparison.md
-~~~
+```
 
 Verify the fixed stage IDs and bounded aggregate values:
 
-~~~bash
+```bash
 python3 - .test-tmp/public-evaluation/comparison.json <<'PY'
 import json
 import sys
@@ -116,7 +116,7 @@ assert report["safety"]["model_channel_used"] is False
 assert report["claim_guardrails"]["product_capability_claim_allowed"] is False
 assert report["claim_guardrails"]["production_performance_claim_allowed"] is False
 PY
-~~~
+```
 
 ## 5. Layers that are not reproduced here
 
