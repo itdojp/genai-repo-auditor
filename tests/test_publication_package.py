@@ -16,7 +16,7 @@ PUBLICATION_FILES = (ARTICLE, CLAIMS, RUNBOOK, SHOT_LIST, REVIEW)
 
 
 def bash_blocks(markdown: str) -> str:
-    return "\n".join(re.findall(r"```bash\n(.*?)```", markdown, re.DOTALL))
+    return "\n".join(re.findall(r"```bash\r?\n(.*?)```", markdown, re.DOTALL))
 
 
 class PublicationPackageTests(unittest.TestCase):
@@ -135,6 +135,13 @@ class PublicationPackageTests(unittest.TestCase):
         self.assertIn("bin/gra-run \\", commands)
         self.assertIn("--profile recon-only", commands)
         self.assertIn("--json > \"$DEMO_DIR/workflow-plan.json\"", commands)
+        efficacy_commands = [
+            block
+            for block in re.findall(r"```bash\r?\n(.*?)```", self.runbook, re.DOTALL)
+            if "bin/gra-efficacy-benchmark" in block
+        ]
+        self.assertEqual(2, len(efficacy_commands))
+        self.assertTrue(all(">/dev/null" in block for block in efficacy_commands))
         self.assertIn("plan/review gate", self.runbook)
         self.assertIn("same-profile `--resume`", self.runbook)
 

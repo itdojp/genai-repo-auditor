@@ -153,7 +153,8 @@ Generate the public synthetic report:
 ```bash
 bin/gra-efficacy-benchmark \
   --out-json .demo-public/public-benchmark.json \
-  --out-md .demo-public/public-benchmark.md
+  --out-md .demo-public/public-benchmark.md \
+  >/dev/null
 ```
 
 Show only the aggregate summary:
@@ -182,7 +183,8 @@ Optional comparison segment:
 bin/gra-efficacy-benchmark \
   --compare \
   --out-json .demo-public/public-comparison.json \
-  --out-md .demo-public/public-comparison.md
+  --out-md .demo-public/public-comparison.md \
+  >/dev/null
 ```
 
 ```bash
