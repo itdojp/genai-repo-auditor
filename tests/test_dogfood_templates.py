@@ -230,6 +230,9 @@ class DogfoodTemplateTests(unittest.TestCase):
         case_study = (REPO_ROOT / "docs" / "dogfood" / "PUBLIC_ITDO_ERP4_CASE_STUDY.md").read_text(encoding="utf-8")
         required_terms = [
             "Public ITDO_ERP4 AppSec dogfood case study",
+            "initial dogfood pass",
+            "preserves its historical",
+            "two sets of values must not be combined",
             "Why ITDO_ERP4 is a realistic AppSec target",
             "Selected scope",
             "Architecture / workflow diagram",
@@ -276,8 +279,50 @@ class DogfoodTemplateTests(unittest.TestCase):
         ]
         leaked = [term for term in forbidden if term.lower() in case_study_lower]
         self.assertEqual([], leaked)
-        self.assertIsNone(re.search(r"\b[0-9a-f]{40}\b", case_study))
+        self.assertIsNone(re.search(r"\b[0-9a-f]{40}\b", case_study, re.IGNORECASE))
         self.assertIsNone(re.search(r"\b20\d{6}T\d{6}[+-]\d{4}\b", case_study))
+
+    def test_itdo_erp4_second_dogfood_summary_is_aggregate_only(self) -> None:
+        summary = (
+            REPO_ROOT / "docs" / "dogfood" / "ITDO_ERP4_SECOND_DOGFOOD_SUMMARY.md"
+        ).read_text(encoding="utf-8")
+        required_terms = [
+            "public-safe aggregate summary",
+            "Targets selected | 3",
+            "Targets deep-researched | 3",
+            "Scanner adapters planned | 2",
+            "Scanner adapters executed | 0",
+            "Issue dry-run would-create count | 0",
+            "Classify resumable provider failures",
+            "Reduce deterministic target-queue noise",
+            "Expose explicit dry-run counts",
+            "Prevent stale aggregate metrics",
+            "Report scanner prerequisite absence uniformly",
+            "only campaign result proposed for Git",
+            "approval is determined",
+            "pull-request review",
+            "requires separate human approval",
+        ]
+        summary_lower = summary.lower()
+        missing = [term for term in required_terms if term.lower() not in summary_lower]
+        self.assertEqual([], missing)
+
+        forbidden = [
+            "ATTACK_CHAINS.md",
+            "PROOFS.md",
+            "TRACE.md",
+            "reports/findings.json",
+            "reports/target-research",
+            "packages/backend/",
+            "exact exploitability steps",
+            "-----BEGIN",
+            "ghp_",
+            "xoxb-",
+        ]
+        leaked = [term for term in forbidden if term.lower() in summary_lower]
+        self.assertEqual([], leaked)
+        self.assertIsNone(re.search(r"\b[0-9a-f]{40}\b", summary, re.IGNORECASE))
+        self.assertIsNone(re.search(r"\b20\d{6}T\d{6}[+-]\d{4}\b", summary))
 
     def test_public_self_dogfood_case_study_is_public_safe(self) -> None:
         case_study = (REPO_ROOT / "docs" / "dogfood" / "PUBLIC_SELF_DOGFOOD_CASE_STUDY.md").read_text(encoding="utf-8")
