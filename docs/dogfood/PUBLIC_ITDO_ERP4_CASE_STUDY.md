@@ -7,8 +7,14 @@ private findings, raw evidence, scanner records, target code excerpts,
 exploitability narratives, remediation content, credentials, or local run
 artifacts.
 
+This document records the initial dogfood pass and preserves its historical
+counts. The separate second-pass aggregate summary below contains the later
+campaign's reviewed counts; the two sets of values must not be combined.
+
 Use this with the planning and reporting references:
 
+- [`ITDO_ERP4_SECOND_DOGFOOD_SUMMARY.md`](ITDO_ERP4_SECOND_DOGFOOD_SUMMARY.md)
+  for the reviewed aggregate outcome of the second campaign;
 - [`ITDO_ERP4_SCOPE.md`](ITDO_ERP4_SCOPE.md)
 - [`ITDO_ERP4_TARGET_SELECTION.md`](ITDO_ERP4_TARGET_SELECTION.md)
 - [`ITDO_ERP4_REPORTING_BOUNDARIES.md`](ITDO_ERP4_REPORTING_BOUNDARIES.md)
