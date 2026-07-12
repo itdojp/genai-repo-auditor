@@ -17,15 +17,15 @@ is never substituted for it.
 
 | Item | Evaluated value | Determinism | Public source |
 |---|---|---|---|
-| GenAI Repo Auditor | Version 0.4.0 at source commit 960dd1de42c129a524acbb2437f3a4406024bda9 | Version and source are fixed | VERSION and repository history |
-| Public corpus | genai-repo-auditor-synthetic-core, version 1.1.0+sha256.33c20915076017869a6b99e0552be59f40aa05d701b61e4572d4d449a4fa6146, core suite, 20 cases | Deterministic, content-bound | benchmarks/corpus/core.json |
-| Reference detector | synthetic-reference-rules-v2 | Deterministic | gra-efficacy-benchmark report contract |
-| Full-signal configuration | reference-review-all-signals-v1; stage fixture-reference-review | Deterministic | EFFICACY_CLAIMS_AND_PUBLICATION.md |
-| Severity-gated configuration | reference-review-high-severity-gate-v1; stages fixture-reference-review and high-severity-review-gate | Deterministic | EFFICACY_CLAIMS_AND_PUBLICATION.md |
-| Worker/model row | Not executed or included | Non-deterministic if executed | No approved worker result exists for this report |
-| Private holdout | Protocol available; no approved aggregate result exists | Would be non-deterministic when model-backed | PRIVATE_HOLDOUT_PROTOCOL.md |
-| ITDO_ERP4 dogfood | Three reviewed target categories: authorization/user, financial state transition, and agent-mediated authorization/audit | Mixed: agent research non-deterministic; aggregate reporting deterministic | ITDO_ERP4_SECOND_DOGFOOD_SUMMARY.md |
-| Scanner execution | Two adapters planned; none executed; no lead artifact ingested | Not measured | ITDO_ERP4_SECOND_DOGFOOD_SUMMARY.md |
+| GenAI Repo Auditor | Version 0.4.0 at source commit 960dd1de42c129a524acbb2437f3a4406024bda9 | Version and source are fixed | [VERSION](../../VERSION) and [source commit](https://github.com/itdojp/genai-repo-auditor/commit/960dd1de42c129a524acbb2437f3a4406024bda9) |
+| Public corpus | genai-repo-auditor-synthetic-core, version 1.1.0+sha256.33c20915076017869a6b99e0552be59f40aa05d701b61e4572d4d449a4fa6146, core suite, 20 cases | Deterministic, content-bound | [Public corpus manifest](../../benchmarks/corpus/core.json) |
+| Reference detector | synthetic-reference-rules-v2 | Deterministic | [Benchmark report contract](../../templates/reports/efficacy-benchmark.schema.json) |
+| Full-signal configuration | reference-review-all-signals-v1; stage fixture-reference-review | Deterministic | [Efficacy comparison policy](../EFFICACY_CLAIMS_AND_PUBLICATION.md#methodology) |
+| Severity-gated configuration | reference-review-high-severity-gate-v1; stages fixture-reference-review and high-severity-review-gate | Deterministic | [Efficacy comparison policy](../EFFICACY_CLAIMS_AND_PUBLICATION.md#methodology) |
+| Worker/model row | Not executed or included | Non-deterministic if executed | [Optional worker policy](../EFFICACY_CLAIMS_AND_PUBLICATION.md#optional-worker-assisted-comparison); no approved result exists |
+| Private holdout | Protocol available; no approved aggregate result exists | Would be non-deterministic when model-backed | [Private holdout protocol](../PRIVATE_HOLDOUT_PROTOCOL.md) |
+| ITDO_ERP4 dogfood | Three reviewed target categories: authorization/user, financial state transition, and agent-mediated authorization/audit | Mixed: agent research non-deterministic; aggregate reporting deterministic | [Second dogfood aggregate](../dogfood/ITDO_ERP4_SECOND_DOGFOOD_SUMMARY.md) |
+| Scanner execution | Two adapters planned; none executed; no lead artifact ingested | Not measured | [Second dogfood aggregate](../dogfood/ITDO_ERP4_SECOND_DOGFOOD_SUMMARY.md#scanner-and-external-evidence-decision) |
 
 The public corpus command was run twice from the stated source commit with the
 same core suite and output format. Both JSON outputs and both Markdown outputs
@@ -154,12 +154,13 @@ Every number in this report maps to one of the following bounded
 sources:
 
 - the reproducible deterministic commands in
-  EVALUATION_REPRODUCTION.md;
+  [EVALUATION_REPRODUCTION.md](EVALUATION_REPRODUCTION.md);
 - the public corpus manifest and closed benchmark/comparison report contracts;
 - the reviewed ITDO_ERP4 second-dogfood aggregate summary; or
 - an explicit zero/not-executed state recorded in those sources.
 
 Permitted wording, prohibited stronger wording, limitations, and required
-approvers are recorded in CLAIM_EVIDENCE_MATRIX.md. This report is a draft
+approvers are recorded in
+[CLAIM_EVIDENCE_MATRIX.md](CLAIM_EVIDENCE_MATRIX.md). This report is a draft
 until its pull request receives security/disclosure and maintainer review; the
 merge record is the publication approval record.

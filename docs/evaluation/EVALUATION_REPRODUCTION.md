@@ -124,14 +124,16 @@ PY
 
 No approved aggregate exists for this report. Do not create substitute numbers.
 An authorized evaluator may separately validate two aggregate-only records with
-gra-efficacy-holdout according to PRIVATE_HOLDOUT_PROTOCOL.md. Do not copy those
+gra-efficacy-holdout according to the
+[private holdout protocol](../PRIVATE_HOLDOUT_PROTOCOL.md). Do not copy those
 records or their source fixtures into Git.
 
 ### ITDO_ERP4 operational dogfood
 
 Do not rerun a real-repository audit to reproduce this document. The public
-source is the reviewed aggregate in
-docs/dogfood/ITDO_ERP4_SECOND_DOGFOOD_SUMMARY.md. Target-specific artifacts and
+source is the
+[reviewed aggregate](../dogfood/ITDO_ERP4_SECOND_DOGFOOD_SUMMARY.md).
+Target-specific artifacts and
 findings remain outside Git and require the target owner's private disclosure
 process.
 
@@ -145,8 +147,10 @@ and new security/disclosure and maintainer review.
 
 Before reusing a number or claim:
 
-1. identify its exact row in PUBLIC_EFFICACY_AND_OPERATIONS_REPORT.md;
-2. verify the permitted wording in CLAIM_EVIDENCE_MATRIX.md;
+1. identify its exact row in
+   [PUBLIC_EFFICACY_AND_OPERATIONS_REPORT.md](PUBLIC_EFFICACY_AND_OPERATIONS_REPORT.md);
+2. verify the permitted wording in
+   [CLAIM_EVIDENCE_MATRIX.md](CLAIM_EVIDENCE_MATRIX.md);
 3. keep the synthetic, holdout, and operational layers separate;
 4. confirm the corpus, source, configuration, and stage versions still match;
 5. rerun documentation and manifest tests; and
