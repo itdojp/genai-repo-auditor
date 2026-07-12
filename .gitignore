@@ -3,6 +3,7 @@ runs/
 batches/
 locks/
 .test-tmp/
+.demo-public/
 dist/
 holdout/
 private-holdout/
