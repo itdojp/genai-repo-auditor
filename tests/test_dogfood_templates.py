@@ -279,7 +279,7 @@ class DogfoodTemplateTests(unittest.TestCase):
         ]
         leaked = [term for term in forbidden if term.lower() in case_study_lower]
         self.assertEqual([], leaked)
-        self.assertIsNone(re.search(r"\b[0-9a-f]{40}\b", case_study))
+        self.assertIsNone(re.search(r"\b[0-9a-f]{40}\b", case_study, re.IGNORECASE))
         self.assertIsNone(re.search(r"\b20\d{6}T\d{6}[+-]\d{4}\b", case_study))
 
     def test_itdo_erp4_second_dogfood_summary_is_aggregate_only(self) -> None:
