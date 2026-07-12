@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.5.0 - 2026-07-12
+
+Workflow orchestration, cross-platform packaging, and security-efficacy evaluation update.
+
+- Added Python package metadata, installed `gra-*` console scripts, resource discovery, and a Linux/macOS/Windows Python 3.10-3.12 install matrix with installed prepare, workflow execute/failure/resume, and efficacy-validation smoke coverage.
+- Added `gra-doctor` platform, filesystem-safety, runtime, and credential-source-name diagnostics, plus explicit native Windows, WSL2, Linux, macOS, PowerShell, container, and gVisor support boundaries.
+- Added `gra-run` declarative workflow profiles with non-executing plans, explicit bounded execution, dependency-aware stage ranges/skips, immutable command fingerprints, safe checkpoints, exact resume, and local-only execution summaries.
+- Added workflow execution and expanded v2 command-event reporting so metrics and evidence graphs distinguish succeeded, failed, externally blocked, scoped-out, and resumed work without copying prompts, findings, evidence, credentials, or private reasoning.
+- Added safe offline scanner adapter planning and explicit container/gVisor execution with digest-pinned pre-pulled images, disabled network access, read-only targets, bounded resources/output, redacted ingestion, and aggregate scanner-run reporting; scanner results remain review leads.
+- Added the versioned 20-case public synthetic efficacy corpus with ten positive/control pairs across seven categories, content-bound integrity, closed schemas, package-resource validation, and public-safety checks.
+- Added deterministic `gra-efficacy-benchmark` scoring for TP/FP/FN/TN, precision, recall, F1, severity agreement, target coverage, and human-review counts without changing workflow-health `gra-benchmark` semantics.
+- Added fixed-input efficacy configuration comparison with recorded stage differences and an explicit opt-in isolated worker-backed row; deterministic and non-deterministic results remain distinct and model/provider superiority claims remain prohibited.
+- Added a validation-only private holdout protocol and `gra-efficacy-holdout` aggregate validator that never loads private fixtures and keeps private corpus, prompt, transcript, raw response, and adjudication material outside releases.
+- Expanded the primary onboarding path around a shared runs directory, `gra-doctor`, `gra-audit --mode prepare`, and reviewed `gra-run` plan/execute/resume operation while preserving supervised individual commands.
+- Added a second authorized ITDO_ERP4 dogfood aggregate and a public efficacy/operations report with source-bound synthetic results, explicit holdout/scanner/worker absence states, reproducible commands, and a claim-evidence approval matrix; no target-specific findings or private artifacts are included.
+- Modularized report validation and Issue-publication policy/ledger helpers while preserving CLI contracts, closed schemas, fail-closed path handling, dry-run publication controls, and local-first release exclusions.
+- Migration and compatibility: use one workflow profile per checkpoint; review every plan before execution; native Windows execution remains bounded by documented platform support; scanner execution requires an approved local runtime and pre-pulled immutable image; worker-backed efficacy comparison remains explicit, optional, and non-deterministic.
+- Preserved human-controlled release and disclosure boundaries: this preparation changes release metadata only, creates no tag or GitHub Release, and does not include audit runs, target clones, scanner output, findings, transcripts, holdout records, proof/remediation artifacts, Issue drafts, credentials, or private security data.
+
 ## v0.4.0 - 2026-07-10
 
 Release-readiness, controlled remediation, observability, and public-safe dogfood workflow update.

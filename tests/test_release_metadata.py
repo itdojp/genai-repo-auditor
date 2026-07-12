@@ -79,6 +79,33 @@ class ReleaseMetadataTests(unittest.TestCase):
         missing = [description for term, description in required_terms.items() if term not in text]
         self.assertEqual([], missing)
 
+    def test_v050_notes_cover_required_user_visible_changes_and_boundaries(self) -> None:
+        text = changelog_section("0.5.0").lower()
+        required_terms = {
+            "python package metadata": "Python packaging",
+            "gra-doctor": "doctor diagnostics",
+            "windows": "cross-platform boundary",
+            "gra-run": "workflow orchestration",
+            "checkpoint": "checkpoint and resume",
+            "workflow execution": "workflow execution reporting",
+            "command-event": "command-event reporting",
+            "scanner adapter": "scanner planning",
+            "digest-pinned": "immutable scanner image",
+            "20-case": "public efficacy corpus",
+            "gra-efficacy-benchmark": "efficacy command",
+            "tp/fp/fn/tn": "efficacy counts",
+            "configuration comparison": "fixed comparison",
+            "worker-backed": "optional worker comparison",
+            "private holdout": "private holdout protocol",
+            "claim-evidence": "claim guardrails",
+            "one workflow profile per checkpoint": "checkpoint migration note",
+            "creates no tag or github release": "human release boundary",
+            "local-first": "local-first boundary",
+        }
+        missing = [description for term, description in required_terms.items() if term not in text]
+        self.assertEqual([], missing)
+        self.assertNotIn("codex", text)
+
     def test_release_process_links_canonical_metadata_and_uses_v_tag_convention(self) -> None:
         text = RELEASE_PROCESS.read_text(encoding="utf-8")
         self.assertIn("[`VERSION`](../VERSION)", text)
