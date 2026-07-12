@@ -80,6 +80,7 @@ For a fresh local install and first `OWNER/REPO` audit, see:
 - [`docs/DOGFOOD_CAMPAIGN.md`](docs/DOGFOOD_CAMPAIGN.md), [`docs/DOGFOOD_RUNBOOK.md`](docs/DOGFOOD_RUNBOOK.md), and [`docs/DOGFOOD_REPORTING.md`](docs/DOGFOOD_REPORTING.md) for controlled dogfood campaign planning and public-safe reporting
 - [`docs/dogfood/PUBLIC_ITDO_ERP4_CASE_STUDY.md`](docs/dogfood/PUBLIC_ITDO_ERP4_CASE_STUDY.md) for a public-safe business-application dogfood example
 - [`docs/dogfood/PUBLIC_SELF_DOGFOOD_CASE_STUDY.md`](docs/dogfood/PUBLIC_SELF_DOGFOOD_CASE_STUDY.md) for a public-safe self-dogfood example
+- [`docs/evaluation/PUBLIC_EFFICACY_AND_OPERATIONS_REPORT.md`](docs/evaluation/PUBLIC_EFFICACY_AND_OPERATIONS_REPORT.md) for the bounded synthetic, holdout-availability, and operational evidence summary
 - [`docs/dogfood/PUBLIC_LAUNCH_CHECKLIST.md`](docs/dogfood/PUBLIC_LAUNCH_CHECKLIST.md) for public dogfood launch and recognition readiness checks
 
 Release source archives are built from committed Git objects and published with
