@@ -100,7 +100,7 @@ summary.
 | Downgraded or invalidated | 0 |
 | Critical or High candidates | 0 |
 | Scanner adapters planned / executed | 2 / 0 |
-| Authorized scanner artifacts ingested / leads triaged | 0 / 0 |
+| Authorized scanner/external artifacts ingested / normalized scanner leads triaged | 0 / 0 |
 | Workflow interruptions / checkpoint resumes | 1 / 1 |
 | Approximate hands-on operator review time | 45 minutes |
 | Workflow benchmark gates | 7 passed / 0 warnings / 0 failed |
