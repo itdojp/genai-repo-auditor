@@ -47,7 +47,7 @@ class EvaluationDocsTests(unittest.TestCase):
             "aggregate-only private holdout results",
             "public-safe operational counts",
             "No approved private holdout aggregate exists",
-            "No worker profile, model, effort, or Codex CLI version is reported",
+            "No worker profile, model, effort, or agent/worker CLI version is reported",
             "Scanner version checks",
             "execution were also not performed",
             "Missing scanner",

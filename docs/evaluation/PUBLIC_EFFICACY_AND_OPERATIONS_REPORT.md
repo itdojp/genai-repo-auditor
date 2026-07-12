@@ -33,7 +33,7 @@ were byte-identical. The deterministic comparison used the same corpus, case
 selection, detector, command version, and output format. Only the recorded
 workflow stage gate differed.
 
-No worker profile, model, effort, or Codex CLI version is reported because no
+No worker profile, model, effort, or agent/worker CLI version is reported because no
 worker-backed row was executed. Scanner version checks and immutable-image
 execution were also not performed; configured scanner image pins are not
 presented as execution evidence.
