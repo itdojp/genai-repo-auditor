@@ -326,4 +326,9 @@ docs/ja/SCANNER_INTEGRATION.ja.md
 docs/ja/SECURITY_MODEL.ja.md
 docs/ja/USAGE.ja.md
 docs/ja/WINDOWS_WSL_SUPPORT.ja.md
+docs/public/ARTICLE_CLAIM_SOURCES.md
+docs/public/DEMO_PUBLICATION_REVIEW.md
+docs/public/DEMO_SHOT_LIST.md
+docs/public/RECORDED_DEMO_RUNBOOK.md
+docs/public/TECHNICAL_ARTICLE_DRAFT.md
 ```
