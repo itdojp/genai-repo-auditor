@@ -21,14 +21,24 @@ CORPUS_VERSION = (
 class EvaluationDocsTests(unittest.TestCase):
     maxDiff = None
 
-    def setUp(self) -> None:
-        self.report = REPORT.read_text(encoding="utf-8")
-        self.matrix = MATRIX.read_text(encoding="utf-8")
-        self.reproduction = REPRODUCTION.read_text(encoding="utf-8")
-        self.dogfood_summary = (
+    @classmethod
+    def setUpClass(cls) -> None:
+        dogfood_summary_path = (
             REPO_ROOT / "docs" / "dogfood" / "ITDO_ERP4_SECOND_DOGFOOD_SUMMARY.md"
-        ).read_text(encoding="utf-8")
-        self.combined = "\n".join((self.report, self.matrix, self.reproduction))
+        )
+        required_paths = (REPORT, MATRIX, REPRODUCTION, dogfood_summary_path)
+        missing = [
+            str(path.relative_to(REPO_ROOT))
+            for path in required_paths
+            if not path.is_file()
+        ]
+        if missing:
+            raise AssertionError(f"required evaluation documents are missing: {', '.join(missing)}")
+        cls.report = REPORT.read_text(encoding="utf-8")
+        cls.matrix = MATRIX.read_text(encoding="utf-8")
+        cls.reproduction = REPRODUCTION.read_text(encoding="utf-8")
+        cls.dogfood_summary = dogfood_summary_path.read_text(encoding="utf-8")
+        cls.combined = "\n".join((cls.report, cls.matrix, cls.reproduction))
 
     def test_required_evaluation_documents_exist_and_are_linked(self) -> None:
         for path in (REPORT, MATRIX, REPRODUCTION):
@@ -135,7 +145,7 @@ class EvaluationDocsTests(unittest.TestCase):
         self.assertEqual([], missing_source)
         self.assertNotIn("Needs-human-review decisions after review", self.report)
         self.assertNotIn("patch validation | 0", self.report.lower())
-        self.assertIn("does not publish a\npatch-validation count", self.report)
+        self.assertRegex(self.report, r"does not publish a\s+patch-validation count")
 
     def test_claim_matrix_records_wording_guardrails_and_approvers(self) -> None:
         for claim_id in range(1, 11):
