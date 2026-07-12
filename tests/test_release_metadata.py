@@ -149,7 +149,9 @@ class ReleaseMetadataTests(unittest.TestCase):
             ),
         }
         self.assertIn("**Status: pending human publication.**", text)
-        self.assertGreaterEqual(text.count(source_commit), 5)
+        self.assertIn(f"| Source commit | `{source_commit}` |", text)
+        self.assertIn(f"and source commit `{source_commit}`.", text)
+        self.assertIn(f"--source-digest {source_commit}", text)
         self.assertIn("Do not retarget `v0.5.0`", text)
         for name, (size, digest) in expected_assets.items():
             with self.subTest(name=name):
@@ -166,7 +168,7 @@ class ReleaseMetadataTests(unittest.TestCase):
             ".prevent_self_review == true",
             "(.reviewers | length) > 0",
             "git tag -a v0.5.0",
-            'git cat-file -t v0.5.0)" = "tag"',
+            'test "$(git cat-file -t v0.5.0)" = "tag"',
             "git push origin refs/tags/v0.5.0",
             "gh workflow run release.yml",
             "-f publish=true",
