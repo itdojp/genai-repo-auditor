@@ -17,6 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 VERSION = REPO_ROOT / "VERSION"
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 RELEASE_PROCESS = REPO_ROOT / "docs" / "RELEASE_PROCESS.md"
+V050_HANDOFF = REPO_ROOT / "docs" / "releases" / "V0_5_0_PUBLICATION_HANDOFF.md"
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release.yml"
 RELEASE_SCRIPT = REPO_ROOT / "scripts" / "build_release.py"
 
@@ -117,6 +118,75 @@ class ReleaseMetadataTests(unittest.TestCase):
         self.assertIn("-f publish=false", text)
         self.assertIn("-f publish=true", text)
         self.assertIn("gh attestation verify", text)
+        self.assertIn(
+            "[`releases/V0_5_0_PUBLICATION_HANDOFF.md`](releases/V0_5_0_PUBLICATION_HANDOFF.md)",
+            text,
+        )
+
+    def test_v050_handoff_freezes_candidate_and_human_publication_boundary(self) -> None:
+        text = V050_HANDOFF.read_text(encoding="utf-8")
+        source_commit = "fb8c5f00afa89e6f8b09eb6c76876833fef2fcd0"
+        expected_assets = {
+            "genai-repo-auditor-v0.5.0.tar.gz": (
+                835739,
+                "14f1e5bb80288a82aea4f665bbb28dfdeface193eb4e472839769fa968f170ca",
+            ),
+            "genai-repo-auditor-v0.5.0.zip": (
+                1182052,
+                "18dd3718071a8de6caeaf22d14b26e3cd0697ab2e3f9487f39529c55127975a1",
+            ),
+            "genai-repo-auditor-v0.5.0.cdx.json": (
+                991,
+                "479fe4c600d324bd1701d08ccbe866295179dfba2727ca459ff3013bb814fdf1",
+            ),
+            "release-manifest.json": (
+                687,
+                "b642cdef86c2edc868ca0eb2253690d4e2048999c98242b07426eb7a63bba183",
+            ),
+            "SHA256SUMS": (
+                384,
+                "dff06c49f7cbde8a47c9272b47e57f8ce2ea4409b42ca24b18e9447539b5afa3",
+            ),
+        }
+        self.assertIn("pending human publication", text)
+        self.assertIn("During the pre-publication inspection", text)
+        self.assertIn(f"| Source commit | `{source_commit}` |", text)
+        self.assertIn(f"and source commit `{source_commit}`.", text)
+        self.assertIn(f"--source-digest {source_commit}", text)
+        self.assertIn("Do not retarget `v0.5.0`", text)
+        for name, (size, digest) in expected_assets.items():
+            with self.subTest(name=name):
+                self.assertIn(f"| `{name}` | {size} | `{digest}` |", text)
+        for run_id in (29182324198, 29182324187, 29182324216, 29182324214):
+            self.assertIn(str(run_id), text)
+        required_human_steps = [
+            "set -euo pipefail",
+            "gh attestation verify --help",
+            "releases/tags/v0.5.0",
+            "grep -Eq '^HTTP/[0-9.]+ 404 '",
+            "repos/itdojp/genai-repo-auditor/environments/release",
+            '.type == "required_reviewers"',
+            ".prevent_self_review == true",
+            "(.reviewers | length) > 0",
+            "git tag -a v0.5.0",
+            'test "$(git cat-file -t v0.5.0)" = "tag"',
+            "git push origin refs/tags/v0.5.0",
+            "gh workflow run release.yml",
+            "-f publish=true",
+            "approve the protected `release` environment",
+        ]
+        self.assertEqual([], [term for term in required_human_steps if term not in text])
+        required_read_only_checks = [
+            "gh release download v0.5.0",
+            "scripts/build_release.py --verify",
+            "sha256sum -c SHA256SUMS",
+            "gh attestation verify",
+            "--predicate-type https://cyclonedx.org/bom",
+            "--signer-workflow",
+            "--source-ref refs/tags/v0.5.0",
+            f"--source-digest {source_commit}",
+        ]
+        self.assertEqual([], [term for term in required_read_only_checks if term not in text])
 
     def test_release_dry_run_is_non_mutating_and_machine_readable(self) -> None:
         self.assertEqual("dry-run", build_release.create_parser().parse_args(["--dry-run"]).mode)

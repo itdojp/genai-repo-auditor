@@ -139,6 +139,10 @@ python3 scripts/build_release.py \
 Generated candidates belong under ignored `dist/` or `.codex-local/tmp/`
 paths and must not be committed.
 
+The frozen v0.5.0 source identity, deterministic candidate checksums, and exact
+human publication gate are recorded in
+[`releases/V0_5_0_PUBLICATION_HANDOFF.md`](releases/V0_5_0_PUBLICATION_HANDOFF.md).
+
 ## Required validation before tagging
 
 Run the repository checks from the release commit:
