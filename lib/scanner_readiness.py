@@ -286,7 +286,7 @@ def _evaluate_scanner_readiness(
         and staging_safe
         and not paths_overlap
     ):
-        runtime_probe_executed = True
+        runtime_probe_executed = bool(candidates)
         try:
             selected_prefix, selected_runtime = select_local_runtime_with_image(
                 image=str(image),
@@ -558,6 +558,8 @@ def validate_scanner_readiness_report(report: Any) -> None:
         raise ScannerReadinessError("scanner readiness runtime local-only state is inconsistent")
     if runtime_report["healthy_available"] and not runtime_report["candidate_available"]:
         raise ScannerReadinessError("scanner readiness healthy runtime requires a runtime candidate")
+    if runtime_report["probe_executed"] and not runtime_report["candidate_available"]:
+        raise ScannerReadinessError("scanner readiness runtime probe requires a runtime candidate")
 
     image_report = _closed_object(
         report.get("image"),

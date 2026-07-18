@@ -105,9 +105,40 @@ class ScannerReadinessTests(unittest.TestCase):
         }
         with mock.patch("scanner_readiness.detect_environment", return_value="linux"), mock.patch(
             "scanner_readiness.runtime_candidates", return_value=[]
-        ), mock.patch("scanner_readiness.shutil.which", return_value=None):
+        ), mock.patch("scanner_readiness._probe_command") as missing_probe, mock.patch(
+            "scanner_readiness.shutil.which", return_value=None
+        ):
             missing = evaluate_scanner_readiness(**common)
         self.assertIn("runtime_missing", missing["reason_codes"])
+        self.assertFalse(missing["runtime"]["probe_executed"])
+        self.assertFalse(missing["probes"]["runtime_probe_executed"])
+        self.assertFalse(missing["probes"]["version_check_executed"])
+        missing_probe.assert_not_called()
+
+        impossible_probe = copy.deepcopy(missing)
+        impossible_probe["runtime"]["probe_executed"] = True
+        impossible_probe["probes"]["runtime_probe_executed"] = True
+        impossible_probe["probes"]["version_check_executed"] = True
+        with self.assertRaisesRegex(ScannerReadinessError, "runtime probe requires a runtime candidate"):
+            validate_scanner_readiness_report(impossible_probe)
+
+        schema = json.loads(
+            (REPO_ROOT / "templates" / "reports" / "scanner-readiness.schema.json").read_text(encoding="utf-8")
+        )
+        missing_candidate_condition = next(
+            condition
+            for condition in schema["allOf"]
+            if condition.get("if", {})
+            .get("properties", {})
+            .get("runtime", {})
+            .get("properties", {})
+            .get("candidate_available", {})
+            .get("const")
+            is False
+        )
+        self.assertFalse(
+            missing_candidate_condition["then"]["properties"]["runtime"]["properties"]["probe_executed"]["const"]
+        )
 
         with mock.patch("scanner_readiness.detect_environment", return_value="linux"), mock.patch(
             "scanner_readiness.runtime_candidates", return_value=[(["docker"], "docker")]

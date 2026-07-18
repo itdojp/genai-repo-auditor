@@ -1010,6 +1010,30 @@
         "properties": {
           "runtime": {
             "properties": {
+              "candidate_available": {
+                "const": false
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "probe_executed": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "properties": {
               "healthy_available": {
                 "const": true
               }
