@@ -410,7 +410,30 @@
         "absent_stage_count": {"type": "integer", "minimum": 0},
         "absence_reasons": {"type": "object"},
         "resume_available": {"type": "boolean"},
-        "resume_stage": {"type": ["string", "null"]}
+        "resume_stage": {"type": ["string", "null"]},
+        "provider_failure_count": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "retryable_provider_failure_count": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "resume_recommended_count": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "active_provider_failure_count": {"type": "integer", "minimum": 0, "maximum": 64},
+        "recovered_provider_failure_count": {"type": "integer", "minimum": 0, "maximum": 64},
+        "provider_failures_by_class": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rate_limit": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "usage_limit": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "authentication": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "authorization": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "service_unavailable": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "timeout": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "invalid_request": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "model_unavailable": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "response_contract": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "unknown_provider_error": {"type": "integer", "minimum": 1, "maximum": 1000000}
+          }
+        },
+        "provider_failure_stages": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"}},
+        "recovered_provider_failure_stages": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"}}
       }
     }
   }

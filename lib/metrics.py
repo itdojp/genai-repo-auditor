@@ -993,6 +993,10 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
         f"| Workflow execution recorded | {str(bool(workflow_execution.get('artifact_present'))).lower()} |",
         f"| Workflow execution status | {workflow_execution.get('status', 'not-recorded')} |",
         f"| Workflow execution failures | {workflow_execution.get('failed_count', 0)} |",
+        f"| Classified provider failures | {workflow_execution.get('provider_failure_count', 0)} |",
+        f"| Active provider failures | {workflow_execution.get('active_provider_failure_count', 0)} |",
+        f"| Recovered provider-failure stages | {workflow_execution.get('recovered_provider_failure_count', 0)} |",
+        f"| Retryable provider failures | {workflow_execution.get('retryable_provider_failure_count', 0)} |",
         f"| Workflow blocked dependencies | {workflow_execution.get('blocked_dependency_count', 0)} |",
         f"| Workflow resume stage | {workflow_execution.get('resume_stage') or '-'} |",
         f"| Evidence graph nodes | {evidence.get('node_count', 0)} |",
@@ -1028,6 +1032,10 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
         f"| Workflow execution status | {metrics['workflow_execution']['status']} |",
         f"| Workflow execution duration | {metrics['workflow_execution']['total_duration_ms']} ms |",
         f"| Workflow execution failed stages | {metrics['workflow_execution']['failed_count']} |",
+        f"| Workflow provider failures | {metrics['workflow_execution']['provider_failure_count']} |",
+        f"| Workflow active provider failures | {metrics['workflow_execution']['active_provider_failure_count']} |",
+        f"| Workflow recovered provider-failure stages | {metrics['workflow_execution']['recovered_provider_failure_count']} |",
+        f"| Workflow retryable provider failures | {metrics['workflow_execution']['retryable_provider_failure_count']} |",
         f"| Workflow blocked dependencies | {metrics['workflow_execution']['blocked_dependency_count']} |",
         f"| Duplicate decisions | {metrics['duplicate_decisions']['total']} |",
         f"| Command events | {metrics['observability']['total_events']} |",
@@ -1091,12 +1099,18 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
     lines.append(f"| Stages | {metrics['workflow_execution']['stage_count']} |")
     lines.append(f"| Duration | {metrics['workflow_execution']['total_duration_ms']} ms |")
     lines.append(f"| Failed stages | {metrics['workflow_execution']['failed_count']} |")
+    lines.append(f"| Provider failures | {metrics['workflow_execution']['provider_failure_count']} |")
+    lines.append(f"| Active provider failures | {metrics['workflow_execution']['active_provider_failure_count']} |")
+    lines.append(f"| Recovered provider-failure stages | {metrics['workflow_execution']['recovered_provider_failure_count']} |")
+    lines.append(f"| Retryable provider failures | {metrics['workflow_execution']['retryable_provider_failure_count']} |")
+    lines.append(f"| Provider resume recommendations | {metrics['workflow_execution']['resume_recommended_count']} |")
     lines.append(f"| Skipped by scope | {metrics['workflow_execution']['skipped_by_scope_count']} |")
     lines.append(f"| Blocked dependencies | {metrics['workflow_execution']['blocked_dependency_count']} |")
     lines.append(f"| Resume stage | {metrics['workflow_execution']['resume_stage'] or '-'} |")
     lines.append("")
     lines.extend(markdown_counts("Workflow execution stage status", metrics["workflow_execution"]["by_status"]))
     lines.extend(markdown_counts("Workflow stage absence reasons", metrics["workflow_execution"]["absence_reasons"]))
+    lines.extend(markdown_counts("Provider failure classes", metrics["workflow_execution"]["provider_failures_by_class"]))
     lines.extend(["## Duplicate decisions", "", "| Metric | Count |", "|---|---:|"])
     lines.append(f"| Total | {metrics['duplicate_decisions']['total']} |")
     lines.append(f"| Exact matches | {metrics['duplicate_decisions']['exact_match_count']} |")

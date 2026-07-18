@@ -13,6 +13,12 @@ from report_safety import (
     validate_relative_repo_path,
 )
 from gralib import load_context
+from provider_failures import (
+    PROVIDER_ERROR_CLASSES,
+    ProviderFailureError,
+    validate_provider_error,
+    validate_provider_failure_history,
+)
 from scanner_reporting import ScannerReportError, validate_scanner_runs_for_run
 from scanner_readiness import ScannerReadinessError, read_scanner_readiness_report
 from run_events import (
@@ -1321,6 +1327,83 @@ def validate_workflow_execution_summary_contract(
             and len(identifiers) != len(set(identifiers))
         ):
             errors.append(f"{path}.{field}: stage ids must be unique")
+    provider_stage_lists: dict[str, list[str] | None] = {}
+    for field in ("provider_failure_stages", "recovered_provider_failure_stages"):
+        identifiers = value.get(field)
+        provider_stage_lists[field] = identifiers if isinstance(identifiers, list) else None
+        if identifiers is not None:
+            if not isinstance(identifiers, list) or any(
+                not isinstance(identifier, str) or not SAFE_WORKFLOW_ID_RE.fullmatch(identifier)
+                for identifier in identifiers
+            ):
+                errors.append(f"{path}.{field}: contains an invalid stage id")
+            elif len(identifiers) != len(set(identifiers)):
+                errors.append(f"{path}.{field}: stage ids must be unique")
+    provider_failure_stages = provider_stage_lists["provider_failure_stages"]
+    recovered_provider_failure_stages = provider_stage_lists["recovered_provider_failure_stages"]
+    provider_classes = value.get("provider_failures_by_class")
+    if provider_classes is not None:
+        if not isinstance(provider_classes, dict) or set(provider_classes) - set(PROVIDER_ERROR_CLASSES):
+            errors.append(f"{path}.provider_failures_by_class: contains an unsupported provider class")
+        elif any(
+            not isinstance(count, int) or isinstance(count, bool) or count < 0
+            for count in provider_classes.values()
+        ):
+            errors.append(f"{path}.provider_failures_by_class: counts must be non-negative integers")
+    provider_count = value.get("provider_failure_count")
+    provider_summary_fields = {
+        "provider_failure_count",
+        "retryable_provider_failure_count",
+        "resume_recommended_count",
+        "active_provider_failure_count",
+        "recovered_provider_failure_count",
+        "provider_failures_by_class",
+        "provider_failure_stages",
+        "recovered_provider_failure_stages",
+    }
+    present_provider_summary_fields = provider_summary_fields.intersection(value)
+    if present_provider_summary_fields and present_provider_summary_fields != provider_summary_fields:
+        errors.append(f"{path}: provider failure summary fields must be complete")
+    if isinstance(provider_count, int) and not isinstance(provider_count, bool) and provider_count >= 0:
+        if isinstance(provider_failure_stages, list) and provider_count < len(provider_failure_stages):
+            errors.append(f"{path}.provider_failure_stages: length must not exceed provider_failure_count")
+        if isinstance(provider_classes, dict) and all(
+            isinstance(count, int) and not isinstance(count, bool) and count >= 0
+            for count in provider_classes.values()
+        ) and provider_count != sum(provider_classes.values()):
+            errors.append(f"{path}.provider_failures_by_class: counts must match provider_failure_count")
+        for field in ("retryable_provider_failure_count", "resume_recommended_count"):
+            count = value.get(field)
+            if isinstance(count, int) and not isinstance(count, bool) and not 0 <= count <= provider_count:
+                errors.append(f"{path}.{field}: must not exceed provider_failure_count")
+        for field in ("active_provider_failure_count", "recovered_provider_failure_count"):
+            count = value.get(field)
+            if isinstance(count, int) and not isinstance(count, bool) and not 0 <= count <= provider_count:
+                errors.append(f"{path}.{field}: must not exceed provider_failure_count")
+        recovered_count = value.get("recovered_provider_failure_count")
+        if (
+            isinstance(recovered_count, int)
+            and not isinstance(recovered_count, bool)
+            and isinstance(recovered_provider_failure_stages, list)
+            and recovered_count != len(recovered_provider_failure_stages)
+        ):
+            errors.append(
+                f"{path}.recovered_provider_failure_stages: length must match recovered_provider_failure_count"
+            )
+        if (
+            isinstance(provider_failure_stages, list)
+            and isinstance(recovered_provider_failure_stages, list)
+            and set(recovered_provider_failure_stages) - set(provider_failure_stages)
+        ):
+            errors.append(f"{path}.recovered_provider_failure_stages: must be provider-failure stages")
+        active_count = value.get("active_provider_failure_count")
+        if (
+            isinstance(active_count, int)
+            and not isinstance(active_count, bool)
+            and isinstance(provider_failure_stages, list)
+            and active_count > len(provider_failure_stages)
+        ):
+            errors.append(f"{path}.active_provider_failure_count: must not exceed provider-failure stages")
     profile = value.get("profile")
     if not isinstance(profile, str) or not SAFE_WORKFLOW_ID_RE.fullmatch(profile):
         errors.append(f"{path}.profile: must be a bounded safe identifier")
@@ -1701,6 +1784,13 @@ def validate_workflow_execution(run_dir: Path, errors: List[str]) -> bool:
         errors.append("workflow_execution.stages: stage ids must be unique")
     statuses: Counter[str] = Counter()
     absence_reasons: Counter[str] = Counter()
+    provider_classes: Counter[str] = Counter()
+    provider_failure_stages: list[str] = []
+    provider_failure_count = 0
+    retryable_provider_failure_count = 0
+    resume_recommended_count = 0
+    active_provider_failure_count = 0
+    recovered_provider_failure_count = 0
     durations: list[int] = []
     for index, stage in enumerate(stages):
         if not isinstance(stage, dict):
@@ -1708,6 +1798,51 @@ def validate_workflow_execution(run_dir: Path, errors: List[str]) -> bool:
         path = f"workflow_execution.stages[{index}]"
         status = str(stage.get("status") or "")
         statuses[status] += 1
+        provider_error = stage.get("provider_error")
+        provider_history = stage.get("provider_failure_history")
+        error_category = stage.get("error_category")
+        provider_error_valid = provider_error is None
+        if "provider_error" in stage:
+            try:
+                validate_provider_error(provider_error, allow_none=True)
+                provider_error_valid = True
+            except ProviderFailureError:
+                errors.append(f"{path}.provider_error: invalid bounded provider failure metadata")
+        provider_history_valid = provider_history is None
+        if "provider_failure_history" in stage:
+            try:
+                validate_provider_failure_history(provider_history, allow_none=True)
+                provider_history_valid = True
+            except ProviderFailureError:
+                errors.append(f"{path}.provider_failure_history: invalid bounded provider failure history")
+        if (error_category == "provider_error") != (isinstance(provider_error, dict)):
+            errors.append(f"{path}.provider_error: must match error_category")
+        if isinstance(provider_error, dict):
+            if status != "failed":
+                errors.append(f"{path}.provider_error: provider failure metadata requires failed status")
+            if (
+                not isinstance(provider_history, dict)
+                or not provider_history_valid
+                or not provider_error_valid
+                or provider_history.get("last_error") != provider_error
+                or provider_history.get("recovered") is not False
+            ):
+                errors.append(f"{path}.provider_failure_history: must bind the current provider failure")
+        if isinstance(provider_history, dict) and provider_history_valid:
+            attempt = stage.get("attempt")
+            if isinstance(attempt, int) and not isinstance(attempt, bool) and provider_history["count"] > attempt:
+                errors.append(f"{path}.provider_failure_history.count: must not exceed stage attempts")
+            if provider_history["recovered"] != (status == "succeeded"):
+                errors.append(f"{path}.provider_failure_history.recovered: must match succeeded stage status")
+            stage_id = str(stage.get("id") or "")
+            provider_failure_stages.append(stage_id)
+            provider_failure_count += provider_history["count"]
+            provider_classes.update(provider_history["by_class"])
+            retryable_provider_failure_count += provider_history["retryable_count"]
+            resume_recommended_count += provider_history["resume_recommended_count"]
+            active_provider_failure_count += int(isinstance(provider_error, dict))
+            if provider_history["recovered"]:
+                recovered_provider_failure_count += 1
         absence_reason = stage.get("absence_reason")
         if isinstance(absence_reason, str):
             absence_reasons[absence_reason] += 1
@@ -1771,6 +1906,33 @@ def validate_workflow_execution(run_dir: Path, errors: List[str]) -> bool:
     for key, expected in expected_values.items():
         if summary.get(key) != expected:
             errors.append(f"workflow_execution.summary.{key}: value does not match stages")
+    provider_summary_fields = {
+        "provider_failure_count",
+        "retryable_provider_failure_count",
+        "resume_recommended_count",
+        "active_provider_failure_count",
+        "recovered_provider_failure_count",
+        "provider_failures_by_class",
+    }
+    present_provider_summary_fields = provider_summary_fields.intersection(summary)
+    if provider_failure_stages or present_provider_summary_fields:
+        if present_provider_summary_fields != provider_summary_fields:
+            errors.append("workflow_execution.summary: provider failure summary fields must be complete")
+        expected_provider_values = {
+            "provider_failure_count": provider_failure_count,
+            "retryable_provider_failure_count": retryable_provider_failure_count,
+            "resume_recommended_count": resume_recommended_count,
+            "active_provider_failure_count": active_provider_failure_count,
+            "recovered_provider_failure_count": recovered_provider_failure_count,
+            "provider_failures_by_class": {
+                error_class: int(provider_classes[error_class])
+                for error_class in PROVIDER_ERROR_CLASSES
+                if provider_classes[error_class]
+            },
+        }
+        for key, expected in expected_provider_values.items():
+            if summary.get(key) != expected:
+                errors.append(f"workflow_execution.summary.{key}: value does not match provider failures")
     resume = execution.get("resume") if isinstance(execution.get("resume"), dict) else {}
     if bool(resume.get("available")) != (resume.get("stage") is not None):
         errors.append("workflow_execution.resume.available: must match whether resume.stage is set")

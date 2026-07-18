@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from provider_failures import ProviderFailureError, classify_provider_failure, validate_provider_error
+
 COMMAND_EVENTS_REL_PATH = Path("reports") / "command-events.jsonl"
 SOURCE = "genai-repo-auditor"
 SCHEMA_VERSION = "2"
@@ -98,6 +100,9 @@ COMMAND_EVENT_PHASES = [
 ]
 COMMAND_EVENT_STATUSES = ["succeeded", "failed", "blocked", "skipped", "warning"]
 EVENT_WRITE_FAILURE_MODES = ["block", "warn"]
+MAX_PROVIDER_STDERR_REFS = 8
+MAX_PROVIDER_STDERR_BYTES = 64 * 1024
+_PROVIDER_STDERR_NAME_RE = re.compile(r"^codex-[A-Za-z0-9][A-Za-z0-9_.-]{0,191}-stderr\.txt$")
 
 # Major workflow commands that currently emit completion events. This is
 # intentionally narrower than COMMAND_EVENT_COMMANDS, which also reserves names
@@ -156,6 +161,14 @@ _ALLOWED_EVENT_KEYS = {
     "artifact_paths",
     "redaction_count",
     "error_category",
+    "provider_error",
+    "source",
+}
+_PROVIDER_ERROR_KEYS = {
+    "class",
+    "retryable",
+    "retry_after_seconds",
+    "resume_recommended",
     "source",
 }
 _FORBIDDEN_KEY_NAMES = {
@@ -291,12 +304,13 @@ def _reject_secret_like_value(value: str, field_path: str) -> None:
 
 def _validate_json_safe(value: Any, field_path: str) -> None:
     if isinstance(value, dict):
+        allowed_keys = _PROVIDER_ERROR_KEYS if field_path == "event.provider_error" else _ALLOWED_EVENT_KEYS
         for key, child in value.items():
             key_text = str(key)
             normalized = _normalize_key(key_text)
             if normalized in _FORBIDDEN_KEY_NAMES:
                 raise EventValidationError(f"{field_path}.{key_text}: field is explicitly forbidden in command events")
-            if normalized not in _ALLOWED_EVENT_KEYS:
+            if normalized not in allowed_keys:
                 raise EventValidationError(f"{field_path}.{key_text}: field is not allowed in command events")
             if key_text != normalized:
                 raise EventValidationError(f"{field_path}.{key_text}: field name must use canonical snake_case")
@@ -394,6 +408,14 @@ def validate_command_event_payload(event: Mapping[str, Any]) -> None:
         error_category = event.get("error_category")
         if error_category is not None and (not isinstance(error_category, str) or not _ERROR_CATEGORY_RE.fullmatch(error_category)):
             raise EventValidationError("event.error_category: invalid error category")
+        provider_error = event.get("provider_error")
+        if "provider_error" in event:
+            try:
+                validate_provider_error(provider_error)
+            except ProviderFailureError as exc:
+                raise EventValidationError("event.provider_error: invalid bounded provider failure metadata") from exc
+            if event.get("status") not in {"failed", "blocked"} or event.get("exit_code") == 0:
+                raise EventValidationError("event.provider_error: requires a failed or blocked nonzero event")
 
 
 def _safe_run_relative_ref(run_dir: Path, value: Path | str, field_path: str) -> str:
@@ -428,6 +450,57 @@ def _safe_run_relative_refs(run_dir: Path, values: Iterable[Path | str] | None, 
             refs.append(ref)
             seen.add(ref)
     return refs
+
+
+def _bounded_provider_stderr_text(run_dir: Path, ref: str) -> str | None:
+    rel = Path(ref)
+    if rel.parent != Path(".") or not _PROVIDER_STDERR_NAME_RE.fullmatch(rel.name):
+        return None
+    fd: int | None = None
+    try:
+        path = run_dir / rel
+        if path.is_symlink():
+            return None
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        metadata = os.fstat(fd)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_PROVIDER_STDERR_BYTES:
+            return None
+        data = b""
+        while len(data) <= MAX_PROVIDER_STDERR_BYTES:
+            chunk = os.read(fd, min(8192, MAX_PROVIDER_STDERR_BYTES + 1 - len(data)))
+            if not chunk:
+                break
+            data += chunk
+        if len(data) > MAX_PROVIDER_STDERR_BYTES:
+            return None
+        return data.decode("utf-8", errors="strict")
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
+def _provider_failure_from_output_refs(run_dir: Path, output_refs: list[str]) -> dict[str, Any] | None:
+    texts: list[str] = []
+    total_bytes = 0
+    stderr_refs = 0
+    for ref in output_refs:
+        if not _PROVIDER_STDERR_NAME_RE.fullmatch(Path(ref).name):
+            continue
+        stderr_refs += 1
+        if stderr_refs > MAX_PROVIDER_STDERR_REFS:
+            return None
+        text = _bounded_provider_stderr_text(run_dir, ref)
+        if text is None:
+            continue
+        total_bytes += len(text.encode("utf-8"))
+        if total_bytes > MAX_PROVIDER_STDERR_BYTES:
+            return None
+        texts.append(text)
+    if not texts:
+        return None
+    return classify_provider_failure("\n".join(texts))
 
 
 def start_command_event() -> tuple[str, float]:
@@ -472,6 +545,7 @@ def build_command_event(
         "output_artifact_refs",
     )
     input_refs = _safe_run_relative_refs(run_dir, input_artifact_paths, "input_artifact_refs")
+    effective_status = status or _status_from_exit(exit_code)
     event = {
         "schema_version": SCHEMA_VERSION,
         "event_id": str(uuid.uuid4()),
@@ -485,7 +559,7 @@ def build_command_event(
         "ended_at": ended_at,
         "duration_ms": duration_ms,
         "exit_code": int(exit_code),
-        "status": status or _status_from_exit(exit_code),
+        "status": effective_status,
         "attempt": int(attempt),
         "retry_of": retry_of,
         "worker_profile": worker_profile,
@@ -502,6 +576,10 @@ def build_command_event(
         "error_category": error_category,
         "source": SOURCE,
     }
+    if int(exit_code) != 0 and effective_status in {"failed", "blocked"}:
+        provider_error = _provider_failure_from_output_refs(run_dir, output_refs)
+        if provider_error is not None:
+            event["provider_error"] = provider_error
     validate_command_event_payload(event)
     return event
 

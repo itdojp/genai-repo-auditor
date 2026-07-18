@@ -134,6 +134,32 @@ blocked dependencies, reasons for stages that did not run, and the safe resume
 stage. They exclude prompts, findings, evidence, credentials, private
 reasoning, command stdout/stderr, and Issue publication.
 
+When a failed worker command writes its completion event, the event writer may
+classify a bounded root-level worker stderr artifact and bind only sanitized
+provider metadata into that immutable event. `gra-run` consumes the metadata
+only from newly created, validated events; it does not reread the mutable stderr
+file. Known patterns require explicit provider/control-plane context so generic
+local permission, request, or timeout failures remain `stage_exit`. The closed
+provider-neutral classes are `rate_limit`, `usage_limit`, `authentication`, `authorization`,
+`service_unavailable`, `timeout`, `invalid_request`, `model_unavailable`,
+`response_contract`, and `unknown_provider_error`. Reports retain only the
+class, fixed retry/resume booleans, an optional retry-after value from 1 through
+86,400 seconds, and the fixed classifier source. They never retain the matched
+text, raw response, full stderr, prompt, header, token, account ID, or request
+ID. Unsafe, stale, oversized, or unrecognized event/file input falls back to
+the generic stage-exit category. A malformed, negative, or excessive
+retry-after fragment is omitted rather than copied or trusted; the recognized
+failure class can still be retained.
+
+Provider retry metadata is operational guidance, not proof that another
+attempt will succeed. `gra-run` never sleeps or retries automatically, enables
+network access, changes credentials, or repeats a succeeded stage. An operator
+must inspect the bounded report and explicitly invoke `--resume`; after a
+successful resume, the stage is reported as succeeded with active provider
+failure metadata cleared. Its incremented attempt count, bounded provider
+failure history/counts, last class, and explicit recovered state are retained
+so an initial success remains distinguishable from a successful recovery.
+
 Resume verifies the
 run, profile, plan fingerprint, and hashes of successful outputs before it runs
 the exact resume stage. It consumes the existing plan without rewriting it;

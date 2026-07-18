@@ -39,7 +39,9 @@ Metrics are computed from local report artifacts only:
 - scanner execution counts by status/adapter, total and maximum duration,
   result/normalized-lead counts, and redaction counts from `scanner-runs.json`
 - declarative workflow execution status, stage durations, failures, scoped
-  skips, blocked dependencies, explicit absence reasons, and resume state from
+  skips, blocked dependencies, explicit absence reasons, resume state, bounded
+  provider-failure class/attempt counts, active failure counts, recovered-stage
+  counts, retryable failure counts, and resume recommendations from
   `workflow-execution.json`
 - command event counts, status/duration summaries, failures, reruns, retries,
   execution-configuration coverage, artifact-reference production counts,
@@ -80,7 +82,10 @@ and simple status flags:
   `reports/workflow-profile.json` is present
 - `workflow_execution.artifact_present`, terminal/current status, profile,
   stage and duration counts, failed/scoped-skip/blocked stage IDs, absence
-  reasons, and resume stage when `reports/workflow-execution.json` is present;
+  reasons, resume stage, provider-failure totals and class counts, retryable and
+  resume-recommended totals, active/recovered counts, and affected/recovered
+  stage IDs when
+  `reports/workflow-execution.json` is present;
   an absent optional report is represented by
   `absence_reason: workflow_execution_not_recorded`
 - `no_findings.recorded`, `source_stage`, and `recon_only` for explicit
@@ -163,7 +168,12 @@ event, then regenerate the evidence graph or dashboard as needed.
 `gra-dashboard` renders the longest target executions, producer coverage,
 execution-configuration coverage, workflow stage-group counts, artifact
 retention, and the highest retry / rerun targets from the same metrics
-artifact.
+artifact. It also renders provider-failure totals and closed class counts. These
+counts are guidance for an explicit operator-controlled resume; they do not
+guarantee a successful retry and do not trigger sleep, retry, network, or
+credential behavior. Historical totals remain after a successful explicit
+resume, while active and recovered counts distinguish current blockage from a
+completed recovery.
 
 ## Gapfill current versus cumulative metrics
 
@@ -224,7 +234,8 @@ The benchmark records quality gates such as report validation status, adversaria
 
 `gra-metrics` intentionally produces counts only. It does not copy raw finding
 evidence, root causes, issue body text, proof evidence, trace evidence, scanner
-lead bodies, or secret values into `metrics.json` or `METRICS.md`.
+lead bodies, provider response/stderr text, prompts, headers, identifiers, or
+secret values into `metrics.json` or `METRICS.md`.
 
 Keep metrics local unless repository names, finding counts, severity
 aggregates, or workflow maturity data are approved for sharing.

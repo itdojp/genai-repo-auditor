@@ -361,6 +361,7 @@ def main() -> int:
         observability = metrics_data.get('observability') if isinstance(metrics_data.get('observability'), dict) else {}
         artifacts_metrics = metrics_data.get('artifacts') if isinstance(metrics_data.get('artifacts'), dict) else {}
         scanner_readiness = metrics_data.get('scanner_readiness') if isinstance(metrics_data.get('scanner_readiness'), dict) else {}
+        workflow_execution = metrics_data.get('workflow_execution') if isinstance(metrics_data.get('workflow_execution'), dict) else {}
         metric_cards = [
             ('Findings', metrics_data.get('findings', {}).get('total', 0)),
             ('Validations', metrics_data.get('adversarial_validation', {}).get('total', 0)),
@@ -380,6 +381,11 @@ def main() -> int:
             ('Validation retries', observability.get('validation_retry_count', 0)),
             ('Taxonomy normalizations', observability.get('taxonomy_normalization_count', 0)),
             ('Scanner readiness reports', scanner_readiness.get('report_count', 0)),
+            ('Provider failures observed', workflow_execution.get('provider_failure_count', 0)),
+            ('Active provider failures', workflow_execution.get('active_provider_failure_count', 0)),
+            ('Recovered provider-failure stages', workflow_execution.get('recovered_provider_failure_count', 0)),
+            ('Retryable provider failures', workflow_execution.get('retryable_provider_failure_count', 0)),
+            ('Provider resume recommendations', workflow_execution.get('resume_recommended_count', 0)),
             ('Latest status artifacts', artifacts_metrics.get('latest_status_artifact_count', 0)),
             ('Archive artifacts', artifacts_metrics.get('archive_artifact_count', 0)),
             ('Manifest hygiene warnings', artifacts_metrics.get('manifest_hygiene_warnings', 0)),
@@ -429,6 +435,8 @@ def main() -> int:
         scanner_readiness_state_body = scanner_readiness_state_rows or '<tr><td colspan="2">No scanner readiness reports.</td></tr>'
         scanner_readiness_reason_rows = metric_count_rows(scanner_readiness.get('by_reason'))
         scanner_readiness_reason_body = scanner_readiness_reason_rows or '<tr><td colspan="2">No scanner readiness reasons.</td></tr>'
+        provider_failure_rows = metric_count_rows(workflow_execution.get('provider_failures_by_class'))
+        provider_failure_body = provider_failure_rows or '<tr><td colspan="2">No classified provider failures.</td></tr>'
         remediation_phase_rows = metric_count_rows((observability.get('stage_groups') or {}).get('remediation_phases'))
         remediation_phase_body = remediation_phase_rows or '<tr><td colspan="2">No remediation phases observed.</td></tr>'
         issue_phase_rows = metric_count_rows((observability.get('stage_groups') or {}).get('issue_publication_phases'))
@@ -471,6 +479,10 @@ def main() -> int:
             f"<tbody>{scanner_readiness_state_body}</tbody></table>"
             "<table><thead><tr><th>Reason code</th><th>Reports</th></tr></thead>"
             f"<tbody>{scanner_readiness_reason_body}</tbody></table>"
+            "<h3>Provider failure guidance</h3>"
+            "<p>Provider-neutral bounded counts only. Raw provider responses, stderr, prompts, headers, tokens, account/request IDs, and retry guarantees are excluded.</p>"
+            "<table><thead><tr><th>Provider failure class</th><th>Failures observed</th></tr></thead>"
+            f"<tbody>{provider_failure_body}</tbody></table>"
             "<table><thead><tr><th>Remediation phase</th><th>Events</th></tr></thead>"
             f"<tbody>{remediation_phase_body}</tbody></table>"
             "<table><thead><tr><th>Issue publication phase</th><th>Events</th></tr></thead>"

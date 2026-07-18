@@ -232,6 +232,50 @@
       ],
       "pattern": "^[a-z][a-z0-9_-]{0,63}$"
     },
+    "provider_error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "class",
+        "retryable",
+        "retry_after_seconds",
+        "resume_recommended",
+        "source"
+      ],
+      "properties": {
+        "class": {
+          "enum": [
+            "rate_limit",
+            "usage_limit",
+            "authentication",
+            "authorization",
+            "service_unavailable",
+            "timeout",
+            "invalid_request",
+            "model_unavailable",
+            "response_contract",
+            "unknown_provider_error"
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "retry_after_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 86400
+        },
+        "resume_recommended": {
+          "type": "boolean"
+        },
+        "source": {
+          "const": "sanitized_stderr_classifier"
+        }
+      }
+    },
     "source": {
       "enum": [
         "genai-repo-auditor"

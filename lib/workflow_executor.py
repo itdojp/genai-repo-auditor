@@ -14,6 +14,14 @@ from typing import Any
 
 from report_safety import iter_secret_findings
 from gralib import load_context, utc_now
+from provider_failures import (
+    ProviderFailureError,
+    mark_provider_failure_recovered,
+    record_provider_failure,
+    validate_provider_error,
+    validate_provider_failure_history,
+)
+from run_events import command_events_path, validate_command_event_payload
 from run_state import ACTIVE, BLOCKED, PAUSED, load_run_state, run_state_path
 from workflow_execution import WorkflowExecutionReportError, write_workflow_execution
 from workflow_orchestrator import _safe_rel
@@ -21,6 +29,9 @@ from workflow_orchestrator import _safe_rel
 
 CHECKPOINT_SCHEMA_VERSION = "1"
 MAX_ARTIFACT_BYTES = 32 * 1024 * 1024
+MAX_PROVIDER_EVENT_BYTES = 1024 * 1024
+MAX_PROVIDER_EVENT_COUNT = 4096
+MAX_NEW_PROVIDER_EVENTS = 16
 TERMINAL_SUCCESS = {"succeeded", "external_prerequisite", "skipped_by_scope"}
 STAGE_STATUSES = {
     "pending", "running", "succeeded", "failed", "blocked_dependency",
@@ -223,8 +234,108 @@ def _stage_record(stage: dict[str, Any]) -> dict[str, Any]:
         "ended_at": None,
         "exit_code": None,
         "error_category": None,
+        "provider_error": None,
+        "provider_failure_history": None,
         "output_artifacts": [],
     }
+
+
+def _load_bounded_provider_events(run_dir: Path) -> list[dict[str, Any]] | None:
+    """Read a bounded, regular, validated v2 event stream without following its file symlink."""
+
+    fd: int | None = None
+    try:
+        path = command_events_path(run_dir)
+        rel = path.relative_to(run_dir).as_posix()
+        safe_path = _safe_artifact(run_dir, rel, required=False)
+        if safe_path is None:
+            return []
+        fd = os.open(safe_path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        metadata = os.fstat(fd)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_PROVIDER_EVENT_BYTES:
+            return None
+        data = b""
+        while len(data) <= MAX_PROVIDER_EVENT_BYTES:
+            chunk = os.read(fd, min(8192, MAX_PROVIDER_EVENT_BYTES + 1 - len(data)))
+            if not chunk:
+                break
+            data += chunk
+        if len(data) > MAX_PROVIDER_EVENT_BYTES:
+            return None
+        events: list[dict[str, Any]] = []
+        for line in data.decode("utf-8", errors="strict").splitlines():
+            if not line.strip():
+                continue
+            event = json.loads(line)
+            if not isinstance(event, dict):
+                return None
+            events.append(event)
+            if len(events) > MAX_PROVIDER_EVENT_COUNT:
+                return None
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, WorkflowExecutionError):
+        return None
+    finally:
+        if fd is not None:
+            os.close(fd)
+    try:
+        for event in events:
+            validate_command_event_payload(event)
+    except (TypeError, ValueError):
+        return None
+    event_ids = [event.get("event_id") for event in events]
+    if any(not isinstance(event_id, str) for event_id in event_ids) or len(event_ids) != len(set(event_ids)):
+        return None
+    return events
+
+
+def _provider_event_snapshot(run_dir: Path) -> set[str] | None:
+    """Return validated v2 event ids, or None when the event stream is unsafe."""
+
+    events = _load_bounded_provider_events(run_dir)
+    if events is None:
+        return None
+    return {event["event_id"] for event in events}
+
+
+def _provider_failure_from_new_events(
+    run_dir: Path,
+    *,
+    command: str,
+    previous_event_ids: set[str] | None,
+) -> dict[str, Any] | None:
+    if previous_event_ids is None:
+        return None
+    events = _load_bounded_provider_events(run_dir)
+    if events is None:
+        return None
+    current_ids = {event["event_id"] for event in events}
+    new_ids = current_ids - previous_event_ids
+    if not new_ids or len(new_ids) > MAX_NEW_PROVIDER_EVENTS:
+        return None
+    provider_errors: list[dict[str, Any]] = []
+    for event in events:
+        if (
+            event.get("event_id") not in new_ids
+            or event.get("command") != command
+            or event.get("status") not in {"failed", "blocked"}
+            or event.get("exit_code") == 0
+        ):
+            continue
+        try:
+            validate_command_event_payload(event)
+        except (TypeError, ValueError):
+            return None
+        provider_error = event.get("provider_error")
+        if provider_error is None:
+            continue
+        try:
+            validate_provider_error(provider_error)
+        except ProviderFailureError:
+            return None
+        provider_errors.append(provider_error)
+    if len(provider_errors) != 1:
+        return None
+    return dict(provider_errors[0])
 
 
 def _file_sha256(path: Path, *, label: str) -> str:
@@ -366,12 +477,40 @@ def _load_checkpoint(run_dir: Path, plan: dict[str, Any], lab_root: Path) -> dic
     if [record.get("id") for record in records if isinstance(record, dict)] != plan_ids:
         raise WorkflowExecutionError("workflow checkpoint stage set/order does not match the plan")
     for record in records:
-        if set(record) != {"id", "status", "attempt", "started_at", "ended_at", "exit_code", "error_category", "output_artifacts"}:
+        legacy_fields = {"id", "status", "attempt", "started_at", "ended_at", "exit_code", "error_category", "output_artifacts"}
+        optional_fields = {"provider_error", "provider_failure_history"}
+        if not legacy_fields.issubset(record) or set(record) - legacy_fields - optional_fields:
             raise WorkflowExecutionError("workflow checkpoint stage fields are invalid")
+        record.setdefault("provider_error", None)
+        record.setdefault("provider_failure_history", None)
         if record["status"] not in STAGE_STATUSES or not isinstance(record["attempt"], int) or record["attempt"] < 0:
             raise WorkflowExecutionError("workflow checkpoint stage status/attempt is invalid")
         if not isinstance(record["output_artifacts"], list):
             raise WorkflowExecutionError("workflow checkpoint output artifacts are invalid")
+        try:
+            validate_provider_error(record["provider_error"], allow_none=True)
+        except ProviderFailureError as exc:
+            raise WorkflowExecutionError("workflow checkpoint provider failure metadata is invalid") from exc
+        try:
+            validate_provider_failure_history(record["provider_failure_history"], allow_none=True)
+        except ProviderFailureError as exc:
+            raise WorkflowExecutionError("workflow checkpoint provider failure history is invalid") from exc
+        if (record["error_category"] == "provider_error") != (record["provider_error"] is not None):
+            raise WorkflowExecutionError("workflow checkpoint provider failure state is inconsistent")
+        if record["provider_error"] is not None and record["status"] != "failed":
+            raise WorkflowExecutionError("workflow checkpoint provider failure requires failed stage status")
+        history = record["provider_failure_history"]
+        if record["provider_error"] is not None and (
+            history is None
+            or history["last_error"] != record["provider_error"]
+            or history["recovered"]
+        ):
+            raise WorkflowExecutionError("workflow checkpoint provider failure history is inconsistent")
+        if history is not None:
+            if history["count"] > record["attempt"]:
+                raise WorkflowExecutionError("workflow checkpoint provider failure count exceeds attempts")
+            if history["recovered"] != (record["status"] == "succeeded"):
+                raise WorkflowExecutionError("workflow checkpoint provider recovery state is inconsistent")
         if record["status"] == "succeeded":
             expected_outputs = next(stage["outputs"] for stage in plan["stages"] if stage["id"] == record["id"])
             if [stamp.get("path") for stamp in record["output_artifacts"] if isinstance(stamp, dict)] != expected_outputs:
@@ -395,7 +534,18 @@ def _load_checkpoint(run_dir: Path, plan: dict[str, Any], lab_root: Path) -> dic
         if record["id"] == resume_stage:
             seen_resume = True
         if seen_resume and record["status"] in {"failed", "blocked_dependency", "running"}:
-            record.update({"status": "pending", "started_at": None, "ended_at": None, "exit_code": None, "error_category": None, "output_artifacts": []})
+            record.update({
+                "status": "pending",
+                "started_at": None,
+                "ended_at": None,
+                "exit_code": None,
+                "error_category": None,
+                "provider_error": None,
+                "provider_failure_history": mark_provider_failure_recovered(
+                    record["provider_failure_history"], recovered=False
+                ),
+                "output_artifacts": [],
+            })
     checkpoint["status"] = "running"
     return checkpoint
 
@@ -515,19 +665,44 @@ def execute_workflow(
                         checkpoint.update({"status": "blocked", "resume_stage": stage_id})
                         _write_checkpoint(run_dir, path, checkpoint, plan)
                         return checkpoint, 2
-            record.update({"status": "running", "attempt": record["attempt"] + 1, "started_at": _utc_now(), "ended_at": None, "exit_code": None, "error_category": None, "output_artifacts": []})
+            record.update({
+                "status": "running",
+                "attempt": record["attempt"] + 1,
+                "started_at": _utc_now(),
+                "ended_at": None,
+                "exit_code": None,
+                "error_category": None,
+                "provider_error": None,
+                "provider_failure_history": mark_provider_failure_recovered(
+                    record["provider_failure_history"], recovered=False
+                ),
+                "output_artifacts": [],
+            })
             checkpoint["resume_stage"] = stage_id
             _write_checkpoint(run_dir, path, checkpoint, plan)
+            provider_event_ids = _provider_event_snapshot(run_dir)
             try:
                 exit_code = int(run_stage(_command_argv(lab_root, stage), run_dir))
             except KeyboardInterrupt:
-                record.update({"status": "pending", "ended_at": _utc_now(), "exit_code": 130, "error_category": "interrupted"})
+                record.update({"status": "pending", "ended_at": _utc_now(), "exit_code": 130, "error_category": "interrupted", "provider_error": None})
                 checkpoint.update({"status": "paused", "resume_stage": stage_id})
                 _write_checkpoint(run_dir, path, checkpoint, plan)
                 return checkpoint, 130
             record.update({"ended_at": _utc_now(), "exit_code": exit_code})
             if exit_code != 0:
-                record.update({"status": "failed", "error_category": "stage_exit"})
+                provider_error = _provider_failure_from_new_events(
+                    run_dir,
+                    command=str(stage["command"][0]),
+                    previous_event_ids=provider_event_ids,
+                )
+                record.update({
+                    "status": "failed",
+                    "error_category": "provider_error" if provider_error is not None else "stage_exit",
+                    "provider_error": provider_error,
+                    "provider_failure_history": record_provider_failure(
+                        record["provider_failure_history"], provider_error
+                    ) if provider_error is not None else record["provider_failure_history"],
+                })
                 for later in checkpoint["stages"]:
                     if later["status"] == "pending" and stage_id in by_plan[later["id"]]["depends_on"]:
                         later["status"] = "blocked_dependency"
@@ -537,12 +712,16 @@ def execute_workflow(
             try:
                 record["output_artifacts"] = [artifact_stamp(run_dir, ref) for ref in stage["outputs"]]
             except WorkflowExecutionError:
-                record.update({"status": "failed", "exit_code": 1, "error_category": "missing_or_unsafe_output"})
+                record.update({"status": "failed", "exit_code": 1, "error_category": "missing_or_unsafe_output", "provider_error": None})
                 checkpoint.update({"status": "blocked", "resume_stage": stage_id})
                 _write_checkpoint(run_dir, path, checkpoint, plan)
                 return checkpoint, 2
             record["status"] = "succeeded"
             record["error_category"] = None
+            record["provider_error"] = None
+            record["provider_failure_history"] = mark_provider_failure_recovered(
+                record["provider_failure_history"], recovered=True
+            )
             next_pending = next(
                 (item["id"] for item in checkpoint["stages"] if item["status"] in {"pending", "blocked_dependency", "failed", "running"}),
                 None,
