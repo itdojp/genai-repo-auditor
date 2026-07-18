@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
 from version import auditor_version
+from gralib import write_run_artifact_json  # noqa: E402
 from report_safety import ReportSafetyError  # noqa: E402
 from publication.policy import (  # noqa: E402
     DEFAULT_LABELS,
@@ -54,6 +55,53 @@ from duplicate_decisions import (  # noqa: E402
     verify_ledger_decisions as verify_duplicate_decisions_for_ledger,
 )
 from run_events import EventWriteError, append_command_event, preflight_command_event, start_command_event  # noqa: E402
+from report_freshness import (  # noqa: E402
+    FreshnessError,
+    artifact_dependencies,
+    assess_freshness,
+    initialize_freshness,
+    public_summary,
+    preflight_artifact_dependencies,
+    record_artifact,
+)
+
+
+def write_tracked_publication_plan(run_dir: Path, plan_path: Path, plan: Dict[str, Any]) -> None:
+    """Write the default local plan and attach bounded freshness metadata."""
+
+    if plan_path.resolve() != default_plan_path(run_dir).resolve():
+        write_plan(plan_path, plan)
+        return
+    freshness_dependencies = preflight_artifact_dependencies(
+        run_dir,
+        "issue_publication_plan",
+        artifact_dependencies(run_dir, "issue_publication_plan"),
+    )
+    write_run_artifact_json(run_dir, plan_path, plan)
+    record_artifact(run_dir, "issue_publication_plan", freshness_dependencies)
+    plan["report_freshness"] = public_summary(assess_freshness(run_dir))
+    write_run_artifact_json(run_dir, plan_path, plan)
+
+
+def publication_plan_freshness_error(run_dir: Path, plan_path: Path) -> Optional[str]:
+    """Gate any supplied plan on the run's tracked publication-plan record."""
+
+    summary = assess_freshness(run_dir)
+    artifact = next(
+        item for item in summary["artifacts"] if item["artifact_id"] == "issue_publication_plan"
+    )
+    if artifact["status"] == "not_applicable":
+        return (
+            "issue publication plan freshness tracking is unavailable; "
+            "regenerate the default tracked plan with `gra-issues --run <run_dir> --plan` "
+            "and review it before applying"
+        )
+    if artifact["status"] in {"stale", "missing_dependency"}:
+        return (
+            f"issue publication plan freshness is {artifact['status']}; "
+            f"regenerate with `{artifact['regeneration_command']}` and review it before applying"
+        )
+    return None
 
 
 def load_json(path: Path) -> Any:
@@ -81,6 +129,13 @@ def print_plan_summary(plan_path: Optional[Path], plan: Dict[str, Any], *, prefi
         print(prefix)
     else:
         print(f"{prefix}: {plan_path}")
+    freshness = plan.get("report_freshness") if isinstance(plan.get("report_freshness"), dict) else {}
+    if freshness:
+        print(
+            "report_freshness_snapshot: "
+            f"overall_status={freshness.get('overall_status', 'not_applicable')} "
+            "(generation-time snapshot; apply uses the live sidecar gate)"
+        )
     for entry in plan.get("selected_findings") or []:
         print(f"- {entry.get('id', 'SEC-UNKNOWN')}: issue_body_sha256={entry.get('issue_body_sha256', '')}")
         advanced = entry.get("advanced_validation") if isinstance(entry.get("advanced_validation"), dict) else {}
@@ -229,7 +284,7 @@ def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] 
                 advanced_artifacts=advanced_artifacts,
                 novelty_entries=novelty_entries,
             )
-        except ReportSafetyError as exc:
+        except (ReportSafetyError, FreshnessError, OSError) as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
         requirement_errors = advanced_validation_errors(plan.get("selected_findings") or [])
@@ -239,7 +294,7 @@ def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] 
                 print(f"- {error}", file=sys.stderr)
             return 4
         plan_path = default_plan_path(run_dir)
-        write_plan(plan_path, plan)
+        write_tracked_publication_plan(run_dir, plan_path, plan)
         plan_sha256 = plan_hash(plan_path)
         print_plan_summary(plan_path, plan, prefix="Wrote issue publication plan")
         write_issue_ledger_snapshot(
@@ -269,6 +324,13 @@ def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] 
         if not plan_path.is_absolute():
             plan_path = (Path.cwd() / plan_path).resolve()
         if args.replan:
+            if plan_path.resolve() != default_plan_path(run_dir).resolve():
+                print(
+                    "ERROR: custom-path replan cannot establish tracked freshness; "
+                    "regenerate the default plan with --plan, review it, then copy it if needed",
+                    file=sys.stderr,
+                )
+                return 4
             try:
                 refreshed, _bodies = build_publication_plan(
                     repo=repo,
@@ -287,7 +349,7 @@ def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] 
                     for error in requirement_errors:
                         print(f"- {error}", file=sys.stderr)
                     return 4
-                write_plan(plan_path, refreshed)
+                write_tracked_publication_plan(run_dir, plan_path, refreshed)
                 refreshed_sha256 = plan_hash(plan_path)
                 print_plan_summary(plan_path, refreshed, prefix="Rewrote issue publication plan")
                 write_issue_ledger_snapshot(
@@ -306,7 +368,7 @@ def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] 
                     plan_written=True,
                     publication_plan_status="rewritten",
                 )
-            except ReportSafetyError as exc:
+            except (ReportSafetyError, FreshnessError, OSError) as exc:
                 print(f"ERROR: {exc}", file=sys.stderr)
                 return 2
             print("Review the refreshed issue publication plan before applying.", file=sys.stderr)
@@ -331,6 +393,14 @@ def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] 
             for error in plan_errors:
                 print(f"- {error}", file=sys.stderr)
             print("Refresh the plan with --plan or --apply-plan ... --replan, review it, then apply again.", file=sys.stderr)
+            return 4
+        try:
+            freshness_error = publication_plan_freshness_error(run_dir, plan_path)
+        except (FreshnessError, OSError) as exc:
+            print(f"ERROR: could not validate issue publication plan freshness: {exc}", file=sys.stderr)
+            return 2
+        if freshness_error:
+            print(f"Issue publication plan verification failed:\n- {freshness_error}", file=sys.stderr)
             return 4
         if selected_plan_entries is not None and len(selected_plan_entries) > args.max_issues:
             print(f"Refusing to create {len(selected_plan_entries)} issues; exceeds --max-issues={args.max_issues}.", file=sys.stderr)
@@ -634,6 +704,7 @@ def main(argv: Optional[List[str]] = None, github: Optional[GitHubClient] = None
     ledger_path = run_dir / "reports" / "issue-ledger.json"
     issues_created_path = run_dir / "issues-created.json"
     default_plan_output = run_dir / "reports" / "issue-publication-plan.json"
+    freshness_output = run_dir / "reports" / "report-freshness.json"
     duplicate_dir = run_dir / "reports" / "duplicate-decisions"
     if phase not in {"plan", "verify-ledger"} and ledger_path.exists():
         input_artifacts.append(ledger_path)
@@ -642,7 +713,7 @@ def main(argv: Optional[List[str]] = None, github: Optional[GitHubClient] = None
         if duplicate_dir.is_dir() and not duplicate_dir.is_symlink():
             input_artifacts.extend(sorted(path for path in duplicate_dir.iterdir() if path.is_file()))
 
-    potential_outputs = [ledger_path, issues_created_path, default_plan_output, duplicate_dir]
+    potential_outputs = [ledger_path, issues_created_path, default_plan_output, freshness_output, duplicate_dir]
     if contained_apply_plan_path is not None:
         potential_outputs.append(contained_apply_plan_path)
     if duplicate_dir.is_dir() and not duplicate_dir.is_symlink():
@@ -658,7 +729,7 @@ def main(argv: Optional[List[str]] = None, github: Optional[GitHubClient] = None
         return 2
 
     def artifact_candidates() -> List[Path]:
-        candidates = [ledger_path, issues_created_path, default_plan_output]
+        candidates = [ledger_path, issues_created_path, default_plan_output, freshness_output]
         if contained_apply_plan_path is not None and contained_apply_plan_path != default_plan_output:
             candidates.append(contained_apply_plan_path)
         if duplicate_dir.is_dir() and not duplicate_dir.is_symlink():
@@ -695,6 +766,13 @@ def main(argv: Optional[List[str]] = None, github: Optional[GitHubClient] = None
             failure_mode="warn" if exit_code != 0 else "block",
         )
         return exit_code
+
+    if phase == "plan":
+        try:
+            initialize_freshness(run_dir)
+        except (FreshnessError, OSError) as exc:
+            print(str(exc), file=sys.stderr)
+            return finish(2, error_category="input_validation")
 
     try:
         exit_code = _main_impl(raw_argv, github)

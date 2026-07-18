@@ -195,6 +195,8 @@ class ReportContractTests(unittest.TestCase):
         duplicate_decision_schema = self.load_json(SCHEMAS / "duplicate-decision.schema.json")
         run_state_schema = self.load_json(SCHEMAS / "run-state.schema.json")
         command_event_schema = self.load_json(SCHEMAS / "command-event.schema.json")
+        report_freshness_schema = self.load_json(SCHEMAS / "report-freshness.schema.json")
+        store_import_state_schema = self.load_json(SCHEMAS / "store-import-state.schema.json")
 
         adapter_required = {
             "schema_version",
@@ -256,6 +258,16 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual(["latest", "supporting", "archive"], artifact_item["properties"]["retention"]["enum"])
         self.assertEqual("^[a-f0-9]{64}$", artifact_item["properties"]["sha256"]["pattern"])
         self.assertNotIn("summary", metrics_schema["required"])
+        self.assertNotIn("report_freshness", metrics_schema["required"])
+        self.assertEqual("1", report_freshness_schema["properties"]["schema_version"]["const"])
+        self.assertEqual(7, report_freshness_schema["properties"]["records"]["maxItems"])
+        dependency_contract = report_freshness_schema["$defs"]["dependency"]
+        self.assertEqual(["content", "presence"], dependency_contract["properties"]["mode"]["enum"])
+        self.assertEqual(16777216, dependency_contract["properties"]["size_bytes"]["maximum"])
+        self.assertEqual("local-store-import", store_import_state_schema["properties"]["source"]["const"])
+        self.assertFalse(store_import_state_schema["properties"]["database_location_recorded"]["const"])
+        self.assertIn("report_freshness", benchmark_schema["properties"])
+        self.assertIn("report_freshness", evidence_graph_schema["properties"]["summary"]["properties"])
         metrics_summary = metrics_schema["properties"]["summary"]
         self.assertEqual(
             {

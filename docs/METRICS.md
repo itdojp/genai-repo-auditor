@@ -9,6 +9,7 @@ Outputs:
 ```text
 reports/metrics.json
 reports/METRICS.md
+reports/report-freshness.json
 ```
 
 Generate metrics after validation, chain synthesis, safe proofs, gapfill,
@@ -51,10 +52,23 @@ Metrics are computed from local report artifacts only:
 - run artifact counts, manifest retention buckets, latest-status artifact count,
   archive artifact count, and manifest hygiene warning count
 - run duration when present in local manifest metadata
+- bounded derived-report freshness status and safe regeneration commands when
+  the default metrics outputs are used
 
 Missing optional artifacts are represented with `artifact_present: false` and
 zero counts. This allows early runs and partial staged workflows to produce a
 stable metrics file.
+
+The default metrics outputs also record their run-relative dependencies in
+`<reports_dir>/report-freshness.json` and embed a bounded top-level
+`report_freshness` generation-time snapshot. Use the live sidecar check for a
+current gate; the embedded snapshot does not change when later producers run.
+Source inputs use bounded content SHA-256 identity;
+peer derived reports and append-only command events use presence identity where
+needed to avoid digest cycles. Alternate `--out-json` / `--out-md` pairs outside
+the default catalog remain untracked. Run `gra-validate-report --check-freshness`
+after the regeneration sequence in [Reporting and store](REPORTING_AND_STORE.md)
+when stale reports should fail the handoff gate.
 
 Unexpected dimension values are bucketed as `Unknown`, `unknown`, or
 `Not assessed` rather than copied verbatim. This keeps malformed local artifacts

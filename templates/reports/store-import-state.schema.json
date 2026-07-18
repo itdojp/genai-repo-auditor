@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor Store Import State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "generated_at",
+    "source",
+    "database_location_recorded",
+    "imported_counts"
+  ],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "run_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "generated_at": {"type": "string", "minLength": 1, "maxLength": 64},
+    "source": {"const": "local-store-import"},
+    "database_location_recorded": {"const": false},
+    "imported_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targets", "findings", "scanner_results", "issues", "posture_artifacts"],
+      "properties": {
+        "targets": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "findings": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "scanner_results": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "issues": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "posture_artifacts": {"type": "integer", "minimum": 0, "maximum": 1000000}
+      }
+    }
+  }
+}

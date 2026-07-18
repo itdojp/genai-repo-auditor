@@ -21,6 +21,7 @@ from run_events import append_command_event, reports_dir as configured_reports_d
 from validators.common import load_schema as load_schema_from_root  # noqa: E402
 from validators.advanced import ADVANCED_VALIDATOR_ORDER  # noqa: E402
 from validators.registry import ValidationContext, report_validator_registry  # noqa: E402
+from report_freshness import FreshnessError, assess_freshness, stale_or_missing  # noqa: E402
 
 def find_findings(run: Path) -> Path:
     candidates = [configured_reports_dir(run) / "findings.json"]
@@ -51,6 +52,11 @@ def main() -> int:
     parser.add_argument('--version', action='version', version=f'%(prog)s {auditor_version(LAB_ROOT)}')
     parser.add_argument("--run", help="Run directory")
     parser.add_argument("--findings", help="Path to findings.json")
+    parser.add_argument(
+        "--check-freshness",
+        action="store_true",
+        help="Fail when a tracked derived report is stale or has a missing dependency",
+    )
     args = parser.parse_args()
 
     if not args.run and not args.findings:
@@ -138,7 +144,22 @@ def main() -> int:
     duplicate_decisions_validated = validation_results["duplicate_decisions"]
     run_state_validated = validation_results["run_state"]
     command_events_validated = validation_results["command_events"]
+    store_import_state_validated = validation_results["store_import_state"]
+    report_freshness_validated = validation_results["report_freshness"]
     run_manifest_validated = validation_results["run_manifest"]
+
+    freshness_summary: dict[str, Any] | None = None
+    if args.check_freshness:
+        try:
+            freshness_summary = assess_freshness(run_dir)
+            for artifact in stale_or_missing(freshness_summary):
+                errors.append(
+                    "report_freshness."
+                    f"{artifact['artifact_id']}: status is {artifact['status']}; "
+                    f"regenerate with `{artifact['regeneration_command']}`"
+                )
+        except (FreshnessError, OSError) as exc:
+            errors.append(f"report_freshness: {exc}")
 
     if errors:
         for e in errors:
@@ -190,6 +211,12 @@ def main() -> int:
         print("Run state: validated")
     if command_events_validated:
         print("Command events: validated")
+    if store_import_state_validated:
+        print("Store import state: validated")
+    if report_freshness_validated:
+        print("Report freshness: validated")
+    if args.check_freshness and freshness_summary is not None:
+        print(f"Report freshness status: {freshness_summary['overall_status']}")
     if run_manifest_validated:
         print("Run manifest: validated")
     return finish(0)

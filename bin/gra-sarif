@@ -8,7 +8,7 @@ from pathlib import Path
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
-from gralib import load_context, load_json, utc_now, write_json
+from gralib import load_context, load_json, utc_now, write_json, write_run_artifact_json
 from run_events import (
     EventWriteError,
     append_command_event,
@@ -17,6 +17,7 @@ from run_events import (
     reports_dir,
     start_command_event,
 )
+from report_freshness import artifact_dependencies, initialize_freshness, preflight_artifact_dependencies, record_artifact
 
 LEVEL_MAP = {
     'Critical': 'error',
@@ -53,8 +54,12 @@ def main() -> int:
         return 2
     findings_path = reports / 'findings.json'
     out = Path(args.out).resolve() if args.out else reports / 'findings.sarif'
+    track_freshness = out == reports / 'findings.sarif'
     input_artifacts = [run_dir / 'context.json', findings_path]
-    output_artifacts = local_artifact_paths(run_dir, [out])
+    output_artifacts = local_artifact_paths(
+        run_dir,
+        [out] + ([reports / 'report-freshness.json'] if track_freshness else []),
+    )
     try:
         preflight_command_event(
             run_dir,
@@ -73,6 +78,13 @@ def main() -> int:
         print(str(exc), file=sys.stderr)
         return 2
     _failure_event = (run_dir, started_at, started_perf, input_artifacts, output_artifacts)
+    if track_freshness:
+        initialize_freshness(run_dir)
+        freshness_dependencies = preflight_artifact_dependencies(
+            run_dir,
+            'sarif',
+            artifact_dependencies(run_dir, 'sarif'),
+        )
     findings_data = load_json(findings_path, {}) or {}
     findings = [f for f in findings_data.get('findings', []) if isinstance(f, dict)]
     rules = []
@@ -161,7 +173,12 @@ def main() -> int:
             'results': results,
         }],
     }
-    write_json(out, sarif)
+    if track_freshness:
+        write_run_artifact_json(run_dir, out, sarif)
+    else:
+        write_json(out, sarif)
+    if track_freshness:
+        record_artifact(run_dir, 'sarif', freshness_dependencies)
     print(f'Wrote {out}')
     append_command_event(
         run_dir,

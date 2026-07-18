@@ -5,7 +5,14 @@ import json
 from pathlib import Path
 from typing import Any
 
-from gralib import load_context, load_json, load_targets_artifact, utc_now, write_json
+from gralib import (
+    load_context,
+    load_json,
+    load_targets_artifact,
+    utc_now,
+    write_run_artifact_json,
+    write_run_artifact_text,
+)
 from scanner_reporting import ScannerReportError, validate_scanner_runs_for_run
 from workflow_profile import summarize_workflow_profile
 from workflow_execution import summarize_workflow_execution
@@ -704,16 +711,17 @@ def write_evidence_graph(run_dir: Path, graph: dict[str, Any]) -> tuple[Path, Pa
     reports = reports_dir(run_dir)
     json_path = reports / "evidence-graph.json"
     md_path = reports / "EVIDENCE_GRAPH.md"
-    write_json(json_path, graph)
-    render_evidence_graph_markdown(md_path, graph)
+    write_run_artifact_json(run_dir, json_path, graph)
+    write_run_artifact_text(run_dir, md_path, render_evidence_graph_markdown_text(graph))
     return json_path, md_path
 
 
-def render_evidence_graph_markdown(path: Path, graph: dict[str, Any]) -> None:
+def render_evidence_graph_markdown_text(graph: dict[str, Any]) -> str:
     summary = graph.get("summary") if isinstance(graph.get("summary"), dict) else {}
     workflow_profile = summary.get("workflow_profile") if isinstance(summary.get("workflow_profile"), dict) else {}
     workflow_execution = summary.get("workflow_execution") if isinstance(summary.get("workflow_execution"), dict) else {}
     scanner_runs = summary.get("scanner_runs") if isinstance(summary.get("scanner_runs"), dict) else {}
+    freshness = summary.get("report_freshness") if isinstance(summary.get("report_freshness"), dict) else {}
     lines = [
         "# Evidence Graph",
         "",
@@ -739,6 +747,7 @@ def render_evidence_graph_markdown(path: Path, graph: dict[str, Any]) -> None:
         f"- High/Critical issue-recommended findings: {summary.get('high_critical_issue_recommended_findings', 0)}",
         f"- With supporting evidence: {summary.get('high_critical_with_supporting_evidence', 0)}",
         f"- With challenging evidence: {summary.get('high_critical_with_challenging_evidence', 0)}",
+        f"- Derived report freshness: `{freshness.get('overall_status', 'not_applicable')}`",
         "",
         "## Nodes by type",
         "",
@@ -750,6 +759,23 @@ def render_evidence_graph_markdown(path: Path, graph: dict[str, Any]) -> None:
     lines.extend(["", "## Edges by type", "", "| Type | Count |", "|---|---:|"])
     for edge_type, count in (summary.get("edge_counts") or {}).items():
         lines.append(f"| {edge_type} | {count} |")
+    if freshness:
+        lines.extend(
+            [
+                "",
+                "## Derived report freshness snapshot",
+                "",
+                "This is the generation-time snapshot. Use `gra-validate-report --check-freshness` for the live sidecar gate.",
+                "",
+                "| Artifact | Status | Producer |",
+                "|---|---|---|",
+            ]
+        )
+        for item in freshness.get("artifacts") or []:
+            if isinstance(item, dict):
+                lines.append(
+                    f"| {item.get('artifact_id', '')} | {item.get('status', '')} | {item.get('producer', '')} |"
+                )
     lines.extend(["", "## Finding evidence", "", "| Finding | Supporting/challenging links |", "|---|---|"])
     edges_by_target: dict[str, list[str]] = {}
     for edge in graph.get("edges") or []:
@@ -767,5 +793,9 @@ def render_evidence_graph_markdown(path: Path, graph: dict[str, Any]) -> None:
         for rel in missing:
             lines.append(f"- `{rel}`")
     lines.append("")
+    return "\n".join(lines)
+
+
+def render_evidence_graph_markdown(path: Path, graph: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines), encoding="utf-8")
+    path.write_text(render_evidence_graph_markdown_text(graph), encoding="utf-8")

@@ -99,6 +99,9 @@
             "type": "string"
           }
         },
+        "report_freshness": {
+          "$ref": "metrics.schema.json#/$defs/reportFreshnessSummary"
+        },
         "workflow_profile": {
           "type": "object",
           "required": [

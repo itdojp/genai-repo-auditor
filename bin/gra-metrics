@@ -7,7 +7,17 @@ from pathlib import Path
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
-from metrics import MetricsError, reports_dir, write_metrics  # noqa: E402
+from metrics import MetricsError, render_metrics_markdown, reports_dir, write_metrics  # noqa: E402
+from gralib import write_run_artifact_json, write_run_artifact_text  # noqa: E402
+from report_freshness import (  # noqa: E402
+    FreshnessError,
+    artifact_dependencies,
+    assess_freshness,
+    initialize_freshness,
+    public_summary,
+    preflight_artifact_dependencies,
+    record_artifact,
+)
 from run_events import (  # noqa: E402
     EventWriteError,
     append_command_event,
@@ -35,8 +45,12 @@ def main() -> int:
         return 2
     json_path = Path(args.out_json).resolve() if args.out_json else reports / "metrics.json"
     md_path = Path(args.out_md).resolve() if args.out_md else reports / "METRICS.md"
+    track_freshness = json_path == reports / "metrics.json" and md_path == reports / "METRICS.md"
     input_artifacts = [run_dir / "context.json", reports]
-    output_artifacts = local_artifact_paths(run_dir, [json_path, md_path])
+    output_artifacts = local_artifact_paths(
+        run_dir,
+        [json_path, md_path] + ([reports / "report-freshness.json"] if track_freshness else []),
+    )
 
     def finish(exit_code: int, *, error_category: str | None = None) -> int:
         event_outputs = (
@@ -70,18 +84,30 @@ def main() -> int:
                 "started_perf": started_perf,
                 "exit_code": 0,
             },
-            reserve_file=False,
+            reserve_file=True,
         )
     except EventWriteError as exc:
         print(str(exc), file=sys.stderr)
         return 2
     try:
+        if track_freshness:
+            initialize_freshness(run_dir)
+            freshness_dependencies = preflight_artifact_dependencies(
+                run_dir,
+                "metrics",
+                artifact_dependencies(run_dir, "metrics"),
+            )
         json_path, md_path, metrics = write_metrics(
             run_dir,
             out_json=Path(args.out_json) if args.out_json else None,
             out_md=Path(args.out_md) if args.out_md else None,
         )
-    except (OSError, ValueError, MetricsError) as exc:
+        if track_freshness:
+            record_artifact(run_dir, "metrics", freshness_dependencies)
+            metrics["report_freshness"] = public_summary(assess_freshness(run_dir))
+            write_run_artifact_json(run_dir, json_path, metrics)
+            write_run_artifact_text(run_dir, md_path, render_metrics_markdown(metrics))
+    except (OSError, ValueError, MetricsError, FreshnessError) as exc:
         print(str(exc), file=sys.stderr)
         return finish(2, error_category="reporting_failure")
 

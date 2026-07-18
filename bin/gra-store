@@ -10,7 +10,7 @@ from pathlib import Path
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
-from gralib import load_context, load_json, load_targets_artifact, utc_now
+from gralib import load_context, load_json, load_targets_artifact, utc_now, write_run_artifact_json
 from posture_artifacts import load_posture_artifacts
 from run_events import (
     EventWriteError,
@@ -20,6 +20,7 @@ from run_events import (
     reports_dir,
     start_command_event,
 )
+from report_freshness import artifact_dependencies, initialize_freshness, preflight_artifact_dependencies, record_artifact
 
 _failure_event: tuple[Path, str, float, list[Path], list[Path]] | None = None
 
@@ -110,8 +111,12 @@ def main() -> int:
         print(str(exc), file=sys.stderr)
         return 2
     db_path = Path(args.db).resolve() if args.db else LAB_ROOT / 'runs' / 'security-audit.sqlite'
+    import_state_path = reports / 'store-import-state.json'
     input_artifacts = [run_dir / 'context.json', reports]
-    output_artifacts = local_artifact_paths(run_dir, [db_path])
+    output_artifacts = local_artifact_paths(
+        run_dir,
+        [db_path, import_state_path, reports / 'report-freshness.json'],
+    )
     try:
         preflight_command_event(
             run_dir,
@@ -130,6 +135,12 @@ def main() -> int:
         print(str(exc), file=sys.stderr)
         return 2
     _failure_event = (run_dir, started_at, started_perf, input_artifacts, output_artifacts)
+    initialize_freshness(run_dir)
+    freshness_dependencies = preflight_artifact_dependencies(
+        run_dir,
+        'store_import_state',
+        artifact_dependencies(run_dir, 'store_import_state'),
+    )
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     with sqlite3.connect(db_path) as conn:
@@ -191,7 +202,26 @@ def main() -> int:
                 json.dumps(artifact.get('data'), ensure_ascii=False, sort_keys=True),
             ))
 
-    print(f'Imported run into {db_path}')
+        imported_counts = {
+            table: int(conn.execute(f'select count(*) from {table} where run_id = ?', (run_id,)).fetchone()[0])
+            for table in ('targets', 'findings', 'scanner_results', 'issues', 'posture_artifacts')
+        }
+
+    write_run_artifact_json(
+        run_dir,
+        import_state_path,
+        {
+            'schema_version': '1',
+            'run_id': run_id,
+            'generated_at': utc_now(),
+            'source': 'local-store-import',
+            'database_location_recorded': False,
+            'imported_counts': imported_counts,
+        },
+    )
+    record_artifact(run_dir, 'store_import_state', freshness_dependencies)
+
+    print('Imported run into local SQLite store')
     append_command_event(
         run_dir,
         command='gra-store',

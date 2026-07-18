@@ -25,9 +25,12 @@ safe local proof artifact です。`TRACE.md` / `traces.json` は `gra-trace`
 experimental/P3 cross-repo trace artifact です。`METRICS.md` /
 `metrics.json` は `gra-metrics` が local report artifacts だけから生成する
 advanced workflow metrics artifact です。`BENCHMARK.md` /
-`benchmark.json` は `gra-benchmark` が metrics または local fallback counts から生成する dogfood quality-gate artifact です。`EVIDENCE_GRAPH.md` /
+`benchmark.json` は `gra-benchmark` が metrics または local fallback counts から生成する dogfood quality-gate artifact です。`report-freshness.json` は
+tracked derived report の bounded freshness fingerprint を記録する schema v1 sidecar です。`EVIDENCE_GRAPH.md` /
 `evidence-graph.json` は `gra-evidence-graph` が local report artifacts
-だけから生成する bounded evidence graph artifact です。
+だけから生成する bounded evidence graph artifact です。`store-import-state.json` は
+`gra-store` が書き込む local-only import marker であり、import 件数だけを
+保存し、SQLite database path は保存しません。
 `WORKFLOW_PROFILE.md` / `workflow-profile.json` は `gra-workflow-profile` が
 recon-only などの scoped workflow intent と `skipped_by_scope` stage status
 を記録する local artifact です。
@@ -105,6 +108,10 @@ reports/
   metrics.json
   BENCHMARK.md
   benchmark.json
+  report-freshness.json
+  dashboard.html
+  findings.sarif
+  store-import-state.json
   WORKFLOW_PROFILE.md
   workflow-profile.json
   workflow-checkpoint.json
@@ -128,6 +135,49 @@ reports/
   issue-drafts/
     SEC-001.md
 ```
+
+## derived report freshness
+
+`reports/report-freshness.json` is a schema v1 sidecar for the closed catalog of
+default derived outputs: `findings.sarif`, `issue-publication-plan.json`,
+`store-import-state.json`, `metrics.json` / `METRICS.md`, `benchmark.json` /
+`BENCHMARK.md`, `evidence-graph.json` / `EVIDENCE_GRAPH.md`, and
+`dashboard.html`. Each record uses run-relative references only. Declared
+dependencies and tracked outputs must resolve to regular, non-symlink files
+under the run directory; required inputs must exist, while optional inputs may
+record an explicit absent state.
+
+Each record stores at most 128 dependencies. `content` mode captures the input
+size plus SHA-256 digest for files up to 16 MiB, while `presence` mode records
+only whether the dependency exists. Source reports use `content` mode. Peer
+derived reports and `command-events.jsonl` use `presence` mode where needed to
+avoid non-converging digest cycles. For example, benchmark/evidence/dashboard
+tracking reads source reports by content, but peer report edges can stay
+presence-only.
+
+Freshness assessment returns one of four states: `fresh`, `stale`,
+`missing_dependency`, or `not_applicable`. Legacy runs that still have derived
+outputs but do not have `reports/report-freshness.json` are reported as
+`not_applicable` across the catalog rather than as corrupt or stale. Custom
+report outputs written outside the default catalog, such as alternate `--out`,
+`--out-json`, or `--out-md` destinations, are intentionally outside this
+tracking contract. An external `--db` file is not fingerprinted or named;
+`store-import-state.json` is the tracked run-local store marker.
+Aggregate dogfood or efficacy summaries are not inferred into this catalog:
+their producer must first declare a bounded source-artifact contract before a
+future schema version can track them.
+
+This read compatibility does not weaken publication apply. `gra-issues
+--apply-plan` requires the sidecar and a tracked default publication-plan record;
+legacy or custom plans must be regenerated through the default tracked plan
+path and reviewed before apply.
+
+Embedded `report_freshness` values in metrics, benchmark, evidence graph, and
+the default publication plan are bounded generation-time snapshots. They do
+not update when a later producer changes the shared sidecar. Consumers that
+need a handoff or publication gate must use the live sidecar assessment via
+`gra-validate-report --check-freshness`; producer command events identify
+sidecar updates with `report-freshness.json` in `output_artifact_refs`.
 
 ## findings.json
 

@@ -6,6 +6,12 @@ Validate reports:
 gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
 
+`gra-validate-report` always validates the structure of optional
+`reports/report-freshness.json` and `reports/store-import-state.json` when they
+exist. Add `--check-freshness` only when `stale` or `missing_dependency` tracked
+derived reports should fail validation; structural validation alone does not
+regenerate reports, publish Issues, or modify the SQLite database.
+
 Each `gra-audit` run writes `run-manifest.json` at the run root. The manifest
 contains bounded provenance metadata such as auditor version, command mode,
 repository ref, network setting, schema filenames, generated artifact paths,
@@ -58,6 +64,50 @@ directory, the external destination is intentionally omitted from event
 `output_artifact_refs`. Event metadata keeps only run-contained refs such as
 `context.json`, `<reports_dir>/metrics.json`, or `<reports_dir>/scanner-results/`.
 
+## Derived report freshness
+
+`reports/report-freshness.json` is the schema v1 sidecar for tracked default
+derived reports. It records run-relative bounded fingerprints for the catalog
+managed by `gra-sarif`, `gra-issues --plan`, `gra-store`, `gra-metrics`,
+`gra-benchmark`, `gra-evidence-graph`, and `gra-dashboard`. `gra-metrics`,
+`gra-benchmark`, `gra-evidence-graph`, and the default
+`reports/issue-publication-plan.json` embed a public-safe `report_freshness`
+generation-time snapshot copied from that sidecar. It is intentionally static;
+the authoritative current state is `gra-validate-report --check-freshness` or a
+fresh `assess_freshness` call. Tracked producer command events include
+`report-freshness.json` in `output_artifact_refs` when they update it. `gra-store` also writes
+`reports/store-import-state.json` with `database_location_recorded=false`; the
+marker intentionally does not store the `--db` path.
+
+The recommended regeneration order is fixed and intentionally repeats metrics
+and dashboard so later reports can observe newly written peer artifacts and the
+latest command-events state:
+
+```text
+gra-sarif --run <run_dir>
+gra-issues --run <run_dir> --plan
+gra-store --run <run_dir> --db <local_db_path>
+gra-metrics --run <run_dir>
+gra-evidence-graph --run <run_dir>
+gra-dashboard --run <run_dir>
+gra-benchmark --run <run_dir>
+gra-metrics --run <run_dir>
+gra-dashboard --run <run_dir>
+```
+
+Source reports are fingerprinted in `content` mode with SHA-256 and bounded
+size checks, while peer derived reports and `command-events.jsonl` may use
+`presence` mode to avoid non-converging cycles. `workflow-execution.json` is a
+content dependency for both metrics and evidence graph, so rerun the reporting
+sequence after terminal `gra-run` completion when workflow state changed.
+Custom reports written outside the default catalog via alternate `--out`,
+`--out-json`, or `--out-md` destinations remain intentionally untracked. An
+external `--db` file is likewise never fingerprinted or named; the run-local
+`store-import-state.json` marker remains the tracked store output.
+Legacy structural validation remains compatible, but publication apply is
+stricter: a missing sidecar or missing tracked default-plan record fails closed
+and requires default-plan regeneration plus human review.
+
 The metrics report summarizes findings, validation decisions,
 downgrade/invalidate rate, chains, proofs, gapfill, traces, Issue plan warnings,
 Issue ledger publication states, artifact counts, manifest retention buckets,
@@ -87,11 +137,12 @@ The dashboard summarizes findings, target status, taxonomy mappings, known-findi
 novelty status when `reports/known-findings.json` exists, dogfood benchmark gate status when `reports/benchmark.json` exists, evidence graph
 coverage when `reports/evidence-graph.json` exists, advanced workflow metrics
 when `reports/metrics.json` exists, imported external finding status when
-`reports/imported-findings.json` exists, artifact retention status,
-OpenSSF Scorecard supply-chain posture when `reports/supply-chain-posture.json`
-exists, dependency risk posture when `reports/dependencies.json` exists, the
-scanner result index, slow command subjects, execution-configuration coverage,
-and workflow stage-group counts.
+`reports/imported-findings.json` exists, artifact retention status, derived
+report freshness for the default tracked catalog when available, OpenSSF
+Scorecard supply-chain posture when `reports/supply-chain-posture.json` exists,
+dependency risk posture when `reports/dependencies.json` exists, the scanner
+result index, slow command subjects, execution-configuration coverage, and
+workflow stage-group counts.
 
 Generate SARIF:
 
@@ -106,7 +157,10 @@ gra-store --run runs/OWNER__REPO/RUN_ID
 sqlite3 runs/security-audit.sqlite '.tables'
 ```
 
-The SQLite store is intended for local tracking across many runs. It records:
+The SQLite store is intended for local tracking across many runs. It also writes
+`reports/store-import-state.json`, a bounded local marker that records imported
+row counts and `database_location_recorded=false` without storing the SQLite
+path used for `--db`. The SQLite store records:
 
 - runs
 - targets

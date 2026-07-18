@@ -16,6 +16,7 @@ Outputs:
 ```text
 <reports_dir>/benchmark.json
 <reports_dir>/BENCHMARK.md
+<reports_dir>/report-freshness.json
 ```
 
 The benchmark is local-only. It does not call Codex, does not contact external
@@ -27,6 +28,13 @@ event to `<reports_dir>/command-events.jsonl` after the benchmark files are
 written. That completion event becomes visible on the next
 `gra-metrics` execution, after which a later `gra-dashboard` run can
 display the updated metrics.
+
+Default benchmark outputs embed a bounded generation-time `report_freshness`
+snapshot and update the shared sidecar. Peer derived outputs use presence identity to avoid a
+metrics/benchmark/dashboard digest cycle. Use the full convergent regeneration
+order in [Reporting and store](REPORTING_AND_STORE.md), rather than treating one
+benchmark invocation as an automatic refresh of other reports. Custom output
+pairs outside the default catalog are not freshness-tracked.
 
 ## Quick fixture run
 

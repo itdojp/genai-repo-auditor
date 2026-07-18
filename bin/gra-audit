@@ -203,6 +203,15 @@ fi
 if [[ -f "$LAB_ROOT/templates/reports/traces.schema.json" ]]; then
   cp "$LAB_ROOT/templates/reports/traces.schema.json" "$RUN_DIR/traces.schema.json"
 fi
+if [[ -f "$LAB_ROOT/templates/reports/metrics.schema.json" ]]; then
+  cp "$LAB_ROOT/templates/reports/metrics.schema.json" "$RUN_DIR/metrics.schema.json"
+fi
+if [[ -f "$LAB_ROOT/templates/reports/report-freshness.schema.json" ]]; then
+  cp "$LAB_ROOT/templates/reports/report-freshness.schema.json" "$RUN_DIR/report-freshness.schema.json"
+fi
+if [[ -f "$LAB_ROOT/templates/reports/store-import-state.schema.json" ]]; then
+  cp "$LAB_ROOT/templates/reports/store-import-state.schema.json" "$RUN_DIR/store-import-state.schema.json"
+fi
 if [[ -f "$LAB_ROOT/templates/reports/evidence-graph.schema.json" ]]; then
   cp "$LAB_ROOT/templates/reports/evidence-graph.schema.json" "$RUN_DIR/evidence-graph.schema.json"
 fi

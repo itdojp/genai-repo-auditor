@@ -7,7 +7,14 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from gralib import load_context, load_targets_artifact, utc_now, write_json
+from gralib import (
+    load_context,
+    load_targets_artifact,
+    utc_now,
+    write_json,
+    write_run_artifact_json,
+    write_run_artifact_text,
+)
 from run_events import (
     COMMAND_EVENT_COMMANDS,
     COMMAND_EVENT_PHASES,
@@ -993,6 +1000,7 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
     no_findings = compact.get("no_findings") if isinstance(compact.get("no_findings"), dict) else {}
     workflow_profile = compact.get("workflow_profile") if isinstance(compact.get("workflow_profile"), dict) else {}
     workflow_execution = compact.get("workflow_execution") if isinstance(compact.get("workflow_execution"), dict) else {}
+    freshness = metrics.get("report_freshness") if isinstance(metrics.get("report_freshness"), dict) else {}
     lines = [
         "# Advanced Workflow Metrics",
         "",
@@ -1039,6 +1047,7 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
         f"| Scanner redactions | {scanner.get('redaction_count', 0)} |",
         f"| Scanner readiness reports | {scanner.get('readiness_report_count', 0)} |",
         f"| No-findings record present | {str(bool(no_findings.get('recorded'))).lower()} |",
+        f"| Derived report freshness | {freshness.get('overall_status', 'not_applicable')} |",
         "",
         "## Summary",
         "",
@@ -1229,6 +1238,26 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
     lines.append("")
     lines.extend(markdown_counts("Manifest retention", metrics['artifacts']['manifest_by_retention']))
     lines.append("")
+    if freshness:
+        lines.extend(
+            [
+                "## Derived report freshness snapshot",
+                "",
+                "This is the generation-time snapshot. Run `gra-validate-report --check-freshness` for the live sidecar gate; validation does not regenerate reports automatically.",
+                "",
+                "| Artifact | Status | Producer |",
+                "|---|---|---|",
+            ]
+        )
+        for item in freshness.get("artifacts") or []:
+            if isinstance(item, dict):
+                lines.append(
+                    f"| {item.get('artifact_id', '')} | {item.get('status', '')} | {item.get('producer', '')} |"
+                )
+        lines.extend(["", "Safe regeneration order:", ""])
+        for command in freshness.get("regeneration_order") or []:
+            lines.append(f"- `{command}`")
+        lines.append("")
     duration = metrics.get("run_duration", {})
     if duration.get("available"):
         lines.extend(
@@ -1255,7 +1284,13 @@ def write_metrics(
     metrics = build_metrics(run_dir)
     json_path = out_json.resolve() if out_json else reports / "metrics.json"
     md_path = out_md.resolve() if out_md else reports / "METRICS.md"
-    write_json(json_path, metrics)
-    md_path.parent.mkdir(parents=True, exist_ok=True)
-    md_path.write_text(render_metrics_markdown(metrics), encoding="utf-8")
+    if out_json is None:
+        write_run_artifact_json(run_dir, json_path, metrics)
+    else:
+        write_json(json_path, metrics)
+    if out_md is None:
+        write_run_artifact_text(run_dir, md_path, render_metrics_markdown(metrics))
+    else:
+        md_path.parent.mkdir(parents=True, exist_ok=True)
+        md_path.write_text(render_metrics_markdown(metrics), encoding="utf-8")
     return json_path, md_path, metrics

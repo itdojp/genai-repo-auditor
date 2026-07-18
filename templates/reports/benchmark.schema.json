@@ -117,6 +117,7 @@
         "failed": {"type": "integer", "minimum": 0}
       }
     },
-    "follow_up_actions": {"type": "array", "items": {"type": "string"}}
+    "follow_up_actions": {"type": "array", "items": {"type": "string"}},
+    "report_freshness": {"$ref": "metrics.schema.json#/$defs/reportFreshnessSummary"}
   }
 }

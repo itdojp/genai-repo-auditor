@@ -354,7 +354,7 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
             status="failed",
         )
         self.assertEqual("reporting_failure", metrics_event["error_category"])
-        self.assertEqual([], metrics_event["output_artifact_refs"])
+        self.assertEqual(["reports/report-freshness.json"], metrics_event["output_artifact_refs"])
 
         graph_run = self.copy_fixture_run("minimal-run")
         (graph_run / "reports" / "evidence-graph.json").mkdir()
@@ -372,7 +372,7 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
             status="failed",
         )
         self.assertEqual("reporting_failure", graph_event["error_category"])
-        self.assertEqual([], graph_event["output_artifact_refs"])
+        self.assertEqual(["reports/report-freshness.json"], graph_event["output_artifact_refs"])
 
     def test_evidence_graph_rejects_symlinked_workflow_execution_artifact(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -445,7 +445,11 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
                 ),
                 event,
             )
-        self.assertEqual([], events[-1]["output_artifact_refs"])
+            self.assertIn("custom-reports/report-freshness.json", event["output_artifact_refs"])
+        self.assertEqual(
+            ["custom-reports/store-import-state.json", "custom-reports/report-freshness.json"],
+            events[-1]["output_artifact_refs"],
+        )
 
     def test_gra_metrics_generates_advanced_workflow_counts_without_evidence(self) -> None:
         run_dir = self.copy_fixture_run("advanced-workflow-run")
@@ -1161,7 +1165,7 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
 
         self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
         metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
-        self.assertEqual(3, metrics["artifacts"]["reports_file_count"])
+        self.assertEqual(5, metrics["artifacts"]["reports_file_count"])
         self.assertEqual(1, metrics["artifacts"]["reports_dir_count"])
 
     def test_gra_metrics_buckets_unexpected_dimension_values(self) -> None:
