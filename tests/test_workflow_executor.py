@@ -205,6 +205,29 @@ class WorkflowExecutorTests(unittest.TestCase):
         self.assertEqual(1, execution["summary"]["recovered_provider_failure_count"])
         self.assertEqual({"usage_limit": 1}, execution["summary"]["provider_failures_by_class"])
 
+    def test_checkpoint_schema_declares_recovered_provider_invariant(self) -> None:
+        schema = load_schema(REPO_ROOT, "workflow-checkpoint.schema.json")
+        recovered_rule = {
+            "if": {
+                "required": ["provider_failure_history"],
+                "properties": {
+                    "provider_failure_history": {
+                        "type": "object",
+                        "required": ["recovered"],
+                        "properties": {"recovered": {"const": True}},
+                    }
+                },
+            },
+            "then": {
+                "required": ["provider_error"],
+                "properties": {
+                    "status": {"const": "succeeded"},
+                    "provider_error": {"type": "null"},
+                },
+            },
+        }
+        self.assertIn(recovered_rule, schema["$defs"]["stage"]["allOf"])
+
     def test_unknown_symlinked_and_oversized_stderr_fail_safe_to_generic_exit(self) -> None:
         cases = (
             ("normal", "local stage failure without a provider marker"),
