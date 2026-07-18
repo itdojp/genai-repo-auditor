@@ -93,10 +93,12 @@ runs/OWNER__REPO/RUN_ID/reports/issue-ledger.json
 plan には selected finding ID、fingerprint、title、label、issue body
 file、issue body SHA-256 hash、public disclosure risk、run ID、repo、
 commit、`chain_membership`、`advanced_validation` summary が記録されます。
-`issue-ledger.json` は、選択されなかった finding も含めて公開状態を
-追跡する canonical ledger です。各 finding の fingerprint、Issue URL、
-Issue number、state、title、label、body hash、published timestamp、
-source plan を保持します。
+default の `reports/issue-publication-plan.json` に書く場合は、bounded な
+生成時点の `report_freshness` snapshot も埋め込みます。apply 時の正本は、この
+static snapshot ではなく sidecar の live assessment です。`issue-ledger.json` は、選択されなかった
+finding も含めて公開状態を追跡する canonical ledger です。各 finding の
+fingerprint、Issue URL、Issue number、state、title、label、body hash、
+published timestamp、source plan を保持します。
 新しい ledger は `plan_written` と `publication_plan_status` も記録し、
 dry-run preview、`--plan` が作成した immutable plan、`--apply-plan` が検証した
 既存 plan を区別できるようにします。
@@ -132,10 +134,20 @@ gra-issues \
 `--apply-plan` は Issue body hash、advanced-validation summary、
 fingerprint、selected finding の存在、title、label、public disclosure risk、
 chain membership を再計算・検証し、plan 作成後に変更された内容の公開を
-拒否します。plan が古くなった場合は `--plan` で作り直し、再レビューしてから
-apply してください。`--apply-plan ... --replan` は plan を更新して終了し、
-Issue は作成しません。replan 時も ledger は現在の findings と既存の公開状態を
-照合して更新されます。
+拒否します。run に default plan の tracked record がある場合、その live freshness が
+`stale` または `missing_dependency` なら、copy した plan を含む全ての指定 path で
+publication safety gate として apply を拒否し、
+`gra-issues --run <run_dir> --plan` の再実行と人手の再レビューを要求します。
+plan が古くなった場合は `--plan` で作り直し、再レビューしてから apply して
+ください。`--apply-plan ... --replan` は plan を更新して終了し、Issue は
+作成しません。replan 時も ledger は現在の findings と既存の公開状態を照合して
+更新されます。replan が受け付けるのは default tracked plan path だけです。
+custom-path replan は書込み前に失敗し、default plan の再生成を案内します。
+legacy report validation は `not_applicable` のままですが、
+`--apply-plan` は default tracked plan record または sidecar がなければ fail closed
+します。default plan を再生成してレビューし、その plan またはレビュー済み copy
+を apply してください。これが legacy / custom-plan workflow の publication migration
+手順です。通常の plan content 検証も引き続き必須です。
 
 ## apply
 

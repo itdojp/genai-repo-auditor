@@ -155,6 +155,16 @@ gra-evidence-graph --run "$RUN_DIR"
 gra-validate-report --run "$RUN_DIR"
 ```
 
+Derived default reports record bounded dependency identities in
+`<reports_dir>/report-freshness.json`, where `<reports_dir>` comes from
+`context.json` and defaults to `reports/`. Use
+`gra-validate-report --run "$RUN_DIR" --check-freshness` after the documented
+regeneration sequence to fail on tracked stale or missing inputs; validation
+does not regenerate reports, publish Issues, or modify the SQLite store. Legacy
+runs without freshness records remain structurally compatible and report
+`not_applicable`. See [`docs/REPORTING_AND_STORE.md`](docs/REPORTING_AND_STORE.md)
+for the convergent regeneration order and migration details.
+
 The built-in profiles remain offline and local-artifacts-only. Scanner stages
 plan approved adapters but never add scanner `--execute`. They do not contain
 Issue publication, remediation, release, GitHub mutation, or network-enabling

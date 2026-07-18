@@ -7,7 +7,17 @@ from pathlib import Path
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
-from benchmark import BenchmarkError, copy_fixture_run, write_benchmark, DEFAULT_MAX_CHAINS  # noqa: E402
+from benchmark import BenchmarkError, copy_fixture_run, render_benchmark_markdown, write_benchmark, DEFAULT_MAX_CHAINS  # noqa: E402
+from gralib import write_run_artifact_json, write_run_artifact_text  # noqa: E402
+from report_freshness import (  # noqa: E402
+    FreshnessError,
+    artifact_dependencies,
+    assess_freshness,
+    initialize_freshness,
+    public_summary,
+    preflight_artifact_dependencies,
+    record_artifact,
+)
 from metrics import MetricsError, reports_dir  # noqa: E402
 from run_events import (  # noqa: E402
     EventWriteError,
@@ -59,8 +69,12 @@ def main() -> int:
         return 2
     expected_json = Path(args.out_json).resolve() if args.out_json else reports / "benchmark.json"
     expected_md = Path(args.out_md).resolve() if args.out_md else reports / "BENCHMARK.md"
+    track_freshness = expected_json == reports / "benchmark.json" and expected_md == reports / "BENCHMARK.md"
     input_artifacts = [run_dir / "context.json", reports]
-    output_artifacts = local_artifact_paths(run_dir, [expected_json, expected_md])
+    output_artifacts = local_artifact_paths(
+        run_dir,
+        [expected_json, expected_md] + ([reports / "report-freshness.json"] if track_freshness else []),
+    )
 
     def finish(exit_code: int, *, error_category: str | None = None) -> int:
         event_outputs = (
@@ -94,8 +108,15 @@ def main() -> int:
                 "started_perf": started_perf,
                 "exit_code": 0,
             },
-            reserve_file=False,
+            reserve_file=True,
         )
+        if track_freshness:
+            initialize_freshness(run_dir)
+            freshness_dependencies = preflight_artifact_dependencies(
+                run_dir,
+                "benchmark",
+                artifact_dependencies(run_dir, "benchmark"),
+            )
         json_path, md_path, benchmark = write_benchmark(
             lab_root=LAB_ROOT,
             run_dir=run_dir,
@@ -105,10 +126,15 @@ def main() -> int:
             out_md=Path(args.out_md) if args.out_md else None,
             validate_reports=not args.skip_validation,
         )
+        if track_freshness:
+            record_artifact(run_dir, "benchmark", freshness_dependencies)
+            benchmark["report_freshness"] = public_summary(assess_freshness(run_dir))
+            write_run_artifact_json(run_dir, json_path, benchmark)
+            write_run_artifact_text(run_dir, md_path, render_benchmark_markdown(benchmark))
     except EventWriteError as exc:
         print(str(exc), file=sys.stderr)
         return 2
-    except (OSError, ValueError, BenchmarkError) as exc:
+    except (OSError, ValueError, BenchmarkError, FreshnessError) as exc:
         print(str(exc), file=sys.stderr)
         return finish(2, error_category="reporting_failure")
 

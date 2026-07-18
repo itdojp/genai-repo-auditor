@@ -282,6 +282,39 @@ gra-evidence-graph --run "$RUN_DIR"
 gra-validate-report --run "$RUN_DIR"
 ```
 
+`<reports_dir>/report-freshness.json` は schema v1 の local sidecar であり、default
+の派生 report について run-relative な依存関係だけを追跡します。依存関係と
+tracked output は run 配下の regular non-symlink file でなければならず、
+1 record あたり最大 128 件の dependency を保持できます。`content` mode の入力は
+16 MiB までで、size と SHA-256 を記録します。legacy run で sidecar がない場合は
+`not_applicable` として扱います。`gra-validate-report` はこの sidecar と
+`<reports_dir>/store-import-state.json` の構造を常に検証し、`--check-freshness` を
+付けた場合だけ `stale` と `missing_dependency` を失敗として扱います。検証だけで
+report の自動再生成、Issue 公開、SQLite 変更は行いません。
+
+freshness を全面的に更新する場合の推奨順序は次の 9 command です。
+
+```text
+gra-sarif --run <run_dir>
+gra-issues --run <run_dir> --plan
+gra-store --run <run_dir> --db <local_db_path>
+gra-metrics --run <run_dir>
+gra-evidence-graph --run <run_dir>
+gra-dashboard --run <run_dir>
+gra-benchmark --run <run_dir>
+gra-metrics --run <run_dir>
+gra-dashboard --run <run_dir>
+```
+
+source report は `content` mode で SHA-256 を記録し、peer report と
+`command-events.jsonl` は循環回避のため必要に応じて `presence` mode で追跡します。
+`workflow-execution.json` は `gra-metrics` と `gra-evidence-graph` の
+content dependency なので、terminal な `gra-run` 完了後は再生成してください。
+default catalog 外の `--out` / `--out-json` / `--out-md` report は追跡対象外です。
+外部 `--db` file 自体は fingerprint も path 記録もせず、`gra-store` が書く
+run-local の `<reports_dir>/store-import-state.json` だけを追跡します。この marker は
+import 件数だけを保持し、SQLite の DB path は保存しません。
+
 組み込み profile は offline / local-artifacts-only です。scanner stage は
 `gra-scan --plan` を使用し、scanner を実行しません。Issue 公開、remediation、release
 公開、GitHub mutation、network 有効化は unattended profile の対象外です。

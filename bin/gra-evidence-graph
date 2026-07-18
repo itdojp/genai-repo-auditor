@@ -7,7 +7,17 @@ from pathlib import Path
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
-from evidence_graph import EvidenceGraphSafetyError, build_evidence_graph, reports_dir, write_evidence_graph  # noqa: E402
+from evidence_graph import EvidenceGraphSafetyError, build_evidence_graph, render_evidence_graph_markdown_text, reports_dir, write_evidence_graph  # noqa: E402
+from gralib import write_run_artifact_json, write_run_artifact_text  # noqa: E402
+from report_freshness import (  # noqa: E402
+    FreshnessError,
+    artifact_dependencies,
+    assess_freshness,
+    initialize_freshness,
+    public_summary,
+    preflight_artifact_dependencies,
+    record_artifact,
+)
 from run_events import EventWriteError, append_command_event, preflight_command_event, start_command_event  # noqa: E402
 from version import auditor_version  # noqa: E402
 
@@ -26,7 +36,11 @@ def main() -> int:
         print(str(exc), file=sys.stderr)
         return 2
     input_artifacts = [run_dir / "context.json", reports]
-    output_artifacts = [reports / "evidence-graph.json", reports / "EVIDENCE_GRAPH.md"]
+    output_artifacts = [
+        reports / "evidence-graph.json",
+        reports / "EVIDENCE_GRAPH.md",
+        reports / "report-freshness.json",
+    ]
 
     def finish(exit_code: int, *, error_category: str | None = None) -> int:
         event_outputs = (
@@ -62,12 +76,24 @@ def main() -> int:
             },
             reserve_file=False,
         )
+        initialize_freshness(run_dir)
+        freshness_dependencies = preflight_artifact_dependencies(
+            run_dir,
+            "evidence_graph",
+            artifact_dependencies(run_dir, "evidence_graph"),
+        )
         graph = build_evidence_graph(run_dir)
         json_path, md_path = write_evidence_graph(run_dir, graph)
+        record_artifact(run_dir, "evidence_graph", freshness_dependencies)
+        graph_summary = graph.get("summary") if isinstance(graph.get("summary"), dict) else {}
+        graph_summary["report_freshness"] = public_summary(assess_freshness(run_dir))
+        graph["summary"] = graph_summary
+        write_run_artifact_json(run_dir, json_path, graph)
+        write_run_artifact_text(run_dir, md_path, render_evidence_graph_markdown_text(graph))
     except EventWriteError as exc:
         print(str(exc), file=sys.stderr)
         return 2
-    except (OSError, ValueError, EvidenceGraphSafetyError) as exc:
+    except (OSError, ValueError, EvidenceGraphSafetyError, FreshnessError) as exc:
         print(str(exc), file=sys.stderr)
         return finish(2, error_category="reporting_failure")
     summary = graph.get("summary") if isinstance(graph.get("summary"), dict) else {}

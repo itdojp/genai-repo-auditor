@@ -11,7 +11,7 @@ from pathlib import Path
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
-from gralib import load_context, load_json, load_targets_artifact, utc_now
+from gralib import load_context, load_json, load_targets_artifact, utc_now, write_run_artifact_text
 from run_events import (
     EventWriteError,
     append_command_event,
@@ -21,6 +21,14 @@ from run_events import (
     start_command_event,
 )
 from target_queue import validate_target_queue_artifact
+from report_freshness import (
+    artifact_dependencies,
+    assess_freshness,
+    initialize_freshness,
+    public_summary,
+    preflight_artifact_dependencies,
+    record_artifact,
+)
 
 SEVERITIES = ['Critical', 'High', 'Medium', 'Low', 'Informational']
 STATUSES = ['Confirmed', 'Probable', 'Potential', 'Needs human review', 'Informational', 'Invalid']
@@ -55,8 +63,12 @@ def main() -> int:
         print(str(exc), file=sys.stderr)
         return 2
     out = Path(args.out).resolve() if args.out else reports / 'dashboard.html'
+    track_freshness = out == reports / 'dashboard.html'
     input_artifacts = [run_dir / 'context.json', reports]
-    output_artifacts = local_artifact_paths(run_dir, [out])
+    output_artifacts = local_artifact_paths(
+        run_dir,
+        [out] + ([reports / 'report-freshness.json'] if track_freshness else []),
+    )
     try:
         preflight_command_event(
             run_dir,
@@ -75,6 +87,13 @@ def main() -> int:
         print(str(exc), file=sys.stderr)
         return 2
     _failure_event = (run_dir, started_at, started_perf, input_artifacts, output_artifacts)
+    if track_freshness:
+        initialize_freshness(run_dir)
+        freshness_dependencies = preflight_artifact_dependencies(
+            run_dir,
+            'dashboard',
+            artifact_dependencies(run_dir, 'dashboard'),
+        )
     findings_data = load_json(reports / 'findings.json', {}) or {}
     findings = [f for f in findings_data.get('findings', []) if isinstance(f, dict)]
     try:
@@ -718,8 +737,32 @@ def main() -> int:
 <h2>Scanner results</h2>
 <table><thead><tr><th>Tool</th><th>Format</th><th>Path</th><th>Imported at</th><th>Note</th></tr></thead><tbody>{''.join(scanner_rows) or '<tr><td colspan="5">No scanner results ingested.</td></tr>'}</tbody></table>
 </body></html>"""
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(html_text, encoding='utf-8')
+    if track_freshness:
+        write_run_artifact_text(run_dir, out, html_text)
+    else:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(html_text, encoding='utf-8')
+    if track_freshness:
+        record_artifact(run_dir, 'dashboard', freshness_dependencies)
+        freshness = public_summary(assess_freshness(run_dir))
+        freshness_rows = ''.join(
+            '<tr>'
+            f"<td>{h(item.get('artifact_id'))}</td>"
+            f"<td>{h(item.get('status'))}</td>"
+            f"<td><code>{h(item.get('regeneration_command'))}</code></td>"
+            '</tr>'
+            for item in freshness['artifacts']
+        )
+        freshness_section = (
+            '<h2>Derived report freshness snapshot</h2>'
+            '<p>Generation-time snapshot with bounded run-relative dependency fingerprints only. '
+            'Run <code>gra-validate-report --check-freshness</code> for the live sidecar gate; this dashboard does not regenerate reports automatically.</p>'
+            f"<p>Overall status: <code>{h(freshness['overall_status'])}</code></p>"
+            '<table><thead><tr><th>Artifact</th><th>Status</th><th>Regeneration command</th></tr></thead>'
+            f'<tbody>{freshness_rows}</tbody></table>'
+        )
+        html_text = html_text.replace('</body></html>', freshness_section + '</body></html>')
+        write_run_artifact_text(run_dir, out, html_text)
     print(f'Wrote {out}')
     append_command_event(
         run_dir,

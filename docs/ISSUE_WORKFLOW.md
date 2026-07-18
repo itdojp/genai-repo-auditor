@@ -128,7 +128,11 @@ commit, `chain_membership`, optional advisory `owner_routing`, and an
 summary records whether related `reports/chains.json` records exist, whether
 related adversarial validation records exist, whether safe local proof artifacts
 exist or are explicitly not applicable, and any warnings that should be reviewed
-before publication. Review the plan, referenced issue drafts, any
+before publication. When the plan is written to the default tracked path
+`reports/issue-publication-plan.json`, it also embeds a bounded
+`report_freshness` generation-time snapshot. The live sidecar assessment, not
+that static snapshot, is authoritative when the plan is applied. Review the
+plan, referenced issue drafts, any
 `reports/ATTACK_CHAINS.md` chain implications, any `reports/PROOFS.md` proof
 limitations, and any `reports/VALIDATION.md` decisions before publishing.
 When `owner_routing` is present, use it to route review or remediation; it is an
@@ -162,12 +166,22 @@ gra-issues \
 `--apply-plan` recomputes issue body hashes and advanced-validation summaries,
 verifies finding fingerprints, checks that selected findings still exist, and
 rejects changed titles, labels, issue bodies, public disclosure risk, chain
-membership, or advanced evidence state before it calls `gh issue create`.
-When the plan is stale, rerun `--plan` and review the refreshed file before
-applying. `--apply-plan ... --replan` refreshes the plan and exits without
-publishing. The ledger is refreshed during `--plan` and `--replan` so operators
-can distinguish pending, not-selected, and already-published findings from one
-JSON artifact.
+membership, or advanced evidence state before it calls `gh issue create`. When
+the run has a tracked default plan record, its live `stale` and
+`missing_dependency` freshness states are publication safety gates for every
+supplied plan path, including a copied plan: apply is refused until the operator reruns
+`gra-issues --run <run_dir> --plan` and performs another human review. When the
+plan is stale, rerun `--plan` and review the refreshed file before applying.
+`--apply-plan ... --replan` refreshes the plan and exits without publishing. The
+ledger is refreshed during `--plan` and `--replan` so operators can distinguish
+pending, not-selected, and already-published findings from one JSON artifact.
+Replan accepts only the default tracked plan path; a custom-path replan fails
+before writing and instructs the operator to regenerate the default plan.
+Legacy report validation remains `not_applicable`, but `--apply-plan` fails
+closed when the default tracked plan record or sidecar is absent. Regenerate the
+default plan, review it, and then apply that plan or a reviewed copy. This is the
+publication migration path for legacy and custom-plan workflows; normal
+plan-content verification also remains mandatory.
 
 ## apply
 

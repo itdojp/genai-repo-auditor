@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor Derived Report Freshness",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_at", "source", "records"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "generated_at": {"type": "string", "minLength": 1, "maxLength": 64},
+    "source": {"const": "genai-repo-auditor"},
+    "records": {
+      "type": "array",
+      "maxItems": 7,
+      "items": {"$ref": "#/$defs/record"}
+    }
+  },
+  "$defs": {
+    "run_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*//)(?!.*[\\u0000-\\u001F\\u007F])[^\\\\]+$"
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_ref", "requirement", "mode", "captured_state"],
+      "properties": {
+        "artifact_ref": {"$ref": "#/$defs/run_ref"},
+        "requirement": {"enum": ["required", "optional"]},
+        "mode": {"enum": ["content", "presence"]},
+        "captured_state": {"enum": ["present", "absent"]},
+        "size_bytes": {"type": "integer", "minimum": 0, "maximum": 16777216},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"requirement": {"const": "required"}}, "required": ["requirement"]},
+          "then": {"properties": {"captured_state": {"const": "present"}}}
+        },
+        {
+          "if": {
+            "properties": {"captured_state": {"const": "present"}, "mode": {"const": "content"}},
+            "required": ["captured_state", "mode"]
+          },
+          "then": {"required": ["size_bytes", "sha256"]},
+          "else": {
+            "not": {"anyOf": [{"required": ["size_bytes"]}, {"required": ["sha256"]}]}
+          }
+        }
+      ]
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_id",
+        "output_refs",
+        "producer",
+        "producer_version",
+        "artifact_schema",
+        "artifact_schema_version",
+        "dependencies",
+        "regeneration_command"
+      ],
+      "properties": {
+        "artifact_id": {
+          "enum": ["sarif", "store_import_state", "issue_publication_plan", "metrics", "benchmark", "evidence_graph", "dashboard"]
+        },
+        "output_refs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/run_ref"}
+        },
+        "producer": {"enum": ["gra-sarif", "gra-store", "gra-issues", "gra-metrics", "gra-benchmark", "gra-evidence-graph", "gra-dashboard"]},
+        "producer_version": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$"},
+        "artifact_schema": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"},
+        "artifact_schema_version": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$"},
+        "dependencies": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {"$ref": "#/$defs/dependency"}
+        },
+        "regeneration_command": {"type": "string", "minLength": 1, "maxLength": 240}
+      }
+    }
+  }
+}

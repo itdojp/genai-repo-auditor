@@ -9,7 +9,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from gralib import load_context, utc_now, write_json
+from gralib import load_context, utc_now, write_json, write_run_artifact_json, write_run_artifact_text
 from metrics import MetricsError, build_metrics, reports_dir
 from report_safety import iter_secret_findings
 
@@ -562,6 +562,7 @@ def render_benchmark_markdown(benchmark: dict[str, Any]) -> str:
     metrics = benchmark.get("metrics", {}) if isinstance(benchmark.get("metrics"), dict) else {}
     metrics_summary = metrics.get("summary", {}) if isinstance(metrics.get("summary"), dict) else {}
     summary = benchmark.get("summary", {}) if isinstance(benchmark.get("summary"), dict) else {}
+    freshness = benchmark.get("report_freshness", {}) if isinstance(benchmark.get("report_freshness"), dict) else {}
     lines = [
         "# Benchmark Report",
         "",
@@ -574,6 +575,7 @@ def render_benchmark_markdown(benchmark: dict[str, Any]) -> str:
         f"- Generated at: `{benchmark.get('generated_at', '')}`",
         f"- Overall status: `{summary.get('overall_status', '')}`",
         f"- Metrics source: `{metrics.get('source', '')}`",
+        f"- Derived report freshness: `{freshness.get('overall_status', 'not_applicable')}`",
         "",
         "## Metrics summary",
         "",
@@ -605,6 +607,23 @@ def render_benchmark_markdown(benchmark: dict[str, Any]) -> str:
     lines.extend(["", "## Follow-up actions", ""])
     for action in benchmark.get("follow_up_actions") or []:
         lines.append(f"- {action}")
+    if freshness:
+        lines.extend(
+            [
+                "",
+                "## Derived report freshness snapshot",
+                "",
+                "This bounded generation-time snapshot does not regenerate or publish artifacts automatically. Use `gra-validate-report --check-freshness` for the live sidecar gate.",
+                "",
+                "| Artifact | Status | Producer |",
+                "|---|---|---|",
+            ]
+        )
+        for item in freshness.get("artifacts") or []:
+            if isinstance(item, dict):
+                lines.append(
+                    f"| {item.get('artifact_id', '')} | {item.get('status', '')} | {item.get('producer', '')} |"
+                )
     lines.extend([
         "",
         "## Safety notes",
@@ -637,7 +656,13 @@ def write_benchmark(
     )
     json_path = out_json.resolve() if out_json else reports / "benchmark.json"
     md_path = out_md.resolve() if out_md else reports / "BENCHMARK.md"
-    write_json(json_path, benchmark)
-    md_path.parent.mkdir(parents=True, exist_ok=True)
-    md_path.write_text(render_benchmark_markdown(benchmark), encoding="utf-8")
+    if out_json is None:
+        write_run_artifact_json(run_dir, json_path, benchmark)
+    else:
+        write_json(json_path, benchmark)
+    if out_md is None:
+        write_run_artifact_text(run_dir, md_path, render_benchmark_markdown(benchmark))
+    else:
+        md_path.parent.mkdir(parents=True, exist_ok=True)
+        md_path.write_text(render_benchmark_markdown(benchmark), encoding="utf-8")
     return json_path, md_path, benchmark

@@ -21,6 +21,12 @@ from provider_failures import (
 )
 from scanner_reporting import ScannerReportError, validate_scanner_runs_for_run
 from scanner_readiness import ScannerReadinessError, read_scanner_readiness_report
+from report_freshness import (
+    FreshnessError,
+    load_bounded_json_artifact,
+    load_freshness,
+    validate_public_summary,
+)
 from run_events import (
     COMMAND_EVENT_COMMANDS,
     COMMAND_EVENT_PHASES,
@@ -68,6 +74,7 @@ ISSUE_LEDGER_PATH = Path("reports/issue-ledger.json")
 DUPLICATE_DECISIONS_DIR = Path("reports/duplicate-decisions")
 RUN_STATE_PATH = Path("reports/run-state.json")
 COMMAND_EVENTS_PATH = Path("reports/command-events.jsonl")
+STORE_IMPORT_STATE_PATH = Path("reports/store-import-state.json")
 VALIDATION_DECISIONS = {"confirm", "downgrade", "invalidate", "needs-human-review"}
 VALIDATION_SUBJECT_TYPES = {"finding", "chain"}
 VALIDATION_SEVERITIES = SEVERITIES | {"Unknown"}
@@ -1285,6 +1292,15 @@ def validate_metrics_payload(value: Any, path: str, errors: List[str]) -> None:
             validate_metrics_payload(item, f"{path}[{index}]", errors)
 
 
+def validate_embedded_report_freshness(value: Any, path: str, errors: List[str]) -> None:
+    if value is None:
+        return
+    try:
+        validate_public_summary(value)
+    except FreshnessError as exc:
+        errors.append(f"{path}: {exc}")
+
+
 def validate_workflow_execution_summary_contract(
     value: Any,
     path: str,
@@ -1645,6 +1661,7 @@ def validate_metrics(run_dir: Path, errors: List[str]) -> bool:
         errors.append(f"metrics: expected type object, got {json_type_name(metrics_data)}")
         return True
     validate_schema(metrics_data, load_schema("metrics.schema.json"), "metrics", errors)
+    validate_embedded_report_freshness(metrics_data.get("report_freshness"), "metrics.report_freshness", errors)
     validate_workflow_execution_summary_contract(
         metrics_data.get("workflow_execution"),
         "metrics.workflow_execution",
@@ -1981,6 +1998,11 @@ def validate_benchmark(run_dir: Path, errors: List[str]) -> bool:
         errors.append(f"benchmark: expected type object, got {json_type_name(benchmark_data)}")
         return True
     validate_schema(benchmark_data, load_schema("benchmark.schema.json"), "benchmark", errors)
+    validate_embedded_report_freshness(
+        benchmark_data.get("report_freshness"),
+        "benchmark.report_freshness",
+        errors,
+    )
     validate_generated_at(benchmark_data.get("generated_at"), "benchmark.generated_at", errors)
     if benchmark_data.get("source") != "local-benchmark":
         errors.append("benchmark.source: benchmark must be generated from local-benchmark")
@@ -2110,6 +2132,11 @@ def validate_evidence_graph(run_dir: Path, errors: List[str]) -> bool:
 
     validate_schema(graph, load_schema("evidence-graph.schema.json"), "evidence_graph", errors)
     graph_summary = graph.get("summary") if isinstance(graph.get("summary"), dict) else {}
+    validate_embedded_report_freshness(
+        graph_summary.get("report_freshness"),
+        "evidence_graph.summary.report_freshness",
+        errors,
+    )
     validate_workflow_execution_summary_contract(
         graph_summary.get("workflow_execution"),
         "evidence_graph.summary.workflow_execution",
@@ -2608,6 +2635,65 @@ def validate_command_events(run_dir: Path, errors: List[str]) -> bool:
                 )
     return True
 
+
+def validate_report_freshness(run_dir: Path, errors: List[str]) -> bool:
+    """Validate optional freshness metadata without treating staleness as corruption."""
+
+    try:
+        return load_freshness(run_dir) is not None
+    except (FreshnessError, OSError) as exc:
+        errors.append(f"report_freshness: {exc}")
+        return True
+
+
+def validate_store_import_state(run_dir: Path, errors: List[str]) -> bool:
+    path = configured_artifact_path(run_dir, STORE_IMPORT_STATE_PATH)
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        errors.append(f"store_import_state: invalid bounded artifact: {exc}")
+        return True
+    try:
+        data = load_bounded_json_artifact(
+            run_dir,
+            configured_artifact_ref(run_dir, STORE_IMPORT_STATE_PATH),
+            max_bytes=64 * 1024,
+        )
+    except (OSError, ValueError, FreshnessError) as exc:
+        errors.append(f"store_import_state: invalid bounded artifact: {exc}")
+        return True
+    validate_schema_shape(data, load_schema("store-import-state.schema.json"), "store_import_state", errors)
+    if not isinstance(data, dict):
+        return True
+    expected_keys = {
+        "schema_version",
+        "run_id",
+        "generated_at",
+        "source",
+        "database_location_recorded",
+        "imported_counts",
+    }
+    if set(data) != expected_keys:
+        errors.append("store_import_state: contains unsupported fields")
+    counts = data.get("imported_counts")
+    expected_count_keys = {"targets", "findings", "scanner_results", "issues", "posture_artifacts"}
+    if isinstance(counts, dict) and set(counts) != expected_count_keys:
+        errors.append("store_import_state.imported_counts: must contain exactly the supported table counts")
+    if isinstance(counts, dict) and any(
+        not isinstance(count, int) or isinstance(count, bool) or not 0 <= count <= 1_000_000
+        for count in counts.values()
+    ):
+        errors.append("store_import_state.imported_counts: values must be bounded non-negative integers")
+    context = load_context(run_dir)
+    if data.get("run_id") != str(context.get("run_id") or run_dir.name):
+        errors.append("store_import_state.run_id: does not match run context")
+    validate_generated_at(data.get("generated_at"), "store_import_state.generated_at", errors)
+    if data.get("database_location_recorded") is not False:
+        errors.append("store_import_state.database_location_recorded: must be false")
+    return True
+
 ADVANCED_VALIDATOR_ORDER = (
     "dependencies",
     "chains",
@@ -2629,6 +2715,8 @@ ADVANCED_VALIDATOR_ORDER = (
     "duplicate_decisions",
     "run_state",
     "command_events",
+    "store_import_state",
+    "report_freshness",
 )
 
 
@@ -2675,3 +2763,5 @@ def register_advanced_validators(registry: Any) -> None:
     registry.register("duplicate_decisions", lambda context: _run_without_findings(context, validate_duplicate_decisions))
     registry.register("run_state", lambda context: _run_without_findings(context, validate_run_state))
     registry.register("command_events", lambda context: _run_without_findings(context, validate_command_events))
+    registry.register("store_import_state", lambda context: _run_without_findings(context, validate_store_import_state))
+    registry.register("report_freshness", lambda context: _run_without_findings(context, validate_report_freshness))

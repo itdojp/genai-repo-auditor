@@ -18,6 +18,7 @@ The command writes:
 ```text
 <reports_dir>/evidence-graph.json
 <reports_dir>/EVIDENCE_GRAPH.md
+<reports_dir>/report-freshness.json
 ```
 
 `gra-validate-report` validates the graph shape when
@@ -27,6 +28,14 @@ summarizes the graph when present. After the graph files are written,
 `<reports_dir>/command-events.jsonl`; that event becomes visible on the
 next `gra-metrics` execution, after which a later `gra-dashboard` run
 can display the updated metrics.
+
+The default graph embeds a bounded generation-time
+`summary.report_freshness` snapshot and records
+its declared run-relative inputs in the shared sidecar. Because
+`workflow-execution.json` is a content dependency, rerun the documented
+reporting sequence after terminal `gra-run` completion. Use the live sidecar
+assessment for a current gate; validation reports
+staleness but never regenerates the graph automatically.
 
 ## Inputs
 

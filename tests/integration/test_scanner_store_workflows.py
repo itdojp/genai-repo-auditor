@@ -173,7 +173,8 @@ class ScannerStoreWorkflowTests(CliWorkflowTestCase):
                 status="failed",
             )
             self.assertEqual("reporting_failure", event["error_category"])
-            self.assertEqual([], event["output_artifact_refs"])
+            expected_outputs = ["reports/report-freshness.json"] if expected_command == "gra-store" else []
+            self.assertEqual(expected_outputs, event["output_artifact_refs"])
 
     def test_store_rejects_invalid_event_context_before_database_mutation(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -365,7 +366,7 @@ class ScannerStoreWorkflowTests(CliWorkflowTestCase):
         self.assertIn("Agent surfaces", index_md)
         self.assertIn("Vulnerabilities", index_md)
 
-    def test_gra_store_skips_symlinked_posture_artifacts(self) -> None:
+    def test_gra_store_fails_closed_before_importing_symlinked_posture_artifacts(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         outside = self.work_dir / "outside-dependencies.json"
         outside.write_text(
@@ -385,10 +386,10 @@ class ScannerStoreWorkflowTests(CliWorkflowTestCase):
         (run_dir / "reports" / "dependencies.json").symlink_to(outside)
 
         db_path = self.work_dir / "symlink-posture.sqlite"
-        self.run_cmd([REPO_ROOT / "bin" / "gra-store", "--run", run_dir, "--db", db_path], check=True)
-        with sqlite3.connect(db_path) as conn:
-            posture_count = conn.execute("select count(*) from posture_artifacts").fetchone()[0]
-        self.assertEqual(posture_count, 0)
+        cp = self.run_cmd([REPO_ROOT / "bin" / "gra-store", "--run", run_dir, "--db", db_path])
+        self.assertEqual(2, cp.returncode)
+        self.assertIn("artifact_ref must identify a regular non-symlink file", cp.stderr)
+        self.assertFalse(db_path.exists(), "freshness preflight must reject the input before SQLite mutation")
 
     def test_gra_store_supports_report_run_manifest_path(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

@@ -961,6 +961,9 @@
         }
       }
     },
+    "report_freshness": {
+      "$ref": "#/$defs/reportFreshnessSummary"
+    },
     "target_queue": {
       "type": "object",
       "additionalProperties": false,
@@ -1284,6 +1287,47 @@
     }
   },
   "$defs": {
+    "reportFreshnessSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["overall_status", "counts", "artifacts", "regeneration_order"],
+      "properties": {
+        "overall_status": {"enum": ["fresh", "stale", "missing_dependency", "not_applicable"]},
+        "counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fresh", "stale", "missing_dependency", "not_applicable"],
+          "properties": {
+            "fresh": {"type": "integer", "minimum": 0, "maximum": 7},
+            "stale": {"type": "integer", "minimum": 0, "maximum": 7},
+            "missing_dependency": {"type": "integer", "minimum": 0, "maximum": 7},
+            "not_applicable": {"type": "integer", "minimum": 0, "maximum": 7}
+          }
+        },
+        "artifacts": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["artifact_id", "status", "producer", "regeneration_command"],
+            "properties": {
+              "artifact_id": {"enum": ["sarif", "store_import_state", "issue_publication_plan", "metrics", "benchmark", "evidence_graph", "dashboard"]},
+              "status": {"enum": ["fresh", "stale", "missing_dependency", "not_applicable"]},
+              "producer": {"enum": ["gra-sarif", "gra-store", "gra-issues", "gra-metrics", "gra-benchmark", "gra-evidence-graph", "gra-dashboard"]},
+              "regeneration_command": {"type": "string", "minLength": 1, "maxLength": 240}
+            }
+          }
+        },
+        "regeneration_order": {
+          "type": "array",
+          "minItems": 9,
+          "maxItems": 9,
+          "items": {"type": "string", "minLength": 1, "maxLength": 240}
+        }
+      }
+    },
     "workflowExecutionSummary": {
       "type": "object",
       "required": [
