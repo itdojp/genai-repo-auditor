@@ -102,7 +102,7 @@ COMMAND_EVENT_STATUSES = ["succeeded", "failed", "blocked", "skipped", "warning"
 EVENT_WRITE_FAILURE_MODES = ["block", "warn"]
 MAX_PROVIDER_STDERR_REFS = 8
 MAX_PROVIDER_STDERR_BYTES = 64 * 1024
-_PROVIDER_STDERR_NAME_RE = re.compile(r"^codex-[A-Za-z0-9][A-Za-z0-9_.-]{0,191}-stderr\.txt$")
+_PROVIDER_STDERR_NAME_RE = re.compile(r"^codex(?:-[A-Za-z0-9][A-Za-z0-9_.-]{0,191})?-stderr\.txt$")
 
 # Major workflow commands that currently emit completion events. This is
 # intentionally narrower than COMMAND_EVENT_COMMANDS, which also reserves names
