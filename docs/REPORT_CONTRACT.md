@@ -51,7 +51,11 @@ lead artifact として正規化する import artifact です。
 は `gra-novelty` が recurring audit の重複・accepted-risk・regression
 分類をローカルに記録する novelty artifact です。`issue-ledger.json` は
 `gra-issues` が生成・更新する canonical finding-to-Issue publication ledger
-です。`run-state.json` は `gra-run-state` が生成・更新する run-level pause /
+です。`issue-dry-run-summary.json` / `ISSUE_DRY_RUN_SUMMARY.md` は
+`gra-issues --dry-run` が同時に生成する schema v1 の sanitized local
+aggregate です。前者は metrics の直接入力、後者は同じ集計を人手確認用に
+表示します。finding title/body/path/fingerprint/label、raw GitHub response は
+含みません。`run-state.json` は `gra-run-state` が生成・更新する run-level pause /
 resume / blocked state artifact です。`command-events.jsonl` は audit entry
 point、recon、target queue、target research、gapfill、variant analysis、chain
 synthesis、safe proof、adversarial validation、remediation、trace reachability、
@@ -125,6 +129,8 @@ reports/
   known-findings.json
   issue-publication-plan.json
   issue-ledger.json
+  issue-dry-run-summary.json
+  ISSUE_DRY_RUN_SUMMARY.md
   duplicate-decisions/
     SEC-001.json
   run-state.json
@@ -135,6 +141,49 @@ reports/
   issue-drafts/
     SEC-001.md
 ```
+
+## issue dry-run summary
+
+`<reports_dir>/issue-dry-run-summary.json` is a closed schema v1 local preview
+contract. Its paired `<reports_dir>/ISSUE_DRY_RUN_SUMMARY.md` must be present whenever
+the JSON exists, and conversely. Both paths must be regular, non-symlink files
+under the configured run reports directory; the JSON reader and Markdown
+artifact validation are bounded to 64 KiB. `gra-validate-report` validates the
+pair when either artifact exists, including the JSON schema, run/repository
+context, and generated-time format.
+
+The summary has `source=local-issue-dry-run`, `mode=dry-run`, a declared
+`visibility`, and a `visibility_source` of `run-artifact`,
+`verified-publication-plan`, or `not-available`. It is deliberately not a
+network observation: `github_visibility_lookup_performed=false` and
+`github_duplicate_search_performed=false`. Safety flags require local artifacts
+only, no GitHub mutation, no immutable publication-plan write, no copied finding
+content, and no raw GitHub response. `issues_created` is always zero.
+
+Its counts are bounded non-negative integers and must satisfy both invariants:
+
+```text
+total_candidates = selected + filtered_by_severity_or_status
+                 + issue_recommendation_suppressed + novelty_suppressed
+selected = duplicate_suppressed + advanced_validation_blocked
+         + public_visibility_blocked + would_create
+```
+
+The first partition applies to all candidate findings. The second applies only
+to selected candidates. Novelty suppression is derived from the local novelty
+ledger; duplicate suppression is derived from the local issue ledger. Neither
+counter implies a GitHub search. Strict `--require-advanced-validation` adds
+`advanced_validation_blocked`; dry-runs whose declared visibility is `PUBLIC`
+or `UNKNOWN` without `--allow-public` add `public_visibility_blocked`, matching
+the fail-closed apply guard. `warnings` is an aggregate warning count and is not
+part of either partition.
+
+`gra-metrics` reads this JSON directly into `metrics.json.issue_dry_run` and the
+compact public-safe summary. If no dry-run summary is present, it records
+`artifact_present=false` with zero counters, which means not run/absent rather
+than a successful zero-selection dry-run. `gra-dashboard` and `gra-benchmark`
+consume those metrics fields; they do not read GitHub or the original finding
+content for this view.
 
 ## derived report freshness
 

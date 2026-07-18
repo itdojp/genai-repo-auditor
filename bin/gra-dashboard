@@ -469,6 +469,20 @@ def main() -> int:
             ('Gapfill targets', metrics_data.get('gapfill', {}).get('targets_generated', 0)),
             ('Traces', metrics_data.get('traces', {}).get('total', 0)),
             ('Issue plan warnings', metrics_data.get('issue_publication_plan', {}).get('warning_count', 0)),
+            ('Issue dry-run would create', metrics_data.get('issue_dry_run', {}).get('would_create', 0)),
+            ('Issue dry-run suppressed', sum(
+                metrics_data.get('issue_dry_run', {}).get(key, 0)
+                for key in (
+                    'filtered_by_severity_or_status',
+                    'issue_recommendation_suppressed',
+                    'novelty_suppressed',
+                    'duplicate_suppressed',
+                )
+            )),
+            ('Issue dry-run blocked', (
+                metrics_data.get('issue_dry_run', {}).get('advanced_validation_blocked', 0)
+                + metrics_data.get('issue_dry_run', {}).get('public_visibility_blocked', 0)
+            )),
             ('Duplicate decisions', metrics_data.get('duplicate_decisions', {}).get('total', 0)),
             ('Exact duplicate matches', metrics_data.get('duplicate_decisions', {}).get('exact_match_count', 0)),
             ('Command events', observability.get('total_events', 0)),

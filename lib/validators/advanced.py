@@ -35,6 +35,10 @@ from run_events import (
     validate_command_event_payload,
 )
 from workflow_profile import validate_workflow_profile_payload
+from issue_dry_run_summary import (
+    IssueDryRunSummaryError,
+    read_summary as read_issue_dry_run_summary,
+)
 
 from .common import (
     json_type_name,
@@ -75,6 +79,8 @@ DUPLICATE_DECISIONS_DIR = Path("reports/duplicate-decisions")
 RUN_STATE_PATH = Path("reports/run-state.json")
 COMMAND_EVENTS_PATH = Path("reports/command-events.jsonl")
 STORE_IMPORT_STATE_PATH = Path("reports/store-import-state.json")
+ISSUE_DRY_RUN_SUMMARY_PATH = Path("reports/issue-dry-run-summary.json")
+ISSUE_DRY_RUN_SUMMARY_MARKDOWN_PATH = Path("reports/ISSUE_DRY_RUN_SUMMARY.md")
 VALIDATION_DECISIONS = {"confirm", "downgrade", "invalidate", "needs-human-review"}
 VALIDATION_SUBJECT_TYPES = {"finding", "chain"}
 VALIDATION_SEVERITIES = SEVERITIES | {"Unknown"}
@@ -2694,6 +2700,48 @@ def validate_store_import_state(run_dir: Path, errors: List[str]) -> bool:
         errors.append("store_import_state.database_location_recorded: must be false")
     return True
 
+
+def validate_issue_dry_run_summary(run_dir: Path, errors: List[str]) -> bool:
+    json_path = configured_artifact_path(run_dir, ISSUE_DRY_RUN_SUMMARY_PATH)
+    markdown_path = configured_artifact_path(run_dir, ISSUE_DRY_RUN_SUMMARY_MARKDOWN_PATH)
+    json_exists = json_path.exists() or json_path.is_symlink()
+    markdown_exists = markdown_path.exists() or markdown_path.is_symlink()
+    if not json_exists and not markdown_exists:
+        return False
+    if not json_exists or not markdown_exists:
+        errors.append("issue_dry_run_summary: JSON and Markdown artifacts must be present together")
+    if json_exists:
+        try:
+            summary = read_issue_dry_run_summary(run_dir)
+        except IssueDryRunSummaryError as exc:
+            errors.append(f"issue_dry_run_summary: {exc}")
+        else:
+            validate_schema_shape(
+                summary,
+                load_schema("issue-dry-run-summary.schema.json"),
+                "issue_dry_run_summary",
+                errors,
+            )
+            if isinstance(summary, dict):
+                validate_generated_at(
+                    summary.get("generated_at"),
+                    "issue_dry_run_summary.generated_at",
+                    errors,
+                )
+    if markdown_exists:
+        try:
+            validate_no_symlink_components(
+                run_dir,
+                configured_artifact_ref(run_dir, ISSUE_DRY_RUN_SUMMARY_MARKDOWN_PATH),
+                field_path="issue_dry_run_summary_markdown",
+            )
+            stat_result = markdown_path.stat()
+            if not markdown_path.is_file() or stat_result.st_size > 64 * 1024:
+                errors.append("issue_dry_run_summary_markdown: must be a bounded regular file")
+        except (OSError, ReportSafetyError) as exc:
+            errors.append(f"issue_dry_run_summary_markdown: {exc}")
+    return True
+
 ADVANCED_VALIDATOR_ORDER = (
     "dependencies",
     "chains",
@@ -2716,6 +2764,7 @@ ADVANCED_VALIDATOR_ORDER = (
     "run_state",
     "command_events",
     "store_import_state",
+    "issue_dry_run_summary",
     "report_freshness",
 )
 
@@ -2764,4 +2813,8 @@ def register_advanced_validators(registry: Any) -> None:
     registry.register("run_state", lambda context: _run_without_findings(context, validate_run_state))
     registry.register("command_events", lambda context: _run_without_findings(context, validate_command_events))
     registry.register("store_import_state", lambda context: _run_without_findings(context, validate_store_import_state))
+    registry.register(
+        "issue_dry_run_summary",
+        lambda context: _run_without_findings(context, validate_issue_dry_run_summary),
+    )
     registry.register("report_freshness", lambda context: _run_without_findings(context, validate_report_freshness))

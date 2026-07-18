@@ -83,6 +83,12 @@
             "proof_count": {"type": "integer", "minimum": 0},
             "proof_unsafe_rejection_count": {"type": "integer", "minimum": 0},
             "issue_plan_warning_count": {"type": "integer", "minimum": 0},
+            "issue_dry_run_artifact_present": {"type": "boolean"},
+            "issue_dry_run_selected": {"type": "integer", "minimum": 0, "maximum": 1000000},
+            "issue_dry_run_would_create": {"type": "integer", "minimum": 0, "maximum": 1000000},
+            "issue_dry_run_duplicate_suppressed": {"type": "integer", "minimum": 0, "maximum": 1000000},
+            "issue_dry_run_novelty_suppressed": {"type": "integer", "minimum": 0, "maximum": 1000000},
+            "issue_dry_run_blocked": {"type": "integer", "minimum": 0, "maximum": 1000000},
             "manifest_hygiene_warnings": {"type": "integer", "minimum": 0},
             "workflow_profile": {"type": "string"},
             "workflow_skipped_by_scope_count": {"type": "integer", "minimum": 0}

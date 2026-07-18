@@ -69,6 +69,7 @@ checkpoint resume were recorded. Approximate hands-on operator review time was
 | Evidence graph | 55 nodes / 18 edges |
 | Issue dry-run would-create count | 0 |
 | Issue dry-run warning count | 0 |
+| Machine-readable Issue dry-run summary | Not available; this campaign predated schema v1 |
 | Audit-derived GitHub Issues published | 0 |
 
 These counts do not claim complete coverage or absence of additional risk. The
@@ -93,8 +94,13 @@ until repository context and reachability are checked.
 
 Report validation, metrics generation, benchmark evaluation, evidence-graph
 generation, local dashboard generation, and Issue dry-run completed
-successfully. Metrics were refreshed after downstream report generation so the
-aggregate summary includes benchmark and evidence-graph status.
+successfully. This campaign predated the machine-readable dry-run summary, so
+the historical aggregate above retains only the recorded would-create and
+warning counts; it does not claim that a schema-v1 artifact existed. Metrics
+were refreshed after downstream report generation so the aggregate summary
+includes benchmark and evidence-graph status. In the current contract,
+`gra-metrics` can consume a newly generated dry-run JSON directly and expose the
+resulting local counts to dashboard and benchmark views.
 
 Adversarial validation was not executed because the approved advanced-stage
 gate applied only to Critical or High candidates and this campaign produced
@@ -120,9 +126,12 @@ concern GenAI Repo Auditor itself and are suitable for product backlog review:
    seeds materially expanded the queue, including low-value or overlapping
    entries. Deduplication and a configurable seed budget would reduce operator
    review cost without suppressing broad recon.
-3. **Expose explicit dry-run counts.** The machine-readable dry-run result should
-   directly report would-create, filtered, and warning counts instead of
-   requiring interpretation of a preview ledger.
+3. **Expose explicit dry-run counts.** Resolved by the closed, sanitized
+   `issue-dry-run-summary.json` / `ISSUE_DRY_RUN_SUMMARY.md` pair. It reports
+   selection, local-ledger duplicate, strict advanced-validation, declared
+   public-visibility, would-create, warning, and zero-created counts without
+   copying finding content or querying GitHub. Operators validate the paired
+   artifacts before refreshing metrics, dashboard, and benchmark views.
 4. **Prevent stale aggregate metrics.** Metrics generated before benchmark or
    evidence-graph output do not automatically include those artifacts. The
    workflow or documentation should make final refresh ordering explicit or

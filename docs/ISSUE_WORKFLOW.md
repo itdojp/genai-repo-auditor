@@ -104,6 +104,98 @@ fingerprint, candidate Issue numbers, exact-match status, variant markers,
 root-cause and source-to-sink fingerprints, the final duplicate decision, and
 the rationale reviewed before Issue creation.
 
+### machine-readable local summary
+
+Each successful dry-run also writes the paired local artifacts:
+
+```text
+<reports_dir>/issue-dry-run-summary.json
+<reports_dir>/ISSUE_DRY_RUN_SUMMARY.md
+```
+
+The JSON schema is closed and the Markdown is a sanitized aggregate: neither
+contains a finding title, body, path, fingerprint, labels, or raw GitHub
+response. It records `selection_source` as `current-findings` or
+`verified-publication-plan`, plus the declared `visibility`. That visibility is
+read from the run artifact, or from the verified plan for `--apply-plan ...
+--dry-run`; it is **not** an online GitHub visibility lookup. Accordingly,
+`github_visibility_lookup_performed` and
+`github_duplicate_search_performed` are always `false`. Dry-run performs no
+GitHub lookup or mutation and writes no immutable publication plan; the summary
+also fixes `safety.github_mutation_performed=false`,
+`safety.publication_plan_written=false`, and `counts.issues_created=0`.
+`reports_dir` is read from the validated run context and defaults to `reports`;
+findings, plans, ledgers, duplicate decisions, summary artifacts, and command
+events remain under that same configured directory.
+
+`would_create` means that a candidate reaches the local preview after applying
+the declared visibility. It is not publication approval and does not attest to
+the repository's current GitHub visibility. Apply mode performs the
+authoritative online visibility check and can still refuse publication if the
+local declaration is stale or incorrect.
+
+The summary uses two disjoint count partitions. The all-finding selection
+partition is:
+
+```text
+total_candidates = selected
+                 + filtered_by_severity_or_status
+                 + issue_recommendation_suppressed
+                 + novelty_suppressed
+```
+
+The selected-candidate publication partition is:
+
+```text
+selected = duplicate_suppressed
+         + advanced_validation_blocked
+         + public_visibility_blocked
+         + would_create
+```
+
+`filtered_by_severity_or_status` covers the configured severity/status filter;
+`issue_recommendation_suppressed` covers `issue_recommended=false`; and
+`novelty_suppressed` covers the local novelty-ledger classifications
+`duplicate`, `accepted-risk`, and `invalid-known`. These three counters classify
+all candidate findings before publication selection. `duplicate_suppressed` is
+separate: it records a selected candidate matched by the existing local issue
+ledger, not an online GitHub search. `advanced_validation_blocked` is non-zero
+only when `--require-advanced-validation` blocks a selected candidate; the
+command exits `4` after writing the summary when this strict mode finds such
+blocks. `public_visibility_blocked` records a candidate rejected because the
+declared visibility is `PUBLIC` or `UNKNOWN` without `--allow-public`, matching
+apply mode's fail-closed visibility classes. `warnings` is an aggregate count
+and is intentionally outside both partitions.
+
+For `selection_source=verified-publication-plan`, the candidate universe is the
+frozen plan entries rather than the original pre-plan finding set. Therefore
+`total_candidates=selected` and the three pre-selection suppression counters
+are zero; the second partition still classifies every verified plan entry.
+
+Run `gra-metrics --run <run_dir>` after dry-run to consume the JSON directly.
+The resulting `metrics.json` exposes `issue_dry_run` and explicitly reports an
+absent/not-run artifact with `artifact_present=false` and zero counters.
+`gra-dashboard` displays the resulting would-create and local suppression
+counts; `gra-benchmark` consumes the same metrics fields for its workflow-health
+summary. These consumers do not re-query GitHub or reinterpret finding content.
+
+Validate both artifacts with the normal report validator, after regenerating
+metrics when those downstream views are required:
+
+```bash
+gra-issues --run runs/OWNER__REPO/RUN_ID --dry-run
+gra-validate-report --run runs/OWNER__REPO/RUN_ID
+gra-metrics --run runs/OWNER__REPO/RUN_ID
+gra-dashboard --run runs/OWNER__REPO/RUN_ID
+gra-benchmark --run runs/OWNER__REPO/RUN_ID
+gra-validate-report --run runs/OWNER__REPO/RUN_ID --check-freshness
+```
+
+The first validation checks that the JSON and Markdown summary are present
+together when either exists, validates the closed schema and count invariants,
+and rejects unsafe or oversized artifact paths. The final freshness check is
+needed only when verifying the derived metrics/dashboard/benchmark catalog.
+
 ## immutable publication plan
 
 For high-impact or externally visible Issue creation, prefer the two-step plan

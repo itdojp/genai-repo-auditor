@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 
+from run_events import reports_dir
+
 
 PLAN_REL_PATH = Path("reports") / "issue-publication-plan.json"
 
@@ -14,7 +16,7 @@ def sha256_file(path: Path) -> str:
 
 
 def default_plan_path(run_dir: Path) -> Path:
-    return run_dir / PLAN_REL_PATH
+    return reports_dir(run_dir) / PLAN_REL_PATH.name
 
 
 def write_plan(plan_path: Path, plan: Dict[str, Any]) -> None:

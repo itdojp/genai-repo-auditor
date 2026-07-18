@@ -427,6 +427,7 @@ def build_benchmark(
     chains = metrics.get("chains") if isinstance(metrics.get("chains"), dict) else {}
     proofs = metrics.get("proofs") if isinstance(metrics.get("proofs"), dict) else {}
     issue_plan = metrics.get("issue_publication_plan") if isinstance(metrics.get("issue_publication_plan"), dict) else {}
+    issue_dry_run = metrics.get("issue_dry_run") if isinstance(metrics.get("issue_dry_run"), dict) else {}
     artifacts = metrics.get("artifacts") if isinstance(metrics.get("artifacts"), dict) else {}
     workflow_profile = metrics.get("workflow_profile") if isinstance(metrics.get("workflow_profile"), dict) else {}
     proofs_data = load_json(reports / "proofs.json", {}) or {}
@@ -543,6 +544,13 @@ def build_benchmark(
                 "proof_count": safe_int(proofs.get("total")),
                 "proof_unsafe_rejection_count": unsafe_proof_count,
                 "issue_plan_warning_count": issue_warning_count,
+                "issue_dry_run_artifact_present": bool(issue_dry_run.get("artifact_present")),
+                "issue_dry_run_selected": safe_int(issue_dry_run.get("selected")),
+                "issue_dry_run_would_create": safe_int(issue_dry_run.get("would_create")),
+                "issue_dry_run_duplicate_suppressed": safe_int(issue_dry_run.get("duplicate_suppressed")),
+                "issue_dry_run_novelty_suppressed": safe_int(issue_dry_run.get("novelty_suppressed")),
+                "issue_dry_run_blocked": safe_int(issue_dry_run.get("advanced_validation_blocked"))
+                + safe_int(issue_dry_run.get("public_visibility_blocked")),
                 "manifest_hygiene_warnings": safe_int(artifacts.get("manifest_hygiene_warnings")),
                 "workflow_profile": str(workflow_profile.get("profile") or "not-recorded"),
                 "workflow_skipped_by_scope_count": skipped_by_scope_count,
@@ -588,6 +596,9 @@ def render_benchmark_markdown(benchmark: dict[str, Any]) -> str:
         f"| Chains | {metrics_summary.get('chain_count', 0)} |",
         f"| Proofs | {metrics_summary.get('proof_count', 0)} |",
         f"| Unsafe proof rejections | {metrics_summary.get('proof_unsafe_rejection_count', 0)} |",
+        f"| Issue dry-run selected | {metrics_summary.get('issue_dry_run_selected', 0)} |",
+        f"| Issue dry-run would create | {metrics_summary.get('issue_dry_run_would_create', 0)} |",
+        f"| Issue dry-run blocked | {metrics_summary.get('issue_dry_run_blocked', 0)} |",
         f"| Issue plan warnings | {metrics_summary.get('issue_plan_warning_count', 0)} |",
         f"| Manifest hygiene warnings | {metrics_summary.get('manifest_hygiene_warnings', 0)} |",
         f"| Workflow skipped by scope | {metrics_summary.get('workflow_skipped_by_scope_count', 0)} |",

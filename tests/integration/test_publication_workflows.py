@@ -9,6 +9,45 @@ except ImportError:
 
 
 class PublicationWorkflowTests(CliWorkflowTestCase):
+    def test_gra_issues_dry_run_and_verified_plan_support_custom_reports_dir(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        default_reports = run_dir / "reports"
+        custom_reports = run_dir / "custom-reports"
+        default_reports.rename(custom_reports)
+        context_path = run_dir / "context.json"
+        context = json.loads(context_path.read_text(encoding="utf-8"))
+        context["reports_dir"] = "custom-reports"
+        context_path.write_text(json.dumps(context, indent=2) + "\n", encoding="utf-8")
+        findings_path = custom_reports / "findings.json"
+        findings = json.loads(findings_path.read_text(encoding="utf-8"))
+        findings["findings"][0]["issue_body_file"] = "custom-reports/issue-drafts/SEC-001.md"
+        findings_path.write_text(json.dumps(findings, indent=2) + "\n", encoding="utf-8")
+
+        self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-issues", "--run", run_dir, "--dry-run", "--min-severity", "Low", "--statuses", "Confirmed"],
+            check=True,
+        )
+        self.assertTrue((custom_reports / "issue-dry-run-summary.json").is_file())
+        self.assertTrue((custom_reports / "ISSUE_DRY_RUN_SUMMARY.md").is_file())
+        self.assertTrue((custom_reports / "issue-ledger.json").is_file())
+        self.assertTrue((custom_reports / "duplicate-decisions" / "SEC-001.json").is_file())
+        self.assertFalse(default_reports.exists())
+
+        plan_path = custom_reports / "issue-publication-plan.json"
+        self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-issues", "--run", run_dir, "--plan", "--min-severity", "Low", "--statuses", "Confirmed"],
+            check=True,
+        )
+        self.assertTrue(plan_path.is_file())
+        self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-issues", "--run", run_dir, "--apply-plan", plan_path, "--dry-run"],
+            check=True,
+        )
+        summary = json.loads((custom_reports / "issue-dry-run-summary.json").read_text(encoding="utf-8"))
+        self.assertEqual("verified-publication-plan", summary["selection_source"])
+        events = self.read_command_events(run_dir)
+        self.assertIn("custom-reports/issue-dry-run-summary.json", events[-1]["output_artifact_refs"])
+
     def test_gra_issues_replan_without_apply_plan_remains_preview(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
 
@@ -76,6 +115,8 @@ class PublicationWorkflowTests(CliWorkflowTestCase):
         self.assertIn("reports/findings.json", preview_events[0]["input_artifact_refs"])
         self.assertIn("reports/issue-ledger.json", preview_events[0]["output_artifact_refs"])
         self.assertIn("issues-created.json", preview_events[0]["output_artifact_refs"])
+        self.assertIn("reports/issue-dry-run-summary.json", preview_events[0]["output_artifact_refs"])
+        self.assertIn("reports/ISSUE_DRY_RUN_SUMMARY.md", preview_events[0]["output_artifact_refs"])
         preview_event_text = json.dumps(preview_events)
         self.assertNotIn("Fixture issue body", preview_event_text)
         self.assertNotIn("issue_body", preview_event_text)
@@ -98,6 +139,224 @@ class PublicationWorkflowTests(CliWorkflowTestCase):
         apply_events = self.read_command_events(apply_run)
         self.assertEqual(1, len(apply_events))
         self.assert_public_command_event(apply_events[0], command="gra-issues", phase="execute")
+        self.assertFalse((apply_run / "reports" / "issue-dry-run-summary.json").exists())
+
+    def test_gra_issues_dry_run_summary_partitions_selection_without_github(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        findings_path = run_dir / "reports" / "findings.json"
+        data = json.loads(findings_path.read_text(encoding="utf-8"))
+        original = data["findings"][0]
+
+        low = dict(original, id="SEC-LOW", fingerprint="fixture-low", severity="Low", issue_body_file="")
+        potential = dict(original, id="SEC-POTENTIAL", fingerprint="fixture-potential", status="Potential", issue_body_file="")
+        not_recommended = dict(original, id="SEC-NOISSUE", fingerprint="fixture-noissue", issue_recommended=False, issue_body_file="")
+        novelty = dict(original, id="SEC-NOVELTY", fingerprint="fixture-novelty", issue_body_file="")
+        data["findings"] = [original, low, potential, not_recommended, novelty]
+        findings_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        (run_dir / "reports" / "known-findings.json").write_text(
+            json.dumps(
+                {
+                    "findings": [
+                        {
+                            "finding_id": "SEC-NOVELTY",
+                            "fingerprint": "fixture-novelty",
+                            "novelty_status": "duplicate",
+                            "issue_recommended": False,
+                        }
+                    ]
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        env, log_path = self.env_with_gh_log()
+
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--dry-run",
+                "--min-severity",
+                "Medium",
+                "--statuses",
+                "Confirmed",
+            ],
+            env=env,
+            check=True,
+        )
+
+        summary_path = run_dir / "reports" / "issue-dry-run-summary.json"
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            {
+                "total_candidates": 5,
+                "selected": 1,
+                "filtered_by_severity_or_status": 2,
+                "issue_recommendation_suppressed": 1,
+                "novelty_suppressed": 1,
+                "duplicate_suppressed": 0,
+                "advanced_validation_blocked": 0,
+                "public_visibility_blocked": 0,
+                "would_create": 1,
+                "warnings": 2,
+                "issues_created": 0,
+            },
+            summary["counts"],
+        )
+        self.assertEqual("current-findings", summary["selection_source"])
+        self.assertEqual([], self.read_gh_calls(log_path))
+        summary_text = summary_path.read_text(encoding="utf-8")
+        for forbidden in ["Fixture command injection", "app.py", FIXTURE_FINGERPRINT, "test-fixture"]:
+            self.assertNotIn(forbidden, summary_text)
+        self.assertFalse((run_dir / "reports" / "issue-publication-plan.json").exists())
+
+    def test_gra_issues_dry_run_summary_counts_local_ledger_duplicate_without_github(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        issue_url = "https://github.example.invalid/example/demo/issues/262"
+        apply_env, _apply_log = self.env_with_gh_log(GRA_MOCK_ISSUE_URL=issue_url)
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--apply",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            env=apply_env,
+            check=True,
+        )
+        dry_env, dry_log = self.env_with_gh_log()
+        if dry_log.exists():
+            dry_log.unlink()
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--dry-run",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+                "--require-advanced-validation",
+            ],
+            env=dry_env,
+            check=True,
+        )
+        summary = json.loads((run_dir / "reports" / "issue-dry-run-summary.json").read_text(encoding="utf-8"))
+        self.assertEqual(1, summary["counts"]["duplicate_suppressed"])
+        self.assertEqual(0, summary["counts"]["advanced_validation_blocked"])
+        self.assertEqual(0, summary["counts"]["would_create"])
+        self.assertEqual([], self.read_gh_calls(dry_log))
+
+    def test_gra_issues_dry_run_summary_counts_public_and_strict_advanced_blocks(self) -> None:
+        public_run = self.copy_fixture_run("minimal-run")
+        context_path = public_run / "context.json"
+        context = json.loads(context_path.read_text(encoding="utf-8"))
+        context["visibility"] = "PUBLIC"
+        context_path.write_text(json.dumps(context, indent=2) + "\n", encoding="utf-8")
+        self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-issues", "--run", public_run, "--dry-run", "--min-severity", "Low", "--statuses", "Confirmed"],
+            check=True,
+        )
+        public_summary = json.loads((public_run / "reports" / "issue-dry-run-summary.json").read_text(encoding="utf-8"))
+        self.assertEqual(1, public_summary["counts"]["public_visibility_blocked"])
+        self.assertEqual(0, public_summary["counts"]["would_create"])
+
+        unknown_run = self.copy_fixture_run("minimal-run")
+        unknown_context_path = unknown_run / "context.json"
+        unknown_context = json.loads(unknown_context_path.read_text(encoding="utf-8"))
+        unknown_context["visibility"] = "UNKNOWN"
+        unknown_context_path.write_text(json.dumps(unknown_context, indent=2) + "\n", encoding="utf-8")
+        self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-issues", "--run", unknown_run, "--dry-run", "--min-severity", "Low", "--statuses", "Confirmed"],
+            check=True,
+        )
+        unknown_summary = json.loads((unknown_run / "reports" / "issue-dry-run-summary.json").read_text(encoding="utf-8"))
+        self.assertEqual(1, unknown_summary["counts"]["public_visibility_blocked"])
+        self.assertEqual(0, unknown_summary["counts"]["would_create"])
+
+        strict_run = self.copy_fixture_run("minimal-run")
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                strict_run,
+                "--dry-run",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+                "--require-advanced-validation",
+            ]
+        )
+        self.assertEqual(4, cp.returncode, cp.stderr)
+        strict_summary = json.loads((strict_run / "reports" / "issue-dry-run-summary.json").read_text(encoding="utf-8"))
+        self.assertEqual(1, strict_summary["counts"]["advanced_validation_blocked"])
+        self.assertEqual(0, strict_summary["counts"]["would_create"])
+        self.assertEqual(0, strict_summary["counts"]["issues_created"])
+
+    def test_gra_issues_zero_finding_dry_run_writes_explicit_zero_counts(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        findings_path = run_dir / "reports" / "findings.json"
+        data = json.loads(findings_path.read_text(encoding="utf-8"))
+        data["findings"] = []
+        findings_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+        self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-issues", "--run", run_dir, "--dry-run"],
+            check=True,
+        )
+
+        summary = json.loads((run_dir / "reports" / "issue-dry-run-summary.json").read_text(encoding="utf-8"))
+        self.assertTrue(all(value == 0 for value in summary["counts"].values()))
+        self.assertFalse((run_dir / "reports" / "issue-publication-plan.json").exists())
+
+    def test_gra_validate_report_rejects_invalid_or_symlinked_dry_run_summary(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-issues", "--run", run_dir, "--dry-run", "--min-severity", "Low", "--statuses", "Confirmed"],
+            check=True,
+        )
+        summary_path = run_dir / "reports" / "issue-dry-run-summary.json"
+        valid = json.loads(summary_path.read_text(encoding="utf-8"))
+
+        invalid_payloads = []
+        unknown = json.loads(json.dumps(valid))
+        unknown["unexpected"] = True
+        invalid_payloads.append(unknown)
+        negative = json.loads(json.dumps(valid))
+        negative["counts"]["would_create"] = -1
+        invalid_payloads.append(negative)
+        inconsistent = json.loads(json.dumps(valid))
+        inconsistent["counts"]["would_create"] = 0
+        invalid_payloads.append(inconsistent)
+        for payload in invalid_payloads:
+            with self.subTest(payload=payload):
+                summary_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+                cp = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir])
+                self.assertNotEqual(0, cp.returncode)
+                self.assertIn("issue_dry_run_summary", cp.stderr)
+
+        summary_path.write_text(json.dumps(valid, indent=2) + "\n", encoding="utf-8")
+        markdown_path = run_dir / "reports" / "ISSUE_DRY_RUN_SUMMARY.md"
+        markdown_path.write_text("# stale or partial summary\n", encoding="utf-8")
+        cp_mismatch = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir])
+        self.assertNotEqual(0, cp_mismatch.returncode)
+        self.assertIn("JSON and Markdown summaries do not match", cp_mismatch.stderr)
+
+        outside = self.work_dir / "outside-dry-run-summary.json"
+        outside.write_text(json.dumps(valid, indent=2) + "\n", encoding="utf-8")
+        summary_path.unlink()
+        summary_path.symlink_to(outside)
+        cp_symlink = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir])
+        self.assertNotEqual(0, cp_symlink.returncode)
+        self.assertIn("symlink", cp_symlink.stderr.lower())
 
     def test_gra_issues_duplicate_decisions_distinguish_variant_and_related_candidates(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -182,6 +441,11 @@ class PublicationWorkflowTests(CliWorkflowTestCase):
             check=True,
         )
         self.assertIn("Dry-run preview only; verified issue publication plan was not applied.", cp_verify.stdout)
+        verified_summary = json.loads((run_dir / "reports" / "issue-dry-run-summary.json").read_text(encoding="utf-8"))
+        self.assertEqual("verified-publication-plan", verified_summary["selection_source"])
+        self.assertEqual(1, verified_summary["counts"]["total_candidates"])
+        self.assertEqual(1, verified_summary["counts"]["would_create"])
+        self.assertEqual(0, verified_summary["counts"]["issues_created"])
         verification_events = self.read_command_events(run_dir)
         self.assertEqual(2, len(verification_events))
         self.assert_public_command_event(verification_events[1], command="gra-issues", phase="verify-plan")

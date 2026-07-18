@@ -118,6 +118,7 @@
           "type": "integer",
           "minimum": 0
         },
+        "issue_dry_run": {"$ref": "#/properties/issue_dry_run"},
         "issue_ledger_published_findings": {
           "type": "integer",
           "minimum": 0
@@ -558,6 +559,25 @@
           "type": "integer",
           "minimum": 0
         }
+      }
+    },
+    "issue_dry_run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_present", "total_candidates", "selected", "filtered_by_severity_or_status", "issue_recommendation_suppressed", "novelty_suppressed", "duplicate_suppressed", "advanced_validation_blocked", "public_visibility_blocked", "would_create", "warnings", "issues_created"],
+      "properties": {
+        "artifact_present": {"type": "boolean"},
+        "total_candidates": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "selected": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "filtered_by_severity_or_status": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "issue_recommendation_suppressed": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "novelty_suppressed": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "duplicate_suppressed": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "advanced_validation_blocked": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "public_visibility_blocked": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "would_create": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "warnings": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "issues_created": {"const": 0}
       }
     },
     "issue_ledger": {

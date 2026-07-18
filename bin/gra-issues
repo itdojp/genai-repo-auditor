@@ -10,6 +10,14 @@ LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
 from version import auditor_version
 from gralib import write_run_artifact_json  # noqa: E402
+from issue_dry_run_summary import (  # noqa: E402
+    IssueDryRunSummaryError,
+    build_summary as build_dry_run_summary,
+    selection_counts as dry_run_selection_counts,
+    summary_paths as dry_run_summary_paths,
+    warning_count as dry_run_warning_count,
+    write_summary as write_dry_run_summary,
+)
 from report_safety import ReportSafetyError  # noqa: E402
 from publication.policy import (  # noqa: E402
     DEFAULT_LABELS,
@@ -52,9 +60,16 @@ from issue_ledger import (  # noqa: E402
     utc_now as ledger_utc_now,
 )
 from duplicate_decisions import (  # noqa: E402
+    duplicate_decisions_dir,
     verify_ledger_decisions as verify_duplicate_decisions_for_ledger,
 )
-from run_events import EventWriteError, append_command_event, preflight_command_event, start_command_event  # noqa: E402
+from run_events import (  # noqa: E402
+    EventWriteError,
+    append_command_event,
+    preflight_command_event,
+    reports_dir as configured_reports_dir,
+    start_command_event,
+)
 from report_freshness import (  # noqa: E402
     FreshnessError,
     artifact_dependencies,
@@ -115,7 +130,7 @@ def load_context(run_dir: Path) -> Dict[str, Any]:
 
 def load_findings(run_dir: Path) -> Dict[str, Any]:
     candidates = [
-        run_dir / "reports" / "findings.json",
+        configured_reports_dir(run_dir) / "findings.json",
         run_dir / "repo" / ".genai-audit" / "reports" / "findings.json",
     ]
     for p in candidates:
@@ -203,7 +218,7 @@ def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] 
     parser.add_argument("--plan", action="store_true", help="Write an immutable issue publication plan without creating issues")
     parser.add_argument("--apply-plan", help="Apply a previously reviewed issue-publication-plan.json")
     parser.add_argument("--replan", action="store_true", help="Refresh the plan when current findings or issue drafts changed; does not publish")
-    parser.add_argument("--verify-ledger", action="store_true", help="Verify reports/issue-ledger.json against open GitHub issues and exit without publishing")
+    parser.add_argument("--verify-ledger", action="store_true", help="Verify <reports_dir>/issue-ledger.json against open GitHub issues and exit without publishing")
     parser.add_argument("--allow-public", action="store_true", help="Allow publishing issues to public repositories")
     parser.add_argument("--create-labels", action="store_true", help="Create/update common labels before creating issues")
     parser.add_argument("--assignee", help="Optional assignee, e.g. @me")
@@ -241,6 +256,13 @@ def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] 
     all_findings = [f for f in findings if isinstance(f, dict)]
     novelty_entries = novelty_by_finding_id(run_dir)
     selected = select_findings(
+        repo=repo,
+        findings=all_findings,
+        min_severity=args.min_severity,
+        statuses=statuses,
+        novelty_entries=novelty_entries,
+    )
+    dry_run_base_counts = dry_run_selection_counts(
         repo=repo,
         findings=all_findings,
         min_severity=args.min_severity,
@@ -408,7 +430,7 @@ def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] 
         plan_sha256 = plan_hash(plan_path)
         print_plan_summary(plan_path, plan, prefix="Verified issue publication plan")
         requirement_errors = advanced_validation_errors(selected_plan_entries or [])
-        if args.require_advanced_validation and requirement_errors:
+        if args.require_advanced_validation and requirement_errors and not dry_run:
             print("Advanced validation requirements failed:", file=sys.stderr)
             for error in requirement_errors:
                 print(f"- {error}", file=sys.stderr)
@@ -417,6 +439,21 @@ def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] 
             dry_run = True
             print("Dry-run preview only; verified issue publication plan was not applied.")
 
+    declared_visibility = str(
+        (plan.get("visibility") if args.apply_plan and isinstance(plan, dict) else None)
+        or data.get("visibility")
+        or context.get("visibility")
+        or "UNKNOWN"
+    ).upper()
+    if declared_visibility not in {"PRIVATE", "PUBLIC", "INTERNAL", "UNKNOWN"}:
+        declared_visibility = "UNKNOWN"
+    visibility_source = (
+        "verified-publication-plan"
+        if args.apply_plan
+        else "run-artifact"
+        if data.get("visibility") or context.get("visibility")
+        else "not-available"
+    )
     visibility = github.repo_visibility(repo) if not dry_run else "NOT_CHECKED"
     if not dry_run and visibility in {"PUBLIC", "UNKNOWN", ""} and not args.allow_public:
         print(f"Refusing to create security issues for repo {repo} with visibility={visibility}. Use --allow-public only when disclosure policy permits.", file=sys.stderr)
@@ -447,11 +484,20 @@ def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] 
         "preview_plan_path": str(default_plan_path(run_dir)) if dry_run and plan_path is None else None,
         "plan_sha256": plan_sha256,
         "ledger_path": str(default_ledger_path(run_dir)),
-        "duplicate_decisions_path": str(run_dir / "reports" / "duplicate-decisions"),
+        "duplicate_decisions_path": str(duplicate_decisions_dir(run_dir)),
         "duplicate_decisions": [],
         "created": [],
         "skipped": [],
     }
+
+    dry_run_counters = {
+        "duplicate_suppressed": 0,
+        "advanced_validation_blocked": 0,
+        "public_visibility_blocked": 0,
+        "would_create": 0,
+    }
+    dry_run_warnings = 0
+    strict_advanced_blocked_keys: set[str] = set()
 
     issue_entries: List[Tuple[Dict[str, Any], str]] = []
     if selected_plan_entries is not None:
@@ -473,7 +519,7 @@ def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] 
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
         requirement_errors = advanced_validation_errors(preview_plan.get("selected_findings") or [])
-        if args.require_advanced_validation and requirement_errors:
+        if args.require_advanced_validation and requirement_errors and not dry_run:
             print("Advanced validation requirements failed:", file=sys.stderr)
             for error in requirement_errors:
                 print(f"- {error}", file=sys.stderr)
@@ -483,6 +529,23 @@ def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] 
         else:
             print_plan_summary(None, preview_plan, prefix="Direct apply transient issue selection; no issue publication plan was written")
         issue_entries = [(entry, preview_bodies.get(plan_entry_key(entry), "")) for entry in preview_plan["selected_findings"]]
+
+    if dry_run:
+        if selected_plan_entries is not None:
+            dry_run_base_counts = {
+                "total_candidates": len(issue_entries),
+                "selected": len(issue_entries),
+                "filtered_by_severity_or_status": 0,
+                "issue_recommendation_suppressed": 0,
+                "novelty_suppressed": 0,
+            }
+        dry_run_warnings = dry_run_warning_count([entry for entry, _body in issue_entries])
+        if args.require_advanced_validation:
+            strict_advanced_blocked_keys = {
+                plan_entry_key(entry)
+                for entry, _body in issue_entries
+                if advanced_validation_errors([entry])
+            }
 
     findings_by_key = {
         finding_key(str(finding.get("id") or "SEC-UNKNOWN"), stable_fingerprint(repo, finding)): finding
@@ -514,8 +577,8 @@ def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] 
             plan_sha256=plan_sha256,
         )
 
-        existing_from_ledger = None if dry_run else ledger_published_entry(existing_ledger, finding_id=finding_id, fingerprint=fingerprint)
-        if not dry_run and not existing_from_ledger:
+        existing_from_ledger = ledger_published_entry(existing_ledger, finding_id=finding_id, fingerprint=fingerprint)
+        if not existing_from_ledger:
             existing_from_ledger = ledger_published_entry_by_finding_id(existing_ledger, finding_id=finding_id)
             if existing_from_ledger:
                 previous_fingerprint = str(existing_from_ledger.get("fingerprint") or "")
@@ -535,6 +598,8 @@ def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] 
                     state=str(existing_from_ledger.get("state") or "open"),
                 )
         if existing_from_ledger:
+            if dry_run:
+                dry_run_counters["duplicate_suppressed"] += 1
             decision_file, decision_value = record_duplicate_decision(
                 run_dir=run_dir,
                 run_id=run_id,
@@ -597,6 +662,27 @@ def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] 
         result["duplicate_decisions"].append({"id": finding_id, "path": decision_file, "decision": decision_value})
 
         if dry_run:
+            if ledger_key in strict_advanced_blocked_keys:
+                dry_run_counters["advanced_validation_blocked"] += 1
+                result["skipped"].append({
+                    "id": finding_id,
+                    "reason": "advanced-validation",
+                    "fingerprint": fingerprint,
+                })
+                ledger_overrides[ledger_key] = ledger_mark_dry_run(ledger_entry)
+                print(f"DRY RUN BLOCKED advanced validation: {finding_id}")
+                continue
+            if declared_visibility in {"PUBLIC", "UNKNOWN"} and not args.allow_public:
+                dry_run_counters["public_visibility_blocked"] += 1
+                result["skipped"].append({
+                    "id": finding_id,
+                    "reason": "public-visibility",
+                    "fingerprint": fingerprint,
+                })
+                ledger_overrides[ledger_key] = ledger_mark_dry_run(ledger_entry)
+                print(f"DRY RUN BLOCKED unsafe declared visibility={declared_visibility}: {finding_id}")
+                continue
+            dry_run_counters["would_create"] += 1
             print("---")
             print(f"DRY RUN: would create issue for {finding_id}")
             print(f"Title: {title}")
@@ -615,7 +701,7 @@ def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] 
             body=body,
             labels=labels,
             assignee=args.assignee,
-            body_tmp_dir=run_dir / "reports" / ".issue-body-tmp",
+            body_tmp_dir=configured_reports_dir(run_dir) / ".issue-body-tmp",
         )
         print(f"CREATED {finding_id}: {url}")
         result["created"].append({"id": finding_id, "url": url, "title": title, "fingerprint": fingerprint})
@@ -639,10 +725,34 @@ def _main_impl(argv: Optional[List[str]] = None, github: Optional[GitHubClient] 
         overrides=ledger_overrides,
     )
 
+    if dry_run:
+        try:
+            summary = build_dry_run_summary(
+                repo=repo,
+                run_id=run_id,
+                commit=commit,
+                selection_source="verified-publication-plan" if selected_plan_entries is not None else "current-findings",
+                visibility=declared_visibility,
+                visibility_source=visibility_source,
+                base_counts=dry_run_base_counts,
+                warnings=dry_run_warnings,
+                **dry_run_counters,
+            )
+            summary_json_path, summary_markdown_path = write_dry_run_summary(run_dir, summary)
+        except (IssueDryRunSummaryError, OSError) as exc:
+            print(f"ERROR: could not write dry-run summary: {exc}", file=sys.stderr)
+            return 2
+        print(f"Wrote {summary_json_path}")
+        print(f"Wrote {summary_markdown_path}")
+
     output_path = run_dir / "issues-created.json"
-    output_path.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    try:
+        write_run_artifact_json(run_dir, output_path, result)
+    except OSError as exc:
+        print(f"ERROR: could not write issue result: {exc}", file=sys.stderr)
+        return 2
     print(f"Wrote {output_path}")
-    return 0
+    return 4 if dry_run and dry_run_counters["advanced_validation_blocked"] > 0 else 0
 
 
 def _argv_option_value(argv: List[str], name: str) -> Optional[str]:
@@ -679,8 +789,17 @@ def main(argv: Optional[List[str]] = None, github: Optional[GitHubClient] = None
     started_at, started_perf = start_command_event()
     phase = _publication_event_phase(raw_argv)
     input_artifacts: List[Path] = [run_dir / "context.json"]
+    try:
+        reports_root = configured_reports_dir(run_dir)
+    except OSError as exc:
+        print(
+            "command event preflight failed: artifact path must stay under the run directory "
+            f"and must not use symlink components: {exc}",
+            file=sys.stderr,
+        )
+        return 2
     for candidate in [
-        run_dir / "reports" / "findings.json",
+        reports_root / "findings.json",
         run_dir / "repo" / ".genai-audit" / "reports" / "findings.json",
     ]:
         if candidate.exists():
@@ -701,11 +820,20 @@ def main(argv: Optional[List[str]] = None, github: Optional[GitHubClient] = None
             if "--replan" not in raw_argv:
                 input_artifacts.append(apply_plan_path)
 
-    ledger_path = run_dir / "reports" / "issue-ledger.json"
+    ledger_path = default_ledger_path(run_dir)
     issues_created_path = run_dir / "issues-created.json"
-    default_plan_output = run_dir / "reports" / "issue-publication-plan.json"
-    freshness_output = run_dir / "reports" / "report-freshness.json"
-    duplicate_dir = run_dir / "reports" / "duplicate-decisions"
+    default_plan_output = default_plan_path(run_dir)
+    freshness_output = reports_root / "report-freshness.json"
+    try:
+        dry_run_summary_json, dry_run_summary_markdown = dry_run_summary_paths(run_dir)
+    except OSError as exc:
+        print(
+            "command event preflight failed: artifact path must stay under the run directory "
+            f"and must not use symlink components: {exc}",
+            file=sys.stderr,
+        )
+        return 2
+    duplicate_dir = duplicate_decisions_dir(run_dir)
     if phase not in {"plan", "verify-ledger"} and ledger_path.exists():
         input_artifacts.append(ledger_path)
     if phase == "verify-ledger":
@@ -713,7 +841,15 @@ def main(argv: Optional[List[str]] = None, github: Optional[GitHubClient] = None
         if duplicate_dir.is_dir() and not duplicate_dir.is_symlink():
             input_artifacts.extend(sorted(path for path in duplicate_dir.iterdir() if path.is_file()))
 
-    potential_outputs = [ledger_path, issues_created_path, default_plan_output, freshness_output, duplicate_dir]
+    potential_outputs = [
+        ledger_path,
+        issues_created_path,
+        default_plan_output,
+        freshness_output,
+        dry_run_summary_json,
+        dry_run_summary_markdown,
+        duplicate_dir,
+    ]
     if contained_apply_plan_path is not None:
         potential_outputs.append(contained_apply_plan_path)
     if duplicate_dir.is_dir() and not duplicate_dir.is_symlink():
@@ -729,7 +865,14 @@ def main(argv: Optional[List[str]] = None, github: Optional[GitHubClient] = None
         return 2
 
     def artifact_candidates() -> List[Path]:
-        candidates = [ledger_path, issues_created_path, default_plan_output, freshness_output]
+        candidates = [
+            ledger_path,
+            issues_created_path,
+            default_plan_output,
+            freshness_output,
+            dry_run_summary_json,
+            dry_run_summary_markdown,
+        ]
         if contained_apply_plan_path is not None and contained_apply_plan_path != default_plan_output:
             candidates.append(contained_apply_plan_path)
         if duplicate_dir.is_dir() and not duplicate_dir.is_symlink():
