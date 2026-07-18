@@ -17,6 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 FIXTURE_FINGERPRINT = "0123456789abcdef01234567"
 sys.path.insert(0, str(REPO_ROOT / "lib"))
+from sandbox_profiles import detect_visible_credential_env  # noqa: E402
 
 __all__ = [
     "Any",
@@ -212,21 +213,10 @@ class CliWorkflowTestCase(unittest.TestCase):
 
     def env_without_credentials(self) -> dict:
         env = self.env.copy()
-        key_suffix = "_KEY"
-        secret_word = "SECRET"
-        token_word = "TOKEN"
-        for name in [
-            "AWS_ACCESS_KEY_ID",
-            "AWS_" + secret_word + "_ACCESS" + key_suffix,
-            "AZURE_CLIENT_" + secret_word,
-            "GCP_SERVICE_ACCOUNT" + key_suffix,
-            "GH_" + token_word,
-            "GITHUB_" + token_word,
-            "GOOGLE_APPLICATION_CREDENTIALS",
-            "OPENAI_API" + key_suffix,
-            "ANTHROPIC_API" + key_suffix,
-        ]:
-            env.pop(name, None)
+        detected = set(detect_visible_credential_env(env))
+        for name in list(env):
+            if name.upper() in detected:
+                env.pop(name, None)
         return env
 
     def write_adversarial_vote_fixture(

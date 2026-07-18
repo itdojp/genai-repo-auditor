@@ -18,6 +18,7 @@
     "issue_publication_plan",
     "issue_ledger",
     "duplicate_decisions",
+    "scanner_readiness",
     "observability",
     "artifacts",
     "run_duration"
@@ -90,7 +91,7 @@
         },
         "scanner": {
           "type": "object",
-          "required": ["artifact_present", "result_count", "normalized_leads_count"],
+          "required": ["artifact_present", "result_count", "normalized_leads_count", "readiness_artifact_present", "readiness_report_count", "readiness_by_state", "readiness_by_reason"],
           "properties": {
             "artifact_present": {"type": "boolean"},
             "result_count": {"type": "integer", "minimum": 0},
@@ -100,7 +101,11 @@
             "run_statuses": {"type": "object"},
             "total_duration_ms": {"type": "integer", "minimum": 0},
             "maximum_duration_ms": {"type": "integer", "minimum": 0},
-            "redaction_count": {"type": "integer", "minimum": 0}
+            "redaction_count": {"type": "integer", "minimum": 0},
+            "readiness_artifact_present": {"type": "boolean"},
+            "readiness_report_count": {"type": "integer", "minimum": 0},
+            "readiness_by_state": {"type": "object"},
+            "readiness_by_reason": {"type": "object"}
           }
         },
         "workflow_profile": {
@@ -282,6 +287,17 @@
         "result_count": {"type": "integer", "minimum": 0},
         "normalized_leads_count": {"type": "integer", "minimum": 0},
         "redaction_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "scanner_readiness": {
+      "type": "object",
+      "required": ["artifact_present", "report_count", "by_state", "by_reason", "by_adapter"],
+      "properties": {
+        "artifact_present": {"type": "boolean"},
+        "report_count": {"type": "integer", "minimum": 0},
+        "by_state": {"type": "object"},
+        "by_reason": {"type": "object"},
+        "by_adapter": {"type": "object"}
       }
     },
     "observability": {

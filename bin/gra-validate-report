@@ -119,6 +119,7 @@ def main() -> int:
     )
     findings = validation_context.findings
     scanner_index_validated = validation_results["scanner_index"]
+    scanner_readiness_validated = validation_results["scanner_readiness"]
     dependencies_validated = validation_results["dependencies"]
     chains_validated = validation_results["chains"]
     adversarial_validation_validated = validation_results["adversarial_validation"]
@@ -151,6 +152,8 @@ def main() -> int:
         print("Targets: validated")
     if scanner_index_validated:
         print("Scanner index: validated")
+    if scanner_readiness_validated:
+        print("Scanner readiness: validated")
     if dependencies_validated:
         print("Dependencies: validated")
     if chains_validated:

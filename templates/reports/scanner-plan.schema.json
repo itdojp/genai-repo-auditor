@@ -14,6 +14,7 @@
     "sandbox_profile",
     "network_policy",
     "planning_readiness",
+    "execution_readiness",
     "working_directory",
     "command",
     "command_display",
@@ -209,6 +210,41 @@
         "target_exists": {"type": "boolean"},
         "sandbox_profile_selected": {"enum": ["container", "gvisor", "vm"]},
         "sandbox_readiness_executed": {"const": false}
+      }
+    },
+    "execution_readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checked", "state", "reason_codes"],
+      "properties": {
+        "checked": {"type": "boolean"},
+        "state": {"enum": ["not_checked", "ready", "blocked", "experimental", "unsupported"]},
+        "reason_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "runtime_missing",
+              "runtime_remote",
+              "runtime_unavailable",
+              "image_not_configured",
+              "image_not_digest_pinned",
+              "image_not_local",
+              "platform_unsupported",
+              "sandbox_unsupported",
+              "gvisor_missing",
+              "target_unsafe",
+              "reports_path_unsafe",
+              "output_path_unsafe",
+              "staging_path_unsafe",
+              "path_overlap",
+              "resource_limits_unavailable",
+              "credential_environment_present",
+              "network_policy_unsupported",
+              "ready"
+            ]
+          }
+        }
       }
     },
     "working_directory": {"const": "."},

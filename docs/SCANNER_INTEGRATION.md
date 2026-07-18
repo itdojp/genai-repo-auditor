@@ -13,6 +13,7 @@ gra-scan --run runs/OWNER__REPO/RUN_ID --list
 gra-scan --run runs/OWNER__REPO/RUN_ID --list --json
 gra-scan --run runs/OWNER__REPO/RUN_ID --tool gitleaks
 gra-scan --run runs/OWNER__REPO/RUN_ID --tool syft --plan --sandbox-profile container --json
+gra-scan --run runs/OWNER__REPO/RUN_ID --tool gitleaks --readiness --sandbox-profile container --json
 gra-scan --run runs/OWNER__REPO/RUN_ID --tool gitleaks --execute --sandbox-profile container --json
 ```
 
@@ -33,6 +34,165 @@ reports binary presence but never executes the version check. The schema is
 Machine-readable plans use
 [`templates/reports/scanner-plan.schema.json`](../templates/reports/scanner-plan.schema.json).
 
+### Scanner execution readiness
+
+`--readiness` is an explicit, bounded pre-execution check. It requires an
+existing run and `--tool gitleaks|syft`. All declared profile choices
+(`source-only`, `local-test`, `container`, `gvisor`, and `vm`) and network
+choices (`disabled` and `explicit-allow`) can be evaluated so an unsafe request
+produces a bounded diagnostic report rather than executing anything. Only
+`container` or `gvisor` with `--network-policy disabled` can reach `ready` or
+`experimental`; other declared choices are `blocked` and do not run runtime
+probes. When the canonical target and reports paths are safe, distinct, and
+unambiguous, the command writes the latest report for that adapter to the
+configured reports directory:
+
+```text
+<reports_dir>/scanner-readiness/<adapter_id>.json
+```
+
+With the default run layout, the paths are
+`reports/scanner-readiness/gitleaks.json` and
+`reports/scanner-readiness/syft.json`. The closed JSON contract is
+[`templates/reports/scanner-readiness.schema.json`](../templates/reports/scanner-readiness.schema.json).
+One latest report is retained per approved adapter; readiness does not append a
+command event. If `repo_dir` and `target_repo_dir` disagree, either path is
+unsafe, or target/reports overlap, the bounded blocked report is printed but is
+not persisted anywhere under the run.
+
+Readiness does **not** execute a scanner or container, pull an image, access the
+network, or inspect files in the target repository. It reads bounded run context
+and path metadata only to verify containment, directory/symlink safety, and
+target/report separation. It also verifies that the expected raw output path is
+unused and not symlinked, and that the staging path is either absent or a real
+directory rather than a symlink. These checks do not enumerate or read target,
+output, or staging content. After those checks, and only when the platform,
+profile, immutable image configuration, and local-endpoint policy permit it,
+readiness may execute the following trusted local runtime probes:
+
+- one `version` command for each Docker/Podman runtime candidate, with a
+  10-second timeout; and
+- one `image inspect <digest-pinned-image>` command for each healthy candidate
+  until the image is found, with a 20-second timeout.
+
+Docker is forced to a discovered local Unix socket or the native-Windows local
+named pipe. Podman is eligible only on Linux-family hosts and is invoked with
+`--remote=false`. Probe stdin is closed, stdout/stderr are discarded, and only a
+return code is consumed. No daemon URL, daemon output, runtime/scanner absolute
+path, target/report absolute path, remote endpoint value, or environment value
+is copied into the report. The report may contain only bare tool/runtime names,
+the reviewed image digest reference, fixed next-step text, and the names—not
+values—of rejected environment variables.
+
+Remote-like values in `CONTAINER_HOST`, `DOCKER_CONTEXT`, `DOCKER_HOST`, or
+`PODMAN_HOST` block readiness with `runtime_remote`; no runtime probe is made in
+that case. `DOCKER_CONTEXT=default`, `DOCKER_CONTEXT=desktop-linux`, and explicit
+`unix://` or `npipe://` local endpoints are not classified as remote. The
+configured credential environment names block readiness with
+`credential_environment_present`. Detection is case-insensitive and covers the
+documented provider names plus bounded credential-name suffixes such as
+`*_TOKEN`, `*_SECRET`, `*_PASSWORD`, `*_API_KEY`, `*_ACCESS_KEY`,
+`*_AUTH_CONFIG`, and `*_AUTH_FILE`. This includes common session, registry, and
+package-manager credentials such as `AWS_SESSION_TOKEN`, `DOCKER_AUTH_CONFIG`,
+`REGISTRY_AUTH_FILE`, `NPM_TOKEN`, and `PYPI_API_TOKEN`. Their values are never
+read into the report or passed to probes, and their presence suppresses the
+runtime `version`/`image inspect` probes. The final state remains blocked.
+
+The top-level readiness state has the following meaning:
+
+| State | Meaning | `gra-scan --readiness` exit |
+|---|---|---:|
+| `ready` | All required checks passed on Linux or confirmed WSL2. | `0` |
+| `experimental` | All required checks passed on native Windows or macOS, whose container path is experimental. `reason_codes` is still `["ready"]`. | `0` |
+| `blocked` | The platform is recognized, but one or more blocking reasons remain. | `1` |
+| `unsupported` | The environment is outside the execution support matrix, including unconfirmed `wsl-unknown`. | `1` |
+
+An unknown argparse choice, missing/unsafe run root, unknown adapter, or a
+context/path/report failure that prevents a bounded report exits `2`. Declared
+but non-executable profile/network choices instead write a blocked report and
+exit `1`. Reason codes in a valid report are unique and emitted in the following
+canonical order:
+
+| Reason code | Meaning |
+|---|---|
+| `runtime_missing` | Neither approved local Docker nor eligible local Podman is on `PATH`. |
+| `runtime_remote` | Remote runtime configuration is present; only a local endpoint is allowed. |
+| `runtime_unavailable` | A candidate exists, but its bounded `version` probe did not succeed. |
+| `image_not_configured` | The adapter has no reviewed immutable execution image. |
+| `image_not_digest_pinned` | The image is not pinned to an exact lowercase SHA-256 digest. |
+| `image_not_local` | No healthy local runtime can inspect the pinned image; readiness never pulls it. |
+| `platform_unsupported` | The detected platform is outside the supported/experimental execution matrix. |
+| `sandbox_unsupported` | The requested execution profile is not approved for the adapter/platform. |
+| `gvisor_missing` | `gvisor` was selected but `runsc` is not on `PATH`. |
+| `target_unsafe` | The target is missing, not a directory, symlinked, or outside the safe run layout. |
+| `reports_path_unsafe` | The configured reports directory is missing, not a directory, symlinked, or outside the safe run layout. |
+| `output_path_unsafe` | The expected raw scanner output path is already present, symlinked, or cannot be represented safely. Start with a fresh run and an unused non-symlink output path. |
+| `staging_path_unsafe` | The scanner staging path is symlinked, is an existing non-directory, or cannot be represented safely. Remove or replace it during setup. |
+| `path_overlap` | Target and reports directories overlap. |
+| `resource_limits_unavailable` | The selected profile cannot provide the required bounded scanner limits. |
+| `credential_environment_present` | A configured credential-like environment variable is present. |
+| `network_policy_unsupported` | The scanner contract is not strictly offline. |
+| `ready` | No blocking reason remains; this is the only reason for `ready` or `experimental`. |
+
+The `paths` object exposes only `target_safe`, `reports_safe`, `output_safe`,
+`staging_safe`, and `overlap` booleans. An unsafe output or staging result blocks
+readiness and suppresses runtime probes. In `runtime`, `candidate_available`
+means an approved runtime executable was found, while `healthy_available` means
+at least one bounded runtime `version` probe succeeded. A healthy runtime can
+still yield `image_not_local`; `selected` is set only when that runtime also
+successfully inspects the digest-pinned local image.
+
+### Human-controlled image setup
+
+Image retrieval is a separate, network-enabled setup phase. A human operator
+must review the adapter and exact digest, authorize registry access, and run the
+pull explicitly. Do not put `docker pull` or `podman pull` into readiness,
+planning, execution, or an automated fallback. For this release:
+
+```bash
+GITLEAKS_IMAGE='ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f'
+SYFT_IMAGE='ghcr.io/anchore/syft@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb'
+
+# Choose the approved local runtime. This is the only network-enabled phase.
+docker pull "$GITLEAKS_IMAGE"
+docker pull "$SYFT_IMAGE"
+# Or, on Linux/WSL2 with an approved local Podman installation:
+# podman pull "$GITLEAKS_IMAGE"
+# podman pull "$SYFT_IMAGE"
+```
+
+After the pull completes, disable setup network access, unset remote-runtime and
+credential-like environment variables, and run `gra-scan --readiness`. Do not
+replace the digest with a tag such as `latest`, and do not treat a successful
+pull as readiness approval.
+
+### Contract reuse
+
+- A later default/`--plan` invocation loads the adapter's persisted readiness
+  report only when its sandbox profile and network policy exactly match the
+  plan, then copies only `checked`, `state`, and `reason_codes` into
+  `execution_readiness`. A mismatch is reported as `not_checked`; plan does not
+  rerun probes. A plan remains non-executing, and its summary may be stale.
+- `--execute` does not trust the persisted report. It re-evaluates the same
+  current readiness contract before container startup and proceeds only for
+  `ready` or `experimental`, then retains `--pull=never` and `--network=none`.
+- `gra-doctor --scanner-run RUN --scanner-tool TOOL
+  --scanner-sandbox-profile container --probe-scanner-runtime` invokes the same
+  scanner readiness evaluator in memory and places it under
+  `checks.scanner_execution_readiness`; doctor does not write the per-run
+  readiness artifact. `--scanner-run` and `--scanner-tool` are a pair, and the
+  scanner route requires the explicit `--probe-scanner-runtime` opt-in. This
+  dedicated route is mutually exclusive with `--probe-external-tools`, so it
+  does not run doctor's separate `git --version`, `gh --version`, or `gh auth
+  status` probes. Its only external commands are the same timeout-bounded local
+  Docker/Podman `version` and digest-pinned `image inspect` probes used by the
+  scanner evaluator.
+- `gra-metrics` validates saved readiness reports and aggregates only report
+  presence/count plus counts by adapter, state, and reason. `gra-dashboard`
+  reuses `metrics.json` to show report count and state/reason tables. Neither
+  surface copies paths, environment values, image/runtime command output, or
+  target content.
+
 Plans reject unknown adapters, source-only/local-test execution profiles, path
 traversal, symlinked run paths, undeclared network access, and arbitrary shell
 arguments. All planned paths are run-relative. A valid plan is not execution
@@ -44,10 +204,13 @@ It never pulls an image. The operator must pre-pull the immutable image digest
 during a separately authorized setup phase.
 
 Platform boundaries are explicit: planning is supported on native Windows,
-WSL2, Linux, and macOS; native Windows execution is experimental and requires
-local Docker Desktop in Linux-container mode; WSL2/Linux may use local Docker
-or Podman; macOS selects local Docker. gVisor is Linux/WSL2-only when `runsc` is
-configured. Remote daemon environment configuration remains rejected. See
+WSL2, Linux, and macOS. Readiness/execution is supported with local Docker or
+Podman on Linux and confirmed WSL2. Native Windows is experimental and requires
+local Docker Desktop in Linux-container mode through the local named pipe;
+native Podman is not selected. macOS is experimental and selects local Docker.
+The `gvisor` profile is Linux/WSL2-only when `runsc` is configured. WSL1,
+unconfirmed `wsl-unknown`, and other platforms are unsupported. Remote daemon
+environment configuration remains rejected. See
 [`WINDOWS_WSL_SUPPORT.md`](WINDOWS_WSL_SUPPORT.md).
 
 On an enforcing SELinux host, execution uses `label=disable` instead of
@@ -56,13 +219,9 @@ metadata; isolation continues to rely on the read-only target/root mounts,
 dropped capabilities, default seccomp, `no-new-privileges`, resource limits,
 and disabled network.
 
-The execution images are pinned by multi-platform digest:
-
-- Gitleaks: `ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f`;
-- Syft: `ghcr.io/anchore/syft@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb`.
-
 Execution rejects remote runtime environment configuration, missing runtimes or
-images, unsupported profiles, any network allowance, existing/symlinked output,
+images, configured credential-like environment variables, unsupported profiles,
+any network allowance, existing/symlinked output,
 timeouts, oversized output/logs, excess result counts, unexpected files, and
 scanner failures. A timed-out container is force-removed. Successful raw JSON is
 atomically moved to `reports/scanner-results/raw/`; timeout, SIGTERM/SIGHUP,

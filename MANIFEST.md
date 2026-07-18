@@ -136,6 +136,7 @@ templates/reports/run-state.schema.json
 templates/reports/scanner-adapter.schema.json
 templates/reports/scanner-index.schema.json
 templates/reports/scanner-plan.schema.json
+templates/reports/scanner-readiness.schema.json
 templates/reports/scanner-runs.schema.json
 templates/reports/targets.schema.json
 templates/reports/traces.schema.json

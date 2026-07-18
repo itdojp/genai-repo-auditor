@@ -37,6 +37,14 @@ from scanner_runner import (  # noqa: E402
     execute_scan,
     validate_execution_layout,
 )
+from scanner_readiness import (  # noqa: E402
+    ScannerReadinessError,
+    evaluate_scanner_readiness,
+    load_scanner_readiness_report,
+    scanner_readiness_persistence_safe,
+    scanner_readiness_summary,
+    write_scanner_readiness_report,
+)
 from run_events import (  # noqa: E402
     EventWriteError,
     append_command_event,
@@ -55,12 +63,18 @@ def main() -> int:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--list", action="store_true", help="List adapter capabilities and local binary readiness")
     mode.add_argument("--plan", action="store_true", help="Plan only; this is the default and never executes a scanner")
+    mode.add_argument("--readiness", action="store_true", help="Probe bounded local execution readiness without running or pulling a scanner")
     mode.add_argument("--execute", action="store_true", help="Execute in an approved offline container sandbox")
     parser.add_argument("--tool", help="Registered scanner adapter id")
-    parser.add_argument("--sandbox-profile", choices=PROFILE_IDS, default="container", help="Declared execution sandbox for the plan")
-    parser.add_argument("--network-policy", choices=NETWORK_POLICIES, default="disabled", help="Declared network policy; disabled by default")
+    parser.add_argument("--sandbox-profile", default="container", help="Declared execution sandbox for the plan")
+    parser.add_argument("--network-policy", default="disabled", help="Declared network policy; disabled by default")
     parser.add_argument("--json", action="store_true", help="Print the machine-readable contract")
     args = parser.parse_args()
+
+    if args.sandbox_profile not in PROFILE_IDS:
+        parser.error("--sandbox-profile must name a supported declared profile")
+    if args.network_policy not in NETWORK_POLICIES:
+        parser.error("--network-policy must name a supported declared policy")
 
     if args.list and args.tool:
         parser.error("--tool cannot be used with --list")
@@ -76,6 +90,16 @@ def main() -> int:
             run_dir = validate_run_directory(args.run)
             if args.list:
                 payload = list_adapters(path_env=planning_environment_path())
+            elif args.readiness:
+                payload = evaluate_scanner_readiness(
+                    run_dir,
+                    adapter_id=args.tool,
+                    sandbox_profile=args.sandbox_profile,
+                    network_policy=args.network_policy,
+                    path_env=planning_environment_path(),
+                )
+                if scanner_readiness_persistence_safe(run_dir, payload):
+                    write_scanner_readiness_report(run_dir, payload)
             else:
                 payload = build_scan_plan(
                     run_dir,
@@ -84,10 +108,25 @@ def main() -> int:
                     network_policy=args.network_policy,
                     path_env=planning_environment_path(),
                 )
-        except (OSError, ValueError, ScannerAdapterError) as exc:
-            print(f"gra-scan: {exc}", file=sys.stderr)
+                persisted_readiness = load_scanner_readiness_report(
+                    run_dir,
+                    args.tool,
+                    sandbox_profile=args.sandbox_profile,
+                    network_policy=args.network_policy,
+                )
+                payload["execution_readiness"] = scanner_readiness_summary(persisted_readiness)
+        except (OSError, ValueError, ScannerAdapterError, ScannerReadinessError) as exc:
+            if args.readiness:
+                # Readiness failures must not disclose absolute local paths,
+                # usernames, endpoint values, or unbounded exception text.
+                print("gra-scan: readiness_evaluation_failed", file=sys.stderr)
+            else:
+                print(f"gra-scan: {exc}", file=sys.stderr)
             return 2
-        return print_payload(args, payload)
+        print_payload(args, payload)
+        if args.readiness and payload["state"] in {"blocked", "unsupported"}:
+            return 1
+        return 0
 
     started_at, started_perf = start_command_event()
     try:
@@ -334,6 +373,13 @@ def print_payload(args: argparse.Namespace, payload: dict) -> int:
                 f"network={'required' if adapter['network_required'] else 'disabled'} "
                 f"classification={adapter['result_classification']}"
             )
+    elif args.readiness:
+        print("Scanner execution readiness (scanner not executed):")
+        print(f"Tool: {payload['adapter_id']}")
+        print(f"State: {payload['state']}")
+        print("Reasons: " + ", ".join(payload["reason_codes"]))
+        for next_step in payload["next_steps"]:
+            print(f"- {next_step}")
     elif not args.execute:
         print("Scanner plan (scanner not executed):")
         print(f"Tool: {payload['adapter']['id']}")
@@ -345,6 +391,7 @@ def print_payload(args: argparse.Namespace, payload: dict) -> int:
             "Binary readiness: "
             + ("available" if payload["adapter"]["readiness"]["executable_available"] else "missing")
         )
+        print(f"Execution readiness: {payload['execution_readiness']['state']}")
     else:
         print(f"Scanner status: {payload['status']}")
         print(f"Tool: {payload['adapter_id']}")

@@ -175,6 +175,7 @@ class ReportContractTests(unittest.TestCase):
         scanner_runs_schema = self.load_json(SCHEMAS / "scanner-runs.schema.json")
         scanner_adapter_schema = self.load_json(SCHEMAS / "scanner-adapter.schema.json")
         scanner_plan_schema = self.load_json(SCHEMAS / "scanner-plan.schema.json")
+        scanner_readiness_schema = self.load_json(SCHEMAS / "scanner-readiness.schema.json")
         manifest_schema = self.load_json(SCHEMAS / "run-manifest.schema.json")
         dependencies_schema = self.load_json(SCHEMAS / "dependencies.schema.json")
         validation_schema = self.load_json(SCHEMAS / "validation.schema.json")
@@ -230,6 +231,20 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual("plan", scanner_plan_schema["properties"]["mode"]["const"])
         self.assertFalse(scanner_plan_schema["properties"]["scanner_executed"]["const"])
         self.assertFalse(scanner_plan_schema["properties"]["network_accessed"]["const"])
+        self.assertEqual("https://json-schema.org/draft/2020-12/schema", scanner_readiness_schema["$schema"])
+        self.assertGreaterEqual(len(scanner_readiness_schema.get("allOf", [])), 20)
+        conditional_text = json.dumps(scanner_readiness_schema["allOf"], sort_keys=True)
+        for invariant in (
+            "adapter_id",
+            "reason_codes",
+            "target_safe",
+            "reports_safe",
+            "output_safe",
+            "staging_safe",
+            "environment_present",
+            "probe_executed",
+        ):
+            self.assertIn(invariant, conditional_text)
 
         self.assertTrue(set(REQUIRED_TOP).issubset(findings_schema["required"]))
         finding_required = findings_schema["properties"]["findings"]["items"]["required"]
@@ -261,7 +276,23 @@ class ReportContractTests(unittest.TestCase):
             set(metrics_summary["required"]),
         )
         self.assertEqual({"artifact_present", "node_count", "edge_count"}, set(metrics_summary["properties"]["evidence_graph"]["required"]))
-        self.assertEqual({"artifact_present", "result_count", "normalized_leads_count"}, set(metrics_summary["properties"]["scanner"]["required"]))
+        self.assertEqual(
+            {
+                "artifact_present",
+                "result_count",
+                "normalized_leads_count",
+                "readiness_artifact_present",
+                "readiness_report_count",
+                "readiness_by_state",
+                "readiness_by_reason",
+            },
+            set(metrics_summary["properties"]["scanner"]["required"]),
+        )
+        self.assertIn("scanner_readiness", metrics_schema["required"])
+        self.assertEqual(
+            {"artifact_present", "report_count", "by_state", "by_reason", "by_adapter"},
+            set(metrics_schema["properties"]["scanner_readiness"]["required"]),
+        )
         self.assertIn("workflow_profile", metrics_summary["properties"])
         self.assertIn("workflow_profile", metrics_schema["properties"])
         retention_schema = manifest_schema["properties"]["artifact_retention"]
@@ -569,6 +600,7 @@ class ReportContractTests(unittest.TestCase):
                 "issue_publication_plan",
                 "issue_ledger",
                 "duplicate_decisions",
+                "scanner_readiness",
                 "observability",
                 "artifacts",
                 "run_duration",

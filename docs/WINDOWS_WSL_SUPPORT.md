@@ -23,6 +23,7 @@ when native Windows cannot preserve a required POSIX safety primitive.
 | Deterministic efficacy report / comparison generation | Inspection only; fails closed before output because required dirfd operations are unavailable in CPython | Supported in the WSL filesystem | Supported | Supported |
 | Optional efficacy worker comparison | Not supported because safe final report publication is unavailable; use WSL2 | Supported subject to the configured compatible worker and host isolation | Supported subject to worker prerequisites | Supported subject to worker prerequisites |
 | `gra-scan --plan` | Supported and CI-tested; no scanner runs | Supported | Supported | Supported |
+| `gra-scan --readiness --sandbox-profile container` | Experimental local Docker Desktop/Linux-container path; bounded local named-pipe probes only | Linux implementation boundary with local Docker/Podman; no dedicated WSL2 runtime CI | Supported local Docker/Podman boundary with mocked-runtime safety tests | Experimental local Docker path; no real-runtime CI |
 | `gra-scan --execute --sandbox-profile container` | Experimental: local Docker Desktop with Linux containers only; no CI container execution | Linux implementation boundary; no dedicated WSL2 or real-container CI | Supported with mocked-runtime safety tests; real containers are not started in CI | Experimental local Docker path; no real-container CI |
 | `gra-scan --execute --sandbox-profile gvisor` | Not supported | Supported only when Linux `runsc` is configured | Supported only when `runsc` is configured | Not supported |
 
@@ -120,14 +121,62 @@ Planning is non-executing on every supported OS:
 gra-scan --run $RunDir --tool gitleaks --plan --sandbox-profile container --json
 ```
 
-Execution is always explicit, offline, and requires a digest-pinned image that
-was pulled during a separately approved setup phase. The command keeps
+Image retrieval is a separate human-controlled setup phase. After reviewing the
+adapter and exact release digest, authorize registry network access and pull the
+immutable reference explicitly. For PowerShell and local Docker Desktop:
+
+```powershell
+$GitleaksImage = "ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
+$SyftImage = "ghcr.io/anchore/syft@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb"
+
+# Human-approved, network-enabled setup phase only.
+docker pull $GitleaksImage
+docker pull $SyftImage
+```
+
+Do not replace the digest with a mutable tag, or automate a pull from readiness
+or execution. After setup, disable registry/network access and remove unintended
+remote-runtime or credential-like variables from the current process without
+printing their values. Then run the scanner-specific gate:
+
+```powershell
+gra-scan --run $RunDir --tool gitleaks --readiness --sandbox-profile container --network-policy disabled --json
+```
+
+Readiness does not execute a scanner/container, pull an image, access the
+network, or inspect target file content. It checks bounded run/path metadata and
+may run only a local runtime `version` probe and digest-pinned `image inspect`,
+with timeouts and discarded stdin/stdout/stderr. Its report is written to
+`<reports_dir>/scanner-readiness/gitleaks.json`; it contains no runtime/scanner
+absolute path, target/report absolute path, remote endpoint/environment value,
+or daemon output. Remote-like `CONTAINER_HOST`, `DOCKER_CONTEXT`, `DOCKER_HOST`,
+or `PODMAN_HOST` values and configured credential-like environment names block
+readiness. Only their names, never their values, can appear in the report.
+Path metadata also checks that the expected raw output is unused/non-symlinked
+and staging is absent or a non-symlink directory; it never reads their content.
+The report exposes only `output_safe`/`staging_safe` booleans and uses
+`output_path_unsafe`/`staging_path_unsafe` on failure. Runtime
+`healthy_available` means at least one bounded version probe succeeded; it does
+not imply that the digest-pinned image is local.
+
+`gra-scan --readiness` exits `0` for `ready`/`experimental`, `1` for
+`blocked`/`unsupported`, and `2` for usage/evaluation/report failures. Native
+Windows and macOS can reach only `experimental` when all checks pass; Linux and
+confirmed WSL2 can reach `ready`. Unconfirmed WSL and other platforms are
+`unsupported`. A later plan reuses the saved state/reason summary without
+probing only when the requested sandbox profile and network policy exactly
+match the report; a mismatch is `not_checked`. Execute re-evaluates the current
+contract and does not trust a stale report.
+
+Execution is always explicit, offline, and requires the digest-pinned image to
+be present from the separately approved setup phase. The command keeps
 `--network=none`, read-only target/root mounts, dropped capabilities, resource
 limits, and bounded outputs.
 
 - **Native Windows:** Docker Desktop must use Linux containers and expose the
-  local named-pipe endpoint. This path is experimental and not exercised with a
-  real container in CI. Native Podman and gVisor execution are not supported.
+  local named-pipe endpoint. Both readiness and execution are experimental and
+  are not exercised with a real runtime/container in CI. Native Podman and
+  gVisor execution are not supported.
 - **WSL2:** use Docker Desktop WSL integration or a local Linux Docker/Podman
   runtime. Remote daemon environment variables are rejected. Keep bind-mounted
   paths in the WSL filesystem.
@@ -152,3 +201,23 @@ The `platform_support` section reports the detected environment, dirfd report
 write capability, and feature statuses. Add `--probe-external-tools` only after
 confirming that `git` and `gh` on `PATH` are trusted. The probe does not execute
 the configured worker, run an audit, inspect token values, or start a container.
+
+To include the same bounded scanner readiness contract in doctor output, pass
+the run/tool pair and the dedicated scanner-runtime probe opt-in:
+
+```powershell
+gra-doctor --json --probe-scanner-runtime `
+  --scanner-run $RunDir `
+  --scanner-tool gitleaks `
+  --scanner-sandbox-profile container
+```
+
+The scanner result appears under `checks.scanner_execution_readiness`; doctor
+does not write `<reports_dir>/scanner-readiness/`. The scanner-specific evaluator
+retains the no-run/no-pull/no-network/no-target-content boundary.
+`--probe-scanner-runtime` is mutually exclusive with `--probe-external-tools`:
+the scanner-only route does not run `git`, `gh`, `gh auth`, or the configured
+worker, and its only external commands are timeout-bounded local Docker/Podman
+`version` and digest-pinned `image inspect` probes. Without `--strict`, doctor
+exits `0` even when scanner readiness is blocked; `--strict` exits `1` for an
+overall error, and invalid/missing option combinations exit `2`.

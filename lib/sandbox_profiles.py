@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -20,7 +21,18 @@ CREDENTIAL_ENV_NAMES = (
     "GOOGLE_APPLICATION_CREDENTIALS",
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
+    "AWS_SESSION_TOKEN",
+    "DOCKER_AUTH_CONFIG",
+    "NPM_TOKEN",
+    "PYPI_API_TOKEN",
+    "REGISTRY_AUTH_FILE",
 )
+_CREDENTIAL_ENV_NAME_RE = re.compile(
+    r"(?:^|_)(?:ACCESS_KEY|API_KEY|AUTH_CONFIG|AUTH_FILE|CREDENTIALS?|PASSWORD|PASSWD|PRIVATE_KEY|SECRET|SESSION_TOKEN|TOKEN)$",
+    re.IGNORECASE,
+)
+_SAFE_ENV_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,127}$")
+_MAX_REPORTED_CREDENTIAL_ENV_NAMES = 64
 CREDENTIAL_RELATIVE_PATHS = (
     ".env",
     ".env.local",
@@ -191,7 +203,22 @@ def detect_credential_paths(repo_dir: Path) -> list[str]:
 
 def detect_visible_credential_env(env: dict[str, str] | None = None) -> list[str]:
     source = env if env is not None else os.environ
-    return [name for name in CREDENTIAL_ENV_NAMES if source.get(name)]
+    exact = {name.upper() for name in CREDENTIAL_ENV_NAMES}
+    detected: set[str] = set()
+    unsafe_name_detected = False
+    for raw_name, value in source.items():
+        if not value:
+            continue
+        name = str(raw_name).upper()
+        if name not in exact and not _CREDENTIAL_ENV_NAME_RE.search(name):
+            continue
+        if _SAFE_ENV_NAME_RE.fullmatch(name):
+            detected.add(name)
+        else:
+            unsafe_name_detected = True
+    if unsafe_name_detected:
+        detected.add("UNSAFE_CREDENTIAL_NAME")
+    return sorted(detected)[:_MAX_REPORTED_CREDENTIAL_ENV_NAMES]
 
 
 def find_container_runtime(path_env: str | None = None) -> dict[str, Any]:
