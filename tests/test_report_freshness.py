@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -95,6 +96,55 @@ class ReportFreshnessTests(unittest.TestCase):
                     if item["artifact_ref"] == "context.json"
                 )
                 self.assertEqual(context["requirement"], "required")
+
+    def test_fallback_closes_leaf_when_fstat_fails(self) -> None:
+        temporary, run_dir = self.make_run()
+        self.addCleanup(temporary.cleanup)
+        source = run_dir / "reports" / "findings.json"
+        source.write_text("{}\n", encoding="utf-8")
+        real_close = freshness.os.close
+        closed_fds: list[int] = []
+
+        def record_close(fd: int) -> None:
+            closed_fds.append(fd)
+            real_close(fd)
+
+        with (
+            mock.patch.object(freshness.os, "supports_dir_fd", set()),
+            mock.patch.object(freshness.os, "fstat", side_effect=OSError("forced fstat failure")),
+            mock.patch.object(freshness.os, "close", side_effect=record_close),
+            self.assertRaisesRegex(OSError, "forced fstat failure"),
+        ):
+            freshness._open_ref_fd(run_dir, "reports/findings.json", allow_missing=False)
+
+        self.assertEqual(len(closed_fds), 1)
+
+    @unittest.skipUnless(
+        freshness.os.open in getattr(freshness.os, "supports_dir_fd", set())
+        and bool(getattr(freshness.os, "O_DIRECTORY", 0)),
+        "requires POSIX dir_fd directory walk",
+    )
+    def test_posix_walk_closes_directories_and_leaf_when_fstat_fails(self) -> None:
+        temporary, run_dir = self.make_run()
+        self.addCleanup(temporary.cleanup)
+        source = run_dir / "reports" / "findings.json"
+        source.write_text("{}\n", encoding="utf-8")
+        real_close = freshness.os.close
+        closed_fds: list[int] = []
+
+        def record_close(fd: int) -> None:
+            closed_fds.append(fd)
+            real_close(fd)
+
+        with (
+            mock.patch.object(freshness.os, "fstat", side_effect=OSError("forced fstat failure")),
+            mock.patch.object(freshness.os, "close", side_effect=record_close),
+            self.assertRaisesRegex(OSError, "forced fstat failure"),
+        ):
+            freshness._open_ref_fd(run_dir, "reports/findings.json", allow_missing=False)
+
+        self.assertEqual(len(closed_fds), 3)
+        self.assertEqual(len(set(closed_fds)), 3)
 
     def test_removed_captured_dependency_is_missing(self) -> None:
         temporary, run_dir = self.make_run()

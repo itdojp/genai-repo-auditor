@@ -1108,15 +1108,24 @@ def _open_ref_fd(run_dir: Path, ref: str, *, allow_missing: bool) -> int | None:
             raise FreshnessError(f"artifact_ref parent must be a directory: {normalized}")
         if index == len(parts) - 1 and not stat.S_ISREG(mode):
             raise FreshnessError(f"artifact_ref must identify a regular file: {normalized}")
+    fd = -1
     try:
-        fd = os.open(current, leaf_flags)
-    except FileNotFoundError:
-        if allow_missing:
-            return None
-        raise FreshnessError("required report dependency is missing")
-    except OSError as exc:
-        raise FreshnessError(f"artifact_ref must identify a regular non-symlink file: {normalized}") from exc
-    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        try:
+            fd = os.open(current, leaf_flags)
+        except FileNotFoundError:
+            if allow_missing:
+                return None
+            raise FreshnessError("required report dependency is missing")
+        except OSError as exc:
+            raise FreshnessError(
+                f"artifact_ref must identify a regular non-symlink file: {normalized}"
+            ) from exc
+        is_regular = stat.S_ISREG(os.fstat(fd).st_mode)
+    except BaseException:
+        if fd >= 0:
+            os.close(fd)
+        raise
+    if not is_regular:
         os.close(fd)
         raise FreshnessError(f"artifact_ref must identify a regular file: {normalized}")
     return fd

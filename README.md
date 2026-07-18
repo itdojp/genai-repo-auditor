@@ -156,7 +156,8 @@ gra-validate-report --run "$RUN_DIR"
 ```
 
 Derived default reports record bounded dependency identities in
-`reports/report-freshness.json`. Use
+`<reports_dir>/report-freshness.json`, where `<reports_dir>` comes from
+`context.json` and defaults to `reports/`. Use
 `gra-validate-report --run "$RUN_DIR" --check-freshness` after the documented
 regeneration sequence to fail on tracked stale or missing inputs; validation
 does not regenerate reports, publish Issues, or modify the SQLite store. Legacy
