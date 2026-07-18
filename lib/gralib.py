@@ -15,7 +15,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from agent_worker import codex_worker_executable
 from run_events import reports_dir as configured_reports_dir
-from target_artifact import MAX_TARGETS_JSON_BYTES, load_targets_artifact
+from target_artifact import load_targets_artifact
 from template_env import validate_template_env_key
 
 

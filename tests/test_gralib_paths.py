@@ -13,7 +13,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
-from gralib import MAX_TARGETS_JSON_BYTES, load_findings, load_targets, write_targets  # noqa: E402
+from gralib import load_findings, load_targets, write_targets  # noqa: E402
+from target_artifact import MAX_TARGETS_JSON_BYTES  # noqa: E402
 
 
 class GralibPathSafetyTests(unittest.TestCase):
