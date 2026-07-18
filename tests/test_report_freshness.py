@@ -83,6 +83,19 @@ class ReportFreshnessTests(unittest.TestCase):
         )
         self.assertEqual(after["status"], "stale")
 
+    def test_every_catalog_entry_requires_context(self) -> None:
+        temporary, run_dir = self.make_run()
+        self.addCleanup(temporary.cleanup)
+
+        for artifact_id in freshness.ARTIFACT_CATALOG:
+            with self.subTest(artifact_id=artifact_id):
+                context = next(
+                    item
+                    for item in freshness.artifact_dependencies(run_dir, artifact_id)
+                    if item["artifact_ref"] == "context.json"
+                )
+                self.assertEqual(context["requirement"], "required")
+
     def test_removed_captured_dependency_is_missing(self) -> None:
         temporary, run_dir = self.make_run()
         self.addCleanup(temporary.cleanup)

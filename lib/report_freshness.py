@@ -189,7 +189,7 @@ def artifact_dependencies(run_dir: Path, artifact_id: str) -> list[dict[str, str
             dependency("run-manifest.json"),
         ],
         "issue_publication_plan": [
-            dependency("context.json"),
+            context,
             dependency(publication_findings_ref, required=True),
             dependency("reports/chains.json"),
             dependency("reports/proofs.json"),
@@ -1069,15 +1069,24 @@ def _open_ref_fd(run_dir: Path, ref: str, *, allow_missing: bool) -> int | None:
                 except OSError as exc:
                     raise FreshnessError(f"artifact_ref must not traverse a symlink or non-directory: {normalized}") from exc
                 parent_fd = next_fd
+            fd = -1
             try:
-                fd = os.open(parts[-1], leaf_flags, dir_fd=parent_fd)
-            except FileNotFoundError:
-                if allow_missing:
-                    return None
-                raise FreshnessError("required report dependency is missing")
-            except OSError as exc:
-                raise FreshnessError(f"artifact_ref must identify a regular non-symlink file: {normalized}") from exc
-            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                try:
+                    fd = os.open(parts[-1], leaf_flags, dir_fd=parent_fd)
+                except FileNotFoundError:
+                    if allow_missing:
+                        return None
+                    raise FreshnessError("required report dependency is missing")
+                except OSError as exc:
+                    raise FreshnessError(
+                        f"artifact_ref must identify a regular non-symlink file: {normalized}"
+                    ) from exc
+                is_regular = stat.S_ISREG(os.fstat(fd).st_mode)
+            except BaseException:
+                if fd >= 0:
+                    os.close(fd)
+                raise
+            if not is_regular:
                 os.close(fd)
                 raise FreshnessError(f"artifact_ref must identify a regular file: {normalized}")
             return fd

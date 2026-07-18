@@ -282,13 +282,13 @@ gra-evidence-graph --run "$RUN_DIR"
 gra-validate-report --run "$RUN_DIR"
 ```
 
-`reports/report-freshness.json` は schema v1 の local sidecar であり、default
+`<reports_dir>/report-freshness.json` は schema v1 の local sidecar であり、default
 の派生 report について run-relative な依存関係だけを追跡します。依存関係と
 tracked output は run 配下の regular non-symlink file でなければならず、
 1 record あたり最大 128 件の dependency を保持できます。`content` mode の入力は
 16 MiB までで、size と SHA-256 を記録します。legacy run で sidecar がない場合は
 `not_applicable` として扱います。`gra-validate-report` はこの sidecar と
-`reports/store-import-state.json` の構造を常に検証し、`--check-freshness` を
+`<reports_dir>/store-import-state.json` の構造を常に検証し、`--check-freshness` を
 付けた場合だけ `stale` と `missing_dependency` を失敗として扱います。検証だけで
 report の自動再生成、Issue 公開、SQLite 変更は行いません。
 
@@ -312,7 +312,7 @@ source report は `content` mode で SHA-256 を記録し、peer report と
 content dependency なので、terminal な `gra-run` 完了後は再生成してください。
 default catalog 外の `--out` / `--out-json` / `--out-md` report は追跡対象外です。
 外部 `--db` file 自体は fingerprint も path 記録もせず、`gra-store` が書く
-run-local の `reports/store-import-state.json` だけを追跡します。この marker は
+run-local の `<reports_dir>/store-import-state.json` だけを追跡します。この marker は
 import 件数だけを保持し、SQLite の DB path は保存しません。
 
 組み込み profile は offline / local-artifacts-only です。scanner stage は

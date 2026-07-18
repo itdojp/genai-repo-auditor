@@ -138,7 +138,7 @@ reports/
 
 ## derived report freshness
 
-`reports/report-freshness.json` is a schema v1 sidecar for the closed catalog of
+`<reports_dir>/report-freshness.json` is a schema v1 sidecar for the closed catalog of
 default derived outputs: `findings.sarif`, `issue-publication-plan.json`,
 `store-import-state.json`, `metrics.json` / `METRICS.md`, `benchmark.json` /
 `BENCHMARK.md`, `evidence-graph.json` / `EVIDENCE_GRAPH.md`, and
@@ -157,7 +157,7 @@ presence-only.
 
 Freshness assessment returns one of four states: `fresh`, `stale`,
 `missing_dependency`, or `not_applicable`. Legacy runs that still have derived
-outputs but do not have `reports/report-freshness.json` are reported as
+outputs but do not have `<reports_dir>/report-freshness.json` are reported as
 `not_applicable` across the catalog rather than as corrupt or stale. Custom
 report outputs written outside the default catalog, such as alternate `--out`,
 `--out-json`, or `--out-md` destinations, are intentionally outside this

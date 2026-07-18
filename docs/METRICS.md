@@ -7,9 +7,9 @@ quality, not merely increasing artifact volume.
 Outputs:
 
 ```text
-reports/metrics.json
-reports/METRICS.md
-reports/report-freshness.json
+<reports_dir>/metrics.json
+<reports_dir>/METRICS.md
+<reports_dir>/report-freshness.json
 ```
 
 Generate metrics after validation, chain synthesis, safe proofs, gapfill,

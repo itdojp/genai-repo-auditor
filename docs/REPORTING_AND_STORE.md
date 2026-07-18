@@ -7,7 +7,8 @@ gra-validate-report --run runs/OWNER__REPO/RUN_ID
 ```
 
 `gra-validate-report` always validates the structure of optional
-`reports/report-freshness.json` and `reports/store-import-state.json` when they
+`<reports_dir>/report-freshness.json` and
+`<reports_dir>/store-import-state.json` when they
 exist. Add `--check-freshness` only when `stale` or `missing_dependency` tracked
 derived reports should fail validation; structural validation alone does not
 regenerate reports, publish Issues, or modify the SQLite database.
@@ -66,7 +67,7 @@ directory, the external destination is intentionally omitted from event
 
 ## Derived report freshness
 
-`reports/report-freshness.json` is the schema v1 sidecar for tracked default
+`<reports_dir>/report-freshness.json` is the schema v1 sidecar for tracked default
 derived reports. It records run-relative bounded fingerprints for the catalog
 managed by `gra-sarif`, `gra-issues --plan`, `gra-store`, `gra-metrics`,
 `gra-benchmark`, `gra-evidence-graph`, and `gra-dashboard`. `gra-metrics`,
@@ -76,7 +77,7 @@ generation-time snapshot copied from that sidecar. It is intentionally static;
 the authoritative current state is `gra-validate-report --check-freshness` or a
 fresh `assess_freshness` call. Tracked producer command events include
 `report-freshness.json` in `output_artifact_refs` when they update it. `gra-store` also writes
-`reports/store-import-state.json` with `database_location_recorded=false`; the
+`<reports_dir>/store-import-state.json` with `database_location_recorded=false`; the
 marker intentionally does not store the `--db` path.
 
 The recommended regeneration order is fixed and intentionally repeats metrics
@@ -158,7 +159,7 @@ sqlite3 runs/security-audit.sqlite '.tables'
 ```
 
 The SQLite store is intended for local tracking across many runs. It also writes
-`reports/store-import-state.json`, a bounded local marker that records imported
+`<reports_dir>/store-import-state.json`, a bounded local marker that records imported
 row counts and `database_location_recorded=false` without storing the SQLite
 path used for `--db`. The SQLite store records:
 
