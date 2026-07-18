@@ -24,21 +24,56 @@
     "run_duration"
   ],
   "properties": {
-    "schema_version": {"type": "string"},
-    "run_id": {"type": "string"},
-    "repo": {"type": "string"},
-    "branch": {"type": ["string", "null"]},
-    "commit": {"type": ["string", "null"]},
-    "generated_at": {"type": "string"},
-    "source": {"enum": ["local-report-artifacts"]},
+    "schema_version": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "repo": {
+      "type": "string"
+    },
+    "branch": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "commit": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "local-report-artifacts"
+      ]
+    },
     "safety": {
       "type": "object",
-      "required": ["local_artifacts_only", "raw_evidence_copied", "secrets_copied", "notes"],
+      "required": [
+        "local_artifacts_only",
+        "raw_evidence_copied",
+        "secrets_copied",
+        "notes"
+      ],
       "properties": {
-        "local_artifacts_only": {"type": "boolean"},
-        "raw_evidence_copied": {"type": "boolean"},
-        "secrets_copied": {"type": "boolean"},
-        "notes": {"type": "string"}
+        "local_artifacts_only": {
+          "type": "boolean"
+        },
+        "raw_evidence_copied": {
+          "type": "boolean"
+        },
+        "secrets_copied": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string"
+        }
       }
     },
     "summary": {
@@ -59,122 +94,337 @@
         "no_findings"
       ],
       "properties": {
-        "public_safe": {"type": "boolean"},
-        "notes": {"type": "string"},
-        "findings_total": {"type": "integer", "minimum": 0},
-        "findings_by_severity": {"type": "object"},
-        "findings_by_status": {"type": "object"},
-        "issue_recommended_findings": {"type": "integer", "minimum": 0},
-        "issue_publication_warning_count": {"type": "integer", "minimum": 0},
-        "issue_ledger_published_findings": {"type": "integer", "minimum": 0},
-        "issue_ledger_drift_warning_count": {"type": "integer", "minimum": 0},
+        "public_safe": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "findings_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "findings_by_severity": {
+          "type": "object"
+        },
+        "findings_by_status": {
+          "type": "object"
+        },
+        "issue_recommended_findings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "issue_publication_warning_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "issue_ledger_published_findings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "issue_ledger_drift_warning_count": {
+          "type": "integer",
+          "minimum": 0
+        },
         "evidence_graph": {
           "type": "object",
-          "required": ["artifact_present", "node_count", "edge_count"],
+          "required": [
+            "artifact_present",
+            "node_count",
+            "edge_count"
+          ],
           "properties": {
-            "artifact_present": {"type": "boolean"},
-            "node_count": {"type": "integer", "minimum": 0},
-            "edge_count": {"type": "integer", "minimum": 0}
+            "artifact_present": {
+              "type": "boolean"
+            },
+            "node_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "edge_count": {
+              "type": "integer",
+              "minimum": 0
+            }
           }
         },
         "benchmark": {
           "type": "object",
-          "required": ["artifact_present", "overall_status", "gate_count", "passed", "warnings", "failed"],
+          "required": [
+            "artifact_present",
+            "overall_status",
+            "gate_count",
+            "passed",
+            "warnings",
+            "failed"
+          ],
           "properties": {
-            "artifact_present": {"type": "boolean"},
-            "overall_status": {"type": "string"},
-            "gate_count": {"type": "integer", "minimum": 0},
-            "passed": {"type": "integer", "minimum": 0},
-            "warnings": {"type": "integer", "minimum": 0},
-            "failed": {"type": "integer", "minimum": 0}
+            "artifact_present": {
+              "type": "boolean"
+            },
+            "overall_status": {
+              "type": "string"
+            },
+            "gate_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "passed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "warnings": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "failed": {
+              "type": "integer",
+              "minimum": 0
+            }
           }
         },
         "scanner": {
           "type": "object",
-          "required": ["artifact_present", "result_count", "normalized_leads_count", "readiness_artifact_present", "readiness_report_count", "readiness_by_state", "readiness_by_reason"],
+          "required": [
+            "artifact_present",
+            "result_count",
+            "normalized_leads_count",
+            "readiness_artifact_present",
+            "readiness_report_count",
+            "readiness_by_state",
+            "readiness_by_reason"
+          ],
           "properties": {
-            "artifact_present": {"type": "boolean"},
-            "result_count": {"type": "integer", "minimum": 0},
-            "normalized_leads_count": {"type": "integer", "minimum": 0},
-            "run_artifact_present": {"type": "boolean"},
-            "run_count": {"type": "integer", "minimum": 0},
-            "run_statuses": {"type": "object"},
-            "total_duration_ms": {"type": "integer", "minimum": 0},
-            "maximum_duration_ms": {"type": "integer", "minimum": 0},
-            "redaction_count": {"type": "integer", "minimum": 0},
-            "readiness_artifact_present": {"type": "boolean"},
-            "readiness_report_count": {"type": "integer", "minimum": 0},
-            "readiness_by_state": {"type": "object"},
-            "readiness_by_reason": {"type": "object"}
+            "artifact_present": {
+              "type": "boolean"
+            },
+            "result_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "normalized_leads_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "run_artifact_present": {
+              "type": "boolean"
+            },
+            "run_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "run_statuses": {
+              "type": "object"
+            },
+            "total_duration_ms": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "maximum_duration_ms": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "redaction_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "readiness_artifact_present": {
+              "type": "boolean"
+            },
+            "readiness_report_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "readiness_by_state": {
+              "type": "object"
+            },
+            "readiness_by_reason": {
+              "type": "object"
+            }
           }
         },
         "workflow_profile": {
           "type": "object",
-          "required": ["artifact_present", "profile", "stage_count", "by_status", "skipped_by_scope_count", "scoped_skip_stages", "failed_count", "failed_stages"],
+          "required": [
+            "artifact_present",
+            "profile",
+            "stage_count",
+            "by_status",
+            "skipped_by_scope_count",
+            "scoped_skip_stages",
+            "failed_count",
+            "failed_stages"
+          ],
           "properties": {
-            "artifact_present": {"type": "boolean"},
-            "profile": {"type": "string"},
-            "stage_count": {"type": "integer", "minimum": 0},
-            "by_status": {"type": "object"},
-            "skipped_by_scope_count": {"type": "integer", "minimum": 0},
-            "scoped_skip_stages": {"type": "array", "items": {"type": "string"}},
-            "failed_count": {"type": "integer", "minimum": 0},
-            "failed_stages": {"type": "array", "items": {"type": "string"}}
+            "artifact_present": {
+              "type": "boolean"
+            },
+            "profile": {
+              "type": "string"
+            },
+            "stage_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "by_status": {
+              "type": "object"
+            },
+            "skipped_by_scope_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "scoped_skip_stages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "failed_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "failed_stages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         },
-        "workflow_execution": {"$ref": "#/$defs/workflowExecutionSummary"},
+        "workflow_execution": {
+          "$ref": "#/$defs/workflowExecutionSummary"
+        },
         "no_findings": {
           "type": "object",
-          "required": ["recorded", "source_stage", "recon_only"],
+          "required": [
+            "recorded",
+            "source_stage",
+            "recon_only"
+          ],
           "properties": {
-            "recorded": {"type": "boolean"},
-            "source_stage": {"type": "string"},
-            "recon_only": {"type": "boolean"}
+            "recorded": {
+              "type": "boolean"
+            },
+            "source_stage": {
+              "type": "string"
+            },
+            "recon_only": {
+              "type": "boolean"
+            }
           }
         }
       }
     },
     "findings": {
       "type": "object",
-      "required": ["total", "by_severity", "by_status", "issue_recommended", "chain_membership_count"],
+      "required": [
+        "total",
+        "by_severity",
+        "by_status",
+        "issue_recommended",
+        "chain_membership_count"
+      ],
       "properties": {
-        "total": {"type": "integer", "minimum": 0},
-        "by_severity": {"type": "object"},
-        "by_status": {"type": "object"},
-        "issue_recommended": {"type": "integer", "minimum": 0},
-        "chain_membership_count": {"type": "integer", "minimum": 0}
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_severity": {
+          "type": "object"
+        },
+        "by_status": {
+          "type": "object"
+        },
+        "issue_recommended": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "chain_membership_count": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "adversarial_validation": {
       "type": "object",
-      "required": ["artifact_present", "total", "by_decision", "downgrade_or_invalidate_count", "downgrade_or_invalidate_rate", "blocking_decision_count"],
+      "required": [
+        "artifact_present",
+        "total",
+        "by_decision",
+        "downgrade_or_invalidate_count",
+        "downgrade_or_invalidate_rate",
+        "blocking_decision_count"
+      ],
       "properties": {
-        "artifact_present": {"type": "boolean"},
-        "total": {"type": "integer", "minimum": 0},
-        "by_decision": {"type": "object"},
-        "downgrade_or_invalidate_count": {"type": "integer", "minimum": 0},
-        "downgrade_or_invalidate_rate": {"type": "number", "minimum": 0},
-        "blocking_decision_count": {"type": "integer", "minimum": 0}
+        "artifact_present": {
+          "type": "boolean"
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_decision": {
+          "type": "object"
+        },
+        "downgrade_or_invalidate_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "downgrade_or_invalidate_rate": {
+          "type": "number",
+          "minimum": 0
+        },
+        "blocking_decision_count": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "chains": {
       "type": "object",
-      "required": ["artifact_present", "total", "by_status", "by_severity"],
+      "required": [
+        "artifact_present",
+        "total",
+        "by_status",
+        "by_severity"
+      ],
       "properties": {
-        "artifact_present": {"type": "boolean"},
-        "total": {"type": "integer", "minimum": 0},
-        "by_status": {"type": "object"},
-        "by_severity": {"type": "object"}
+        "artifact_present": {
+          "type": "boolean"
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_status": {
+          "type": "object"
+        },
+        "by_severity": {
+          "type": "object"
+        }
       }
     },
     "proofs": {
       "type": "object",
-      "required": ["artifact_present", "total", "by_type", "by_status"],
+      "required": [
+        "artifact_present",
+        "total",
+        "by_type",
+        "by_status"
+      ],
       "properties": {
-        "artifact_present": {"type": "boolean"},
-        "total": {"type": "integer", "minimum": 0},
-        "by_type": {"type": "object"},
-        "by_status": {"type": "object"}
+        "artifact_present": {
+          "type": "boolean"
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_type": {
+          "type": "object"
+        },
+        "by_status": {
+          "type": "object"
+        }
       }
     },
     "gapfill": {
@@ -190,114 +440,312 @@
         "targets_by_status"
       ],
       "properties": {
-        "coverage_artifact_present": {"type": "boolean"},
-        "gapfill_artifact_present": {"type": "boolean"},
-        "source_targets_recommended": {"type": "integer", "minimum": 0},
+        "coverage_artifact_present": {
+          "type": "boolean"
+        },
+        "gapfill_artifact_present": {
+          "type": "boolean"
+        },
+        "source_targets_recommended": {
+          "type": "integer",
+          "minimum": 0
+        },
         "current_run": {
           "type": "object",
-          "required": ["candidate_count", "generated_target_count", "new_target_count", "reused_target_count"],
+          "required": [
+            "candidate_count",
+            "generated_target_count",
+            "new_target_count",
+            "reused_target_count"
+          ],
           "properties": {
-            "candidate_count": {"type": "integer", "minimum": 0},
-            "generated_target_count": {"type": "integer", "minimum": 0},
-            "new_target_count": {"type": "integer", "minimum": 0},
-            "reused_target_count": {"type": "integer", "minimum": 0}
+            "candidate_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "generated_target_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "new_target_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "reused_target_count": {
+              "type": "integer",
+              "minimum": 0
+            }
           }
         },
         "cumulative": {
           "type": "object",
-          "required": ["generated_target_count", "reviewed_target_count", "targets_by_status"],
+          "required": [
+            "generated_target_count",
+            "reviewed_target_count",
+            "targets_by_status"
+          ],
           "properties": {
-            "generated_target_count": {"type": "integer", "minimum": 0},
-            "reviewed_target_count": {"type": "integer", "minimum": 0},
-            "targets_by_status": {"type": "object"}
+            "generated_target_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "reviewed_target_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "targets_by_status": {
+              "type": "object"
+            }
           }
         },
-        "targets_generated": {"type": "integer", "minimum": 0},
-        "targets_reviewed": {"type": "integer", "minimum": 0},
-        "targets_by_status": {"type": "object"}
+        "targets_generated": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targets_reviewed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targets_by_status": {
+          "type": "object"
+        }
       }
     },
     "traces": {
       "type": "object",
-      "required": ["artifact_present", "total", "by_reachable", "by_attacker_control", "by_status"],
+      "required": [
+        "artifact_present",
+        "total",
+        "by_reachable",
+        "by_attacker_control",
+        "by_status"
+      ],
       "properties": {
-        "artifact_present": {"type": "boolean"},
-        "total": {"type": "integer", "minimum": 0},
-        "by_reachable": {"type": "object"},
-        "by_attacker_control": {"type": "object"},
-        "by_status": {"type": "object"}
+        "artifact_present": {
+          "type": "boolean"
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_reachable": {
+          "type": "object"
+        },
+        "by_attacker_control": {
+          "type": "object"
+        },
+        "by_status": {
+          "type": "object"
+        }
       }
     },
     "issue_publication_plan": {
       "type": "object",
-      "required": ["artifact_present", "selected_findings", "warning_count"],
+      "required": [
+        "artifact_present",
+        "selected_findings",
+        "warning_count"
+      ],
       "properties": {
-        "artifact_present": {"type": "boolean"},
-        "selected_findings": {"type": "integer", "minimum": 0},
-        "warning_count": {"type": "integer", "minimum": 0}
+        "artifact_present": {
+          "type": "boolean"
+        },
+        "selected_findings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warning_count": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "issue_ledger": {
       "type": "object",
-      "required": ["artifact_present", "tracked_findings", "published_findings", "by_publication_status", "drift_warning_count"],
+      "required": [
+        "artifact_present",
+        "tracked_findings",
+        "published_findings",
+        "by_publication_status",
+        "drift_warning_count"
+      ],
       "properties": {
-        "artifact_present": {"type": "boolean"},
-        "tracked_findings": {"type": "integer", "minimum": 0},
-        "published_findings": {"type": "integer", "minimum": 0},
-        "by_publication_status": {"type": "object"},
-        "drift_warning_count": {"type": "integer", "minimum": 0}
+        "artifact_present": {
+          "type": "boolean"
+        },
+        "tracked_findings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "published_findings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_publication_status": {
+          "type": "object"
+        },
+        "drift_warning_count": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "workflow_profile": {
       "type": "object",
-      "required": ["artifact_present", "profile", "stage_count", "by_status", "skipped_by_scope_count", "scoped_skip_stages", "failed_count", "failed_stages"],
+      "required": [
+        "artifact_present",
+        "profile",
+        "stage_count",
+        "by_status",
+        "skipped_by_scope_count",
+        "scoped_skip_stages",
+        "failed_count",
+        "failed_stages"
+      ],
       "properties": {
-        "artifact_present": {"type": "boolean"},
-        "profile": {"type": "string"},
-        "stage_count": {"type": "integer", "minimum": 0},
-        "by_status": {"type": "object"},
-        "skipped_by_scope_count": {"type": "integer", "minimum": 0},
-        "scoped_skip_stages": {"type": "array", "items": {"type": "string"}},
-        "failed_count": {"type": "integer", "minimum": 0},
-        "failed_stages": {"type": "array", "items": {"type": "string"}}
+        "artifact_present": {
+          "type": "boolean"
+        },
+        "profile": {
+          "type": "string"
+        },
+        "stage_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_status": {
+          "type": "object"
+        },
+        "skipped_by_scope_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scoped_skip_stages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "failed_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_stages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "duplicate_decisions": {
       "type": "object",
-      "required": ["artifact_present", "total", "by_decision", "exact_match_count", "candidate_issue_count"],
+      "required": [
+        "artifact_present",
+        "total",
+        "by_decision",
+        "exact_match_count",
+        "candidate_issue_count"
+      ],
       "properties": {
-        "artifact_present": {"type": "boolean"},
-        "total": {"type": "integer", "minimum": 0},
-        "by_decision": {"type": "object"},
-        "exact_match_count": {"type": "integer", "minimum": 0},
-        "candidate_issue_count": {"type": "integer", "minimum": 0}
+        "artifact_present": {
+          "type": "boolean"
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_decision": {
+          "type": "object"
+        },
+        "exact_match_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidate_issue_count": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
-    "workflow_execution": {"$ref": "#/$defs/workflowExecutionSummary"},
+    "workflow_execution": {
+      "$ref": "#/$defs/workflowExecutionSummary"
+    },
     "scanner_runs": {
       "type": "object",
-      "required": ["artifact_present", "run_count", "by_status", "by_adapter", "total_duration_ms", "maximum_duration_ms", "result_count", "normalized_leads_count", "redaction_count"],
+      "required": [
+        "artifact_present",
+        "run_count",
+        "by_status",
+        "by_adapter",
+        "total_duration_ms",
+        "maximum_duration_ms",
+        "result_count",
+        "normalized_leads_count",
+        "redaction_count"
+      ],
       "properties": {
-        "artifact_present": {"type": "boolean"},
-        "run_count": {"type": "integer", "minimum": 0},
-        "by_status": {"type": "object"},
-        "by_adapter": {"type": "object"},
-        "total_duration_ms": {"type": "integer", "minimum": 0},
-        "maximum_duration_ms": {"type": "integer", "minimum": 0},
-        "result_count": {"type": "integer", "minimum": 0},
-        "normalized_leads_count": {"type": "integer", "minimum": 0},
-        "redaction_count": {"type": "integer", "minimum": 0}
+        "artifact_present": {
+          "type": "boolean"
+        },
+        "run_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_status": {
+          "type": "object"
+        },
+        "by_adapter": {
+          "type": "object"
+        },
+        "total_duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maximum_duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "result_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "normalized_leads_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "redaction_count": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "scanner_readiness": {
       "type": "object",
-      "required": ["artifact_present", "report_count", "by_state", "by_reason", "by_adapter"],
+      "required": [
+        "artifact_present",
+        "report_count",
+        "by_state",
+        "by_reason",
+        "by_adapter"
+      ],
       "properties": {
-        "artifact_present": {"type": "boolean"},
-        "report_count": {"type": "integer", "minimum": 0},
-        "by_state": {"type": "object"},
-        "by_reason": {"type": "object"},
-        "by_adapter": {"type": "object"}
+        "artifact_present": {
+          "type": "boolean"
+        },
+        "report_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_state": {
+          "type": "object"
+        },
+        "by_reason": {
+          "type": "object"
+        },
+        "by_adapter": {
+          "type": "object"
+        }
       }
     },
     "observability": {
@@ -319,121 +767,721 @@
         "taxonomy_normalizations_by_target"
       ],
       "properties": {
-        "command_events_present": {"type": "boolean"},
-        "total_events": {"type": "integer", "minimum": 0},
-        "by_command": {"type": "object"},
-        "by_phase": {"type": "object"},
-        "by_exit_code": {"type": "object"},
-        "by_status": {"type": "object"},
+        "command_events_present": {
+          "type": "boolean"
+        },
+        "total_events": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_command": {
+          "type": "object"
+        },
+        "by_phase": {
+          "type": "object"
+        },
+        "by_exit_code": {
+          "type": "object"
+        },
+        "by_status": {
+          "type": "object"
+        },
         "execution_durations": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["target_id", "command", "phase", "duration_ms", "exit_code"],
+            "required": [
+              "target_id",
+              "command",
+              "phase",
+              "duration_ms",
+              "exit_code"
+            ],
             "properties": {
-              "target_id": {"type": "string"},
-              "subject_id": {"type": "string"},
-              "command": {"type": "string"},
-              "phase": {"type": "string"},
-              "duration_ms": {"type": "integer", "minimum": 0},
-              "exit_code": {"type": "integer"},
-              "status": {"type": "string"}
+              "target_id": {
+                "type": "string"
+              },
+              "subject_id": {
+                "type": "string"
+              },
+              "command": {
+                "type": "string"
+              },
+              "phase": {
+                "type": "string"
+              },
+              "duration_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "exit_code": {
+                "type": "integer"
+              },
+              "status": {
+                "type": "string"
+              }
             }
           }
         },
-        "duration_summary": {"type": "object"},
-        "slow_subjects": {"type": "array"},
-        "failure_count": {"type": "integer", "minimum": 0},
-        "failures_by_target": {"type": "object"},
-        "failures_by_subject": {"type": "object"},
-        "reruns_by_target": {"type": "object"},
-        "reruns_by_subject": {"type": "object"},
-        "events_by_target": {"type": "object"},
-        "events_by_subject": {"type": "object"},
-        "retry_count": {"type": "integer", "minimum": 0},
-        "retries_by_subject": {"type": "object"},
-        "configuration": {"type": "object"},
-        "artifact_production": {"type": "object"},
-        "stage_groups": {"type": "object"},
-        "producer_coverage": {"type": "object"},
-        "validation_retry_count": {"type": "integer", "minimum": 0},
-        "validation_retries_by_target": {"type": "object"},
-        "taxonomy_normalizations_present": {"type": "boolean"},
-        "taxonomy_normalization_count": {"type": "integer", "minimum": 0},
-        "taxonomy_normalizations_by_target": {"type": "object"}
+        "duration_summary": {
+          "type": "object"
+        },
+        "slow_subjects": {
+          "type": "array"
+        },
+        "failure_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failures_by_target": {
+          "type": "object"
+        },
+        "failures_by_subject": {
+          "type": "object"
+        },
+        "reruns_by_target": {
+          "type": "object"
+        },
+        "reruns_by_subject": {
+          "type": "object"
+        },
+        "events_by_target": {
+          "type": "object"
+        },
+        "events_by_subject": {
+          "type": "object"
+        },
+        "retry_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "retries_by_subject": {
+          "type": "object"
+        },
+        "configuration": {
+          "type": "object"
+        },
+        "artifact_production": {
+          "type": "object"
+        },
+        "stage_groups": {
+          "type": "object"
+        },
+        "producer_coverage": {
+          "type": "object"
+        },
+        "validation_retry_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "validation_retries_by_target": {
+          "type": "object"
+        },
+        "taxonomy_normalizations_present": {
+          "type": "boolean"
+        },
+        "taxonomy_normalization_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "taxonomy_normalizations_by_target": {
+          "type": "object"
+        }
       }
     },
     "artifacts": {
       "type": "object",
-      "required": ["manifest_present", "manifest_artifact_total", "manifest_by_kind", "reports_file_count", "reports_dir_count", "manifest_by_retention", "latest_status_artifact_count", "archive_artifact_count", "manifest_hygiene_warnings"],
+      "required": [
+        "manifest_present",
+        "manifest_artifact_total",
+        "manifest_by_kind",
+        "reports_file_count",
+        "reports_dir_count",
+        "manifest_by_retention",
+        "latest_status_artifact_count",
+        "archive_artifact_count",
+        "manifest_hygiene_warnings"
+      ],
       "properties": {
-        "manifest_present": {"type": "boolean"},
-        "manifest_artifact_total": {"type": "integer", "minimum": 0},
-        "manifest_by_kind": {"type": "object"},
-        "manifest_by_retention": {"type": "object"},
-        "latest_status_artifact_count": {"type": "integer", "minimum": 0},
-        "archive_artifact_count": {"type": "integer", "minimum": 0},
-        "manifest_hygiene_warnings": {"type": "integer", "minimum": 0},
-        "reports_file_count": {"type": "integer", "minimum": 0},
-        "reports_dir_count": {"type": "integer", "minimum": 0}
+        "manifest_present": {
+          "type": "boolean"
+        },
+        "manifest_artifact_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "manifest_by_kind": {
+          "type": "object"
+        },
+        "manifest_by_retention": {
+          "type": "object"
+        },
+        "latest_status_artifact_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "archive_artifact_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "manifest_hygiene_warnings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reports_file_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reports_dir_count": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "run_duration": {
       "type": "object",
-      "required": ["available", "seconds", "source"],
+      "required": [
+        "available",
+        "seconds",
+        "source"
+      ],
       "properties": {
-        "available": {"type": "boolean"},
-        "seconds": {"type": ["number", "null"], "minimum": 0},
-        "source": {"type": "string"}
+        "available": {
+          "type": "boolean"
+        },
+        "seconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "source": {
+          "type": "string"
+        }
+      }
+    },
+    "target_queue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "available",
+        "generated",
+        "active",
+        "retained_outside_budget",
+        "merged",
+        "deferred_by_budget",
+        "high_risk_deferred",
+        "by_source"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "generated": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4096
+        },
+        "active": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4096
+        },
+        "merged": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4096
+        },
+        "deferred_by_budget": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4096
+        },
+        "high_risk_deferred": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4096
+        },
+        "by_source": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "model_generated": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "generated",
+                "active",
+                "retained",
+                "merged",
+                "deferred"
+              ],
+              "properties": {
+                "generated": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "active": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "merged": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "deferred": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "retained": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                }
+              }
+            },
+            "agent_surface": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "generated",
+                "active",
+                "retained",
+                "merged",
+                "deferred"
+              ],
+              "properties": {
+                "generated": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "active": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "merged": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "deferred": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "retained": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                }
+              }
+            },
+            "provenance": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "generated",
+                "active",
+                "retained",
+                "merged",
+                "deferred"
+              ],
+              "properties": {
+                "generated": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "active": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "merged": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "deferred": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "retained": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                }
+              }
+            },
+            "scorecard": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "generated",
+                "active",
+                "retained",
+                "merged",
+                "deferred"
+              ],
+              "properties": {
+                "generated": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "active": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "merged": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "deferred": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "retained": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                }
+              }
+            },
+            "dependency": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "generated",
+                "active",
+                "retained",
+                "merged",
+                "deferred"
+              ],
+              "properties": {
+                "generated": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "active": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "merged": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "deferred": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "retained": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                }
+              }
+            },
+            "scanner": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "generated",
+                "active",
+                "retained",
+                "merged",
+                "deferred"
+              ],
+              "properties": {
+                "generated": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "active": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "merged": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "deferred": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "retained": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                }
+              }
+            },
+            "gapfill": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "generated",
+                "active",
+                "retained",
+                "merged",
+                "deferred"
+              ],
+              "properties": {
+                "generated": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "active": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "merged": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "deferred": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "retained": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                }
+              }
+            }
+          }
+        },
+        "retained_outside_budget": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4096
+        }
       }
     }
   },
   "$defs": {
     "workflowExecutionSummary": {
       "type": "object",
-      "required": ["artifact_present", "absence_reason", "status", "profile", "stage_count", "by_status", "total_duration_ms", "maximum_duration_ms", "failed_count", "failed_stages", "skipped_by_scope_count", "scoped_skip_stages", "blocked_dependency_count", "blocked_dependency_stages", "absent_stage_count", "absence_reasons", "resume_available", "resume_stage"],
+      "required": [
+        "artifact_present",
+        "absence_reason",
+        "status",
+        "profile",
+        "stage_count",
+        "by_status",
+        "total_duration_ms",
+        "maximum_duration_ms",
+        "failed_count",
+        "failed_stages",
+        "skipped_by_scope_count",
+        "scoped_skip_stages",
+        "blocked_dependency_count",
+        "blocked_dependency_stages",
+        "absent_stage_count",
+        "absence_reasons",
+        "resume_available",
+        "resume_stage"
+      ],
       "properties": {
-        "artifact_present": {"type": "boolean"},
-        "absence_reason": {"type": ["string", "null"]},
-        "status": {"type": "string"},
-        "profile": {"type": "string"},
-        "stage_count": {"type": "integer", "minimum": 0},
-        "by_status": {"type": "object"},
-        "total_duration_ms": {"type": "integer", "minimum": 0},
-        "maximum_duration_ms": {"type": "integer", "minimum": 0},
-        "failed_count": {"type": "integer", "minimum": 0},
-        "failed_stages": {"type": "array", "items": {"type": "string"}},
-        "skipped_by_scope_count": {"type": "integer", "minimum": 0},
-        "scoped_skip_stages": {"type": "array", "items": {"type": "string"}},
-        "blocked_dependency_count": {"type": "integer", "minimum": 0},
-        "blocked_dependency_stages": {"type": "array", "items": {"type": "string"}},
-        "absent_stage_count": {"type": "integer", "minimum": 0},
-        "absence_reasons": {"type": "object"},
-        "resume_available": {"type": "boolean"},
-        "resume_stage": {"type": ["string", "null"]},
-        "provider_failure_count": {"type": "integer", "minimum": 0, "maximum": 1000000},
-        "retryable_provider_failure_count": {"type": "integer", "minimum": 0, "maximum": 1000000},
-        "resume_recommended_count": {"type": "integer", "minimum": 0, "maximum": 1000000},
-        "active_provider_failure_count": {"type": "integer", "minimum": 0, "maximum": 64},
-        "recovered_provider_failure_count": {"type": "integer", "minimum": 0, "maximum": 64},
+        "artifact_present": {
+          "type": "boolean"
+        },
+        "absence_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "profile": {
+          "type": "string"
+        },
+        "stage_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_status": {
+          "type": "object"
+        },
+        "total_duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maximum_duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_stages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "skipped_by_scope_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scoped_skip_stages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "blocked_dependency_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocked_dependency_stages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "absent_stage_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "absence_reasons": {
+          "type": "object"
+        },
+        "resume_available": {
+          "type": "boolean"
+        },
+        "resume_stage": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provider_failure_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "retryable_provider_failure_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "resume_recommended_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "active_provider_failure_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "recovered_provider_failure_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
         "provider_failures_by_class": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "rate_limit": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "usage_limit": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "authentication": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "authorization": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "service_unavailable": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "timeout": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "invalid_request": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "model_unavailable": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "response_contract": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "unknown_provider_error": {"type": "integer", "minimum": 1, "maximum": 1000000}
+            "rate_limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "usage_limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "authentication": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "authorization": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "service_unavailable": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "timeout": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "invalid_request": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "model_unavailable": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "response_contract": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "unknown_provider_error": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            }
           }
         },
-        "provider_failure_stages": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"}},
-        "recovered_provider_failure_stages": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"}}
+        "provider_failure_stages": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
+          }
+        },
+        "recovered_provider_failure_stages": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
+          }
+        }
       }
     }
   }

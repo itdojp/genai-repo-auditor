@@ -393,6 +393,18 @@ Then inspect:
                     transcript.write(chunk)
                 codex_status = codex_proc.wait()
 
+        target_queue_status = "not-run"
+        if codex_status == 0 and (report_dir / "targets.json").is_file():
+            with (run_dir / "target-queue.txt").open("w", encoding="utf-8") as stdout:
+                target_queue_status = str(
+                    run_packaged_command(
+                        lab_root,
+                        "gra-targets",
+                        ["--run", str(run_dir), "--bind-model-output"],
+                        stdout=stdout,
+                    )
+                )
+
         taxonomy_preflight_status = "not-run"
         if (report_dir / "findings.json").is_file() or (report_dir / "targets.json").is_file():
             with (run_dir / "taxonomy-preflight.txt").open("w", encoding="utf-8") as stdout:
@@ -405,6 +417,8 @@ Then inspect:
             validation_status = "missing-findings-json"
 
         final_status = str(codex_status)
+        if codex_status == 0 and target_queue_status not in {"0", "not-run"}:
+            final_status = "0" if args.allow_invalid_report else str(numeric_or_one(target_queue_status))
         if codex_status == 0 and taxonomy_preflight_status not in {"0", "not-run"}:
             final_status = "0" if args.allow_invalid_report else str(numeric_or_one(taxonomy_preflight_status))
         if codex_status == 0 and validation_status != "0":
@@ -423,6 +437,7 @@ Then inspect:
                     f"effort={args.effort}",
                     f"codex_status={codex_status}",
                     f"validation_status={validation_status}",
+                    f"target_queue_status={target_queue_status}",
                     f"taxonomy_preflight_status={taxonomy_preflight_status}",
                     f"allow_invalid_report={int(bool(args.allow_invalid_report))}",
                     f"final_status={final_status}",
@@ -451,10 +466,13 @@ Then inspect:
 
         print(f"\nRun complete. Codex status: {codex_status}")
         print(f"Reports: {report_dir}")
+        print(f"Target queue: {target_queue_status}")
         print(f"Taxonomy preflight: {taxonomy_preflight_status}")
         print(f"Validation: {validation_status}")
         if taxonomy_preflight_status not in {"0", "not-run"}:
             print(f"Taxonomy preflight failed. See: {run_dir / 'taxonomy-preflight.txt'}", file=sys.stderr)
+        if target_queue_status not in {"0", "not-run"}:
+            print(f"Target queue binding failed. See: {run_dir / 'target-queue.txt'}", file=sys.stderr)
         if not (report_dir / "findings.json").is_file():
             print("Warning: findings.json was not produced. Inspect codex output and rerun if needed.", file=sys.stderr)
             print(f"Missing report path: {report_dir / 'findings.json'}", file=sys.stderr)
@@ -470,6 +488,11 @@ Then inspect:
                 print("Continuing despite taxonomy preflight errors because --allow-invalid-report was set.", file=sys.stderr)
             else:
                 print("Failing audit because Codex succeeded but taxonomy preflight did not pass.", file=sys.stderr)
+        elif codex_status == 0 and target_queue_status not in {"0", "not-run"}:
+            if args.allow_invalid_report:
+                print("Continuing despite target queue binding errors because --allow-invalid-report was set.", file=sys.stderr)
+            else:
+                print("Failing audit because Codex succeeded but target queue binding did not pass.", file=sys.stderr)
         print(f"Final status: {final_status}")
         return int(final_status)
     finally:

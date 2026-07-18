@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from gralib import load_context, load_json, load_targets, utc_now, write_json, write_targets
+from gralib import load_context, load_json, load_targets, target_ids_with_lineage, utc_now, write_json, write_targets
 from scanner_normalize import redact_text
 
 MAX_DETAILS = 8
@@ -540,9 +540,18 @@ def append_scorecard_posture_targets(run_dir: Path) -> list[dict[str, Any]]:
     data = load_json(reports / "supply-chain-posture.json", {}) or {}
     checks = [check for check in data.get("checks") or [] if isinstance(check, dict) and check.get("target_recommended")]
     targets = load_targets(run_dir)
-    existing_scopes = {str(target.get("scope")) for target in targets if isinstance(target, dict)}
-    existing_notes = {str(target.get("notes")) for target in targets if isinstance(target, dict)}
-    existing_ids = {str(target.get("id")) for target in targets if isinstance(target, dict)}
+    all_targets = load_targets(run_dir, include_deferred=True)
+    existing_scopes = {
+        str(target.get("scope"))
+        for target in all_targets
+        if isinstance(target, dict) and target.get("queue_source") == "scorecard"
+    }
+    existing_notes = {
+        str(target.get("notes"))
+        for target in all_targets
+        if isinstance(target, dict) and target.get("queue_source") == "scorecard"
+    }
+    existing_ids = target_ids_with_lineage(all_targets)
     next_index = 1
     added: list[dict[str, Any]] = []
     for check in checks:
@@ -555,6 +564,7 @@ def append_scorecard_posture_targets(run_dir: Path) -> list[dict[str, Any]]:
             next_index += 1
         target = {
             "id": _target_id(next_index),
+            "queue_source": "scorecard",
             "category": str(meta.get("category") or check.get("category") or "Supply Chain Posture"),
             "title": f"Review OpenSSF Scorecard {name} posture",
             "risk": str(check.get("risk") or "medium"),

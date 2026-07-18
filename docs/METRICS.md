@@ -32,6 +32,7 @@ Metrics are computed from local report artifacts only:
 - chain counts by status and severity
 - proof counts by type and status
 - gapfill current-run candidates/generated/reused counts and cumulative generated/reviewed queue counts
+- target-queue generated, active, retained-outside-budget, merged, deferred-by-budget, high-risk-deferred, and by-source reduction counts
 - trace reachability counts
 - issue publication plan selected findings and warning counts
 - issue ledger tracked, published, status, and drift-warning counts
@@ -59,11 +60,43 @@ Unexpected dimension values are bucketed as `Unknown`, `unknown`, or
 `Not assessed` rather than copied verbatim. This keeps malformed local artifacts
 from leaking raw report text or secret-like values through metric labels.
 
+
+## Target queue budget and deduplication metrics
+
+When `reports/targets.json` contains a deterministic `queue_summary`,
+`gra-metrics` validates it against the closed queue contract and then reports:
+
+- `target_queue.generated`: total source-lineage seed records considered
+- `target_queue.active`: recorded selected review-wave size; target status
+  updates do not rewrite this count until an explicit rebalance
+- `target_queue.retained_outside_budget`: queued gapfill targets plus non-queued
+  target history retained outside seed budgets
+- `target_queue.merged`: cross-source overlaps collapsed into canonical targets
+- `target_queue.deferred_by_budget`: currently deferred queued seeds
+- `target_queue.high_risk_deferred`: deferred targets whose `risk` is
+  `critical` or `high`
+- `target_queue.by_source`: generated/active/retained/merged/deferred counts
+  for every closed source (`model_generated`, `agent_surface`, `provenance`,
+  `scorecard`, `dependency`, `scanner`, and `gapfill`)
+
+If the queue summary is absent, the artifact remains readable for backward
+compatibility. In that legacy mode `target_queue.available` is `false`,
+`target_queue.active` falls back to the current `targets[]` length, and the
+budget/dedup counters remain zero until `gra-targets --generate` or
+`gra-targets --rebalance` writes the deterministic queue summary.
+
+This lets operators distinguish the selected review wave from historical or
+post-selection retained work and verify that high-risk deferred targets remain
+visible rather than silently dropped. Use target status counts, rather than
+`target_queue.active` alone, to measure unfinished work inside the selected
+wave.
+
 ## Public-safe compact summary
 
 `metrics.json` includes a top-level `summary` object for dogfood reports,
-release notes, and public-safe case-study drafts. It contains only count fields
-and simple status flags:
+release notes, and public-safe case-study drafts. It always sets
+`summary.public_safe` to `true` and contains only count fields and simple
+status flags:
 
 - `findings_total`, `findings_by_severity`, `findings_by_status`, and
   `issue_recommended_findings`
@@ -90,6 +123,11 @@ and simple status flags:
   `absence_reason: workflow_execution_not_recorded`
 - `no_findings.recorded`, `source_stage`, and `recon_only` for explicit
   no-confirmed-finding records
+
+The compact public-safe summary intentionally excludes target-queue
+`decisions[]`, `queue_fingerprint`, `source_lineage`, deferred target titles,
+and other operator-only queue detail. Use the full local metrics artifact,
+evidence graph, or dashboard when queue-budget triage detail is required.
 
 These fields are designed for external reuse only after human review confirms
 that the repository name, timing, and aggregate counts are approved for the
@@ -194,7 +232,8 @@ artifact from the cumulative target queue:
 
 The legacy `gapfill.targets_generated`, `gapfill.targets_reviewed`, and
 `gapfill.targets_by_status` fields remain as cumulative aliases for older
-consumers.
+consumers. Because gapfill targets are retained outside seed budgets, these
+cumulative counts remain visible even when the active seed wave is capped.
 
 ## Artifact retention metrics
 

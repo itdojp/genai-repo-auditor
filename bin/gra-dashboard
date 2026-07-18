@@ -11,7 +11,7 @@ from pathlib import Path
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
-from gralib import load_context, load_json, utc_now
+from gralib import load_context, load_json, load_targets_artifact, utc_now
 from run_events import (
     EventWriteError,
     append_command_event,
@@ -20,6 +20,7 @@ from run_events import (
     reports_dir,
     start_command_event,
 )
+from target_queue import validate_target_queue_artifact
 
 SEVERITIES = ['Critical', 'High', 'Medium', 'Low', 'Informational']
 STATUSES = ['Confirmed', 'Probable', 'Potential', 'Needs human review', 'Informational', 'Invalid']
@@ -76,8 +77,18 @@ def main() -> int:
     _failure_event = (run_dir, started_at, started_perf, input_artifacts, output_artifacts)
     findings_data = load_json(reports / 'findings.json', {}) or {}
     findings = [f for f in findings_data.get('findings', []) if isinstance(f, dict)]
-    targets_data = load_json(reports / 'targets.json', {}) or {}
+    try:
+        targets_data = load_targets_artifact(run_dir, {}) or {}
+    except (OSError, ValueError, UnicodeError):
+        print('Invalid targets.json: expected bounded JSON in a regular non-symlink file', file=sys.stderr)
+        return 2
+    queue_errors = validate_target_queue_artifact(targets_data)
+    if queue_errors:
+        print(f'Invalid targets.json queue: {queue_errors[0]}', file=sys.stderr)
+        return 2
     targets = [t for t in targets_data.get('targets', []) if isinstance(t, dict)]
+    deferred_targets = [t for t in targets_data.get('deferred_targets', []) if isinstance(t, dict)]
+    queue_summary = targets_data.get('queue_summary') if isinstance(targets_data.get('queue_summary'), dict) else {}
     scanner_index = load_json(reports / 'scanner-results' / 'scanner-index.json', {}) or {}
     scanner_results = scanner_index.get('results') or []
     supply_chain_posture = load_json(reports / 'supply-chain-posture.json', {}) or {}
@@ -130,6 +141,71 @@ def main() -> int:
     target_rows = []
     for t in sorted(targets, key=lambda x: (-int(x.get('priority') or 0), str(x.get('id')))):
         target_rows.append(f"<tr><td>{h(t.get('id'))}</td><td>{h(t.get('risk'))}</td><td>{h(t.get('priority'))}</td><td>{h(t.get('status'))}</td><td>{h(t.get('category'))}</td><td>{h(t.get('title'))}</td></tr>")
+
+    queue_section = "<h2>Target seed budget and deduplication</h2><p>No deterministic queue summary is recorded.</p>"
+    if queue_summary:
+        decisions = queue_summary.get('decisions') if isinstance(queue_summary.get('decisions'), list) else []
+        deferred_reasons = {
+            str(item.get('canonical_target_id') or ''): str(item.get('reason') or '')
+            for item in decisions if isinstance(item, dict) and item.get('action') == 'deferred'
+        }
+        evidence_by_contributor: dict[str, str] = {}
+        for queue_target in [*targets, *deferred_targets]:
+            for lineage in queue_target.get('source_lineage') or []:
+                if isinstance(lineage, dict):
+                    refs = lineage.get('evidence_refs') if isinstance(lineage.get('evidence_refs'), list) else []
+                    evidence_by_contributor[str(lineage.get('target_id') or '')] = ', '.join(str(ref) for ref in refs)
+        deferred_rows = [
+            "<tr>"
+            f"<td>{h(item.get('id'))}</td><td>{h(item.get('risk'))}</td><td>{h(item.get('priority'))}</td>"
+            f"<td>{h(deferred_reasons.get(str(item.get('id') or ''), 'budget_exhausted'))}</td>"
+            "</tr>"
+            for item in sorted(deferred_targets, key=lambda value: (-int(value.get('priority') or 0), str(value.get('id') or '')))
+        ]
+        queue_cards = [
+            ('Generated seeds', queue_summary.get('generated', 0)),
+            ('Active review wave', queue_summary.get('active', 0)),
+            ('Retained outside seed budgets', queue_summary.get('retained_outside_budget', 0)),
+            ('Merged overlaps', queue_summary.get('merged', 0)),
+            ('Deferred by budget', queue_summary.get('deferred_by_budget', 0)),
+            ('High-risk deferred', queue_summary.get('high_risk_deferred', 0)),
+        ]
+        queue_cards_html = ''.join(
+            f"<div class='card'><strong>{h(label)}</strong><br>{h(value)}</div>"
+            for label, value in queue_cards
+        )
+        source_counts = queue_summary.get('by_source') if isinstance(queue_summary.get('by_source'), dict) else {}
+        source_rows = ''.join(
+            "<tr>"
+            f"<td>{h(source)}</td><td>{h(counts.get('generated', 0))}</td><td>{h(counts.get('active', 0))}</td>"
+            f"<td>{h(counts.get('retained', 0))}</td><td>{h(counts.get('merged', 0))}</td><td>{h(counts.get('deferred', 0))}</td>"
+            "</tr>"
+            for source, counts in sorted(source_counts.items())
+            if isinstance(counts, dict)
+        )
+        merged_rows = ''.join(
+            "<tr>"
+            f"<td>{h(item.get('target_id'))}</td><td>{h(item.get('canonical_target_id'))}</td>"
+            f"<td>{h(item.get('source'))}</td><td>{h(evidence_by_contributor.get(str(item.get('target_id') or ''), ''))}</td>"
+            "</tr>"
+            for item in decisions
+            if isinstance(item, dict) and item.get('action') == 'merged'
+        )
+        queue_section = (
+            "<h2>Target seed budget and deduplication</h2>"
+            "<p>Counts and deterministic decisions only; raw scanner evidence and model prose are excluded. "
+            f"Policy: <code>{h(queue_summary.get('policy'))}</code>.</p>"
+            f"<div class='cards'>{queue_cards_html}</div>"
+            "<h3>Counts by seed source</h3>"
+            "<table><thead><tr><th>Source</th><th>Generated</th><th>Active</th><th>Retained</th><th>Merged</th><th>Deferred</th></tr></thead>"
+            f"<tbody>{source_rows or '<tr><td colspan=\"6\">No source counts.</td></tr>'}</tbody></table>"
+            "<h3>Merged source lineage</h3>"
+            "<table><thead><tr><th>Contributor ID</th><th>Canonical ID</th><th>Source</th><th>Evidence artifact</th></tr></thead>"
+            f"<tbody>{merged_rows or '<tr><td colspan=\"4\">No merged targets.</td></tr>'}</tbody></table>"
+            "<h3>Deferred targets</h3>"
+            "<table><thead><tr><th>ID</th><th>Risk</th><th>Priority</th><th>Reason</th></tr></thead>"
+            f"<tbody>{''.join(deferred_rows) or '<tr><td colspan=\"4\">No deferred targets.</td></tr>'}</tbody></table>"
+        )
 
     gapfill_section = (
         "<h2>Gapfill current and cumulative queue</h2>"
@@ -614,6 +690,7 @@ def main() -> int:
 <h2>Finding assessment dimensions</h2>
 {''.join(f"<h3>{h(label)}</h3><div class='cards'>{counts_table(assessment_counts[field], ['Confirmed', 'Probable', 'Potential', 'Invalid', 'Not assessed'])}</div>" for field, label in ASSESSMENT_FIELDS)}
 <h2>Target status</h2><div class='cards'>{''.join(f"<div class='card'><strong>{h(k)}</strong><br>{v}</div>" for k, v in sorted(target_status_counts.items()))}</div>
+{queue_section}
 {gapfill_section}
 {remediation_section}
 {imported_findings_section}

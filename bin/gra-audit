@@ -339,12 +339,14 @@ outputs_by_phase = {
         "codex-events.jsonl",
         "codex-stderr.txt",
         "codex-transcript.txt",
+        "target-queue.txt",
         "taxonomy-preflight.txt",
         "report-validation.txt",
         "run-summary.txt",
         "run-manifest.json",
         "reports/findings.json",
         "reports/FINDINGS.md",
+        "reports/targets.json",
     ],
 }
 append_command_event(
@@ -382,6 +384,7 @@ mode=$MODE
 model=$MODEL
 effort=$EFFORT
 codex_status=$CODEX_STATUS
+target_queue_status=$TARGET_QUEUE_STATUS
 validation_status=$VALIDATION_STATUS
 taxonomy_preflight_status=$TAXONOMY_PREFLIGHT_STATUS
 allow_invalid_report=$ALLOW_INVALID_REPORT
@@ -492,6 +495,14 @@ else
 fi
 set -e
 
+TARGET_QUEUE_STATUS="not-run"
+if [[ "$CODEX_STATUS" -eq 0 && -f "$REPORT_DIR/targets.json" ]]; then
+  set +e
+  "$LAB_ROOT/bin/gra-targets" --run "$RUN_DIR" --bind-model-output > "$RUN_DIR/target-queue.txt" 2>&1
+  TARGET_QUEUE_STATUS=$?
+  set -e
+fi
+
 TAXONOMY_PREFLIGHT_STATUS="not-run"
 if [[ -f "$REPORT_DIR/findings.json" || -f "$REPORT_DIR/targets.json" ]]; then
   set +e
@@ -511,6 +522,15 @@ else
 fi
 
 FINAL_STATUS="$CODEX_STATUS"
+if [[ "$CODEX_STATUS" -eq 0 && "$TARGET_QUEUE_STATUS" != "0" && "$TARGET_QUEUE_STATUS" != "not-run" ]]; then
+  if [[ "$ALLOW_INVALID_REPORT" == "1" ]]; then
+    FINAL_STATUS="0"
+  elif [[ "$TARGET_QUEUE_STATUS" =~ ^[0-9]+$ ]]; then
+    FINAL_STATUS="$TARGET_QUEUE_STATUS"
+  else
+    FINAL_STATUS="1"
+  fi
+fi
 if [[ "$CODEX_STATUS" -eq 0 && "$TAXONOMY_PREFLIGHT_STATUS" != "0" && "$TAXONOMY_PREFLIGHT_STATUS" != "not-run" ]]; then
   if [[ "$ALLOW_INVALID_REPORT" == "1" ]]; then
     FINAL_STATUS="0"
@@ -545,10 +565,14 @@ write_run_manifest "completed" "$CODEX_STATUS" "$VALIDATION_STATUS" "$FINAL_STAT
 
 printf '\nRun complete. Codex status: %s\n' "$CODEX_STATUS"
 printf 'Reports: %s\n' "$REPORT_DIR"
+printf 'Target queue: %s\n' "$TARGET_QUEUE_STATUS"
 printf 'Taxonomy preflight: %s\n' "$TAXONOMY_PREFLIGHT_STATUS"
 printf 'Validation: %s\n' "$VALIDATION_STATUS"
 if [[ "$TAXONOMY_PREFLIGHT_STATUS" != "0" && "$TAXONOMY_PREFLIGHT_STATUS" != "not-run" ]]; then
   printf 'Taxonomy preflight failed. See: %s\n' "$RUN_DIR/taxonomy-preflight.txt" >&2
+fi
+if [[ "$TARGET_QUEUE_STATUS" != "0" && "$TARGET_QUEUE_STATUS" != "not-run" ]]; then
+  printf 'Target queue binding failed. See: %s\n' "$RUN_DIR/target-queue.txt" >&2
 fi
 if [[ ! -f "$REPORT_DIR/findings.json" ]]; then
   printf 'Warning: findings.json was not produced. Inspect codex output and rerun if needed.\n' >&2
@@ -567,6 +591,12 @@ elif [[ "$CODEX_STATUS" -eq 0 && "$TAXONOMY_PREFLIGHT_STATUS" != "0" && "$TAXONO
     printf 'Continuing despite taxonomy preflight errors because --allow-invalid-report was set.\n' >&2
   else
     printf 'Failing audit because Codex succeeded but taxonomy preflight did not pass.\n' >&2
+  fi
+elif [[ "$CODEX_STATUS" -eq 0 && "$TARGET_QUEUE_STATUS" != "0" && "$TARGET_QUEUE_STATUS" != "not-run" ]]; then
+  if [[ "$ALLOW_INVALID_REPORT" == "1" ]]; then
+    printf 'Continuing despite target queue binding errors because --allow-invalid-report was set.\n' >&2
+  else
+    printf 'Failing audit because Codex succeeded but target queue binding did not pass.\n' >&2
   fi
 fi
 printf 'Final status: %s\n' "$FINAL_STATUS"

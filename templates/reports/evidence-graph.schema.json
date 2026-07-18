@@ -2,23 +2,68 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "GenAI Repo Auditor Evidence Graph",
   "type": "object",
-  "required": ["schema_version", "run_id", "repo", "generated_at", "source", "safety", "summary", "nodes", "edges"],
+  "required": [
+    "schema_version",
+    "run_id",
+    "repo",
+    "generated_at",
+    "source",
+    "safety",
+    "summary",
+    "nodes",
+    "edges"
+  ],
   "properties": {
-    "schema_version": {"const": "1"},
-    "run_id": {"type": "string"},
-    "repo": {"type": "string"},
-    "branch": {"type": ["string", "null"]},
-    "commit": {"type": ["string", "null"]},
-    "generated_at": {"type": "string"},
-    "source": {"enum": ["local-report-artifacts"]},
+    "schema_version": {
+      "const": "1"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "repo": {
+      "type": "string"
+    },
+    "branch": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "commit": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "local-report-artifacts"
+      ]
+    },
     "safety": {
       "type": "object",
-      "required": ["local_artifacts_only", "raw_evidence_copied", "secret_values_copied", "bounded_summaries_only"],
+      "required": [
+        "local_artifacts_only",
+        "raw_evidence_copied",
+        "secret_values_copied",
+        "bounded_summaries_only"
+      ],
       "properties": {
-        "local_artifacts_only": {"const": true},
-        "raw_evidence_copied": {"const": false},
-        "secret_values_copied": {"const": false},
-        "bounded_summaries_only": {"const": true}
+        "local_artifacts_only": {
+          "const": true
+        },
+        "raw_evidence_copied": {
+          "const": false
+        },
+        "secret_values_copied": {
+          "const": false
+        },
+        "bounded_summaries_only": {
+          "const": true
+        }
       }
     },
     "summary": {
@@ -34,59 +79,508 @@
         "high_critical_with_challenging_evidence"
       ],
       "properties": {
-        "node_count": {"type": "integer", "minimum": 0},
-        "edge_count": {"type": "integer", "minimum": 0},
-        "node_counts": {"type": "object"},
-        "edge_counts": {"type": "object"},
-        "missing_optional_artifacts": {"type": "array", "items": {"type": "string"}},
+        "node_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "edge_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "node_counts": {
+          "type": "object"
+        },
+        "edge_counts": {
+          "type": "object"
+        },
+        "missing_optional_artifacts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "workflow_profile": {
           "type": "object",
-          "required": ["artifact_present", "profile", "stage_count", "by_status", "skipped_by_scope_count", "scoped_skip_stages", "failed_count", "failed_stages"],
+          "required": [
+            "artifact_present",
+            "profile",
+            "stage_count",
+            "by_status",
+            "skipped_by_scope_count",
+            "scoped_skip_stages",
+            "failed_count",
+            "failed_stages"
+          ],
           "properties": {
-            "artifact_present": {"type": "boolean"},
-            "profile": {"type": "string"},
-            "stage_count": {"type": "integer", "minimum": 0},
-            "by_status": {"type": "object"},
-            "skipped_by_scope_count": {"type": "integer", "minimum": 0},
-            "scoped_skip_stages": {"type": "array", "items": {"type": "string"}},
-            "failed_count": {"type": "integer", "minimum": 0},
-            "failed_stages": {"type": "array", "items": {"type": "string"}}
+            "artifact_present": {
+              "type": "boolean"
+            },
+            "profile": {
+              "type": "string"
+            },
+            "stage_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "by_status": {
+              "type": "object"
+            },
+            "skipped_by_scope_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "scoped_skip_stages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "failed_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "failed_stages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         },
-        "workflow_execution": {"$ref": "#/$defs/workflowExecutionSummary"},
+        "workflow_execution": {
+          "$ref": "#/$defs/workflowExecutionSummary"
+        },
         "scanner_runs": {
           "type": "object",
-          "required": ["artifact_present", "run_count", "by_status", "total_duration_ms", "maximum_duration_ms"],
+          "required": [
+            "artifact_present",
+            "run_count",
+            "by_status",
+            "total_duration_ms",
+            "maximum_duration_ms"
+          ],
           "properties": {
-            "artifact_present": {"type": "boolean"},
-            "run_count": {"type": "integer", "minimum": 0},
-            "by_status": {"type": "object"},
-            "total_duration_ms": {"type": "integer", "minimum": 0},
-            "maximum_duration_ms": {"type": "integer", "minimum": 0}
+            "artifact_present": {
+              "type": "boolean"
+            },
+            "run_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "by_status": {
+              "type": "object"
+            },
+            "total_duration_ms": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "maximum_duration_ms": {
+              "type": "integer",
+              "minimum": 0
+            }
           }
         },
-        "high_critical_issue_recommended_findings": {"type": "integer", "minimum": 0},
-        "high_critical_with_supporting_evidence": {"type": "integer", "minimum": 0},
-        "high_critical_with_challenging_evidence": {"type": "integer", "minimum": 0}
+        "high_critical_issue_recommended_findings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "high_critical_with_supporting_evidence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "high_critical_with_challenging_evidence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "target_queue": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "artifact_present",
+            "generated",
+            "active",
+            "retained_outside_budget",
+            "merged",
+            "deferred_by_budget",
+            "high_risk_deferred",
+            "by_source"
+          ],
+          "properties": {
+            "artifact_present": {
+              "type": "boolean"
+            },
+            "generated": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4096
+            },
+            "active": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4096
+            },
+            "merged": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4096
+            },
+            "deferred_by_budget": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4096
+            },
+            "high_risk_deferred": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4096
+            },
+            "by_source": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "model_generated": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "generated",
+                    "active",
+                    "retained",
+                    "merged",
+                    "deferred"
+                  ],
+                  "properties": {
+                    "generated": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "active": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "merged": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "deferred": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "retained": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    }
+                  }
+                },
+                "agent_surface": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "generated",
+                    "active",
+                    "retained",
+                    "merged",
+                    "deferred"
+                  ],
+                  "properties": {
+                    "generated": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "active": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "merged": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "deferred": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "retained": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    }
+                  }
+                },
+                "provenance": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "generated",
+                    "active",
+                    "retained",
+                    "merged",
+                    "deferred"
+                  ],
+                  "properties": {
+                    "generated": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "active": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "merged": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "deferred": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "retained": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    }
+                  }
+                },
+                "scorecard": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "generated",
+                    "active",
+                    "retained",
+                    "merged",
+                    "deferred"
+                  ],
+                  "properties": {
+                    "generated": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "active": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "merged": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "deferred": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "retained": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    }
+                  }
+                },
+                "dependency": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "generated",
+                    "active",
+                    "retained",
+                    "merged",
+                    "deferred"
+                  ],
+                  "properties": {
+                    "generated": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "active": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "merged": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "deferred": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "retained": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    }
+                  }
+                },
+                "scanner": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "generated",
+                    "active",
+                    "retained",
+                    "merged",
+                    "deferred"
+                  ],
+                  "properties": {
+                    "generated": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "active": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "merged": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "deferred": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "retained": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    }
+                  }
+                },
+                "gapfill": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "generated",
+                    "active",
+                    "retained",
+                    "merged",
+                    "deferred"
+                  ],
+                  "properties": {
+                    "generated": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "active": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "merged": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "deferred": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    },
+                    "retained": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4096
+                    }
+                  }
+                }
+              }
+            },
+            "retained_outside_budget": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4096
+            }
+          }
+        }
       }
     },
     "nodes": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "type", "ref_id", "label", "path", "summary"],
+        "required": [
+          "id",
+          "type",
+          "ref_id",
+          "label",
+          "path",
+          "summary"
+        ],
         "properties": {
-          "id": {"type": "string"},
-          "type": {"enum": ["target", "scanner_run", "scanner_lead", "finding", "chain", "proof", "validation", "trace", "remediation_candidate", "patch_validation", "issue_plan_entry", "metric", "workflow_profile", "workflow_execution", "workflow_stage"]},
-          "ref_id": {"type": "string"},
-          "label": {"type": "string"},
-          "severity": {"type": "string"},
-          "status": {"type": "string"},
-          "path": {"type": "string"},
-          "summary": {"type": "string", "maxLength": 200},
-          "duration_ms": {"type": "integer", "minimum": 0},
-          "result_count": {"type": "integer", "minimum": 0},
-          "normalized_leads_count": {"type": "integer", "minimum": 0}
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "target",
+              "scanner_run",
+              "scanner_lead",
+              "finding",
+              "chain",
+              "proof",
+              "validation",
+              "trace",
+              "remediation_candidate",
+              "patch_validation",
+              "issue_plan_entry",
+              "metric",
+              "workflow_profile",
+              "workflow_execution",
+              "workflow_stage"
+            ]
+          },
+          "ref_id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "result_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "normalized_leads_count": {
+            "type": "integer",
+            "minimum": 0
+          }
         }
       }
     },
@@ -94,13 +588,40 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["source", "target", "type", "reason", "path"],
+        "required": [
+          "source",
+          "target",
+          "type",
+          "reason",
+          "path"
+        ],
         "properties": {
-          "source": {"type": "string"},
-          "target": {"type": "string"},
-          "type": {"enum": ["produced", "supports", "challenges", "invalidates", "depends_on", "member_of", "validated_by", "publication_candidate", "not_applicable"]},
-          "reason": {"type": "string", "maxLength": 200},
-          "path": {"type": "string"}
+          "source": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "produced",
+              "supports",
+              "challenges",
+              "invalidates",
+              "depends_on",
+              "member_of",
+              "validated_by",
+              "publication_candidate",
+              "not_applicable"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "path": {
+            "type": "string"
+          }
         }
       }
     }
@@ -108,49 +629,202 @@
   "$defs": {
     "workflowExecutionSummary": {
       "type": "object",
-      "required": ["artifact_present", "absence_reason", "status", "profile", "stage_count", "by_status", "total_duration_ms", "maximum_duration_ms", "failed_count", "failed_stages", "skipped_by_scope_count", "scoped_skip_stages", "blocked_dependency_count", "blocked_dependency_stages", "absent_stage_count", "absence_reasons", "resume_available", "resume_stage"],
+      "required": [
+        "artifact_present",
+        "absence_reason",
+        "status",
+        "profile",
+        "stage_count",
+        "by_status",
+        "total_duration_ms",
+        "maximum_duration_ms",
+        "failed_count",
+        "failed_stages",
+        "skipped_by_scope_count",
+        "scoped_skip_stages",
+        "blocked_dependency_count",
+        "blocked_dependency_stages",
+        "absent_stage_count",
+        "absence_reasons",
+        "resume_available",
+        "resume_stage"
+      ],
       "properties": {
-        "artifact_present": {"type": "boolean"},
-        "absence_reason": {"type": ["string", "null"]},
-        "status": {"type": "string"},
-        "profile": {"type": "string"},
-        "stage_count": {"type": "integer", "minimum": 0},
-        "by_status": {"type": "object"},
-        "total_duration_ms": {"type": "integer", "minimum": 0},
-        "maximum_duration_ms": {"type": "integer", "minimum": 0},
-        "failed_count": {"type": "integer", "minimum": 0},
-        "failed_stages": {"type": "array", "items": {"type": "string"}},
-        "skipped_by_scope_count": {"type": "integer", "minimum": 0},
-        "scoped_skip_stages": {"type": "array", "items": {"type": "string"}},
-        "blocked_dependency_count": {"type": "integer", "minimum": 0},
-        "blocked_dependency_stages": {"type": "array", "items": {"type": "string"}},
-        "absent_stage_count": {"type": "integer", "minimum": 0},
-        "absence_reasons": {"type": "object"},
-        "resume_available": {"type": "boolean"},
-        "resume_stage": {"type": ["string", "null"]},
-        "provider_failure_count": {"type": "integer", "minimum": 0, "maximum": 1000000},
-        "retryable_provider_failure_count": {"type": "integer", "minimum": 0, "maximum": 1000000},
-        "resume_recommended_count": {"type": "integer", "minimum": 0, "maximum": 1000000},
-        "active_provider_failure_count": {"type": "integer", "minimum": 0, "maximum": 64},
-        "recovered_provider_failure_count": {"type": "integer", "minimum": 0, "maximum": 64},
+        "artifact_present": {
+          "type": "boolean"
+        },
+        "absence_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "profile": {
+          "type": "string"
+        },
+        "stage_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_status": {
+          "type": "object"
+        },
+        "total_duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maximum_duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_stages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "skipped_by_scope_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scoped_skip_stages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "blocked_dependency_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocked_dependency_stages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "absent_stage_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "absence_reasons": {
+          "type": "object"
+        },
+        "resume_available": {
+          "type": "boolean"
+        },
+        "resume_stage": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provider_failure_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "retryable_provider_failure_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "resume_recommended_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "active_provider_failure_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "recovered_provider_failure_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
         "provider_failures_by_class": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "rate_limit": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "usage_limit": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "authentication": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "authorization": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "service_unavailable": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "timeout": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "invalid_request": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "model_unavailable": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "response_contract": {"type": "integer", "minimum": 1, "maximum": 1000000},
-            "unknown_provider_error": {"type": "integer", "minimum": 1, "maximum": 1000000}
+            "rate_limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "usage_limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "authentication": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "authorization": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "service_unavailable": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "timeout": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "invalid_request": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "model_unavailable": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "response_contract": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "unknown_provider_error": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            }
           }
         },
-        "provider_failure_stages": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"}},
-        "recovered_provider_failure_stages": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"}}
+        "provider_failure_stages": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
+          }
+        },
+        "recovered_provider_failure_stages": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
+          }
+        }
       }
     }
   }

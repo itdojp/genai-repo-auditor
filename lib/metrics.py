@@ -7,7 +7,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from gralib import load_context, utc_now, write_json
+from gralib import load_context, load_targets_artifact, utc_now, write_json
 from run_events import (
     COMMAND_EVENT_COMMANDS,
     COMMAND_EVENT_PHASES,
@@ -20,6 +20,7 @@ from scanner_reporting import ScannerReportError, validate_scanner_runs_for_run
 from scanner_readiness import ScannerReadinessError, read_scanner_readiness_report
 from workflow_profile import summarize_workflow_profile
 from workflow_execution import summarize_workflow_execution
+from target_queue import TARGET_SOURCES, validate_target_queue_artifact
 
 COUNT_STATUSES = [
     "Confirmed",
@@ -65,6 +66,31 @@ REMEDIATION_EVENT_COMMANDS = {
 
 class MetricsError(RuntimeError):
     pass
+
+
+def target_queue_metrics(targets_data: Any) -> dict[str, Any]:
+    if not isinstance(targets_data, dict):
+        return {"available": False, "generated": 0, "active": 0, "retained_outside_budget": 0, "merged": 0, "deferred_by_budget": 0, "high_risk_deferred": 0, "by_source": {}}
+    targets = [item for item in targets_data.get("targets") or [] if isinstance(item, dict)]
+    summary = targets_data.get("queue_summary")
+    if not isinstance(summary, dict):
+        return {"available": False, "generated": len(targets), "active": len(targets), "retained_outside_budget": 0, "merged": 0, "deferred_by_budget": 0, "high_risk_deferred": 0, "by_source": {}}
+    errors = validate_target_queue_artifact(targets_data)
+    if errors:
+        raise MetricsError("targets.json queue summary is invalid: " + errors[0])
+    return {
+        "available": True,
+        "generated": summary["generated"],
+        "active": summary["active"],
+        "retained_outside_budget": summary["retained_outside_budget"],
+        "merged": summary["merged"],
+        "deferred_by_budget": summary["deferred_by_budget"],
+        "high_risk_deferred": summary["high_risk_deferred"],
+        "by_source": {
+            source: dict(summary["by_source"][source])
+            for source in TARGET_SOURCES
+        },
+    }
 
 
 def load_json(path: Path, default: Any = None) -> Any:
@@ -834,7 +860,7 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
     ctx = load_context(run_dir)
     reports = reports_dir(run_dir)
     findings_data = load_json(reports / "findings.json", {}) or {}
-    targets_data = load_json(reports / "targets.json", {}) or {}
+    targets_data = load_targets_artifact(run_dir, {}) or {}
     validation_data = load_json(reports / "validation.json", None)
     chains_data = load_json(reports / "chains.json", None)
     proofs_data = load_json(reports / "proofs.json", None)
@@ -869,6 +895,7 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
 
     findings = list_of_dicts(findings_data, "findings")
     targets = list_of_dicts(targets_data, "targets")
+    target_queue_summary = target_queue_metrics(targets_data)
     validations = list_of_dicts(validation_data, "validations")
     chains = list_of_dicts(chains_data, "chains")
     proofs = list_of_dicts(proofs_data, "proofs")
@@ -931,6 +958,7 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
         "chains": chains_summary,
         "proofs": proofs_summary,
         "gapfill": gapfill_summary,
+        "target_queue": target_queue_summary,
         "traces": traces_summary,
         "issue_publication_plan": issue_plan_summary,
         "issue_ledger": issue_ledger_summary,
@@ -1025,6 +1053,12 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
         f"| Gapfill current candidates | {metrics['gapfill']['current_run']['candidate_count']} |",
         f"| Gapfill current generated/reused targets | {metrics['gapfill']['current_run']['generated_target_count']} |",
         f"| Gapfill cumulative generated targets | {metrics['gapfill']['cumulative']['generated_target_count']} |",
+        f"| Target seeds generated | {metrics['target_queue']['generated']} |",
+        f"| Active target review wave | {metrics['target_queue']['active']} |",
+        f"| Targets retained outside seed budgets | {metrics['target_queue']['retained_outside_budget']} |",
+        f"| Cross-source targets merged | {metrics['target_queue']['merged']} |",
+        f"| Targets deferred by budget | {metrics['target_queue']['deferred_by_budget']} |",
+        f"| High-risk targets deferred | {metrics['target_queue']['high_risk_deferred']} |",
         f"| Traces | {metrics['traces']['total']} |",
         f"| Issue plan warnings | {metrics['issue_publication_plan']['warning_count']} |",
         f"| Issue ledger published findings | {metrics['issue_ledger']['published_findings']} |",
@@ -1069,6 +1103,20 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
     lines.append(f"| Cumulative reviewed targets | {metrics['gapfill']['cumulative']['reviewed_target_count']} |")
     lines.append("")
     lines.extend(markdown_counts("Cumulative gapfill target status", metrics["gapfill"]["cumulative"]["targets_by_status"]))
+    lines.extend([
+        "## Target queue by source",
+        "",
+        "| Source | Generated | Active | Retained | Merged | Deferred |",
+        "|---|---:|---:|---:|---:|---:|",
+    ])
+    for source, counts in sorted(metrics["target_queue"]["by_source"].items()):
+        lines.append(
+            f"| {source} | {counts['generated']} | {counts['active']} | "
+            f"{counts['retained']} | {counts['merged']} | {counts['deferred']} |"
+        )
+    if not metrics["target_queue"]["by_source"]:
+        lines.append("| none | 0 | 0 | 0 | 0 | 0 |")
+    lines.append("")
     lines.extend(["## Traces", ""])
     lines.extend(markdown_counts("Trace reachable", metrics["traces"]["by_reachable"]))
     lines.extend(markdown_counts("Trace attacker control", metrics["traces"]["by_attacker_control"]))

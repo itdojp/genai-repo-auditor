@@ -10,7 +10,7 @@ from pathlib import Path
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
-from gralib import load_context, load_json, utc_now
+from gralib import load_context, load_json, load_targets_artifact, utc_now
 from posture_artifacts import load_posture_artifacts
 from run_events import (
     EventWriteError,
@@ -139,7 +139,7 @@ def main() -> int:
             run_id, ctx.get('repo'), ctx.get('branch'), ctx.get('commit'), ctx.get('visibility'), str(run_dir), utc_now()
         ))
 
-        targets_data = load_json(reports / 'targets.json', {}) or {}
+        targets_data = load_targets_artifact(run_dir, {}) or {}
         for t in targets_data.get('targets') or []:
             if not isinstance(t, dict):
                 continue

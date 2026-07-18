@@ -8,9 +8,65 @@ except ImportError:
 from run_events import append_command_event, start_command_event  # noqa: E402
 from scanner_readiness import evaluate_scanner_readiness, write_scanner_readiness_report  # noqa: E402
 from workflow_execution import build_workflow_execution  # noqa: E402
+from gralib import rebalance_target_queue  # noqa: E402
 
 
 class MetricsWorkflowTests(CliWorkflowTestCase):
+    def test_metrics_evidence_graph_and_dashboard_surface_target_queue_reduction(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        targets_path = run_dir / "reports" / "targets.json"
+        data = json.loads(targets_path.read_text(encoding="utf-8"))
+        seed = data["targets"][0]
+        generated = []
+        for index, sink in enumerate(("database", "filesystem", "network"), start=1):
+            item = json.loads(json.dumps(seed))
+            item["id"] = f"TGT-{index:03d}"
+            item["sinks"] = [sink]
+            item["priority"] = 100 - index
+            generated.append(item)
+        data["targets"] = generated
+        targets_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        summary = rebalance_target_queue(run_dir, total_budget=1)
+        self.assertEqual(1, summary["active"])
+        self.assertEqual(2, summary["deferred_by_budget"])
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", run_dir], check=True)
+        dashboard_path = run_dir / "reports" / "dashboard.html"
+        self.run_cmd([REPO_ROOT / "bin" / "gra-dashboard", "--run", run_dir, "--out", dashboard_path], check=True)
+
+        metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
+        graph = json.loads((run_dir / "reports" / "evidence-graph.json").read_text(encoding="utf-8"))
+        self.assertEqual(3, metrics["target_queue"]["generated"])
+        self.assertEqual(1, metrics["target_queue"]["active"])
+        self.assertEqual(0, metrics["target_queue"]["retained_outside_budget"])
+        self.assertEqual(2, metrics["target_queue"]["deferred_by_budget"])
+        self.assertEqual(3, metrics["target_queue"]["by_source"]["model_generated"]["generated"])
+        self.assertEqual(metrics["target_queue"]["active"], graph["summary"]["target_queue"]["active"])
+        html = dashboard_path.read_text(encoding="utf-8")
+        self.assertIn("Target seed budget and deduplication", html)
+        self.assertIn("Deferred by budget", html)
+        self.assertIn("Counts by seed source", html)
+        self.assertIn("model_generated", html)
+        metrics_md = (run_dir / "reports" / "METRICS.md").read_text(encoding="utf-8")
+        self.assertIn("## Target queue by source", metrics_md)
+        self.assertNotIn("opaque scope", json.dumps(metrics["target_queue"]))
+
+        validated = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Metrics: validated", validated.stdout)
+        self.assertIn("Evidence graph: validated", validated.stdout)
+
+        poisoned = json.loads(targets_path.read_text(encoding="utf-8"))
+        poisoned["queue_summary"]["decisions"][0]["reason"] = "opaque attacker reason"
+        targets_path.write_text(json.dumps(poisoned, indent=2) + "\n", encoding="utf-8")
+        rejected_dashboard = run_dir / "reports" / "poisoned-dashboard.html"
+        rejected = self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-dashboard", "--run", run_dir, "--out", rejected_dashboard]
+        )
+        self.assertEqual(2, rejected.returncode)
+        self.assertIn("Invalid targets.json queue", rejected.stderr)
+        self.assertFalse(rejected_dashboard.exists())
+
     def test_metrics_and_dashboard_surface_bounded_scanner_readiness_reasons(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         (run_dir / "repo").mkdir()

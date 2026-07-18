@@ -82,12 +82,16 @@ def next_gapfill_id(existing_ids: set[str], start: int = 1) -> str:
 def existing_gapfill_target(targets: list[dict[str, Any]], source_id: str) -> dict[str, Any] | None:
     for target in targets:
         target_id = str(target.get("id") or "")
-        if str(target.get("source_target_id") or "") == source_id and target_id.startswith("TGT-GAPFILL-"):
+        trusted_gapfill = target.get("queue_source") == "gapfill"
+        legacy_gapfill = "queue_source" not in target and target_id.startswith("TGT-GAPFILL-")
+        if str(target.get("source_target_id") or "") == source_id and (trusted_gapfill or legacy_gapfill):
             return target
     return None
 
 
 def is_gapfill_target(target: dict[str, Any]) -> bool:
+    if "queue_source" in target:
+        return target.get("queue_source") == "gapfill"
     return str(target.get("id") or "").startswith("TGT-GAPFILL-") or target.get("category") == "gapfill"
 
 
@@ -123,6 +127,7 @@ def build_gapfill_target(source: dict[str, Any], target_id: str) -> dict[str, An
     ]
     target: dict[str, Any] = {
         "id": target_id,
+        "queue_source": "gapfill",
         "category": "gapfill",
         "title": f"Gapfill coverage for {source.get('id')}: {source.get('title') or ''}".strip(),
         "risk": choice(source.get("risk"), TARGET_RISKS, "medium"),

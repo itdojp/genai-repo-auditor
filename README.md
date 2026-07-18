@@ -117,6 +117,21 @@ gra-run --run "$RUN_DIR" --profile recon-only --resume
 gra-targets --run "$RUN_DIR" --list
 ```
 
+`gra-targets --generate` writes a deterministic active/deferred queue in
+`reports/targets.json`. The default seed budget is 20 active targets total and
+10 per budgeted seed source (`model_generated`, `agent_surface`,
+`provenance`, `scorecard`, `dependency`, and `scanner`) under the
+`risk-weighted` policy. `gra-research`, `gra-targets --show`, and
+`gra-targets --list` operate on retained `targets[]`, not deferred seeds; review
+`deferred_targets[]` in `reports/targets.json` and use local-only
+`gra-targets --rebalance` to promote deferred targets before researching them.
+Queued gapfill targets and non-queued target history remain retained outside
+those seed budgets.
+Status updates preserve the recorded wave and never promote deferred work
+implicitly; run `--rebalance` explicitly to select a new wave. Producer-written
+`queue_source` values, not target ID prefixes, bind source budgets, and unmarked
+legacy targets migrate conservatively as `model_generated`.
+
 `gra-audit --mode prepare` creates the run without starting the agent worker.
 `gra-run` then writes a sanitized plan by default; only `--execute` or
 `--resume` runs approved stages. The checkpoint is
@@ -211,7 +226,15 @@ Generate target queue:
 ```bash
 gra-targets --run runs/OWNER__REPO/RUN_ID --generate --model gpt-5.5 --effort xhigh
 gra-targets --run runs/OWNER__REPO/RUN_ID --list
+gra-targets --run runs/OWNER__REPO/RUN_ID --rebalance \
+  --budget-policy risk-weighted \
+  --target-budget 20 \
+  --max-scanner-targets 5
 ```
+
+`--rebalance` replays the deterministic budget and deduplication policy against
+existing `reports/targets.json` only. It does not call Codex and does not
+enable network access.
 
 Pause an intentional maintenance or handoff window without marking the run blocked:
 
@@ -328,7 +351,7 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-agent-check` | List and verify local AI worker adapter profiles |
 | `gra-doctor` | Run redacted local install and readiness diagnostics without executing an audit |
 | `gra-recon` | Generate inventory, threat model, and attack surface |
-| `gra-targets` | Generate, list, show, and update target queue |
+| `gra-targets` | Generate, rebalance, list, show, and update the deterministic target queue |
 | `gra-run-state` | Record paused/resume/blocked run state and guard deep-review starts |
 | `gra-run` | Plan by default; explicitly execute or resume an approved dependency-ordered workflow |
 | `gra-sandbox-check` | Check sandbox profile readiness before future executable validation workflows |
@@ -341,7 +364,7 @@ For detailed options, outputs, exit status behavior, and safety cautions, see [`
 | `gra-remediate` | Generate draft-only remediation candidates and validate draft patches in a disposable workspace |
 | `gra-novelty` | Classify current findings against a local known-finding novelty ledger |
 | `gra-trace` | Trace experimental/P3 cross-repo reachability for shared-library findings |
-| `gra-metrics` | Generate local advanced workflow metrics without raw evidence |
+| `gra-metrics` | Generate local advanced workflow metrics plus a public-safe compact summary |
 | `gra-benchmark` | Score local dogfood quality gates from metrics or fixture runs |
 | `gra-efficacy-benchmark` | Score the offline synthetic security corpus with deterministic reference rules |
 | `gra-evidence-graph` | Generate a local bounded evidence graph across report artifacts |

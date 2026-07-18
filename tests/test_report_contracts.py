@@ -334,6 +334,40 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual("string", coverage_properties["gapfill_reason"]["type"])
         self.assertIn("taxonomies", target_properties)
         self.assertEqual({"name", "id", "label"}, set(target_properties["taxonomies"]["items"]["required"]))
+        queue_schema = target_schema["properties"]["queue_summary"]
+        self.assertEqual(
+            {
+                "schema_version", "policy", "budgets", "generated", "active",
+                "retained_outside_budget", "merged", "deferred_by_budget",
+                "high_risk_deferred", "by_source", "selection_input_ids", "decisions",
+            },
+            set(queue_schema["required"]),
+        )
+        budget_sources = {"model_generated", "agent_surface", "provenance", "scorecard", "dependency", "scanner"}
+        self.assertEqual(
+            budget_sources,
+            set(queue_schema["properties"]["budgets"]["properties"]["by_source"]["required"]),
+        )
+        self.assertEqual(
+            budget_sources | {"gapfill"},
+            set(queue_schema["properties"]["by_source"]["required"]),
+        )
+        self.assertEqual(
+            {"active", "retained", "merged", "deferred"},
+            set(queue_schema["properties"]["decisions"]["items"]["properties"]["action"]["enum"]),
+        )
+        self.assertTrue(queue_schema["properties"]["selection_input_ids"]["uniqueItems"])
+        self.assertEqual(
+            "^TGT-(?:[A-Z][A-Z0-9]*-)?[0-9]{3,}$",
+            queue_schema["properties"]["selection_input_ids"]["items"]["pattern"],
+        )
+        self.assertIn("deferred_targets", target_schema["properties"])
+        self.assertIn("target_queue", metrics_schema["properties"])
+        self.assertIn("retained_outside_budget", metrics_schema["properties"]["target_queue"]["required"])
+        self.assertIn(
+            "retained_outside_budget",
+            evidence_graph_schema["properties"]["summary"]["properties"]["target_queue"]["required"],
+        )
 
         scanner_result = scanner_schema["properties"]["results"]["items"]
         self.assertEqual({"tool", "path", "format", "imported_at"}, set(scanner_result["required"]))
@@ -1457,6 +1491,16 @@ class ReportContractTests(unittest.TestCase):
                 "high_critical_issue_recommended_findings": 1,
                 "high_critical_with_supporting_evidence": 1,
                 "high_critical_with_challenging_evidence": 0,
+                "target_queue": {
+                    "artifact_present": False,
+                    "generated": 1,
+                    "active": 1,
+                    "retained_outside_budget": 0,
+                    "merged": 0,
+                    "deferred_by_budget": 0,
+                    "high_risk_deferred": 0,
+                    "by_source": {},
+                },
             },
             "nodes": [
                 {

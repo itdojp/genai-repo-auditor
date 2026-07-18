@@ -84,6 +84,9 @@ def main() -> int:
     except KeyError as e:
         print(str(e), file=sys.stderr)
         return finish(2)
+    except (OSError, ValueError, UnicodeError):
+        print('Invalid targets.json: expected bounded JSON in a regular non-symlink file', file=sys.stderr)
+        return finish(2)
     pause_message = paused_error(run_dir, action=f"target research for {args.target}")
     if pause_message:
         print(pause_message, file=sys.stderr)
@@ -105,6 +108,19 @@ def main() -> int:
         prompt = run_dir / 'prompts' / 'goal' / f'research-{args.target}.goal.md'
         render_template(LAB_ROOT, LAB_ROOT / 'prompts' / 'goal' / 'research-target.goal.md', prompt, env)
         output_artifacts.append(prompt)
+        # Reserve the ID before handing the prepared goal to an operator. A
+        # later deterministic queue rebalance retains non-queued work rather
+        # than merging or deferring a target referenced by this prompt/seed.
+        targets = load_targets(run_dir)
+        for item in targets:
+            if str(item.get('id')) == args.target:
+                item['status'] = 'in_progress'
+        try:
+            write_targets(run_dir, targets)
+        except (OSError, ValueError, UnicodeError) as exc:
+            print(f'Invalid target queue: {exc}', file=sys.stderr)
+            return finish(2)
+        output_artifacts.append(reports_root / 'targets.json')
         print('Prepared supervised /goal target research run.')
         print(f'Run directory: {run_dir}')
         print(f'Target file: {target_json}')
@@ -124,7 +140,11 @@ def main() -> int:
     for t in targets:
         if str(t.get('id')) == args.target:
             t['status'] = 'in_progress'
-    write_targets(run_dir, targets)
+    try:
+        write_targets(run_dir, targets)
+    except (OSError, ValueError, UnicodeError) as exc:
+        print(f'Invalid target queue: {exc}', file=sys.stderr)
+        return finish(2)
 
     print(f'Running Codex target research for {args.target}: {target.get("title", "")}'.strip())
     final_path = run_dir / f'codex-research-{args.target}-final.md'
@@ -148,7 +168,11 @@ def main() -> int:
     for t in targets:
         if str(t.get('id')) == args.target:
             t['status'] = 'reviewed' if status == 0 and preflight_status == 0 else 'needs_human_review'
-    write_targets(run_dir, targets)
+    try:
+        write_targets(run_dir, targets)
+    except (OSError, ValueError, UnicodeError) as exc:
+        print(f'Invalid target queue after research: {exc}', file=sys.stderr)
+        return finish(status if status != 0 else 1)
 
     print(f'Codex status: {status}')
     print(f'Research report: {run_dir / "reports" / "target-research" / (args.target + ".md")}')

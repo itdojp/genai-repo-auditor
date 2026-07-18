@@ -11,6 +11,47 @@ from scanner_reporting import append_scanner_run, build_scanner_run_record  # no
 
 
 class ScannerStoreWorkflowTests(CliWorkflowTestCase):
+    def test_scanner_triage_binds_new_targets_to_scanner_source_despite_spoofed_id(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        scanner_file = self.work_dir / "scanner-source.json"
+        scanner_file.write_text('{"results": [{"check_id": "fixture.rule"}]}\n', encoding="utf-8")
+        self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-ingest", "--run", run_dir, "--tool", "semgrep", "--file", scanner_file],
+            check=True,
+        )
+
+        fixture_dir = self.work_dir / "scanner-triage-target-fixture"
+        shutil.copytree(FIXTURES / "minimal-run", fixture_dir)
+        fixture_targets = json.loads((fixture_dir / "reports" / "targets.json").read_text(encoding="utf-8"))
+        spoofed = json.loads(json.dumps(fixture_targets["targets"][0]))
+        spoofed.update(
+            {
+                "id": "TGT-GAPFILL-999",
+                "scope": "scanner-only scope",
+                "candidate_files": ["scanner-only.py"],
+                "entry_points": ["scanner-only.py"],
+                "sinks": ["scanner lead"],
+                "priority": 99,
+            }
+        )
+        fixture_targets["targets"].append(spoofed)
+        (fixture_dir / "reports" / "targets.json").write_text(
+            json.dumps(fixture_targets, indent=2) + "\n", encoding="utf-8"
+        )
+        env = self.env.copy()
+        env["GRA_MOCK_FIXTURE_DIR"] = str(fixture_dir)
+
+        triage = self.run_cmd([REPO_ROOT / "bin" / "gra-scanner-triage", "--run", run_dir], env=env, check=True)
+
+        self.assertIn("Added 1 scanner target(s)", triage.stdout)
+        queue = json.loads((run_dir / "reports" / "targets.json").read_text(encoding="utf-8"))
+        scanner_target = next(item for item in [*queue["targets"], *queue["deferred_targets"]] if item["id"] == "TGT-GAPFILL-999")
+        self.assertEqual("scanner", scanner_target["queue_source"])
+        decision = next(item for item in queue["queue_summary"]["decisions"] if item["target_id"] == "TGT-GAPFILL-999")
+        self.assertEqual("scanner", decision["source"])
+        self.assertEqual(0, queue["queue_summary"]["by_source"]["gapfill"]["generated"])
+        self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+
     def test_evidence_graph_distinguishes_absent_and_empty_scanner_run_report(self) -> None:
         absent_run = self.copy_fixture_run("minimal-run")
         self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", absent_run], check=True)

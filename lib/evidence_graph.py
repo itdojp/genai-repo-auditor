@@ -5,10 +5,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from gralib import load_context, load_json, utc_now, write_json
+from gralib import load_context, load_json, load_targets_artifact, utc_now, write_json
 from scanner_reporting import ScannerReportError, validate_scanner_runs_for_run
 from workflow_profile import summarize_workflow_profile
 from workflow_execution import summarize_workflow_execution
+from target_queue import TARGET_SOURCES, validate_target_queue_artifact
 
 NODE_TYPES = {
     "target",
@@ -159,6 +160,7 @@ class EvidenceGraphBuilder:
         self.missing_optional_artifacts: list[str] = []
         self.findings: list[dict[str, Any]] = []
         self.targets: list[dict[str, Any]] = []
+        self.target_queue_summary: dict[str, Any] = {}
         self.scanner_leads: list[dict[str, Any]] = []
         self.scanner_runs: list[dict[str, Any]] = []
         self.scanner_runs_present = False
@@ -227,7 +229,27 @@ class EvidenceGraphBuilder:
 
     def load_artifacts(self) -> None:
         self.findings = self.load_report_array("findings.json", "findings")
-        self.targets = self.load_report_array("targets.json", "targets")
+        targets_path = self.report_artifact("targets.json")
+        if targets_path.exists():
+            targets_data = load_targets_artifact(self.run_dir, {}) or {}
+            self.targets = [item for item in targets_data.get("targets") or [] if isinstance(item, dict)] if isinstance(targets_data, dict) else []
+            queue = targets_data.get("queue_summary") if isinstance(targets_data, dict) else None
+            if isinstance(queue, dict):
+                queue_errors = validate_target_queue_artifact(targets_data)
+                if queue_errors:
+                    raise EvidenceGraphSafetyError("targets.json queue summary is invalid: " + queue_errors[0])
+                self.target_queue_summary = {
+                    "artifact_present": True,
+                    "generated": queue["generated"],
+                    "active": queue["active"],
+                    "retained_outside_budget": queue["retained_outside_budget"],
+                    "merged": queue["merged"],
+                    "deferred_by_budget": queue["deferred_by_budget"],
+                    "high_risk_deferred": queue["high_risk_deferred"],
+                    "by_source": {source: dict(queue["by_source"][source]) for source in TARGET_SOURCES},
+                }
+        else:
+            self.missing_optional_artifacts.append(rel_to_run(self.run_dir, targets_path))
         scanner_path = self.reports / "scanner-results" / "scanner-index.json"
         if scanner_path.exists():
             scanner_index = load_json(scanner_path, {}) or {}
@@ -627,6 +649,16 @@ class EvidenceGraphBuilder:
             "missing_optional_artifacts": sorted(set(self.missing_optional_artifacts)),
             "workflow_profile": summarize_workflow_profile(self.workflow_profile),
             "workflow_execution": summarize_workflow_execution(self.workflow_execution),
+            "target_queue": self.target_queue_summary or {
+                "artifact_present": False,
+                "generated": len(self.targets),
+                "active": len(self.targets),
+                "retained_outside_budget": 0,
+                "merged": 0,
+                "deferred_by_budget": 0,
+                "high_risk_deferred": 0,
+                "by_source": {},
+            },
             "scanner_runs": {
                 "artifact_present": self.scanner_runs_present,
                 "run_count": len(self.scanner_runs),

@@ -119,6 +119,9 @@ Quality bar:
   Preflight names, IDs, and labels against templates/taxonomy-aliases.json
   before finalizing {{REPORTS_DIR}}/targets.json.
 - Status must be queued unless there is a specific reason to mark skipped or needs_human_review.
+- Do not write `queue_source`, `queue_fingerprint`, `source_lineage`,
+  `deferred_targets`, or `queue_summary`. The auditor binds model provenance and
+  applies deterministic queue policy after this output is complete.
 
 Stop condition:
 - {{REPORTS_DIR}}/targets.json exists, is strict JSON, and follows targets.schema.json if available.

@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Any, Iterable
 
-from gralib import load_context, load_json, load_targets, utc_now, write_json, write_targets
+from gralib import load_context, load_json, load_targets, target_ids_with_lineage, utc_now, write_json, write_targets
 
 WORKFLOW_SUFFIXES = {".yml", ".yaml"}
 DOC_SUFFIXES = {".md", ".mdx", ".txt"}
@@ -449,8 +449,13 @@ def append_provenance_posture_targets(run_dir: Path) -> list[dict[str, Any]]:
     data = load_json(reports / "provenance-posture.json", {}) or {}
     workflows = [workflow for workflow in data.get("workflows") or [] if isinstance(workflow, dict)]
     targets = load_targets(run_dir)
-    existing_scopes = {str(target.get("scope")) for target in targets if isinstance(target, dict)}
-    existing_ids = {str(target.get("id")) for target in targets if isinstance(target, dict)}
+    all_targets = load_targets(run_dir, include_deferred=True)
+    existing_scopes = {
+        str(target.get("scope"))
+        for target in all_targets
+        if isinstance(target, dict) and target.get("queue_source") == "provenance"
+    }
+    existing_ids = target_ids_with_lineage(all_targets)
     next_index = 1
     added: list[dict[str, Any]] = []
     for workflow in workflows:
@@ -462,6 +467,7 @@ def append_provenance_posture_targets(run_dir: Path) -> list[dict[str, Any]]:
             next_index += 1
         target = {
             "id": _target_id(next_index),
+            "queue_source": "provenance",
             "category": "Release Provenance",
             "title": f"Review artifact attestation posture for {scope}",
             "risk": "medium",
