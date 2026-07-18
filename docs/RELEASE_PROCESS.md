@@ -15,11 +15,53 @@ The canonical version is stored in [`VERSION`](../VERSION), while release notes
 come from the matching section of [`CHANGELOG.md`](../CHANGELOG.md). The guarded
 workflow is [`.github/workflows/release.yml`](../.github/workflows/release.yml),
 and reproducible local artifact construction is implemented by
-[`scripts/build_release.py`](../scripts/build_release.py).
+[`scripts/build_release.py`](../scripts/build_release.py). Fail-closed validation
+of the external single-maintainer control profile is implemented by
+[`scripts/validate_release_controls.py`](../scripts/validate_release_controls.py).
 
 The workflow never creates or moves a tag. A maintainer must review and merge
 the release PR, confirm `main` CI, create and push the annotated tag, and then
 explicitly dispatch publication.
+
+## Single-maintainer release governance
+
+This repository uses a documented single-maintainer release profile. The one
+accountable human maintainer and final release approver is `ootakazuhiko`. A
+second human maintainer is not required or expected solely to create separation
+of duties for a release.
+
+AI review is a defense-in-depth input, not separation of human duties. An AI
+review must never be represented as independent human approval and cannot
+replace the accountable maintainer's final decision. Before publication, record
+the reviewed commit or candidate, channel identity, result, and blocker
+disposition for at least two distinct AI review channels. Any unavailable
+channel, ambiguous result, or unresolved blocker fails the release gate.
+
+The single-maintainer profile requires all of the following controls:
+
+- the `release` environment has exactly one required user reviewer,
+  `ootakazuhiko`, with `prevent_self_review=false`;
+- the environment wait timer is at least 30 minutes, administrator bypass is
+  disabled, and the only deployment branch or tag policy is the `v*` tag
+  pattern;
+- immutable releases are enabled before publication;
+- an active `v*` tag ruleset without bypass actors restricts tag updates and
+  deletions and blocks force pushes;
+- the release tag is a signed annotated tag whose signature and exact source
+  commit are verified before publication; the approved OpenPGP primary-key
+  fingerprint is recorded before tag creation and matched exactly;
+- the candidate is reproduced independently, is byte-identical across both
+  builds, passes candidate verification, and matches the reviewed checksums;
+- required CI is green and artifact build-provenance and CycloneDX SBOM
+  attestations are generated and verified;
+- at least two distinct AI review channels have zero unresolved blockers; and
+- `ootakazuhiko` performs the one accountable human final approval after the
+  wait timer and review evidence have been checked.
+
+Configuration absence, API or signature verification failure, review ambiguity,
+or evidence that cannot be inspected is a hard stop. The exact v0.5.0 profile
+and fail-closed operator checks are recorded in
+[`releases/V0_5_0_PUBLICATION_HANDOFF.md`](releases/V0_5_0_PUBLICATION_HANDOFF.md).
 
 ## Versioning policy
 
@@ -113,7 +155,8 @@ In the release PR:
   [`SECURITY_MODEL.md`](SECURITY_MODEL.md),
   [`ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md), and
   [`SCANNER_INTEGRATION.md`](SCANNER_INTEGRATION.md) are current;
-- request maintainer and configured automated review;
+- request review through at least two distinct AI channels, resolve every
+  blocker, and retain the results for the accountable maintainer;
 - merge only after local validation and GitHub Actions are green.
 
 Dry-run validation is the default and writes no artifacts:
@@ -206,20 +249,29 @@ python3 scripts/build_release.py \
 
 ## Tagging
 
-After the release PR is merged and `main` is green, tag the exact release
-commit. The workflow requires an annotated tag and verifies that its commit is
-an ancestor of `origin/main`.
+After the release PR is merged, `main` is green, and every single-maintainer
+profile precheck succeeds, tag the exact release commit. The workflow requires
+an annotated tag and verifies that its commit is an ancestor of `origin/main`.
+Repository policy additionally requires the annotated tag to be signed and its
+signature to verify locally before push. For v0.5.0, follow the canonical
+handoff's fail-closed full-fingerprint check rather than relying on a generic
+"valid signature" result.
 
 ```bash
 git switch main
 git pull --ff-only origin main
 VERSION_VALUE="$(cat VERSION)"
 test "v$VERSION_VALUE" = "vX.Y.Z"
-git tag -a "v$VERSION_VALUE" -m "Release v$VERSION_VALUE"
+git tag -s "v$VERSION_VALUE" -m "Release v$VERSION_VALUE"
+git verify-tag "v$VERSION_VALUE"
 git push origin "v$VERSION_VALUE"
 ```
 
-Do not tag an unpushed commit or reuse/move an existing release tag.
+Do not tag an unpushed commit or reuse/move an existing release tag. After the
+push and before publication, verify the remote annotated-tag object, exact
+target commit, and GitHub signature-verification result. Do not dispatch if the
+signature is unverified or the signer identity is not the approved maintainer
+key.
 
 ## Attested GitHub Release publication
 
@@ -241,9 +293,11 @@ This also regenerates release notes from the checked-out `CHANGELOG.md` before
 publication. It then creates a GitHub/Sigstore build-provenance attestation for
 the release artifact set, creates a CycloneDX SBOM attestation for both source
 archives, and runs `gh release create --verify-tag`. The job does not create,
-move, or force-push tags. Configure protection/review requirements for the
-`release` GitHub environment when repository policy requires a second human
-approval.
+move, or force-push tags. Before dispatch, the `release` GitHub environment,
+immutable-release setting, tag ruleset, AI-review record, and accountable human
+approval must satisfy the single-maintainer profile above. Publication is not
+complete until the release is confirmed immutable and its checksums, manifest,
+build-provenance attestations, and CycloneDX SBOM attestations verify.
 
 GitHub documents that `actions/attest` requires `id-token: write` and
 `attestations: write`; the workflow grants those permissions only to the
@@ -289,6 +343,13 @@ the first upload, and installed smoke checks are approved.
 
 References:
 
+- [Managing environments for deployment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)
+- [REST API endpoints for deployment environments](https://docs.github.com/en/rest/deployments/environments?apiVersion=2026-03-10)
+- [REST API endpoints for deployment branch policies](https://docs.github.com/en/rest/deployments/branch-policies?apiVersion=2026-03-10)
+- [REST API endpoints for immutable releases](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#check-if-immutable-releases-are-enabled-for-a-repository)
+- [About immutable releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases)
+- [Verifying release integrity](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/verify-release-integrity)
+- [Available rules for rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)
 - [Using artifact attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations)
 - [`actions/attest`](https://github.com/actions/attest)
 

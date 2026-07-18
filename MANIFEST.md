@@ -54,6 +54,7 @@ bin/gra-worktree-check
 .github/requirements/publish-build.in
 .github/requirements/publish-build.txt
 scripts/build_release.py
+scripts/validate_release_controls.py
 scripts/validate_python_distribution.py
 ```
 

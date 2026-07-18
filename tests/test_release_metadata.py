@@ -114,7 +114,8 @@ class ReleaseMetadataTests(unittest.TestCase):
         self.assertRegex(text, r"VERSION=\d+\.\d+\.\d+")
         self.assertRegex(text, r"tag `v\d+\.\d+\.\d+`")
         self.assertIn('test "v$VERSION_VALUE" = "vX.Y.Z"', text)
-        self.assertIn('git tag -a "v$VERSION_VALUE"', text)
+        self.assertIn('git tag -s "v$VERSION_VALUE"', text)
+        self.assertIn('git verify-tag "v$VERSION_VALUE"', text)
         self.assertIn("-f publish=false", text)
         self.assertIn("-f publish=true", text)
         self.assertIn("gh attestation verify", text)
@@ -123,8 +124,35 @@ class ReleaseMetadataTests(unittest.TestCase):
             text,
         )
 
+    def test_release_process_documents_fail_closed_single_maintainer_profile(self) -> None:
+        text = RELEASE_PROCESS.read_text(encoding="utf-8")
+        normalized = re.sub(r"\s+", " ", text.replace("**", ""))
+        required_controls = [
+            "one accountable human maintainer and final release approver is `ootakazuhiko`",
+            "AI review is a defense-in-depth input, not separation of human duties",
+            "must never be represented as independent human approval",
+            "at least two distinct AI review channels",
+            "zero unresolved blockers",
+            "`prevent_self_review=false`",
+            "wait timer is at least 30 minutes",
+            "administrator bypass is disabled",
+            "only deployment branch or tag policy is the `v*` tag pattern",
+            "immutable releases are enabled before publication",
+            "restricts tag updates and deletions and blocks force pushes",
+            "signed annotated tag",
+            "approved OpenPGP primary-key fingerprint is recorded",
+            "byte-identical across both builds",
+            "artifact build-provenance and CycloneDX SBOM attestations",
+            "one accountable human final approval",
+            "Configuration absence, API or signature verification failure",
+            "[`scripts/validate_release_controls.py`](../scripts/validate_release_controls.py)",
+        ]
+        self.assertEqual([], [term for term in required_controls if term not in normalized])
+        self.assertNotIn("second human approval", text)
+
     def test_v050_handoff_freezes_candidate_and_human_publication_boundary(self) -> None:
         text = V050_HANDOFF.read_text(encoding="utf-8")
+        normalized = re.sub(r"\s+", " ", text.replace("**", ""))
         source_commit = "fb8c5f00afa89e6f8b09eb6c76876833fef2fcd0"
         expected_assets = {
             "genai-repo-auditor-v0.5.0.tar.gz": (
@@ -162,21 +190,49 @@ class ReleaseMetadataTests(unittest.TestCase):
         required_human_steps = [
             "set -euo pipefail",
             "gh attestation verify --help",
+            "X-GitHub-Api-Version: 2026-03-10",
             "releases/tags/v0.5.0",
             "grep -Eq '^HTTP/[0-9.]+ 404 '",
             "repos/itdojp/genai-repo-auditor/environments/release",
-            '.type == "required_reviewers"',
-            ".prevent_self_review == true",
-            "(.reviewers | length) > 0",
-            "git tag -a v0.5.0",
+            "scripts/validate_release_controls.py",
+            '--environment-json "$environment_json"',
+            '--deployment-policies-json "$deployment_policies_json"',
+            '--immutable-releases-json "$immutable_json"',
+            '--rulesets-json "$rulesets_json"',
+            "Allow administrators to bypass configured protection rules",
+            "Tag `v*`",
+            "repos/itdojp/genai-repo-auditor/immutable-releases",
+            "includes_parents=true&targets=tag",
+            "at least two distinct AI review channels",
+            "zero unresolved blockers",
+            "APPROVED_TAG_SIGNING_FINGERPRINT",
+            "^([0-9A-F]{40}|[0-9A-F]{64})$",
+            'git tag -s -u "$APPROVED_TAG_SIGNING_FINGERPRINT" v0.5.0',
             'test "$(git cat-file -t v0.5.0)" = "tag"',
+            "git verify-tag --raw v0.5.0",
+            "VALIDSIG",
+            "verified_primary_fingerprint",
             "git push origin refs/tags/v0.5.0",
+            "repos/itdojp/genai-repo-auditor/git/ref/tags/v0.5.0",
+            'test "$tag_object_sha" = "$(git rev-parse refs/tags/v0.5.0)"',
+            ".verification.verified == true",
             "gh workflow run release.yml",
             "-f publish=true",
-            "approve the protected `release` environment",
+            "one accountable human final approval",
         ]
-        self.assertEqual([], [term for term in required_human_steps if term not in text])
+        self.assertEqual(
+            [],
+            [
+                term
+                for term in required_human_steps
+                if term not in text and term not in normalized
+            ],
+        )
+        self.assertNotIn(".prevent_self_review == true", text)
+        self.assertIn("must not be described as independent human approval", normalized)
         required_read_only_checks = [
+            ".immutable == true",
+            "gh release verify v0.5.0",
             "gh release download v0.5.0",
             "scripts/build_release.py --verify",
             "sha256sum -c SHA256SUMS",
