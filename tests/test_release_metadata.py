@@ -310,7 +310,7 @@ class ReleaseMetadataTests(unittest.TestCase):
         self.assertIn("      id-token: write", text)
         self.assertEqual(
             2,
-            text.count("uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1"),
+            text.count("uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0"),
         )
         self.assertRegex(text, r"uses: actions/checkout@[0-9a-f]{40} # v7\.0\.0")
         self.assertRegex(text, r"uses: actions/upload-artifact@[0-9a-f]{40} # v7\.0\.1")
