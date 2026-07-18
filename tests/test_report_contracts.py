@@ -1806,6 +1806,10 @@ class ReportContractTests(unittest.TestCase):
         outside_targets.write_text(targets_path.read_text(encoding="utf-8"), encoding="utf-8")
         targets_path.unlink()
         targets_path.symlink_to(outside_targets)
+        shutil.copyfile(
+            FIXTURES / "chain-output" / "reports" / "chains.json",
+            run_dir / "reports" / "chains.json",
+        )
 
         cp = self.run_validator(run_dir)
 
@@ -1813,6 +1817,7 @@ class ReportContractTests(unittest.TestCase):
         self.assertIn("targets.json could not be read safely", cp.stderr)
         self.assertIn("regular non-symlink file", cp.stderr)
         self.assertNotIn("targets.json invalid JSON", cp.stderr)
+        self.assertNotIn("is not present in reports/targets.json", cp.stderr)
         self.assertNotIn("Traceback", cp.stderr)
 
     def test_explicit_findings_validates_the_paired_targets_artifact(self) -> None:

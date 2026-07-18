@@ -370,19 +370,22 @@ def validate_dependencies(run_dir: Path, errors: List[str]) -> bool:
     return True
 
 
-def target_ids_from_reports(run_dir: Path, errors: List[str]) -> set[str]:
+def target_ids_from_reports(run_dir: Path, errors: List[str]) -> set[str] | None:
     targets_path = configured_reports_dir(run_dir) / "targets.json"
     if not targets_path.exists():
         return set()
     try:
         targets_data = load_targets_artifact(run_dir, {})
-    except Exception as exc:
+    except json.JSONDecodeError as exc:
         errors.append(f"targets.json invalid JSON: {exc}")
-        return set()
+        return None
+    except Exception as exc:
+        errors.append(f"targets.json could not be read safely: {exc}")
+        return None
     targets = targets_data.get("targets") if isinstance(targets_data, dict) else None
     if not isinstance(targets, list):
         errors.append("targets.targets: targets must be a list")
-        return set()
+        return None
     ids = set()
     for index, target in enumerate(targets):
         if not isinstance(target, dict):
@@ -472,6 +475,7 @@ def validate_chains(run_dir: Path, findings: list[dict[str, Any]], errors: List[
     finding_ids = {str(finding.get("id")) for finding in findings if isinstance(finding, dict) and finding.get("id")}
     target_ids: set[str] = set()
     target_ids_loaded = False
+    target_ids_valid = True
     scanner_refs: set[str] = set()
     scanner_refs_loaded = False
     seen_ids: set[str] = set()
@@ -519,10 +523,12 @@ def validate_chains(run_dir: Path, findings: list[dict[str, Any]], errors: List[
                 errors.append(f"{path}.findings[{ref_index}]: finding {finding_ref!r} is not present in reports/findings.json")
 
         if target_refs and not target_ids_loaded:
-            target_ids = target_ids_from_reports(run_dir, errors)
+            loaded_target_ids = target_ids_from_reports(run_dir, errors)
+            target_ids_valid = loaded_target_ids is not None
+            target_ids = loaded_target_ids or set()
             target_ids_loaded = True
         for ref_index, target_ref in enumerate(target_refs):
-            if isinstance(target_ref, str) and target_ref not in target_ids:
+            if target_ids_valid and isinstance(target_ref, str) and target_ref not in target_ids:
                 errors.append(f"{path}.targets[{ref_index}]: target {target_ref!r} is not present in reports/targets.json")
 
         if scanner_ref_values and not scanner_refs_loaded:
