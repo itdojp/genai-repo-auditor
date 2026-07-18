@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 from run_state import block_run, pause_run, write_run_state  # noqa: E402
+from run_events import append_command_event, start_command_event  # noqa: E402
 from validators.common import load_schema, validate_schema  # noqa: E402
 from workflow_executor import WorkflowExecutionError, execute_workflow, resume_skip_set  # noqa: E402
 from workflow_orchestrator import build_plan, load_profile  # noqa: E402
@@ -39,6 +40,8 @@ class WorkflowExecutorTests(unittest.TestCase):
         )
         self.calls: list[str] = []
         self.fail_targets = False
+        self.provider_failure_text: str | None = None
+        self.provider_stderr_mode = "normal"
 
     def tearDown(self) -> None:
         shutil.rmtree(self.work, ignore_errors=True)
@@ -55,6 +58,29 @@ class WorkflowExecutorTests(unittest.TestCase):
                 (reports / name).write_text("{}\n", encoding="utf-8")
             return 0
         if self.fail_targets:
+            if self.provider_failure_text is not None:
+                stderr_path = cwd / "codex-targets-stderr.txt"
+                if self.provider_stderr_mode == "symlink":
+                    outside = self.work / "outside-provider-stderr.txt"
+                    outside.write_text(self.provider_failure_text, encoding="utf-8")
+                    stderr_path.symlink_to(outside)
+                elif self.provider_stderr_mode == "oversize":
+                    stderr_path.write_bytes(self.provider_failure_text.encode("utf-8") + b"x" * (64 * 1024))
+                else:
+                    stderr_path.write_text(self.provider_failure_text, encoding="utf-8")
+                started_at, started_perf = start_command_event()
+                append_command_event(
+                    cwd,
+                    command="gra-targets",
+                    phase="target-generation",
+                    started_at=started_at,
+                    started_perf=started_perf,
+                    exit_code=7,
+                    output_artifact_paths=[stderr_path],
+                    failure_mode="warn",
+                )
+                if self.provider_stderr_mode == "mutated_after_event":
+                    stderr_path.write_text("local validation failed", encoding="utf-8")
             return 7
         (reports / "targets.json").write_text('{"targets": []}\n', encoding="utf-8")
         return 0
@@ -101,7 +127,7 @@ class WorkflowExecutorTests(unittest.TestCase):
         allowed_stage_fields = {
             "id", "status", "depends_on", "attempt", "started_at", "ended_at",
             "duration_ms", "exit_code", "error_category", "absence_reason",
-            "blocked_by", "output_artifact_refs",
+            "provider_error", "provider_failure_history", "blocked_by", "output_artifact_refs",
         }
         self.assertTrue(all(set(stage) == allowed_stage_fields for stage in execution["stages"]))
 
@@ -126,6 +152,162 @@ class WorkflowExecutorTests(unittest.TestCase):
         self.assertEqual("succeeded", checkpoint["status"])
         self.assertEqual(1, checkpoint["stages"][0]["attempt"])
         self.assertEqual(2, checkpoint["stages"][1]["attempt"])
+
+    def test_provider_failure_is_sanitized_and_resume_remains_operator_controlled(self) -> None:
+        raw = "Provider API usage limit reached; try again in 30 minutes. diagnostic-marker-must-not-copy"
+        self.fail_targets = True
+        self.provider_failure_text = raw
+
+        checkpoint, exit_code = self.execute()
+
+        self.assertEqual(7, exit_code)
+        failed = checkpoint["stages"][1]
+        self.assertEqual("provider_error", failed["error_category"])
+        self.assertEqual(
+            {
+                "class": "usage_limit",
+                "retryable": True,
+                "retry_after_seconds": 1800,
+                "resume_recommended": True,
+                "source": "sanitized_stderr_classifier",
+            },
+            failed["provider_error"],
+        )
+        self.assertEqual(1, failed["provider_failure_history"]["count"])
+        self.assertEqual({"usage_limit": 1}, failed["provider_failure_history"]["by_class"])
+        self.assertFalse(failed["provider_failure_history"]["recovered"])
+        execution = self.load_execution_report()
+        self.assertEqual(1, execution["summary"]["provider_failure_count"])
+        self.assertEqual(1, execution["summary"]["retryable_provider_failure_count"])
+        self.assertEqual({"usage_limit": 1}, execution["summary"]["provider_failures_by_class"])
+        self.assertNotIn(raw, json.dumps(checkpoint))
+        self.assertNotIn(raw, json.dumps(execution))
+        events = [json.loads(line) for line in (self.run / "reports" / "command-events.jsonl").read_text().splitlines()]
+        self.assertEqual(failed["provider_error"], events[-1]["provider_error"])
+        self.assertNotIn(raw, json.dumps(events[-1]))
+
+        self.calls.clear()
+        self.fail_targets = False
+        self.provider_failure_text = None
+        checkpoint, exit_code = self.execute(resume=True)
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(["gra-targets"], self.calls)
+        self.assertEqual(1, checkpoint["stages"][0]["attempt"])
+        self.assertEqual(2, checkpoint["stages"][1]["attempt"])
+        self.assertIsNone(checkpoint["stages"][1]["provider_error"])
+        self.assertIsNone(checkpoint["stages"][1]["error_category"])
+        self.assertTrue(checkpoint["stages"][1]["provider_failure_history"]["recovered"])
+        execution = self.load_execution_report()
+        self.assertEqual("succeeded", execution["stages"][1]["status"])
+        self.assertEqual(1, execution["summary"]["provider_failure_count"])
+        self.assertEqual(0, execution["summary"]["active_provider_failure_count"])
+        self.assertEqual(1, execution["summary"]["recovered_provider_failure_count"])
+        self.assertEqual({"usage_limit": 1}, execution["summary"]["provider_failures_by_class"])
+
+    def test_checkpoint_schema_declares_recovered_provider_invariant(self) -> None:
+        schema = load_schema(REPO_ROOT, "workflow-checkpoint.schema.json")
+        recovered_rule = {
+            "if": {
+                "required": ["provider_failure_history"],
+                "properties": {
+                    "provider_failure_history": {
+                        "type": "object",
+                        "required": ["recovered"],
+                        "properties": {"recovered": {"const": True}},
+                    }
+                },
+            },
+            "then": {
+                "required": ["provider_error"],
+                "properties": {
+                    "status": {"const": "succeeded"},
+                    "provider_error": {"type": "null"},
+                },
+            },
+        }
+        self.assertIn(recovered_rule, schema["$defs"]["stage"]["allOf"])
+
+    def test_unknown_symlinked_and_oversized_stderr_fail_safe_to_generic_exit(self) -> None:
+        cases = (
+            ("normal", "local stage failure without a provider marker"),
+            ("symlink", "Provider API rate limit; retry after 10 seconds."),
+            ("oversize", "Provider API rate limit; retry after 10 seconds."),
+        )
+        for mode, text in cases:
+            with self.subTest(mode=mode):
+                self.tearDown()
+                self.setUp()
+                self.fail_targets = True
+                self.provider_failure_text = text
+                self.provider_stderr_mode = mode
+                checkpoint, exit_code = self.execute()
+                self.assertEqual(7, exit_code)
+                self.assertEqual("stage_exit", checkpoint["stages"][1]["error_category"])
+                self.assertIsNone(checkpoint["stages"][1]["provider_error"])
+
+    def test_provider_event_metadata_is_immutable_after_stderr_mutation(self) -> None:
+        self.fail_targets = True
+        self.provider_failure_text = "Provider API rate limit; retry after 10 seconds."
+        self.provider_stderr_mode = "mutated_after_event"
+
+        checkpoint, exit_code = self.execute()
+
+        self.assertEqual(7, exit_code)
+        self.assertEqual("provider_error", checkpoint["stages"][1]["error_category"])
+        self.assertEqual("rate_limit", checkpoint["stages"][1]["provider_error"]["class"])
+        self.assertEqual(10, checkpoint["stages"][1]["provider_error"]["retry_after_seconds"])
+        self.assertEqual("local validation failed", (self.run / "codex-targets-stderr.txt").read_text())
+
+    def test_legacy_checkpoint_without_provider_field_remains_resumable(self) -> None:
+        self.fail_targets = True
+        self.execute()
+        path = self.run / "reports" / "workflow-checkpoint.json"
+        checkpoint = json.loads(path.read_text(encoding="utf-8"))
+        for stage in checkpoint["stages"]:
+            stage.pop("provider_error", None)
+            stage.pop("provider_failure_history", None)
+        path.write_text(json.dumps(checkpoint) + "\n", encoding="utf-8")
+
+        self.calls.clear()
+        self.fail_targets = False
+        resumed, exit_code = self.execute(resume=True)
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(["gra-targets"], self.calls)
+        self.assertIsNone(resumed["stages"][1]["provider_error"])
+        self.assertIsNone(resumed["stages"][1]["provider_failure_history"])
+
+    def test_resume_rejects_poisoned_provider_checkpoint_metadata(self) -> None:
+        self.fail_targets = True
+        self.provider_failure_text = "Provider API rate limit; retry after 10 seconds."
+        self.execute()
+        path = self.run / "reports" / "workflow-checkpoint.json"
+        original = json.loads(path.read_text(encoding="utf-8"))
+
+        mutations = []
+        invalid_retry = json.loads(json.dumps(original))
+        invalid_retry["stages"][1]["provider_error"]["retry_after_seconds"] = -1
+        mutations.append(invalid_retry)
+        open_payload = json.loads(json.dumps(original))
+        open_payload["stages"][1]["provider_error"]["raw_response"] = "must-not-copy"
+        mutations.append(open_payload)
+        drifted_history = json.loads(json.dumps(original))
+        drifted_history["stages"][1]["provider_failure_history"]["count"] = 2
+        mutations.append(drifted_history)
+        mismatched_category = json.loads(json.dumps(original))
+        mismatched_category["stages"][1]["error_category"] = "stage_exit"
+        mutations.append(mismatched_category)
+        mismatched_status = json.loads(json.dumps(original))
+        mismatched_status["stages"][1]["status"] = "running"
+        mutations.append(mismatched_status)
+
+        for poisoned in mutations:
+            with self.subTest(provider_error=poisoned["stages"][1]["provider_error"]):
+                path.write_text(json.dumps(poisoned) + "\n", encoding="utf-8")
+                with self.assertRaisesRegex(WorkflowExecutionError, "provider failure"):
+                    self.execute(resume=True)
+                self.assertEqual(["gra-recon", "gra-targets"], self.calls)
 
     def test_resume_rejects_stale_successful_output(self) -> None:
         self.fail_targets = True

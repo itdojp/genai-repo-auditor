@@ -263,12 +263,38 @@ scope/status rather than a future execution plan.
 `gra-run --resume` whenever the resume checkpoint changes. Its stage records
 contain only bounded identifiers, status, dependency IDs, attempts, timestamps,
 duration, exit code, a closed sanitized error category, absence reason, blocked
-dependency IDs, and declared output references. Its summary exposes failures,
-scoped skips, blocked dependencies, duration, absence reasons, and resume state
-to `gra-metrics` and `gra-evidence-graph`. The machine-readable contract is
+dependency IDs, and declared output references. A failed stage may include the
+optional closed `provider_error` object: one of ten provider-neutral classes,
+fixed retry/resume booleans, an optional retry-after value from 1 through
+86,400 seconds, and the fixed `sanitized_stderr_classifier` source. Unknown
+provider text can map only to `unknown_provider_error`; unrecognized or unsafe
+input remains a generic `stage_exit`. Raw provider responses, stderr, prompts,
+headers, tokens, account IDs, and request IDs are never copied into the report.
+The classifier runs while a failed worker completion event is created and binds
+only the closed metadata into that event. `gra-run` accepts it only from a new,
+validated event for the exact failed command and never reopens the event's
+mutable stderr reference. Generic local error phrases without provider context
+are not classified.
+Its summary exposes failures, scoped skips, blocked dependencies, duration,
+absence reasons, resume state, and bounded provider-failure counts to
+`gra-metrics` and `gra-evidence-graph`. Retry and resume fields are operator
+guidance rather than a success guarantee; the execution engine never performs
+an automatic sleep or retry, enables network access, changes credentials, or
+repeats a succeeded stage. The machine-readable contract is
 `templates/reports/workflow-execution.schema.json`; `gra-validate-report`
 checks schema consistency, exact summary totals, dependency references,
-timestamps, output paths, resume references, and secret-like values.
+timestamps, output paths, resume references, provider-metadata bounds and state
+consistency, and secret-like values.
+
+The artifact remains schema version `1`. `provider_error` and its summary fields
+are additive and optional so previously valid version-1 execution reports and
+checkpoints remain valid. Newly generated reports always emit the fields. A
+successful explicit resume clears the current stage's provider failure
+metadata and reports the stage as succeeded. It retains the incremented attempt
+count plus a closed `provider_failure_history` containing aggregate attempt and
+class counts, the last sanitized error, and a recovery boolean. Metrics and the
+dashboard therefore retain historical provider failures while exposing active
+and recovered counts separately.
 
 `benchmark.json` is a local-only dogfood benchmark artifact produced by
 `gra-benchmark`. It records bounded summaries for report validation, obvious

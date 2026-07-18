@@ -145,6 +145,136 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
         self.assertEqual(1, invalid_graph.returncode)
         self.assertIn("evidence_graph.summary.workflow_execution.resume_available", invalid_graph.stderr)
 
+    def test_metrics_dashboard_and_evidence_graph_surface_bounded_provider_guidance(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        plan = {"stages": [{"id": "recon", "depends_on": []}]}
+        checkpoint = {
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "profile": "fixture-profile",
+            "profile_version": "1.0.0",
+            "status": "blocked",
+            "requested_from": None,
+            "requested_until": None,
+            "requested_skips": [],
+            "resume_stage": "recon",
+            "stages": [{
+                "id": "recon",
+                "status": "failed",
+                "attempt": 1,
+                "started_at": "2026-07-11T00:00:00Z",
+                "ended_at": "2026-07-11T00:00:02Z",
+                "exit_code": 7,
+                "error_category": "provider_error",
+                "provider_error": {
+                    "class": "usage_limit",
+                    "retryable": True,
+                    "retry_after_seconds": 1800,
+                    "resume_recommended": True,
+                    "source": "sanitized_stderr_classifier",
+                },
+                "provider_failure_history": {
+                    "count": 1,
+                    "retryable_count": 1,
+                    "resume_recommended_count": 1,
+                    "by_class": {"usage_limit": 1},
+                    "last_error": {
+                        "class": "usage_limit",
+                        "retryable": True,
+                        "retry_after_seconds": 1800,
+                        "resume_recommended": True,
+                        "source": "sanitized_stderr_classifier",
+                    },
+                    "recovered": False,
+                },
+                "output_artifacts": [],
+            }],
+        }
+        report = build_workflow_execution(checkpoint, plan)
+        (run_dir / "reports" / "workflow-execution.json").write_text(
+            json.dumps(report, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
+        workflow = metrics["workflow_execution"]
+        self.assertEqual(1, workflow["provider_failure_count"])
+        self.assertEqual(1, workflow["retryable_provider_failure_count"])
+        self.assertEqual(1, workflow["resume_recommended_count"])
+        self.assertEqual(1, workflow["active_provider_failure_count"])
+        self.assertEqual(0, workflow["recovered_provider_failure_count"])
+        self.assertEqual({"usage_limit": 1}, workflow["provider_failures_by_class"])
+        self.assertEqual(["recon"], workflow["provider_failure_stages"])
+        self.assertEqual([], workflow["recovered_provider_failure_stages"])
+        self.assertEqual(workflow, metrics["summary"]["workflow_execution"])
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-evidence-graph", "--run", run_dir], check=True)
+        graph = json.loads((run_dir / "reports" / "evidence-graph.json").read_text(encoding="utf-8"))
+        graph_workflow = graph["summary"]["workflow_execution"]
+        self.assertEqual(1, graph_workflow["provider_failure_count"])
+        self.assertEqual({"usage_limit": 1}, graph_workflow["provider_failures_by_class"])
+        self.assertEqual(["recon"], graph_workflow["provider_failure_stages"])
+
+        dashboard = run_dir / "reports" / "dashboard.html"
+        self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-dashboard", "--run", run_dir, "--out", dashboard],
+            check=True,
+        )
+        html = dashboard.read_text(encoding="utf-8")
+        self.assertIn("Provider failure guidance", html)
+        self.assertIn("usage_limit", html)
+        self.assertIn("Provider resume recommendations", html)
+        self.assertIn("retry guarantees are excluded", html)
+
+        serialized = json.dumps({"report": report, "metrics": metrics, "graph": graph, "html": html})
+        for raw_value in (
+            "sk-live-provider-token",
+            "request-id-secret-value",
+            "provider raw response body",
+        ):
+            self.assertNotIn(raw_value, serialized)
+
+        valid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("Workflow execution: validated", valid.stdout)
+        self.assertIn("Metrics: validated", valid.stdout)
+        self.assertIn("Evidence graph: validated", valid.stdout)
+
+        checkpoint["status"] = "succeeded"
+        checkpoint["resume_stage"] = None
+        recovered_stage = checkpoint["stages"][0]
+        recovered_stage.update({
+            "status": "succeeded",
+            "attempt": 2,
+            "ended_at": "2026-07-11T00:00:03Z",
+            "exit_code": 0,
+            "error_category": None,
+            "provider_error": None,
+        })
+        recovered_stage["provider_failure_history"]["recovered"] = True
+        recovered_report = build_workflow_execution(checkpoint, plan)
+        (run_dir / "reports" / "workflow-execution.json").write_text(
+            json.dumps(recovered_report, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        recovered_metrics = json.loads(
+            (run_dir / "reports" / "metrics.json").read_text(encoding="utf-8")
+        )["workflow_execution"]
+        self.assertEqual(1, recovered_metrics["provider_failure_count"])
+        self.assertEqual(0, recovered_metrics["active_provider_failure_count"])
+        self.assertEqual(1, recovered_metrics["recovered_provider_failure_count"])
+        self.assertEqual(["recon"], recovered_metrics["recovered_provider_failure_stages"])
+        self.assertEqual({"usage_limit": 1}, recovered_metrics["provider_failures_by_class"])
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-dashboard", "--run", run_dir, "--out", dashboard], check=True)
+        recovered_html = dashboard.read_text(encoding="utf-8")
+        self.assertIn("Provider failures observed", recovered_html)
+        self.assertIn("Recovered provider-failure stages", recovered_html)
+        self.assertIn("usage_limit", recovered_html)
+        self.assertNotIn("provider raw response body", recovered_html)
+
     def test_metrics_and_evidence_graph_failures_record_only_written_outputs(self) -> None:
         metrics_run = self.copy_fixture_run("minimal-run")
         (metrics_run / "reports" / "findings.json").write_text("{invalid-json\n", encoding="utf-8")

@@ -978,6 +978,33 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual(cp_v2.returncode, 0, f"stdout:\n{cp_v2.stdout}\nstderr:\n{cp_v2.stderr}")
         self.assertIn("Command events: validated", cp_v2.stdout)
 
+        provider_event = dict(v2_event)
+        provider_event.update({
+            "command": "gra-targets",
+            "phase": "target-generation",
+            "exit_code": 7,
+            "status": "failed",
+            "provider_error": {
+                "class": "rate_limit",
+                "retryable": True,
+                "retry_after_seconds": 60,
+                "resume_recommended": True,
+                "source": "sanitized_stderr_classifier",
+            },
+        })
+        events_path.write_text(json.dumps(provider_event, sort_keys=True) + "\n", encoding="utf-8")
+        cp_provider = self.run_validator(run_dir)
+        self.assertEqual(0, cp_provider.returncode, cp_provider.stderr)
+
+        raw_marker = "provider-body-must-not-be-echoed"
+        poisoned_provider_event = json.loads(json.dumps(provider_event))
+        poisoned_provider_event["provider_error"]["raw_response"] = raw_marker
+        events_path.write_text(json.dumps(poisoned_provider_event, sort_keys=True) + "\n", encoding="utf-8")
+        cp_provider_poisoned = self.run_validator(run_dir)
+        self.assertEqual(1, cp_provider_poisoned.returncode)
+        self.assertIn("event.provider_error.raw_response", cp_provider_poisoned.stderr)
+        self.assertNotIn(raw_marker, cp_provider_poisoned.stderr)
+
         forbidden_payload_event = dict(v2_event)
         forbidden_key = "raw_" + "prompt"
         forbidden_payload_event[forbidden_key] = "review this"
@@ -1111,6 +1138,111 @@ class ReportContractTests(unittest.TestCase):
         )
         self.assertNotIn("uncontracted top-level payload", invalid_unknown.stderr)
         self.assertNotIn("uncontracted stage payload", invalid_unknown.stderr)
+
+    def test_workflow_execution_provider_failure_contract_is_closed_and_backward_compatible(self) -> None:
+        run_dir = self.copy_run()
+        checkpoint = {
+            "run_id": "fixture-run",
+            "repo": "example/demo",
+            "profile": "recon-only",
+            "profile_version": "1.0.0",
+            "status": "blocked",
+            "requested_from": None,
+            "requested_until": None,
+            "requested_skips": [],
+            "resume_stage": "recon",
+            "stages": [{
+                "id": "recon",
+                "status": "failed",
+                "attempt": 1,
+                "started_at": "2026-07-11T00:00:00Z",
+                "ended_at": "2026-07-11T00:00:01Z",
+                "exit_code": 7,
+                "error_category": "provider_error",
+                "provider_error": {
+                    "class": "rate_limit",
+                    "retryable": True,
+                    "retry_after_seconds": 60,
+                    "resume_recommended": True,
+                    "source": "sanitized_stderr_classifier",
+                },
+                "provider_failure_history": {
+                    "count": 1,
+                    "retryable_count": 1,
+                    "resume_recommended_count": 1,
+                    "by_class": {"rate_limit": 1},
+                    "last_error": {
+                        "class": "rate_limit",
+                        "retryable": True,
+                        "retry_after_seconds": 60,
+                        "resume_recommended": True,
+                        "source": "sanitized_stderr_classifier",
+                    },
+                    "recovered": False,
+                },
+                "output_artifacts": [],
+            }],
+        }
+        plan = {"stages": [{"id": "recon", "depends_on": []}]}
+        report = build_workflow_execution(checkpoint, plan)
+        report_path = run_dir / "reports" / "workflow-execution.json"
+        self.write_json(report_path, report)
+
+        valid = self.run_validator(run_dir)
+        self.assertEqual(0, valid.returncode, valid.stderr)
+
+        poisoned_cases = []
+        for retry_after in (-1, 86401):
+            poisoned = json.loads(json.dumps(report))
+            poisoned["stages"][0]["provider_error"]["retry_after_seconds"] = retry_after
+            poisoned_cases.append((f"retry_after={retry_after}", poisoned))
+
+        raw_marker = "sk-live-provider-value-must-not-be-echoed"
+        open_payload = json.loads(json.dumps(report))
+        open_payload["stages"][0]["provider_error"]["raw_response"] = raw_marker
+        poisoned_cases.append(("open provider payload", open_payload))
+
+        category_mismatch = json.loads(json.dumps(report))
+        category_mismatch["stages"][0]["error_category"] = "stage_exit"
+        poisoned_cases.append(("category mismatch", category_mismatch))
+
+        status_mismatch = json.loads(json.dumps(report))
+        status_mismatch["stages"][0]["status"] = "succeeded"
+        poisoned_cases.append(("status mismatch", status_mismatch))
+
+        summary_mismatch = json.loads(json.dumps(report))
+        summary_mismatch["summary"]["provider_failure_count"] = 2
+        poisoned_cases.append(("summary mismatch", summary_mismatch))
+
+        for name, poisoned in poisoned_cases:
+            with self.subTest(name=name):
+                self.write_json(report_path, poisoned)
+                invalid = self.run_validator(run_dir)
+                self.assertEqual(1, invalid.returncode)
+                self.assertNotIn(raw_marker, invalid.stderr)
+
+        legacy_checkpoint = json.loads(json.dumps(checkpoint))
+        legacy_stage = legacy_checkpoint["stages"][0]
+        legacy_stage["error_category"] = "stage_exit"
+        del legacy_stage["provider_error"]
+        del legacy_stage["provider_failure_history"]
+        legacy_report = build_workflow_execution(legacy_checkpoint, plan)
+        for stage in legacy_report["stages"]:
+            stage.pop("provider_error", None)
+            stage.pop("provider_failure_history", None)
+        for field in (
+            "provider_failure_count",
+            "retryable_provider_failure_count",
+            "resume_recommended_count",
+            "active_provider_failure_count",
+            "recovered_provider_failure_count",
+            "provider_failures_by_class",
+        ):
+            legacy_report["summary"].pop(field, None)
+        self.write_json(report_path, legacy_report)
+
+        legacy_valid = self.run_validator(run_dir)
+        self.assertEqual(0, legacy_valid.returncode, legacy_valid.stderr)
 
     def test_metrics_rejects_raw_evidence_fields_and_safety_flag_drift(self) -> None:
         run_dir = self.copy_run()

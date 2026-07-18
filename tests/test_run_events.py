@@ -90,6 +90,30 @@ class RunEventsTests(unittest.TestCase):
         self.assertFalse(event["network_allowed"])
         validate_command_event_payload(event)
 
+    def test_audit_provider_failure_accepts_existing_codex_stderr_basename(self) -> None:
+        run_dir = self.make_run()
+        stderr_path = run_dir / "codex-stderr.txt"
+        stderr_path.write_text(
+            "Provider API usage limit reached; try again in 30 minutes. raw-marker-must-not-copy",
+            encoding="utf-8",
+        )
+        started_at, started_perf = start_command_event()
+
+        append_command_event(
+            run_dir,
+            command="gra-audit",
+            phase="exec",
+            started_at=started_at,
+            started_perf=started_perf,
+            exit_code=7,
+            output_artifact_paths=[stderr_path],
+        )
+
+        event = load_command_events(run_dir)[0]
+        self.assertEqual("usage_limit", event["provider_error"]["class"])
+        self.assertEqual(1800, event["provider_error"]["retry_after_seconds"])
+        self.assertNotIn("raw-marker-must-not-copy", json.dumps(event))
+
     def test_reports_dir_rejects_target_checkout_overlap(self) -> None:
         run_dir = self.make_run()
         context_path = run_dir / "context.json"

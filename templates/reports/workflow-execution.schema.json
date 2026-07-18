@@ -73,7 +73,28 @@
         "skipped_by_scope_count": {"type": "integer", "minimum": 0},
         "blocked_dependency_count": {"type": "integer", "minimum": 0},
         "absent_stage_count": {"type": "integer", "minimum": 0},
-        "absence_reasons": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}}
+        "absence_reasons": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+        "provider_failure_count": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "retryable_provider_failure_count": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "resume_recommended_count": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "active_provider_failure_count": {"type": "integer", "minimum": 0, "maximum": 64},
+        "recovered_provider_failure_count": {"type": "integer", "minimum": 0, "maximum": 64},
+        "provider_failures_by_class": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rate_limit": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "usage_limit": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "authentication": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "authorization": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "service_unavailable": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "timeout": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "invalid_request": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "model_unavailable": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "response_contract": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "unknown_provider_error": {"type": "integer", "minimum": 1, "maximum": 1000000}
+          }
+        }
       }
     },
     "stages": {
@@ -93,11 +114,99 @@
           "ended_at": {"type": ["string", "null"]},
           "duration_ms": {"type": "integer", "minimum": 0},
           "exit_code": {"type": ["integer", "null"]},
-          "error_category": {"enum": [null, "stage_exit", "interrupted", "missing_or_unsafe_output"]},
+          "error_category": {"enum": [null, "stage_exit", "interrupted", "missing_or_unsafe_output", "provider_error"]},
+          "provider_error": {
+            "anyOf": [
+              {"type": "null"},
+              {"$ref": "#/$defs/providerError"}
+            ]
+          },
+          "provider_failure_history": {
+            "anyOf": [
+              {"type": "null"},
+              {"$ref": "#/$defs/providerFailureHistory"}
+            ]
+          },
           "absence_reason": {"enum": [null, "interrupted", "operator_scoped_skip", "external_prerequisite", "outside_selected_range", "blocked_by_dependency", "range_continuation", "workflow_paused", "workflow_blocked", "not_started"]},
           "blocked_by": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
           "output_artifact_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
-        }
+        },
+        "allOf": [
+          {
+            "if": {"required": ["provider_error"], "properties": {"provider_error": {"type": "object"}}},
+            "then": {
+              "required": ["provider_failure_history"],
+              "properties": {
+                "status": {"const": "failed"},
+                "error_category": {"const": "provider_error"},
+                "provider_failure_history": {"type": "object"}
+              }
+            }
+          },
+          {
+            "if": {"required": ["error_category"], "properties": {"error_category": {"const": "provider_error"}}},
+            "then": {"required": ["provider_error"], "properties": {"provider_error": {"type": "object"}}}
+          },
+          {
+            "if": {
+              "required": ["provider_failure_history"],
+              "properties": {
+                "provider_failure_history": {
+                  "type": "object",
+                  "required": ["recovered"],
+                  "properties": {"recovered": {"const": true}}
+                }
+              }
+            },
+            "then": {
+              "required": ["provider_error"],
+              "properties": {"status": {"const": "succeeded"}, "provider_error": {"type": "null"}}
+            }
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "providerError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "retryable", "retry_after_seconds", "resume_recommended", "source"],
+      "properties": {
+        "class": {"enum": ["rate_limit", "usage_limit", "authentication", "authorization", "service_unavailable", "timeout", "invalid_request", "model_unavailable", "response_contract", "unknown_provider_error"]},
+        "retryable": {"type": "boolean"},
+        "retry_after_seconds": {"type": ["integer", "null"], "minimum": 1, "maximum": 86400},
+        "resume_recommended": {"type": "boolean"},
+        "source": {"const": "sanitized_stderr_classifier"}
+      }
+    },
+    "providerFailureHistory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "retryable_count", "resume_recommended_count", "by_class", "last_error", "recovered"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "retryable_count": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "resume_recommended_count": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "by_class": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "rate_limit": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "usage_limit": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "authentication": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "authorization": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "service_unavailable": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "timeout": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "invalid_request": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "model_unavailable": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "response_contract": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "unknown_provider_error": {"type": "integer", "minimum": 1, "maximum": 1000000}
+          }
+        },
+        "last_error": {"$ref": "#/$defs/providerError"},
+        "recovered": {"type": "boolean"}
       }
     }
   }
