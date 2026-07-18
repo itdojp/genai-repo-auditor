@@ -7,7 +7,7 @@ import re
 import stat
 import time
 from fnmatch import fnmatchcase
-from contextlib import contextmanager, suppress
+from contextlib import ExitStack, contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
@@ -1054,21 +1054,21 @@ def _open_ref_fd(run_dir: Path, ref: str, *, allow_missing: bool) -> int | None:
     directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     leaf_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     if os.open in getattr(os, "supports_dir_fd", set()) and getattr(os, "O_DIRECTORY", 0):
-        parent_fd = -1
-        try:
-            parent_fd = os.open(run_dir, directory_flags)
+        with ExitStack() as stack:
+            root_fd = os.open(run_dir, directory_flags)
+            stack.callback(os.close, root_fd)
+            parent_fd = root_fd
             for part in parts[:-1]:
                 try:
-                    next_parent_fd = os.open(part, directory_flags, dir_fd=parent_fd)
+                    next_fd = os.open(part, directory_flags, dir_fd=parent_fd)
+                    stack.callback(os.close, next_fd)
                 except FileNotFoundError:
                     if allow_missing:
                         return None
                     raise FreshnessError("required report dependency is missing")
                 except OSError as exc:
                     raise FreshnessError(f"artifact_ref must not traverse a symlink or non-directory: {normalized}") from exc
-                previous_parent_fd = parent_fd
-                parent_fd = next_parent_fd
-                os.close(previous_parent_fd)
+                parent_fd = next_fd
             fd = -1
             try:
                 try:
@@ -1090,9 +1090,6 @@ def _open_ref_fd(run_dir: Path, ref: str, *, allow_missing: bool) -> int | None:
                 os.close(fd)
                 raise FreshnessError(f"artifact_ref must identify a regular file: {normalized}")
             return fd
-        finally:
-            if parent_fd >= 0:
-                os.close(parent_fd)
 
     # Cross-platform fallback for runtimes without openat/dir_fd support.
     current = run_dir
