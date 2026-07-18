@@ -8,11 +8,19 @@ the matching GitHub Release existed. This record completes the repository-local
 release checks and stops at the human-only gate. It is not a claim that
 publication, environment approval, or attestation has occurred.
 
-Codex and repository automation must not create, move, push, or delete the tag;
+The handoff was amended on 2026-07-19 for the repository's documented
+single-maintainer governance. A read-only recheck found that the `release`
+environment is absent, immutable releases are disabled, no effective tag
+ruleset exists, the maintainer account publishes no GPG or SSH signing key, and
+the `v0.5.0` tag and Release remain absent. These are hard stops until the human
+maintainer configures and verifies the controls below.
+
+Codex, other AI review channels, and repository automation must not create,
+move, push, or delete the tag;
 dispatch `publish=true`; approve the `release` environment; or create the
-GitHub Release. A maintainer performs those actions explicitly. If any expected
-identity already exists when the maintainer starts, stop and verify it instead
-of overwriting or reusing it.
+GitHub Release. The accountable human maintainer `ootakazuhiko` performs those
+actions explicitly. If any expected identity already exists when the maintainer
+starts, stop and verify it instead of overwriting or reusing it.
 
 ## Frozen release identity
 
@@ -27,6 +35,33 @@ of overwriting or reusing it.
 
 Do not retarget `v0.5.0` to the handoff-document commit or any later commit.
 The handoff is historical metadata about the already frozen release source.
+
+## Single-maintainer release profile
+
+This repository has one accountable human maintainer, `ootakazuhiko`, and will
+not add a second human maintainer solely for release approval. The former
+distinct-human-reviewer and self-review-prevention profile is not used for this
+release. The replacement profile requires:
+
+- required reviewer `ootakazuhiko` and `prevent_self_review=false`;
+- a wait timer of at least 30 minutes and administrator bypass disabled;
+- deployment restricted to tags matching `v*`;
+- immutable releases enabled before publication;
+- an active `v*` tag ruleset without bypass actors that restricts updates and
+  deletions and blocks force pushes;
+- a signed annotated `v0.5.0` tag bound to the frozen source commit;
+- reproducible candidates, byte-identical results, candidate verification, and
+  exact checksum verification;
+- successful required CI plus artifact build-provenance and CycloneDX SBOM
+  attestations;
+- at least two distinct AI review channels with zero unresolved blockers; and
+- one final accountable human approval by `ootakazuhiko`.
+
+AI review is defense in depth. It is not separation of human duties, must not be
+described as independent human approval, and cannot substitute for the final
+human decision. Record each AI channel, reviewed subject and commit, result, and
+blocker disposition. An unavailable channel, unknown result, or unresolved
+blocker is a hard stop.
 
 ## Expected GitHub Release assets
 
@@ -83,31 +118,68 @@ the commands before execution; these commands intentionally mutate the remote
 tag/release state and are not for Codex execution.
 
 1. Confirm the four frozen-source workflow runs above are still successful and
-   fail closed unless the `release` GitHub environment already exists with at
-   least one required reviewer and self-review prevention enabled. GitHub can
-   otherwise create a referenced environment without protection rules:
+   fail closed unless the environment, immutable-release setting, and effective
+   tag ruleset satisfy the repository validator. GitHub can otherwise create a
+   referenced environment without protection rules. The validator rejects
+   absent, malformed, incomplete, legacy, or weak API responses. It accepts a
+   missing deployment-policy `type` only by returning an explicit mandatory UI
+   check instead of inferring that the `v*` policy targets tags:
 
    ```bash
    set -euo pipefail
    gh attestation verify --help >/dev/null
+   api_header='X-GitHub-Api-Version: 2026-03-10'
    environment_json="$(gh api \
+     -H "$api_header" \
      repos/itdojp/genai-repo-auditor/environments/release)"
-   jq -e '
-     .name == "release" and
-     ([.protection_rules[]? |
-       select(
-         .type == "required_reviewers" and
-         .prevent_self_review == true and
-         (.reviewers | length) > 0
-       )] | length) == 1
-   ' <<<"$environment_json" >/dev/null
+   deployment_policies_json="$(gh api \
+     -H "$api_header" \
+     --paginate --slurp \
+     repos/itdojp/genai-repo-auditor/environments/release/deployment-branch-policies)"
+   immutable_json="$(gh api \
+     -H "$api_header" \
+     repos/itdojp/genai-repo-auditor/immutable-releases)"
+   ruleset_index_json="$(gh api \
+     -H "$api_header" \
+     --paginate --slurp \
+     'repos/itdojp/genai-repo-auditor/rulesets?includes_parents=true&targets=tag')"
+   ruleset_ids="$(jq -r '
+     [.[] | .[]? |
+       select(.target == "tag" and .enforcement == "active") | .id] | .[]
+   ' <<<"$ruleset_index_json")"
+   test -n "$ruleset_ids"
+   rulesets_json="$({
+     while IFS= read -r ruleset_id; do
+       gh api -H "$api_header" \
+         "repos/itdojp/genai-repo-auditor/rulesets/$ruleset_id"
+     done <<<"$ruleset_ids"
+   } | jq -s .)"
+   python3 scripts/validate_release_controls.py \
+     --environment-json "$environment_json" \
+     --deployment-policies-json "$deployment_policies_json" \
+     --immutable-releases-json "$immutable_json" \
+     --rulesets-json "$rulesets_json"
    ```
 
-   A missing attestation subcommand, API error, missing rule, empty reviewer
-   list, or disabled self-review prevention is a hard stop. Upgrade GitHub CLI
-   or configure the environment in repository settings, then rerun this
-   read-only check before creating the tag.
-2. Confirm the tag and Release remain absent:
+   A missing attestation subcommand, API/validator error, additional or missing
+   reviewer, `prevent_self_review` other than `false`, wait timer below 30
+   minutes, additional/wrong deployment policy, disabled immutable-release
+   setting, bypass actor, excluded release tag, creation restriction, or missing
+   update/deletion/non-fast-forward rule is a hard stop.
+2. In **Settings > Environments > release**, verify **Allow administrators to
+   bypass configured protection rules** is deselected and the sole selected
+   deployment policy is **Tag `v*`**. Record both check results and the check
+   date in Issue #253. The documented environment and deployment-policy GET
+   examples in REST API version `2026-03-10` do not expose both settings
+   consistently, so these controls require human UI inspection. Inability to
+   inspect or record either setting is a hard stop; do not infer them from other
+   API fields.
+3. Confirm that the two byte-identical frozen-source candidates, exact asset
+   checksums above, candidate verification, and required CI evidence remain
+   accepted. Record at least two distinct AI review channels for the exact
+   frozen source/candidate and this publication handoff, with zero unresolved
+   blockers. AI output is review evidence only; it is not human approval.
+4. Confirm the tag and Release remain absent:
 
    ```bash
    set -euo pipefail
@@ -120,22 +192,57 @@ tag/release state and are not for Codex execution.
      fb8c5f00afa89e6f8b09eb6c76876833fef2fcd0 origin/main
    ```
 
-3. Create and push the exact annotated tag. Do not use `--force`, move an
-   existing tag, or substitute another commit:
+5. Publish an OpenPGP signing key on the `ootakazuhiko` GitHub account, record
+   its complete uppercase primary-key fingerprint in Issue #253, and configure
+   it as the approved maintainer key. Create and push the exact signed annotated
+   tag with that key. Do not use `--force`, move an existing tag, or substitute
+   another commit. Stop if the full primary fingerprint cannot be matched:
 
    ```bash
-   git tag -a v0.5.0 \
+   set -euo pipefail
+   : "${APPROVED_TAG_SIGNING_FINGERPRINT:?set the fingerprint recorded in Issue #253}"
+   printf '%s\n' "$APPROVED_TAG_SIGNING_FINGERPRINT" |
+     grep -Eq '^([0-9A-F]{40}|[0-9A-F]{64})$'
+   git tag -s -u "$APPROVED_TAG_SIGNING_FINGERPRINT" v0.5.0 \
      fb8c5f00afa89e6f8b09eb6c76876833fef2fcd0 \
      -m "GenAI Repo Auditor v0.5.0"
    test "$(git cat-file -t v0.5.0)" = "tag"
    test "$(git rev-list -n 1 v0.5.0)" = \
      "fb8c5f00afa89e6f8b09eb6c76876833fef2fcd0"
+   verify_output="$(git verify-tag --raw v0.5.0 2>&1)"
+   verified_primary_fingerprint="$(awk \
+     '/^\[GNUPG:\] VALIDSIG / {print (NF >= 12 ? $NF : $3)}' \
+     <<<"$verify_output")"
+   test "$verified_primary_fingerprint" = \
+     "$APPROVED_TAG_SIGNING_FINGERPRINT"
    git push origin refs/tags/v0.5.0
    ```
 
-4. Dispatch the reviewed workflow from the tag, request publication, and
-   approve the protected `release` environment only after reviewing the
-   candidate artifact:
+6. Verify the pushed remote ref still names the same locally verified annotated
+   tag object, resolves to the frozen source, and GitHub recognizes its
+   signature before dispatch:
+
+   ```bash
+   set -euo pipefail
+   api_header='X-GitHub-Api-Version: 2026-03-10'
+   tag_ref_json="$(gh api -H "$api_header" \
+     repos/itdojp/genai-repo-auditor/git/ref/tags/v0.5.0)"
+   tag_object_sha="$(jq -er '.object | select(.type == "tag") | .sha' \
+     <<<"$tag_ref_json")"
+   test "$tag_object_sha" = "$(git rev-parse refs/tags/v0.5.0)"
+   tag_object_json="$(gh api -H "$api_header" \
+     "repos/itdojp/genai-repo-auditor/git/tags/$tag_object_sha")"
+   jq -e '
+     .object.type == "commit" and
+     .object.sha == "fb8c5f00afa89e6f8b09eb6c76876833fef2fcd0" and
+     .verification.verified == true
+   ' <<<"$tag_object_json" >/dev/null
+   ```
+
+7. Dispatch the reviewed workflow from the tag and request publication. After
+   the environment wait timer has elapsed, `ootakazuhiko` reviews the candidate,
+   all recorded AI results, and every external control, then performs the one
+   accountable human final approval. Do not use administrator bypass:
 
    ```bash
    gh workflow run release.yml \
@@ -144,7 +251,7 @@ tag/release state and are not for Codex execution.
      -f publish=true
    ```
 
-5. Record the workflow-run URL and confirm that both `build-candidate` and
+8. Record the workflow-run URL and confirm that both `build-candidate` and
    `publish` complete successfully. Do not bypass a failed check or environment
    gate.
 
@@ -158,6 +265,19 @@ After the maintainer confirms completion, Codex may perform these non-mutating
 checks in ignored local storage:
 
 ```bash
+api_header='X-GitHub-Api-Version: 2026-03-10'
+release_json="$(gh api -H "$api_header" \
+  repos/itdojp/genai-repo-auditor/releases/tags/v0.5.0)"
+jq -e '
+  .tag_name == "v0.5.0" and
+  .draft == false and
+  .prerelease == false and
+  .immutable == true
+' <<<"$release_json" >/dev/null
+
+gh release verify v0.5.0 \
+  --repo itdojp/genai-repo-auditor
+
 gh release view v0.5.0 \
   --repo itdojp/genai-repo-auditor \
   --json tagName,targetCommitish,isDraft,isPrerelease,publishedAt,assets,url
@@ -212,9 +332,11 @@ assets remain local and must not be committed.
 
 ## Failure handling
 
-Stop promotion if the tag points elsewhere, any expected asset is missing or
-extra, a checksum/size differs, the manifest identity differs, an attestation
-fails, release notes diverge, or a prohibited/private path is detected. Do not
-rewrite the public tag or overwrite release assets. Record the bounded failure
-and use the reviewed hotfix/patch-release process from
+Stop promotion if an external control is absent or unverifiable, an AI review
+has an unresolved blocker, the tag signature fails, the tag points elsewhere,
+the Release is not immutable, any expected asset is missing or extra, a
+checksum/size differs, the manifest identity differs, an attestation fails,
+release notes diverge, or a prohibited/private path is detected. Do not rewrite
+the public tag or overwrite release assets. Record the bounded failure and use
+the reviewed hotfix/patch-release process from
 [`RELEASE_PROCESS.md`](../RELEASE_PROCESS.md).

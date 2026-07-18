@@ -69,6 +69,7 @@ class ManifestTests(unittest.TestCase):
                 ".github/workflows/publish-pypi.yml",
                 ".github/workflows/release.yml",
                 "scripts/build_release.py",
+                "scripts/validate_release_controls.py",
                 "scripts/validate_python_distribution.py",
             },
         )
