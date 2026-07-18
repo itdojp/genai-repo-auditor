@@ -67,6 +67,13 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
         self.assertIn("Invalid targets.json queue", rejected.stderr)
         self.assertFalse(rejected_dashboard.exists())
 
+        invalid_report = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir])
+        self.assertEqual(1, invalid_report.returncode)
+        self.assertIn("metrics.target_queue: unable to validate reports/targets.json safely", invalid_report.stderr)
+        self.assertIn("evidence_graph.summary.target_queue: unable to validate target queue safely", invalid_report.stderr)
+        self.assertNotIn("metrics.scanner_readiness: unable to validate source reports safely", invalid_report.stderr)
+        self.assertNotIn("Traceback", invalid_report.stderr)
+
     def test_metrics_and_dashboard_surface_bounded_scanner_readiness_reasons(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         (run_dir / "repo").mkdir()

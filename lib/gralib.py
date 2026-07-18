@@ -15,6 +15,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from agent_worker import codex_worker_executable
 from run_events import reports_dir as configured_reports_dir
+from target_artifact import MAX_TARGETS_JSON_BYTES, load_targets_artifact
 from template_env import validate_template_env_key
 
 
@@ -92,41 +93,6 @@ def write_run_artifact_text(run_dir: Path, path: Path, content: str) -> None:
 
 def write_run_artifact_json(run_dir: Path, path: Path, data: Any) -> None:
     write_run_artifact_text(run_dir, path, json.dumps(data, indent=2, ensure_ascii=False) + '\n')
-
-
-MAX_TARGETS_JSON_BYTES = 16 * 1024 * 1024
-
-
-def load_targets_artifact(run_dir: Path, default: Any = None) -> Any:
-    """Read targets.json through a bounded, no-follow file descriptor."""
-
-    path = configured_reports_dir(run_dir) / 'targets.json'
-    flags = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0)
-    try:
-        fd = os.open(path, flags)
-    except FileNotFoundError:
-        return default
-    except OSError as exc:
-        raise OSError('targets.json must be a regular non-symlink file') from exc
-    try:
-        metadata = os.fstat(fd)
-        if not stat.S_ISREG(metadata.st_mode):
-            raise OSError('targets.json must be a regular non-symlink file')
-        if metadata.st_size > MAX_TARGETS_JSON_BYTES:
-            raise OSError(f'targets.json exceeds the {MAX_TARGETS_JSON_BYTES}-byte limit')
-        chunks: list[bytes] = []
-        total = 0
-        while True:
-            chunk = os.read(fd, min(1024 * 1024, MAX_TARGETS_JSON_BYTES + 1 - total))
-            if not chunk:
-                break
-            chunks.append(chunk)
-            total += len(chunk)
-            if total > MAX_TARGETS_JSON_BYTES:
-                raise OSError(f'targets.json exceeds the {MAX_TARGETS_JSON_BYTES}-byte limit')
-        return json.loads(b''.join(chunks).decode('utf-8'))
-    finally:
-        os.close(fd)
 
 
 def load_context(run_dir: Path) -> Dict[str, Any]:

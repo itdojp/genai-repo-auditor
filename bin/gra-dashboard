@@ -191,6 +191,9 @@ def main() -> int:
             for item in decisions
             if isinstance(item, dict) and item.get('action') == 'merged'
         )
+        source_rows = source_rows or '<tr><td colspan="6">No source counts.</td></tr>'
+        merged_rows = merged_rows or '<tr><td colspan="4">No merged targets.</td></tr>'
+        deferred_rows_html = ''.join(deferred_rows) or '<tr><td colspan="4">No deferred targets.</td></tr>'
         queue_section = (
             "<h2>Target seed budget and deduplication</h2>"
             "<p>Counts and deterministic decisions only; raw scanner evidence and model prose are excluded. "
@@ -198,13 +201,13 @@ def main() -> int:
             f"<div class='cards'>{queue_cards_html}</div>"
             "<h3>Counts by seed source</h3>"
             "<table><thead><tr><th>Source</th><th>Generated</th><th>Active</th><th>Retained</th><th>Merged</th><th>Deferred</th></tr></thead>"
-            f"<tbody>{source_rows or '<tr><td colspan=\"6\">No source counts.</td></tr>'}</tbody></table>"
+            f"<tbody>{source_rows}</tbody></table>"
             "<h3>Merged source lineage</h3>"
             "<table><thead><tr><th>Contributor ID</th><th>Canonical ID</th><th>Source</th><th>Evidence artifact</th></tr></thead>"
-            f"<tbody>{merged_rows or '<tr><td colspan=\"4\">No merged targets.</td></tr>'}</tbody></table>"
+            f"<tbody>{merged_rows}</tbody></table>"
             "<h3>Deferred targets</h3>"
             "<table><thead><tr><th>ID</th><th>Risk</th><th>Priority</th><th>Reason</th></tr></thead>"
-            f"<tbody>{''.join(deferred_rows) or '<tr><td colspan=\"4\">No deferred targets.</td></tr>'}</tbody></table>"
+            f"<tbody>{deferred_rows_html}</tbody></table>"
         )
 
     gapfill_section = (

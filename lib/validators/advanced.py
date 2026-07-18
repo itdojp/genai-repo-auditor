@@ -1662,20 +1662,14 @@ def validate_metrics(run_dir: Path, errors: List[str]) -> bool:
         errors.append("metrics.safety.raw_evidence_copied: must be false")
     if safety.get("secrets_copied") is not False:
         errors.append("metrics.safety.secrets_copied: must be false")
+    from metrics import MetricsError, scanner_readiness_metrics, target_queue_metrics
     try:
-        from metrics import MetricsError, scanner_readiness_metrics, target_queue_metrics
-
         expected_readiness = scanner_readiness_metrics(configured_reports_dir(run_dir))
-        targets_path = configured_reports_dir(run_dir) / "targets.json"
-        targets_data = load_targets_artifact(run_dir, {}) if targets_path.exists() else {}
-        expected_target_queue = target_queue_metrics(targets_data)
     except (OSError, ValueError, MetricsError) as exc:
         errors.append(f"metrics.scanner_readiness: unable to validate source reports safely: {exc}")
     else:
         if metrics_data.get("scanner_readiness") != expected_readiness:
             errors.append("metrics.scanner_readiness: counts must match scanner readiness reports")
-        if metrics_data.get("target_queue") != expected_target_queue:
-            errors.append("metrics.target_queue: counts must match reports/targets.json queue summary")
         scanner_summary = metrics_data.get("summary", {}).get("scanner", {})
         expected_compact = {
             "readiness_artifact_present": expected_readiness["artifact_present"],
@@ -1687,6 +1681,16 @@ def validate_metrics(run_dir: Path, errors: List[str]) -> bool:
             scanner_summary.get(key) != value for key, value in expected_compact.items()
         ):
             errors.append("metrics.summary.scanner: readiness counts must match scanner readiness reports")
+
+    try:
+        targets_path = configured_reports_dir(run_dir) / "targets.json"
+        targets_data = load_targets_artifact(run_dir, {}) if targets_path.exists() else {}
+        expected_target_queue = target_queue_metrics(targets_data)
+    except (OSError, ValueError, MetricsError) as exc:
+        errors.append(f"metrics.target_queue: unable to validate reports/targets.json safely: {exc}")
+    else:
+        if metrics_data.get("target_queue") != expected_target_queue:
+            errors.append("metrics.target_queue: counts must match reports/targets.json queue summary")
     validate_metrics_payload(metrics_data, "metrics", errors)
     return True
 
@@ -2119,7 +2123,7 @@ def validate_evidence_graph(run_dir: Path, errors: List[str]) -> bool:
     if safety.get("bounded_summaries_only") is not True:
         errors.append("evidence_graph.safety.bounded_summaries_only: must be true")
     try:
-        from metrics import target_queue_metrics
+        from metrics import MetricsError, target_queue_metrics
 
         targets_path = configured_reports_dir(run_dir) / "targets.json"
         targets_data = load_targets_artifact(run_dir, {}) if targets_path.exists() else {}
@@ -2136,7 +2140,7 @@ def validate_evidence_graph(run_dir: Path, errors: List[str]) -> bool:
         }
         if graph_summary.get("target_queue") != expected_queue:
             errors.append("evidence_graph.summary.target_queue: counts must match reports/targets.json queue summary")
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, MetricsError) as exc:
         errors.append(f"evidence_graph.summary.target_queue: unable to validate target queue safely: {exc}")
     validate_evidence_graph_payload(graph, "evidence_graph", errors)
     secret_like_count = sum(1 for _ in iter_secret_findings(graph, field_path="evidence_graph"))

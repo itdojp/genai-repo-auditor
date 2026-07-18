@@ -37,8 +37,11 @@ def validate_targets(context: ValidationContext) -> bool:
     errors = context.errors
     try:
         targets_data = load_targets_artifact(context.run_dir, {})
-    except Exception as exc:
+    except json.JSONDecodeError as exc:
         errors.append(f"targets.json invalid JSON: {exc}")
+        return True
+    except Exception as exc:
+        errors.append(f"targets.json could not be read safely: {exc}")
         return True
 
     validate_schema(targets_data, context.schema("targets.schema.json"), "targets", errors)

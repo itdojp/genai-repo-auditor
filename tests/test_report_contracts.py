@@ -1799,6 +1799,22 @@ class ReportContractTests(unittest.TestCase):
         self.assertIn("scanner_index: expected type object, got array", cp.stderr)
         self.assertNotIn("Traceback", cp.stderr)
 
+    def test_targets_validator_distinguishes_unsafe_reads_from_invalid_json(self) -> None:
+        run_dir = self.copy_run()
+        targets_path = run_dir / "reports" / "targets.json"
+        outside_targets = self.work_dir / "outside-targets.json"
+        outside_targets.write_text(targets_path.read_text(encoding="utf-8"), encoding="utf-8")
+        targets_path.unlink()
+        targets_path.symlink_to(outside_targets)
+
+        cp = self.run_validator(run_dir)
+
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("targets.json could not be read safely", cp.stderr)
+        self.assertIn("regular non-symlink file", cp.stderr)
+        self.assertNotIn("targets.json invalid JSON", cp.stderr)
+        self.assertNotIn("Traceback", cp.stderr)
+
     def test_advanced_artifact_validators_reject_non_object_json_without_crashing(self) -> None:
         run_dir = self.copy_run()
         reports = run_dir / "reports"

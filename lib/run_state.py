@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from gralib import load_targets_artifact
+from target_artifact import load_targets_artifact
 
 RUN_STATE_REL_PATH = Path("reports") / "run-state.json"
 ACTIVE = "active"
