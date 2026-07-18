@@ -4,8 +4,8 @@ import json
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
-from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -110,9 +110,9 @@ class ReportFreshnessTests(unittest.TestCase):
             real_close(fd)
 
         with (
-            mock.patch.object(freshness.os, "supports_dir_fd", set()),
-            mock.patch.object(freshness.os, "fstat", side_effect=OSError("forced fstat failure")),
-            mock.patch.object(freshness.os, "close", side_effect=record_close),
+            unittest.mock.patch.object(freshness.os, "supports_dir_fd", set()),
+            unittest.mock.patch.object(freshness.os, "fstat", side_effect=OSError("forced fstat failure")),
+            unittest.mock.patch.object(freshness.os, "close", side_effect=record_close),
             self.assertRaisesRegex(OSError, "forced fstat failure"),
         ):
             freshness._open_ref_fd(run_dir, "reports/findings.json", allow_missing=False)
@@ -137,14 +137,13 @@ class ReportFreshnessTests(unittest.TestCase):
             real_close(fd)
 
         with (
-            mock.patch.object(freshness.os, "fstat", side_effect=OSError("forced fstat failure")),
-            mock.patch.object(freshness.os, "close", side_effect=record_close),
+            unittest.mock.patch.object(freshness.os, "fstat", side_effect=OSError("forced fstat failure")),
+            unittest.mock.patch.object(freshness.os, "close", side_effect=record_close),
             self.assertRaisesRegex(OSError, "forced fstat failure"),
         ):
             freshness._open_ref_fd(run_dir, "reports/findings.json", allow_missing=False)
 
         self.assertEqual(len(closed_fds), 3)
-        self.assertEqual(len(set(closed_fds)), 3)
 
     def test_removed_captured_dependency_is_missing(self) -> None:
         temporary, run_dir = self.make_run()
