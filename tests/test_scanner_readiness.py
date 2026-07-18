@@ -335,7 +335,9 @@ class ScannerReadinessTests(unittest.TestCase):
         secret = "never-print-this-secret"
         with mock.patch("scanner_readiness.detect_environment", return_value="linux"), mock.patch(
             "scanner_readiness._probe_command"
-        ) as probe, mock.patch("scanner_readiness.shutil.which", return_value="/approved/docker"):
+        ) as probe, mock.patch("scanner_readiness.runtime_candidates", return_value=[]), mock.patch(
+            "scanner_readiness.shutil.which", return_value="/approved/docker"
+        ):
             report = evaluate_scanner_readiness(
                 self.run_dir,
                 adapter_id="syft",
@@ -349,7 +351,9 @@ class ScannerReadinessTests(unittest.TestCase):
         probe.assert_not_called()
         self.assertEqual("blocked", report["state"])
         self.assertIn("runtime_remote", report["reason_codes"])
+        self.assertIn("runtime_missing", report["reason_codes"])
         self.assertIn("credential_environment_present", report["reason_codes"])
+        self.assertFalse(report["runtime"]["candidate_available"])
         serialized = json.dumps(report)
         self.assertNotIn(secret, serialized)
         self.assertNotIn("tcp://", serialized)

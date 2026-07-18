@@ -300,7 +300,7 @@ def _evaluate_scanner_readiness(
             reason = str(exc)
             runtime_healthy = reason == "image_not_local"
             _add_reason(reasons, reason)
-    elif not runtime_candidates_found and "runtime_remote" not in reasons:
+    elif not runtime_candidates_found:
         _add_reason(reasons, "runtime_missing")
 
     gvisor_available = shutil.which("runsc", path=path_env) is not None
@@ -671,7 +671,7 @@ def validate_scanner_readiness_report(report: Any) -> None:
         "credential_environment_present": credentials_report["environment_present"],
         "network_policy_unsupported": not sandbox_report["network_disabled"],
         "runtime_remote": not runtime_report["local_only"],
-        "runtime_missing": not runtime_report["candidate_available"] and runtime_report["local_only"],
+        "runtime_missing": not runtime_report["candidate_available"],
         "runtime_unavailable": (
             runtime_report["probe_executed"]
             and runtime_report["candidate_available"]
