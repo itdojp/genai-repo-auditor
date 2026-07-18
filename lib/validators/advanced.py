@@ -12,7 +12,7 @@ from report_safety import (
     iter_secret_findings,
     validate_relative_repo_path,
 )
-from gralib import load_context
+from gralib import load_context, load_targets_artifact
 from provider_failures import (
     PROVIDER_ERROR_CLASSES,
     ProviderFailureError,
@@ -370,19 +370,22 @@ def validate_dependencies(run_dir: Path, errors: List[str]) -> bool:
     return True
 
 
-def target_ids_from_reports(run_dir: Path, errors: List[str]) -> set[str]:
+def target_ids_from_reports(run_dir: Path, errors: List[str]) -> set[str] | None:
     targets_path = configured_reports_dir(run_dir) / "targets.json"
     if not targets_path.exists():
         return set()
     try:
-        targets_data = json.loads(targets_path.read_text(encoding="utf-8"))
-    except Exception as exc:
+        targets_data = load_targets_artifact(run_dir, {})
+    except json.JSONDecodeError as exc:
         errors.append(f"targets.json invalid JSON: {exc}")
-        return set()
+        return None
+    except Exception as exc:
+        errors.append(f"targets.json could not be read safely: {exc}")
+        return None
     targets = targets_data.get("targets") if isinstance(targets_data, dict) else None
     if not isinstance(targets, list):
         errors.append("targets.targets: targets must be a list")
-        return set()
+        return None
     ids = set()
     for index, target in enumerate(targets):
         if not isinstance(target, dict):
@@ -472,6 +475,7 @@ def validate_chains(run_dir: Path, findings: list[dict[str, Any]], errors: List[
     finding_ids = {str(finding.get("id")) for finding in findings if isinstance(finding, dict) and finding.get("id")}
     target_ids: set[str] = set()
     target_ids_loaded = False
+    target_ids_valid = True
     scanner_refs: set[str] = set()
     scanner_refs_loaded = False
     seen_ids: set[str] = set()
@@ -519,10 +523,12 @@ def validate_chains(run_dir: Path, findings: list[dict[str, Any]], errors: List[
                 errors.append(f"{path}.findings[{ref_index}]: finding {finding_ref!r} is not present in reports/findings.json")
 
         if target_refs and not target_ids_loaded:
-            target_ids = target_ids_from_reports(run_dir, errors)
+            loaded_target_ids = target_ids_from_reports(run_dir, errors)
+            target_ids_valid = loaded_target_ids is not None
+            target_ids = loaded_target_ids or set()
             target_ids_loaded = True
         for ref_index, target_ref in enumerate(target_refs):
-            if isinstance(target_ref, str) and target_ref not in target_ids:
+            if target_ids_valid and isinstance(target_ref, str) and target_ref not in target_ids:
                 errors.append(f"{path}.targets[{ref_index}]: target {target_ref!r} is not present in reports/targets.json")
 
         if scanner_ref_values and not scanner_refs_loaded:
@@ -1457,7 +1463,7 @@ def validate_scanner_runs(run_dir: Path, errors: List[str]) -> bool:
     try:
         reports = configured_reports_dir(run_dir)
         reports_rel = reports.relative_to(run_dir)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         errors.append(f"scanner_runs: invalid reports_dir: {exc}")
         return True
     scanner_runs_path = reports_rel / "scanner-runs.json"
@@ -1662,9 +1668,8 @@ def validate_metrics(run_dir: Path, errors: List[str]) -> bool:
         errors.append("metrics.safety.raw_evidence_copied: must be false")
     if safety.get("secrets_copied") is not False:
         errors.append("metrics.safety.secrets_copied: must be false")
+    from metrics import MetricsError, scanner_readiness_metrics, target_queue_metrics
     try:
-        from metrics import MetricsError, scanner_readiness_metrics
-
         expected_readiness = scanner_readiness_metrics(configured_reports_dir(run_dir))
     except (OSError, ValueError, MetricsError) as exc:
         errors.append(f"metrics.scanner_readiness: unable to validate source reports safely: {exc}")
@@ -1682,6 +1687,16 @@ def validate_metrics(run_dir: Path, errors: List[str]) -> bool:
             scanner_summary.get(key) != value for key, value in expected_compact.items()
         ):
             errors.append("metrics.summary.scanner: readiness counts must match scanner readiness reports")
+
+    try:
+        targets_path = configured_reports_dir(run_dir) / "targets.json"
+        targets_data = load_targets_artifact(run_dir, {}) if targets_path.exists() else {}
+        expected_target_queue = target_queue_metrics(targets_data)
+    except (OSError, ValueError, MetricsError) as exc:
+        errors.append(f"metrics.target_queue: unable to validate reports/targets.json safely: {exc}")
+    else:
+        if metrics_data.get("target_queue") != expected_target_queue:
+            errors.append("metrics.target_queue: counts must match reports/targets.json queue summary")
     validate_metrics_payload(metrics_data, "metrics", errors)
     return True
 
@@ -2113,6 +2128,26 @@ def validate_evidence_graph(run_dir: Path, errors: List[str]) -> bool:
         errors.append("evidence_graph.safety.secret_values_copied: must be false")
     if safety.get("bounded_summaries_only") is not True:
         errors.append("evidence_graph.safety.bounded_summaries_only: must be true")
+    try:
+        from metrics import MetricsError, target_queue_metrics
+
+        targets_path = configured_reports_dir(run_dir) / "targets.json"
+        targets_data = load_targets_artifact(run_dir, {}) if targets_path.exists() else {}
+        queue_metrics = target_queue_metrics(targets_data)
+        expected_queue = {
+            "artifact_present": queue_metrics["available"],
+            "generated": queue_metrics["generated"],
+            "active": queue_metrics["active"],
+            "retained_outside_budget": queue_metrics["retained_outside_budget"],
+            "merged": queue_metrics["merged"],
+            "deferred_by_budget": queue_metrics["deferred_by_budget"],
+            "high_risk_deferred": queue_metrics["high_risk_deferred"],
+            "by_source": queue_metrics["by_source"],
+        }
+        if graph_summary.get("target_queue") != expected_queue:
+            errors.append("evidence_graph.summary.target_queue: counts must match reports/targets.json queue summary")
+    except (OSError, ValueError, MetricsError) as exc:
+        errors.append(f"evidence_graph.summary.target_queue: unable to validate target queue safely: {exc}")
     validate_evidence_graph_payload(graph, "evidence_graph", errors)
     secret_like_count = sum(1 for _ in iter_secret_findings(graph, field_path="evidence_graph"))
     if secret_like_count:

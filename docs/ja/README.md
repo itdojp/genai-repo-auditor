@@ -7,7 +7,7 @@
 1. [`LOCAL_INSTALL_AND_AUDIT.ja.md`](LOCAL_INSTALL_AND_AUDIT.ja.md)
    ローカルインストール、最初の `prepare`、`gra-run` の plan / execute / resume、結果確認、Issue dry-run までの導入手順です。
 2. [`USAGE.ja.md`](USAGE.ja.md)
-   日常運用で使う主要コマンドと、install -> plan -> review -> execute -> resume の流れです。
+   日常運用で使う主要コマンドと、install -> plan -> review -> execute -> resume の流れ、および target queue の deterministic budget / rebalance の要点です。
 3. [`SECURITY_MODEL.ja.md`](SECURITY_MODEL.ja.md)
    trust boundary、secret handling、public disclosure、scanner output の扱いを説明します。
 4. [`WINDOWS_WSL_SUPPORT.ja.md`](WINDOWS_WSL_SUPPORT.ja.md)
@@ -19,7 +19,7 @@
 
 - [`ISSUE_WORKFLOW.ja.md`](ISSUE_WORKFLOW.ja.md): GitHub Issue 作成前の確認、dry-run、apply、公開 repository での開示制御。
 - [`SCANNER_INTEGRATION.ja.md`](SCANNER_INTEGRATION.ja.md): 既存 scanner output の取り込み、正規化、redaction、triage の前提。
-- [`ADVANCED_POSTURE_WORKFLOWS.ja.md`](ADVANCED_POSTURE_WORKFLOWS.ja.md): AI agent / MCP surface、taxonomy、provenance、Scorecard、SBOM / dependency、release readiness の高度な posture workflow。
+- [`ADVANCED_POSTURE_WORKFLOWS.ja.md`](ADVANCED_POSTURE_WORKFLOWS.ja.md): AI agent / MCP surface、taxonomy、provenance、Scorecard、SBOM / dependency、release readiness の高度な posture workflow と target seed budget / dedup の運用要点。
 - [`EFFICACY_BENCHMARK.ja.md`](EFFICACY_BENCHMARK.ja.md): offline synthetic corpus の決定的実行、score、決定性確認、安全境界。
 - [`EFFICACY_CLAIMS_AND_PUBLICATION.ja.md`](EFFICACY_CLAIMS_AND_PUBLICATION.ja.md): efficacy 比較の方法論、禁止 claim、worker 境界、公開判断。
 - [`PRIVATE_HOLDOUT_PROTOCOL.ja.md`](PRIVATE_HOLDOUT_PROTOCOL.ja.md): private holdout の分離、独立 ground-truth review、固定評価、aggregate-only 検証、公開承認。
@@ -31,4 +31,4 @@ Cross-repo trace reachability の詳細は英語版 [`docs/TRACE_REACHABILITY.md
 
 ## 英語版ドキュメント
 
-英語版は repository root の [`README.md`](../../README.md) と [`docs/`](../) 配下を参照してください。日本語版が未整備の詳細トピックは、英語版を canonical source として扱ってください。
+英語版は repository root の [`README.md`](../../README.md) と [`docs/`](../) 配下を参照してください。特に target queue の詳細契約は [`docs/TARGET_QUEUE.md`](../TARGET_QUEUE.md)、metrics / public-safe summary は [`docs/METRICS.md`](../METRICS.md) が canonical source です。日本語版が未整備の詳細トピックは、英語版を canonical source として扱ってください。

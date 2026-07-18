@@ -30,7 +30,7 @@ gra-index --runs-dir runs
 ```
 
 この staged workflow は、広範な一括監査を避け、recon、target queue、scanner / SBOM evidence、validation、reporting を分けて確認するための運用単位です。
-Target queue は、attack class、attacker model、security invariant、entry point、sink、`max_files`、expected output、chain relevance を使って、1 つの狭い検証単位に収まる粒度で管理します。`max_files` は 1..20 の範囲で、通常は 4..8 files 程度に抑え、広すぎる auth / workflow / dependency review は複数 target に分割してください。
+Target queue は、attack class、attacker model、security invariant、entry point、sink、`max_files`、expected output、chain relevance を使って、1 つの狭い検証単位に収まる粒度で管理します。`max_files` は 1..20 の範囲で、通常は 4..8 files 程度に抑え、広すぎる auth / workflow / dependency review は複数 target に分割してください。Issue #260 以降の queue は、`risk-weighted` を既定 policy とする決定的 budget / dedup を持ち、既定値は total 20、budgeted seed source ごとに 10 です。active wave を超えた queued seed は `deferred_targets[]` に移されますが、Critical / High は `high_risk_deferred` と decision reason で可視化され、gapfill と非 `queued` 履歴は `retained_outside_budget` として保持されます。
 
 CI では offline fixture でこの流れを回帰確認しています。詳細は英語版 [`STAGED_AGENTIC_WORKFLOW.md`](../STAGED_AGENTIC_WORKFLOW.md) を参照してください。
 
@@ -55,6 +55,10 @@ reports/AGENT_SURFACE.md
 
 `gra-targets --generate` は高リスク surface を `TGT-AGENT-NNN` として target queue に追加します。これは review lead であり、confirmed finding ではありません。詳細は英語版 [`AGENT_SURFACE_DISCOVERY.md`](../AGENT_SURFACE_DISCOVERY.md) を参照してください。
 
+Cross-source dedup は title や自由文だけではなく、attack class / taxonomy、trust boundary、entry point、sink、security invariant、candidate file、attacker model、および構造化 field と併用する scope/component identity を正規化した `queue_fingerprint` を用います。title と notes は dedup key にせず、scope 単独でも merge しません。merge 後の canonical target には `source_lineage[]` が残り、closed な evidence ref (`reports/agent-surface.json`、`reports/provenance-posture.json`、`reports/supply-chain-posture.json`、`reports/dependencies.json`、`reports/scanner-results/scanner-index.json`、`reports/gapfill-targets.json`、`prompts/exec/generate-targets.prompt.md`) だけを保持します。source budget は producer が書く `queue_source` で判定し、ID prefix からは推定しません。trusted deterministic producer と model target が merge する場合は trusted producer の canonical prose を優先し、最も強い risk / priority は保持します。
+
+Status 更新は active/deferred membership を暗黙再選択しません。`queue_summary.active` は記録済み wave の選択数であり、target が `in_progress` や `reviewed` になっても、次の明示的 `--rebalance` までは同じ decision を保持します。未完了件数は target status count で確認してください。policy 管理下の `targets.json` は 16 MiB 上限、leaf symlink / 非 regular file 拒否、same-directory temporary file からの atomic replace を適用します。
+
 ## Taxonomy profiles
 
 Findings と targets は任意の `taxonomies` 配列で、管理された分類 ID を持てます。これは severity、confidence、status、risk、priority、人間の review を置き換えるものではありません。
@@ -67,7 +71,7 @@ Findings と targets は任意の `taxonomies` 配列で、管理された分類
 - Supply Chain Posture
 - CWE Subset
 
-`gra-taxonomy-preflight --fix` は、`taxonomies` の既知 alias と canonical label を正規化します。`gra-validate-report` は、`taxonomies` が存在する場合に name / id / label を検証します。`gra-dashboard` と `gra-sarif` は taxonomy を集計・出力します。詳細と profile 追加手順は英語版 [`TAXONOMIES.md`](../TAXONOMIES.md) を参照してください。
+`gra-taxonomy-preflight --fix` は、`taxonomies` の既知 alias と canonical label を正規化します。管理対象の target queue では target と decision の fingerprint も更新し、正規化後に queue group が統合される場合は保存済み policy と budget を決定論的に再適用します。`gra-validate-report` は、`taxonomies` が存在する場合に name / id / label を検証します。`gra-dashboard` と `gra-sarif` は taxonomy を集計・出力します。詳細と profile 追加手順は英語版 [`TAXONOMIES.md`](../TAXONOMIES.md) を参照してください。
 
 ## Release provenance posture
 
@@ -129,6 +133,8 @@ gra-ingest --run runs/OWNER__REPO/RUN_ID --tool grype --file grype.json --format
 reports/dependencies.json
 reports/DEPENDENCY_RISK.md
 ```
+
+Deferred になった posture target は、そのままでは `gra-research` できません。review wave に入れるには、`gra-targets --rebalance` で budget を変更して active `targets[]` に昇格させてください。`--rebalance` は local-only で、model / network call を追加しません。
 
 サポートされる入力は CycloneDX JSON、SPDX 2.3 JSON、GitHub Dependency Graph SBOM export、Syft native JSON、Trivy SBOM JSON、Trivy vulnerability JSON、Grype vulnerability JSON です。Trivy / Grype の vulnerability JSON は、既存の SBOM-derived component に package URL や name/version/ecosystem で関連付けられます。関連付けできない場合も evidence は保持しますが、dangling component link は作りません。
 

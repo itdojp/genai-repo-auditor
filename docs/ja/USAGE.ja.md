@@ -39,13 +39,37 @@ gra-targets --run "$RUN_DIR" --list
 supervised `--from` range で選択します。
 
 target queue の確認後は、`gra-research` などの個別 command または `/goal` を supervised
-path として使用します。reporting profile の完了後は次を再生成します。
+path として使用します。`gra-targets --generate` は active wave と
+deferred wave を含む決定的 queue を `reports/targets.json` に書き込みます。
+既定値は total budget 20、budgeted seed source ごとに 10、policy は
+`risk-weighted` です。`gra-research`、`gra-targets --show`、
+`gra-targets --list` は active seed と予算外保持レコードを含む `targets[]` だけを扱うため、deferred target を
+調査する前に `gra-targets --rebalance` で昇格させてください。queued gapfill
+と非 `queued` の履歴 target は seed budget の外側で保持されます。reporting
+profile の完了後は次を再生成します。
 
 ```bash
 gra-metrics --run "$RUN_DIR"
 gra-evidence-graph --run "$RUN_DIR"
 gra-validate-report --run "$RUN_DIR"
 ```
+
+`gra-targets --rebalance` は既存の `reports/targets.json` だけを読み、model や
+network call を行わずに queue budget / dedup を再計算します。たとえば
+scanner target の昇格は次のように実行します。
+
+`gra-targets --mark` / `gra-research` の status 更新だけでは queue を再選択せず、deferred target を暗黙昇格しません。新しい review wave は `--rebalance` を明示したときだけ選択されます。`queue_summary.selection_input_ids` は直近の明示的選択時に存在した target ID の基準集合を保持し、deferred ID を後追加 target として再分類する不整合を拒否します。source は producer-written `queue_source` で固定し、model-controlled ID prefix は信頼しません。marker のない legacy target は移行時に `model_generated` として扱います。
+
+```bash
+gra-targets --run "$RUN_DIR" --rebalance \
+  --target-budget 30 \
+  --max-scanner-targets 12 \
+  --budget-policy risk-weighted
+```
+
+`gra-research --mode goal` の準備時には、生成済み seed / prompt が参照する ID を
+後続 rebalance から保護するため、対象 status が `in_progress` に更新されます。
+準備した review を中止する場合は、`gra-targets --mark` で status を明示的に戻してください。
 
 scanner stage は計画のみです。Issue 公開、remediation、release、GitHub mutation、network
 有効化は unattended profile の対象外です。Issue dry-run も、finding、evidence、Issue
@@ -116,6 +140,17 @@ gra-evidence-graph --run "$RUN_DIR"
 gra-validate-report --run "$RUN_DIR"
 ```
 
+`gra-targets --rebalance` は既存の `reports/targets.json` だけを読み、model や
+network call を行わずに queue budget / dedup を再計算します。たとえば
+scanner target の昇格は次のように実行します。
+
+```bash
+gra-targets --run "$RUN_DIR" --rebalance \
+  --target-budget 30 \
+  --max-scanner-targets 12 \
+  --budget-policy risk-weighted
+```
+
 workflow 成功は Issue 公開承認を意味しません。Issue 公開は引き続き人手で
 review した別 command として扱います。
 
@@ -131,6 +166,7 @@ runs/OWNER__REPO/RUN_ID/
     FINDINGS.md
     COVERAGE.md               # target coverage / gapfill の summary
     gapfill-targets.json      # gapfill requeue の機械可読出力
+    targets.json              # active/deferred queue、queue_summary、source lineage
     chains.json               # defensive chain synthesis の機械可読出力
     ATTACK_CHAINS.md          # non-public by default の chain summary
     proofs.json               # safe local proof artifact の機械可読出力
@@ -154,7 +190,7 @@ runs/OWNER__REPO/RUN_ID/
   run-summary.txt
 ```
 
-`run-summary.txt` には `codex_status`、`validation_status`、`final_status` が記録されます。CI や batch automation では `final_status=0` を成功条件として扱ってください。
+`run-summary.txt` には `codex_status`、`target_queue_status`、`validation_status`、`final_status` が記録されます。exec output に `targets.json` がある場合、`target_queue_status` は model source binding と既定 deterministic rebalance の結果です。CI や batch automation では `final_status=0` を成功条件として扱ってください。
 
 ## 複数 repository の監査
 

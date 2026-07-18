@@ -8,7 +8,16 @@ from pathlib import Path
 LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / 'lib'))
 from version import auditor_version
-from gralib import env_from_context, load_context, render_template, run_codex_exec
+from gralib import (
+    append_source_generated_targets,
+    env_from_context,
+    load_context,
+    load_targets_artifact,
+    rebalance_target_queue,
+    render_template,
+    run_codex_exec,
+)
+from target_queue import validate_target_queue_artifact
 from run_events import EventWriteError, append_command_event, preflight_command_event, reports_dir, start_command_event
 
 
@@ -52,6 +61,15 @@ def main() -> int:
         print(f'command event preflight failed: {exc}', file=sys.stderr)
         return 2
     index = reports / 'scanner-results' / 'scanner-index.json'
+    try:
+        baseline_targets = load_targets_artifact(run_dir, {}) or {}
+    except (OSError, ValueError, UnicodeError):
+        print('Invalid targets.json: expected bounded JSON in a regular non-symlink file', file=sys.stderr)
+        return finish(2, error_category='input_validation')
+    baseline_errors = validate_target_queue_artifact(baseline_targets)
+    if baseline_errors:
+        print(f'Invalid targets.json queue: {baseline_errors[0]}', file=sys.stderr)
+        return finish(2, error_category='input_validation')
     input_artifacts.append(index)
     if not index.exists():
         print(f'scanner index not found: {index}', file=sys.stderr)
@@ -84,6 +102,27 @@ def main() -> int:
         stderr_file=stderr_path,
     )
     output_artifacts.extend([final_path, events_path, stderr_path])
+    if status == 0:
+        try:
+            generated_data = load_targets_artifact(run_dir, {}) or {}
+            generated_targets = generated_data.get('targets') if isinstance(generated_data, dict) else None
+            if not isinstance(generated_targets, list):
+                raise ValueError('scanner triage did not produce a target list')
+            additions = append_source_generated_targets(
+                run_dir,
+                baseline=baseline_targets,
+                generated_targets=generated_targets,
+                source='scanner',
+            )
+            summary = rebalance_target_queue(run_dir)
+        except (OSError, ValueError, UnicodeError):
+            print('Invalid scanner target output: expected a bounded deterministic target queue', file=sys.stderr)
+            return finish(2, error_category='output_validation')
+        output_artifacts.append(reports / 'targets.json')
+        print(
+            f"Added {len(additions)} scanner target(s); "
+            f"active={summary['active']} deferred={summary['deferred_by_budget']} merged={summary['merged']}"
+        )
     print(f'Codex status: {status}')
     return finish(status, error_category='worker_execution' if status != 0 else None)
 

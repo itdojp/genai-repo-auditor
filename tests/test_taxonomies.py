@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import json
 import os
 import shutil
@@ -25,6 +26,7 @@ from taxonomies import (  # noqa: E402
     TaxonomyProfileError,
 )
 from gralib import ensure_taxonomy_templates  # noqa: E402
+from target_queue import target_fingerprint, validate_target_queue_artifact  # noqa: E402
 
 
 class TaxonomyTests(unittest.TestCase):
@@ -291,6 +293,53 @@ class TaxonomyTests(unittest.TestCase):
 
         after = self.run_cmd(REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir)
         self.assertEqual(after.returncode, 0, f"stdout:\n{after.stdout}\nstderr:\n{after.stderr}")
+
+    def test_taxonomy_preflight_refreshes_managed_queue_fingerprints(self) -> None:
+        run_dir = self.copy_run()
+        targets_path = run_dir / "reports" / "targets.json"
+        targets = self.load_json(targets_path)
+        targets["targets"][0]["taxonomies"] = [
+            {"name": "CWE", "id": "CWE-284", "label": "Improper Access Control"}
+        ]
+        deferred_seed = copy.deepcopy(targets["targets"][0])
+        deferred_seed.update(
+            {
+                "id": "TGT-002",
+                "priority": 70,
+                "scope": "deferred.py",
+                "entry_points": ["tests.fixture.deferred"],
+            }
+        )
+        targets["targets"].append(deferred_seed)
+        self.write_json(targets_path, targets)
+
+        queued = self.run_cmd(
+            REPO_ROOT / "bin" / "gra-targets", "--run", run_dir, "--rebalance", "--target-budget", "1"
+        )
+        self.assertEqual(queued.returncode, 0, f"stdout:\n{queued.stdout}\nstderr:\n{queued.stderr}")
+        before = self.load_json(targets_path)
+        before_fingerprint = before["targets"][0]["queue_fingerprint"]
+
+        fixed = self.run_cmd(REPO_ROOT / "bin" / "gra-taxonomy-preflight", "--run", run_dir, "--fix")
+        self.assertEqual(fixed.returncode, 0, f"stdout:\n{fixed.stdout}\nstderr:\n{fixed.stderr}")
+        after = self.load_json(targets_path)
+        target = after["targets"][0]
+        self.assertEqual(
+            [{"name": "CWE Subset", "id": "CWE-862", "label": "Missing Authorization"}],
+            target["taxonomies"],
+        )
+        self.assertNotEqual(before_fingerprint, target["queue_fingerprint"])
+        self.assertEqual(target_fingerprint(target), target["queue_fingerprint"])
+        self.assertEqual(target["queue_fingerprint"], after["queue_summary"]["decisions"][0]["fingerprint"])
+        self.assertEqual(
+            [{"name": "CWE Subset", "id": "CWE-862", "label": "Missing Authorization"}],
+            after["deferred_targets"][0]["taxonomies"],
+        )
+        self.assertEqual([], validate_target_queue_artifact(after))
+
+        repeat = self.run_cmd(REPO_ROOT / "bin" / "gra-taxonomy-preflight", "--run", run_dir, "--fix")
+        self.assertEqual(repeat.returncode, 0, repeat.stderr)
+        self.assertEqual(after, self.load_json(targets_path))
 
     def test_taxonomy_preflight_cli_rejects_missing_explicit_findings_path(self) -> None:
         missing = self.work_dir / "missing-findings.json"

@@ -104,8 +104,12 @@ def main() -> int:
     ensure_taxonomy_templates(LAB_ROOT, run_dir)
 
     if args.list:
-        print_candidates(gapfill_candidates(load_targets(run_dir)))
-        return finish(0)
+        try:
+            print_candidates(gapfill_candidates(load_targets(run_dir)))
+            return finish(0)
+        except (OSError, ValueError, UnicodeError):
+            print('Invalid targets.json: expected bounded JSON in a regular non-symlink file', file=sys.stderr)
+            return finish(2)
 
     pause_message = paused_error(run_dir, action="gapfill generation or review")
     if pause_message:
@@ -113,7 +117,11 @@ def main() -> int:
         return finish(5)
 
     if args.generate:
-        payload = generate_gapfill_artifacts(run_dir)
+        try:
+            payload = generate_gapfill_artifacts(run_dir)
+        except (OSError, ValueError, UnicodeError):
+            print('Invalid targets.json: expected a bounded deterministic target queue', file=sys.stderr)
+            return finish(2)
         reports = run_dir / ctx.get('reports_dir', 'reports')
         output_artifacts.extend([reports / "COVERAGE.md", reports / "gapfill-targets.json", reports / "targets.json"])
         print(f"Wrote {run_dir / ctx.get('reports_dir', 'reports') / 'COVERAGE.md'}")
@@ -126,6 +134,9 @@ def main() -> int:
         target = find_target(run_dir, args.target)
     except KeyError as exc:
         print(str(exc), file=sys.stderr)
+        return finish(2)
+    except (OSError, ValueError, UnicodeError):
+        print('Invalid targets.json: expected bounded JSON in a regular non-symlink file', file=sys.stderr)
         return finish(2)
 
     target_seed = write_target_seed(run_dir, target)

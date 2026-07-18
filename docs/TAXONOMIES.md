@@ -60,6 +60,12 @@ normalizations that would be applied. With `--fix`, it updates
 logged to `reports/taxonomy-normalizations.jsonl` with the before/after
 reference, artifact path, field path, and reason.
 
+When `reports/targets.json` contains a managed target queue, `--fix` also
+refreshes target and decision fingerprints after normalization. It preserves
+the current wave when grouping is unchanged; if normalized taxonomy IDs make
+queue groups converge, it deterministically reapplies the stored policy and
+budgets.
+
 Current automatic normalizations include:
 
 - taxonomy name alias `CWE` -> `CWE Subset` when the ID is present in the

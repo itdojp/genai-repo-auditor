@@ -26,6 +26,10 @@ Rules:
   normalized lead is insufficient and human policy permits local raw inspection.
 - Do not report a scanner result unless repository context supports it.
 - If a result needs deeper review, create or update {{REPORTS_DIR}}/targets.json instead of overclaiming.
+- For new scanner targets, choose a unique target ID but do not write
+  `queue_source`, `queue_fingerprint`, `source_lineage`, `deferred_targets`, or
+  `queue_summary`; the auditor restores the pre-triage queue, binds only new
+  IDs to the scanner source, and applies deterministic budgets afterward.
 - Treat Scorecard supply-chain posture as target-queue input unless repository context confirms a concrete finding.
 - Treat dependency vulnerability records as evidence until manifest context, dependency paths, and reachability are reviewed.
 - Do not modify target repository files.

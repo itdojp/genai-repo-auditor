@@ -251,6 +251,18 @@ gra-run --run "$RUN_DIR" --profile recon-only --resume
 gra-targets --run "$RUN_DIR" --list
 ```
 
+`gra-targets --generate` は active/deferred queue を `reports/targets.json` に書き込みます。既定 budget は total 20、budgeted seed source ごとに 10、policy は `risk-weighted` です。`gra-research` や `gra-targets --show` は active seed と予算外保持レコードを含む `targets[]` だけを扱い、`deferred_targets[]` は扱わないため、必要に応じて次のように `gra-targets --rebalance` で active wave に昇格させます。
+
+```bash
+gra-targets --run "$RUN_DIR" --rebalance \
+  --target-budget 30 \
+  --max-scanner-targets 12 \
+  --budget-policy risk-weighted
+```
+
+queued gapfill と非 `queued` の履歴 target は seed budget の外側で保持されます。`--rebalance` は local-only で、追加の model / network call を行いません。
+`gra-targets --mark` と `gra-research` による status 更新は、記録済み review wave を維持し、deferred target を暗黙昇格させません。新しい wave を選ぶ場合だけ `--rebalance` を明示的に実行してください。source budget は model が制御できる ID prefix ではなく producer が書く `queue_source` で判定し、marker のない legacy target は安全側で `model_generated` として移行します。
+
 機械可読 checkpoint は `$RUN_DIR/reports/workflow-checkpoint.json` です。失敗または
 中断時も同じ確認と `--resume` の手順を使います。既存 checkpoint で別 profile を
 開始しないでください。1 回の workflow execution では 1 profile を選択し、既存

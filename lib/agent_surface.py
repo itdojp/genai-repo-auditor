@@ -6,7 +6,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any, Iterable
 
-from gralib import load_context, load_json, utc_now, write_json, load_targets, write_targets
+from gralib import load_context, load_json, utc_now, write_json, load_targets, target_ids_with_lineage, write_targets
 
 MCP_CONFIG_PATHS = {
     ".mcp.json",
@@ -394,8 +394,13 @@ def append_agent_surface_targets(run_dir: Path) -> list[dict[str, Any]]:
     if not high_risk:
         return []
     targets = load_targets(run_dir)
-    existing_scopes = {str(t.get("scope")) for t in targets if isinstance(t, dict)}
-    existing_ids = {str(t.get("id")) for t in targets if isinstance(t, dict)}
+    all_targets = load_targets(run_dir, include_deferred=True)
+    existing_scopes = {
+        str(t.get("scope"))
+        for t in all_targets
+        if isinstance(t, dict) and t.get("queue_source") == "agent_surface"
+    }
+    existing_ids = target_ids_with_lineage(all_targets)
     next_index = 1
     added: list[dict[str, Any]] = []
     for surface in high_risk:
@@ -406,6 +411,7 @@ def append_agent_surface_targets(run_dir: Path) -> list[dict[str, Any]]:
             next_index += 1
         target = {
             "id": _target_id(next_index),
+            "queue_source": "agent_surface",
             "category": "AI Agent/MCP",
             "title": f"Review {surface.get('type')} surface at {scope}",
             "risk": "high",

@@ -30,6 +30,8 @@ def latest_status_paths(run_dir: Path) -> set[str]:
     return {
         "run-summary.txt",
         "report-validation.txt",
+        "target-queue.txt",
+        "taxonomy-preflight.txt",
         reports_artifact(run_dir, "findings.json"),
         reports_artifact(run_dir, "FINDINGS.md"),
         reports_artifact(run_dir, "targets.json"),
@@ -188,6 +190,8 @@ def collect_artifacts(run_dir: Path) -> list[dict[str, Any]]:
         ("codex-final.md", "file"),
         ("codex-stderr.txt", "file"),
         ("codex-transcript.txt", "file"),
+        ("target-queue.txt", "file"),
+        ("taxonomy-preflight.txt", "file"),
         ("report-validation.txt", "file"),
         ("run-summary.txt", "file"),
     ]

@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from target_artifact import load_targets_artifact
+
 RUN_STATE_REL_PATH = Path("reports") / "run-state.json"
 ACTIVE = "active"
 PAUSED = "paused"
@@ -42,7 +44,7 @@ def run_state_path(run_dir: Path) -> Path:
 def run_metadata(run_dir: Path) -> dict[str, Any]:
     context = load_json(run_dir / "context.json", {}) or {}
     findings = load_json(reports_dir(run_dir) / "findings.json", {}) or {}
-    targets = load_json(reports_dir(run_dir) / "targets.json", {}) or {}
+    targets = load_targets_artifact(run_dir, {}) or {}
     return {
         "run_id": str(findings.get("run_id") or targets.get("run_id") or context.get("run_id") or run_dir.name),
         "repo": str(findings.get("repo") or targets.get("repo") or context.get("repo") or ""),

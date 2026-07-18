@@ -72,6 +72,7 @@ Audit phases:
 4. Target queue
    - Create {{REPORTS_DIR}}/targets.json with bounded review targets when useful, especially for large repositories.
    - Use targets to structure the later findings and set target_id for findings when applicable.
+   - Do not write queue-source, fingerprint, lineage, deferred, or summary metadata; the auditor binds model provenance and rebalances the queue after execution.
 
 5. Security review passes
    Review these areas pass by pass:

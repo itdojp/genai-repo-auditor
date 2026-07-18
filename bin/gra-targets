@@ -17,7 +17,9 @@ from gralib import (
     load_context,
     load_targets,
     render_template,
+    rebalance_target_queue,
     run_codex_exec,
+    write_model_generated_targets,
     write_targets,
 )
 from agent_surface import append_agent_surface_targets
@@ -25,6 +27,7 @@ from dependency_posture import append_dependency_posture_targets
 from provenance_posture import append_provenance_posture_targets
 from scorecard_posture import append_scorecard_posture_targets
 from target_coverage_guardrails import CoverageSerializationError
+from target_queue import MAX_BUDGET
 from run_state import paused_error
 from run_events import append_command_event, reports_dir as configured_reports_dir, start_command_event
 
@@ -59,12 +62,22 @@ def main() -> int:
     p.add_argument('--run', required=True, help='Run directory')
     action = p.add_mutually_exclusive_group(required=True)
     action.add_argument('--generate', action='store_true', help='Run Codex to generate <reports_dir>/targets.json')
+    action.add_argument('--bind-model-output', action='store_true', help=argparse.SUPPRESS)
+    action.add_argument('--rebalance', action='store_true', help='Reapply deterministic budgets without running Codex')
     action.add_argument('--list', action='store_true', help='List targets')
     action.add_argument('--show', metavar='TGT-ID', help='Show one target as JSON')
     action.add_argument('--mark', nargs=2, metavar=('TGT-ID', 'STATUS'), help='Set target status')
     p.add_argument('--model', default='gpt-5.5')
     p.add_argument('--effort', default='xhigh')
     p.add_argument('--network', action='store_true', help='Allow Codex sandbox network access. Not recommended.')
+    p.add_argument('--target-budget', type=int, default=None, help='Maximum active targets (default: 20)')
+    p.add_argument('--max-agent-surface-targets', type=int, default=None)
+    p.add_argument('--max-provenance-targets', type=int, default=None)
+    p.add_argument('--max-scorecard-targets', type=int, default=None)
+    p.add_argument('--max-dependency-targets', type=int, default=None)
+    p.add_argument('--max-scanner-targets', type=int, default=None)
+    p.add_argument('--max-model-generated-targets', type=int, default=None)
+    p.add_argument('--budget-policy', choices=('strict', 'risk-weighted'), default=None)
     args = p.parse_args()
 
     run_dir = Path(args.run).resolve()
@@ -72,7 +85,7 @@ def main() -> int:
         print(f'context.json not found under {run_dir}', file=sys.stderr)
         return 2
     started_at, started_perf = start_command_event()
-    phase = 'target-generation' if args.generate else 'list' if args.list else 'show' if args.show else 'mark'
+    phase = 'target-generation' if args.generate or args.bind_model_output or args.rebalance else 'list' if args.list else 'show' if args.show else 'mark'
     ctx = load_context(run_dir)
     try:
         reports = configured_reports_dir(run_dir)
@@ -103,9 +116,42 @@ def main() -> int:
         )
         return exit_code
 
+    def configured_source_budgets() -> dict[str, int]:
+        return {
+            key: value
+            for key, value in {
+                'agent_surface': args.max_agent_surface_targets,
+                'provenance': args.max_provenance_targets,
+                'scorecard': args.max_scorecard_targets,
+                'dependency': args.max_dependency_targets,
+                'scanner': args.max_scanner_targets,
+                'model_generated': args.max_model_generated_targets,
+            }.items()
+            if value is not None
+        }
+
+    def validate_budget_arguments() -> str | None:
+        budget_values = {
+            '--target-budget': args.target_budget,
+            '--max-agent-surface-targets': args.max_agent_surface_targets,
+            '--max-provenance-targets': args.max_provenance_targets,
+            '--max-scorecard-targets': args.max_scorecard_targets,
+            '--max-dependency-targets': args.max_dependency_targets,
+            '--max-scanner-targets': args.max_scanner_targets,
+            '--max-model-generated-targets': args.max_model_generated_targets,
+        }
+        return next(
+            (name for name, value in budget_values.items() if value is not None and not 1 <= value <= MAX_BUDGET),
+            None,
+        )
+
     if args.list:
-        print_table(load_targets(run_dir))
-        return finish(0)
+        try:
+            print_table(load_targets(run_dir))
+            return finish(0)
+        except (OSError, ValueError, UnicodeError):
+            print('Invalid targets.json: expected bounded JSON in a regular non-symlink file', file=sys.stderr)
+            return finish(2, error_category='input_validation')
 
     if args.show:
         try:
@@ -113,6 +159,9 @@ def main() -> int:
             return finish(0)
         except KeyError as e:
             print(str(e), file=sys.stderr)
+            return finish(2, error_category='input_validation')
+        except (OSError, ValueError, UnicodeError):
+            print('Invalid targets.json: expected bounded JSON in a regular non-symlink file', file=sys.stderr)
             return finish(2, error_category='input_validation')
 
     pause_message = paused_error(run_dir, action="target queue mutation or generation")
@@ -126,7 +175,11 @@ def main() -> int:
         if status not in valid:
             print(f'invalid status {status}; choose one of {sorted(valid)}', file=sys.stderr)
             return finish(2, error_category='input_validation')
-        targets = load_targets(run_dir)
+        try:
+            targets = load_targets(run_dir)
+        except (OSError, ValueError, UnicodeError):
+            print('Invalid targets.json: expected bounded JSON in a regular non-symlink file', file=sys.stderr)
+            return finish(2, error_category='input_validation')
         found = False
         for t in targets:
             if str(t.get('id')) == target_id:
@@ -136,9 +189,54 @@ def main() -> int:
         if not found:
             print(f'target not found: {target_id}', file=sys.stderr)
             return finish(2, error_category='input_validation')
-        write_targets(run_dir, targets)
+        try:
+            write_targets(run_dir, targets)
+        except (CoverageSerializationError, OSError, ValueError, UnicodeError) as exc:
+            print(f'Invalid target queue: {exc}', file=sys.stderr)
+            return finish(2, error_category='input_validation')
         output_artifacts.append(reports / 'targets.json')
         print(f'updated {target_id} -> {status}')
+        return finish(0)
+
+    invalid_budget = validate_budget_arguments()
+    if invalid_budget:
+        print(f'{invalid_budget} must be between 1 and {MAX_BUDGET}', file=sys.stderr)
+        return finish(2, error_category='input_validation')
+
+    if args.rebalance:
+        try:
+            queue_summary = rebalance_target_queue(
+                run_dir,
+                total_budget=args.target_budget,
+                source_budgets=configured_source_budgets(),
+                policy=args.budget_policy,
+            )
+        except (OSError, ValueError, UnicodeError) as exc:
+            print(f'Invalid target queue budget: {exc}', file=sys.stderr)
+            return finish(2, error_category='input_validation')
+        output_artifacts.append(reports / 'targets.json')
+        print(
+            'Target queue rebalanced: '
+            f"generated={queue_summary['generated']} active={queue_summary['active']} "
+            f"retained={queue_summary['retained_outside_budget']} "
+            f"merged={queue_summary['merged']} deferred={queue_summary['deferred_by_budget']}"
+        )
+        return finish(0)
+
+    if args.bind_model_output:
+        try:
+            write_model_generated_targets(run_dir, load_targets(run_dir, include_deferred=True))
+            queue_summary = rebalance_target_queue(run_dir)
+        except (CoverageSerializationError, OSError, ValueError, UnicodeError):
+            print('Invalid model target output: expected a bounded deterministic target queue', file=sys.stderr)
+            return finish(2, error_category='output_validation')
+        output_artifacts.append(reports / 'targets.json')
+        print(
+            'Model target output bound and rebalanced: '
+            f"generated={queue_summary['generated']} active={queue_summary['active']} "
+            f"retained={queue_summary['retained_outside_budget']} "
+            f"merged={queue_summary['merged']} deferred={queue_summary['deferred_by_budget']}"
+        )
         return finish(0)
 
     # generate
@@ -176,8 +274,8 @@ def main() -> int:
         print(f'Codex completed but {reports / "targets.json"} is missing', file=sys.stderr)
         return finish(1, error_category='missing_output')
     try:
-        write_targets(run_dir, load_targets(run_dir))
-    except CoverageSerializationError as exc:
+        write_model_generated_targets(run_dir, load_targets(run_dir, include_deferred=True))
+    except (CoverageSerializationError, OSError, ValueError, UnicodeError) as exc:
         print(str(exc), file=sys.stderr)
         return finish(1, error_category='output_validation')
     output_artifacts.append(reports / 'targets.json')
@@ -193,6 +291,22 @@ def main() -> int:
     added_dependency_targets = append_dependency_posture_targets(run_dir)
     if added_dependency_targets:
         print(f'Added {len(added_dependency_targets)} dependency-posture target(s)')
+    try:
+        queue_summary = rebalance_target_queue(
+            run_dir,
+            total_budget=args.target_budget,
+            source_budgets=configured_source_budgets(),
+            policy=args.budget_policy,
+        )
+    except (OSError, ValueError, UnicodeError) as exc:
+        print(f'Invalid target queue budget: {exc}', file=sys.stderr)
+        return finish(2, error_category='input_validation')
+    print(
+        'Target queue: '
+        f"generated={queue_summary['generated']} active={queue_summary['active']} "
+        f"retained={queue_summary['retained_outside_budget']} "
+        f"merged={queue_summary['merged']} deferred={queue_summary['deferred_by_budget']}"
+    )
     preflight_status = run_taxonomy_preflight(run_dir)
     if preflight_status != 0:
         output_artifacts.append(run_dir / "taxonomy-preflight-targets.txt")

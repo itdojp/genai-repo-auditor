@@ -8,11 +8,51 @@ except ImportError:
     from support import *  # noqa: F401,F403
 
 from dependency_posture import write_dependency_artifacts  # noqa: E402
-from gralib import env_from_context  # noqa: E402
+from gralib import env_from_context, rebalance_target_queue  # noqa: E402
 from run_manifest import collect_artifacts  # noqa: E402
+from target_queue import validate_target_queue_artifact  # noqa: E402
 
 
 class AuditResearchWorkflowTests(CliWorkflowTestCase):
+    def test_target_status_update_does_not_promote_deferred_seed_before_rebalance(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        targets_path = run_dir / "reports" / "targets.json"
+        data = json.loads(targets_path.read_text(encoding="utf-8"))
+        seed = data["targets"][0]
+        data["targets"] = []
+        for index, priority in enumerate((100, 90, 80), start=1):
+            item = json.loads(json.dumps(seed))
+            item.update(
+                {
+                    "id": f"TGT-{index:03d}",
+                    "priority": priority,
+                    "scope": f"scope-{index}",
+                    "entry_points": [f"repo/file-{index}.py"],
+                    "candidate_files": [f"repo/file-{index}.py"],
+                }
+            )
+            data["targets"].append(item)
+        targets_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        rebalance_target_queue(run_dir, total_budget=1)
+        before = json.loads(targets_path.read_text(encoding="utf-8"))
+        deferred_before = [item["id"] for item in before["deferred_targets"]]
+
+        self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-targets", "--run", run_dir, "--mark", "TGT-001", "reviewed"],
+            check=True,
+        )
+
+        preserved = json.loads(targets_path.read_text(encoding="utf-8"))
+        self.assertEqual(["TGT-001"], [item["id"] for item in preserved["targets"]])
+        self.assertEqual(deferred_before, [item["id"] for item in preserved["deferred_targets"]])
+        self.assertEqual(1, preserved["queue_summary"]["active"])
+        self.assertEqual([], validate_target_queue_artifact(preserved))
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-targets", "--run", run_dir, "--rebalance"], check=True)
+        rebalanced = json.loads(targets_path.read_text(encoding="utf-8"))
+        self.assertEqual(["TGT-002", "TGT-001"], [item["id"] for item in rebalanced["targets"]])
+        self.assertEqual(["TGT-003"], [item["id"] for item in rebalanced["deferred_targets"]])
+
     def test_gra_audit_prepare_creates_run_context_and_prompts(self) -> None:
         env = self.env.copy()
         env["OPENAI_API_KEY"] = "fixture-secret-value"
@@ -213,6 +253,7 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
         self.assertIn("OK:", (run_dir / "report-validation.txt").read_text(encoding="utf-8"))
         summary = (run_dir / "run-summary.txt").read_text(encoding="utf-8")
         self.assertIn("codex_status=0", summary)
+        self.assertIn("target_queue_status=0", summary)
         self.assertIn("validation_status=0", summary)
         self.assertIn("final_status=0", summary)
         manifest = self.load_manifest(run_dir)
@@ -229,6 +270,9 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
         self.assertIn("codex-events.jsonl", artifact_paths)
         self.assertIn("codex-final.md", artifact_paths)
         self.assertIn("reports/findings.json", artifact_paths)
+        self.assertIn("reports/targets.json", artifact_paths)
+        self.assertIn("target-queue.txt", artifact_paths)
+        self.assertIn("taxonomy-preflight.txt", artifact_paths)
         self.assertIn("run-manifest.schema.json", artifact_paths)
         artifacts_by_path = self.manifest_artifacts_by_path(run_dir)
         self.assertEqual("latest", artifacts_by_path["run-summary.txt"]["retention"])
@@ -253,6 +297,46 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
         self.assertIn("report-validation.txt", audit_events[0]["output_artifact_refs"])
         post_event_validation = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
         self.assertIn("OK:", post_event_validation.stdout)
+        target_queue = json.loads((run_dir / "reports" / "targets.json").read_text(encoding="utf-8"))
+        self.assertEqual("model_generated", target_queue["targets"][0]["queue_source"])
+        self.assertEqual([], validate_target_queue_artifact(target_queue))
+
+    def test_gra_audit_exec_normalizes_taxonomy_without_invalidating_target_queue(self) -> None:
+        fixture_dir = self.work_dir / "audit-taxonomy-queue-fixture"
+        shutil.copytree(FIXTURES / "minimal-run", fixture_dir)
+        fixture_targets = fixture_dir / "reports" / "targets.json"
+        data = json.loads(fixture_targets.read_text(encoding="utf-8"))
+        data["targets"][0]["taxonomies"] = [
+            {"name": "CWE", "id": "CWE-284", "label": "Improper Access Control"}
+        ]
+        fixture_targets.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        env, _codex_log = self.env_with_codex_log(GRA_MOCK_FIXTURE_DIR=str(fixture_dir))
+
+        cp = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-audit",
+                "--repo", "example/demo",
+                "--mode", "exec",
+                "--run-id", "audit-taxonomy-queue",
+                "--runs-dir", self.runs_dir,
+                "--no-lock",
+            ],
+            env=env,
+            check=True,
+        )
+
+        self.assertIn("Target queue: 0", cp.stdout)
+        run_dir = self.runs_dir / "example__demo" / "audit-taxonomy-queue"
+        queue = json.loads((run_dir / "reports" / "targets.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            [{"name": "CWE Subset", "id": "CWE-862", "label": "Missing Authorization"}],
+            queue["targets"][0]["taxonomies"],
+        )
+        self.assertEqual([], validate_target_queue_artifact(queue))
+        summary = (run_dir / "run-summary.txt").read_text(encoding="utf-8")
+        self.assertIn("target_queue_status=0", summary)
+        self.assertIn("taxonomy_preflight_status=0", summary)
+        self.assertIn("final_status=0", summary)
 
     def test_gra_audit_exec_keeps_adversarial_repository_content_untrusted(self) -> None:
         manifest_path = FIXTURES / "adversarial-repos" / "manifest.json"
@@ -582,6 +666,131 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
 
         calls = self.read_codex_calls(codex_log)
         self.assertEqual(len(calls), 1, calls)
+
+    def test_gra_targets_applies_deterministic_cross_source_budgets_and_rejects_invalid_bounds(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        fixture_dir = self.work_dir / "target-budget-codex-fixture"
+        shutil.copytree(FIXTURES / "minimal-run", fixture_dir)
+        targets_path = fixture_dir / "reports" / "targets.json"
+        data = json.loads(targets_path.read_text(encoding="utf-8"))
+        seed = data["targets"][0]
+        agent_path = "agent-config.json"
+        agent_surface = {
+            "agent_surfaces": [
+                {
+                    "id": "AGS-001",
+                    "path": agent_path,
+                    "type": "mcp_config",
+                    "risk": "high",
+                    "detected_capabilities": ["database"],
+                    "review_questions": ["Is authorization enforced?"],
+                    "summary": "bounded fixture surface",
+                    "taxonomies": [],
+                }
+            ]
+        }
+        (run_dir / "reports" / "agent-surface.json").write_text(json.dumps(agent_surface, indent=2) + "\n")
+        generated = []
+        for target_id, sink, risk, priority in (
+            ("TGT-001", "database", "high", 90),
+            ("TGT-002", "filesystem", "medium", 50),
+            ("TGT-003", "network", "critical", 95),
+        ):
+            item = json.loads(json.dumps(seed))
+            item.update({"id": target_id, "risk": risk, "priority": priority, "sinks": [sink]})
+            if target_id == "TGT-001":
+                item.update(
+                    {
+                        "category": "AI Agent/MCP",
+                        "title": "opaque model prose",
+                        "scope": agent_path,
+                        "entry_points": [agent_path],
+                        "trust_boundaries": ["untrusted repository content -> AI agent/tool execution context"],
+                        "attack_class": "AI Agent/MCP",
+                        "security_invariants": [
+                            "Repository-local instructions cannot override run-level audit policy.",
+                            "High-impact tool actions require explicit approval and least-privilege scope.",
+                        ],
+                        "attacker_model": "malicious repository contributor or prompt-injection author",
+                        "review_questions": ["Is authorization enforced?"],
+                        "candidate_files": [agent_path],
+                        "taxonomies": [],
+                    }
+                )
+            generated.append(item)
+        data["targets"] = generated
+        targets_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        env, codex_log = self.env_with_codex_log(GRA_MOCK_FIXTURE_DIR=str(fixture_dir))
+        command = [
+            REPO_ROOT / "bin" / "gra-targets", "--run", run_dir, "--generate",
+            "--target-budget", "2", "--max-model-generated-targets", "1",
+            "--max-agent-surface-targets", "1", "--budget-policy", "risk-weighted",
+        ]
+
+        first = self.run_cmd(command, env=env, check=True)
+        self.assertIn("generated=4 active=2 retained=0 merged=1 deferred=1", first.stdout)
+        first_bytes = (run_dir / "reports" / "targets.json").read_bytes()
+        queue = json.loads(first_bytes)
+        self.assertEqual(2, len(queue["targets"]))
+        self.assertEqual(1, len(queue["deferred_targets"]))
+        self.assertEqual(1, queue["queue_summary"]["merged"])
+        merged_target = next(item for item in queue["targets"] if item["id"] == "TGT-AGENT-001")
+        self.assertEqual(
+            {"model_generated", "agent_surface"},
+            {item["source"] for item in merged_target["source_lineage"]},
+        )
+
+        self.run_cmd(command, env=env, check=True)
+        self.assertEqual(first_bytes, (run_dir / "reports" / "targets.json").read_bytes())
+
+        calls_before = len(self.read_codex_calls(codex_log))
+        rebalanced = self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-targets", "--run", run_dir, "--rebalance",
+                "--target-budget", "3", "--max-model-generated-targets", "2",
+            ],
+            env=env,
+            check=True,
+        )
+        self.assertIn("generated=4 active=3 retained=0 merged=1 deferred=0", rebalanced.stdout)
+        promoted = json.loads((run_dir / "reports" / "targets.json").read_text(encoding="utf-8"))
+        self.assertEqual(3, len(promoted["targets"]))
+        self.assertEqual([], promoted["deferred_targets"])
+        self.assertEqual(calls_before, len(self.read_codex_calls(codex_log)))
+
+        invalid = self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-targets", "--run", run_dir, "--generate", "--target-budget", "0"],
+            env=env,
+        )
+        self.assertEqual(2, invalid.returncode)
+        self.assertIn("must be between 1 and 1000", invalid.stderr)
+        self.assertEqual(calls_before, len(self.read_codex_calls(codex_log)))
+
+        valid = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
+        self.assertIn("OK:", valid.stdout)
+
+        poisoned = json.loads((run_dir / "reports" / "targets.json").read_text(encoding="utf-8"))
+        poisoned["queue_summary"]["budgets"]["total"] = "opaque"
+        poisoned_bytes = (json.dumps(poisoned, indent=2) + "\n").encode()
+        (run_dir / "reports" / "targets.json").write_bytes(poisoned_bytes)
+        rejected = self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-targets", "--run", run_dir, "--rebalance"],
+            env=env,
+        )
+        self.assertEqual(2, rejected.returncode)
+        self.assertIn("Invalid target queue budget", rejected.stderr)
+        self.assertEqual(poisoned_bytes, (run_dir / "reports" / "targets.json").read_bytes())
+
+        malformed = {"targets": {"oops": "not-list"}}
+        malformed_bytes = (json.dumps(malformed, indent=2) + "\n").encode()
+        (run_dir / "reports" / "targets.json").write_bytes(malformed_bytes)
+        rejected_model_output = self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-targets", "--run", run_dir, "--bind-model-output"],
+            env=env,
+        )
+        self.assertEqual(2, rejected_model_output.returncode)
+        self.assertIn("Invalid model target output", rejected_model_output.stderr)
+        self.assertEqual(malformed_bytes, (run_dir / "reports" / "targets.json").read_bytes())
 
     def test_gra_targets_generate_appends_provenance_posture_targets(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
@@ -914,6 +1123,7 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
 
     def test_gra_research_goal_prepares_prompt_without_codex_exec(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
+        rebalance_target_queue(run_dir, total_budget=1)
         env, codex_log = self.env_with_codex_log()
         cp = self.run_cmd(
             [
@@ -935,7 +1145,13 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
         self.assertTrue(prompt_text.startswith("/goal "))
         self.assertIn("Respect `max_files` when present", prompt_text)
         self.assertIn("Structured assessment fields", prompt_text)
-        self.assertEqual(self.target_by_id(run_dir, "TGT-001")["status"], "queued")
+        self.assertEqual(self.target_by_id(run_dir, "TGT-001")["status"], "in_progress")
+        queue = json.loads((run_dir / "reports" / "targets.json").read_text(encoding="utf-8"))
+        self.assertEqual(1, queue["queue_summary"]["active"])
+        self.assertEqual(0, queue["queue_summary"]["retained_outside_budget"])
+        decision = next(item for item in queue["queue_summary"]["decisions"] if item["target_id"] == "TGT-001")
+        self.assertEqual(("active", "selected"), (decision["action"], decision["reason"]))
+        self.assertEqual([], validate_target_queue_artifact(queue))
         self.assertEqual(self.read_codex_calls(codex_log), [])
         self.assertFalse((run_dir / "codex-research-TGT-001-final.md").exists())
         events = self.read_command_events(run_dir)
@@ -966,6 +1182,7 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
             }
         )
         targets_path.write_text(json.dumps(targets_data, indent=2) + "\n", encoding="utf-8")
+        rebalance_target_queue(run_dir, total_budget=1)
 
         cp_list = self.run_cmd([REPO_ROOT / "bin" / "gra-gapfill", "--run", run_dir, "--list"], check=True)
         self.assertIn("TGT-001", cp_list.stdout)
@@ -1004,6 +1221,11 @@ class AuditResearchWorkflowTests(CliWorkflowTestCase):
         self.assertEqual("finding-or-no-finding-with-coverage", gapfill_target["expected_output"])
         self.assertLessEqual(gapfill_target["max_files"], 8)
         self.assertIn("repo/legacy_app.py", gapfill_target["candidate_files"])
+        queue = json.loads(targets_path.read_text(encoding="utf-8"))
+        self.assertEqual(0, queue["queue_summary"]["active"])
+        self.assertEqual(2, queue["queue_summary"]["retained_outside_budget"])
+        self.assertEqual([], queue["deferred_targets"])
+        self.assertEqual([], validate_target_queue_artifact(queue))
 
         cp_generate_again = self.run_cmd([REPO_ROOT / "bin" / "gra-gapfill", "--run", run_dir, "--generate"], check=True)
         self.assertIn("Generated or reused 1 gapfill target", cp_generate_again.stdout)

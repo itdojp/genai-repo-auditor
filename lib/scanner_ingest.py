@@ -17,7 +17,7 @@ from dependency_posture import (
     should_ingest_dependencies,
     write_dependency_artifacts,
 )
-from gralib import load_context, load_json, utc_now
+from gralib import load_context, load_json, rebalance_target_queue, utc_now
 from run_events import reports_dir
 from scanner_normalize import normalize_scanner_file
 from scorecard_posture import append_scorecard_posture_targets, write_scorecard_posture_artifacts
@@ -245,6 +245,9 @@ def _ingest_scanner_file_unlocked(plan: ScannerIngestPlan, *, note: str) -> Scan
             added_dependency_targets = append_dependency_posture_targets(plan.run_dir)
             if added_dependency_targets:
                 output_paths.append(reports / "targets.json")
+
+    if added_scorecard_targets or added_dependency_targets:
+        rebalance_target_queue(plan.run_dir)
 
     return ScannerIngestResult(
         entry=entry,

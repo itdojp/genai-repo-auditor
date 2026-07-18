@@ -21,6 +21,12 @@ from taxonomies import (  # noqa: E402
     taxonomy_label_map,
     validate_taxonomy_refs,
 )
+from gralib import load_targets_artifact, write_run_artifact_json  # noqa: E402
+from target_queue import (  # noqa: E402
+    TargetQueueError,
+    refresh_target_queue_after_semantic_normalization,
+    validate_target_queue_artifact,
+)
 
 
 def utc_now() -> str:
@@ -63,6 +69,7 @@ def normalize_artifact(
     path: Path,
     *,
     kind: str,
+    run_dir: Path | None,
     fix: bool,
     required: bool,
     log_path: Path | None,
@@ -75,11 +82,17 @@ def normalize_artifact(
             return 0, 1, [f"{path}: artifact not found"]
         return 0, 0, []
     try:
-        data = load_json(path)
-    except Exception as exc:
+        data = load_targets_artifact(run_dir) if kind == "targets" and run_dir is not None else load_json(path)
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         return 0, 0, [f"{path}: invalid JSON: {exc}"]
     if not isinstance(data, dict):
         return 0, 0, [f"{path}: expected top-level JSON object"]
+
+    queue_managed = kind == "targets" and ("queue_summary" in data or "deferred_targets" in data)
+    if queue_managed:
+        queue_errors = validate_target_queue_artifact(data)
+        if queue_errors:
+            return 0, len(queue_errors), [f"{path}: {error}" for error in queue_errors]
 
     collection_key = "findings" if kind == "findings" else "targets"
     collection = data.get(collection_key)
@@ -93,42 +106,62 @@ def normalize_artifact(
 
     all_changes: list[dict[str, Any]] = []
     errors: list[str] = []
-    for index, item in enumerate(updated_collection):
-        item_path = f"{kind}.{collection_key}[{index}]"
-        if not isinstance(item, dict):
+    collection_keys = [collection_key]
+    if kind == "targets" and "deferred_targets" in updated:
+        collection_keys.append("deferred_targets")
+    for current_key in collection_keys:
+        current_collection = updated.get(current_key)
+        if not isinstance(current_collection, list):
+            errors.append(f"{path}: {current_key} must be a list")
             continue
-        if "taxonomies" not in item:
-            continue
-        normalized, changes, normalization_errors = normalize_taxonomy_refs(
-            item.get("taxonomies"),
-            f"{item_path}.taxonomies",
-            profiles,
-            labels,
-            aliases,
-        )
-        item["taxonomies"] = normalized
-        all_changes.extend(changes)
-        errors.extend(normalization_errors)
+        for index, item in enumerate(current_collection):
+            item_path = f"{kind}.{current_key}[{index}]"
+            if not isinstance(item, dict):
+                continue
+            if "taxonomies" not in item:
+                continue
+            normalized, changes, normalization_errors = normalize_taxonomy_refs(
+                item.get("taxonomies"),
+                f"{item_path}.taxonomies",
+                profiles,
+                labels,
+                aliases,
+            )
+            item["taxonomies"] = normalized
+            all_changes.extend(changes)
+            errors.extend(normalization_errors)
 
     if fix and all_changes:
-        write_json(path, updated)
+        try:
+            if queue_managed:
+                updated = refresh_target_queue_after_semantic_normalization(updated)
+            if kind == "targets" and run_dir is not None:
+                write_run_artifact_json(run_dir, path, updated)
+            else:
+                write_json(path, updated)
+        except (OSError, TargetQueueError, ValueError) as exc:
+            return 0, 1, [f"{path}: failed to write normalized artifact: {exc}"]
         append_change_log(log_path, artifact=path, changes=all_changes)
     elif not fix:
         # In preflight-only mode, report the same controlled-taxonomy validation
         # errors users will otherwise see from gra-validate-report, plus the
         # deterministic normalizations that would be applied by --fix.
         validation_errors: list[str] = []
-        for index, item in enumerate(collection):
-            item_path = f"{kind}.{collection_key}[{index}]"
-            if isinstance(item, dict) and "taxonomies" in item:
-                validate_taxonomy_refs(
-                    item.get("taxonomies"),
-                    f"{item_path}.taxonomies",
-                    validation_errors,
-                    profiles,
-                    labels,
-                    aliases,
-                )
+        for current_key in collection_keys:
+            current_collection = data.get(current_key)
+            if not isinstance(current_collection, list):
+                continue
+            for index, item in enumerate(current_collection):
+                item_path = f"{kind}.{current_key}[{index}]"
+                if isinstance(item, dict) and "taxonomies" in item:
+                    validate_taxonomy_refs(
+                        item.get("taxonomies"),
+                        f"{item_path}.taxonomies",
+                        validation_errors,
+                        profiles,
+                        labels,
+                        aliases,
+                    )
         errors = validation_errors or errors
 
     return len(all_changes), len(errors), errors
@@ -174,6 +207,7 @@ def main() -> int:
         changes, error_count, errors = normalize_artifact(
             path,
             kind=kind,
+            run_dir=run_dir if kind == "targets" else None,
             fix=args.fix,
             required=required,
             log_path=log_path,
