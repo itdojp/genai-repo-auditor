@@ -17,7 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 FIXTURE_FINGERPRINT = "0123456789abcdef01234567"
 sys.path.insert(0, str(REPO_ROOT / "lib"))
-from sandbox_profiles import detect_visible_credential_env  # noqa: E402
+from sandbox_profiles import is_credential_environment_name  # noqa: E402
 
 __all__ = [
     "Any",
@@ -213,9 +213,8 @@ class CliWorkflowTestCase(unittest.TestCase):
 
     def env_without_credentials(self) -> dict:
         env = self.env.copy()
-        detected = set(detect_visible_credential_env(env))
         for name in list(env):
-            if name.upper() in detected:
+            if is_credential_environment_name(name):
                 env.pop(name, None)
         return env
 

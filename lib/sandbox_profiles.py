@@ -201,16 +201,23 @@ def detect_credential_paths(repo_dir: Path) -> list[str]:
     return findings
 
 
+def is_credential_environment_name(raw_name: object) -> bool:
+    """Classify one environment name without inspecting or reporting its value."""
+
+    exact = {name.upper() for name in CREDENTIAL_ENV_NAMES}
+    name = str(raw_name).upper()
+    return name in exact or _CREDENTIAL_ENV_NAME_RE.search(name) is not None
+
+
 def detect_visible_credential_env(env: dict[str, str] | None = None) -> list[str]:
     source = env if env is not None else os.environ
-    exact = {name.upper() for name in CREDENTIAL_ENV_NAMES}
     detected: set[str] = set()
     unsafe_name_detected = False
     for raw_name, value in source.items():
         if not value:
             continue
         name = str(raw_name).upper()
-        if name not in exact and not _CREDENTIAL_ENV_NAME_RE.search(name):
+        if not is_credential_environment_name(name):
             continue
         if _SAFE_ENV_NAME_RE.fullmatch(name):
             detected.add(name)

@@ -133,7 +133,7 @@ state/reasons without probing only when the requested sandbox profile and
 network policy exactly match the report; otherwise plan reports `not_checked`.
 Execute re-evaluates the current gate. `gra-doctor` can call the same evaluator
 in memory only with `--scanner-run`, `--scanner-tool`, and
-`--probe-external-tools`, and metrics/dashboard aggregate state/reason counts
+`--probe-scanner-runtime`, and metrics/dashboard aggregate state/reason counts
 without copying report paths, values, runtime output, or target content.
 
 ## Shared helper

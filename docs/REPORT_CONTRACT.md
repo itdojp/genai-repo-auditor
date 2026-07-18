@@ -702,7 +702,7 @@ its sandbox profile and network policy match, then copies only `checked`,
 `state`, and `reason_codes` without probing; a mismatch yields `not_checked`; execute
 re-evaluates the current contract and does not trust the persisted result;
 doctor invokes the same evaluator in memory only when the scanner run/tool pair
-and `--probe-external-tools` are explicit; metrics validates the report and
+and `--probe-scanner-runtime` are explicit; metrics validates the report and
 aggregates counts by adapter/state/reason; dashboard renders only report count
 and state/reason counts from `metrics.json`.
 

@@ -14,8 +14,10 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 from sandbox_profiles import (  # noqa: E402
     SandboxProfileError,
+    detect_visible_credential_env,
     enforce_sandbox_profile,
     evaluate_sandbox_readiness,
+    is_credential_environment_name,
     write_readiness_report,
 )
 
@@ -49,6 +51,13 @@ class SandboxProfileTests(unittest.TestCase):
         shutil.rmtree(self.work_dir, ignore_errors=True)
         with suppress(OSError):
             self.tmp_parent.rmdir()
+
+    def test_credential_name_classifier_is_unbounded_while_report_names_remain_bounded(self) -> None:
+        env = {f"SERVICE_{index:03d}_TOKEN": "not-reported" for index in range(80)}
+        self.assertTrue(all(is_credential_environment_name(name) for name in env))
+        reported = detect_visible_credential_env(env)
+        self.assertEqual(64, len(reported))
+        self.assertEqual(sorted(reported), reported)
 
     def init_clean_git_repo(self) -> None:
         subprocess.run(["git", "init"], cwd=self.repo_dir, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
