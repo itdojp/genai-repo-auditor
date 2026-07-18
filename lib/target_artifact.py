@@ -15,7 +15,12 @@ MAX_TARGETS_JSON_BYTES = 16 * 1024 * 1024
 def load_targets_artifact(run_dir: Path, default: Any = None) -> Any:
     """Read targets.json through a bounded, no-follow file descriptor."""
 
-    path = configured_reports_dir(run_dir) / "targets.json"
+    return load_targets_artifact_path(configured_reports_dir(run_dir) / "targets.json", default)
+
+
+def load_targets_artifact_path(path: Path, default: Any = None) -> Any:
+    """Read an explicitly selected targets artifact without following its leaf."""
+
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
         fd = os.open(path, flags)

@@ -1815,6 +1815,31 @@ class ReportContractTests(unittest.TestCase):
         self.assertNotIn("targets.json invalid JSON", cp.stderr)
         self.assertNotIn("Traceback", cp.stderr)
 
+    def test_explicit_findings_validates_the_paired_targets_artifact(self) -> None:
+        run_dir = self.copy_run()
+        alternate_reports = run_dir / "alternate-reports"
+        alternate_reports.mkdir()
+        alternate_findings = alternate_reports / "findings.json"
+        alternate_findings.write_text(
+            (run_dir / "reports" / "findings.json").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        (alternate_reports / "targets.json").write_text("{\n", encoding="utf-8")
+
+        cp = subprocess.run(
+            [sys.executable, VALIDATOR_PATH, "--run", run_dir, "--findings", alternate_findings],
+            cwd=REPO_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=20,
+            check=False,
+        )
+
+        self.assertEqual(1, cp.returncode)
+        self.assertIn("targets.json invalid JSON", cp.stderr)
+        self.assertNotIn("Traceback", cp.stderr)
+
     def test_advanced_artifact_validators_reject_non_object_json_without_crashing(self) -> None:
         run_dir = self.copy_run()
         reports = run_dir / "reports"

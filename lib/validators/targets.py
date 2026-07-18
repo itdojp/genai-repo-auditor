@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import re
 
-from gralib import load_targets_artifact
 from taxonomies import validate_taxonomy_refs
+from target_artifact import load_targets_artifact_path
 from target_queue import validate_target_queue_artifact
 
 from .common import json_type_name, validate_generated_at, validate_schema, validate_string_list
@@ -36,7 +36,7 @@ def validate_targets(context: ValidationContext) -> bool:
         return False
     errors = context.errors
     try:
-        targets_data = load_targets_artifact(context.run_dir, {})
+        targets_data = load_targets_artifact_path(targets_path, {})
     except json.JSONDecodeError as exc:
         errors.append(f"targets.json invalid JSON: {exc}")
         return True
