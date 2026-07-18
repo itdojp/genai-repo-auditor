@@ -58,6 +58,13 @@ observability artifact です。The run root also contains
 handoff and support diagnostics. It records each manifest artifact's retention
 category and, for files, size plus SHA-256 digest.
 
+`scanner-readiness/<adapter_id>.json` is the bounded, non-executing scanner
+execution-readiness artifact written by `gra-scan --readiness`. It records the
+current state and canonical reason codes without absolute paths, environment or
+remote-endpoint values, daemon output, or target content. It is distinct from
+`sandbox-readiness.json` and from the later `scanner-runs.json` execution
+summary.
+
 ```text
 run-manifest.json
 reports/
@@ -89,6 +96,11 @@ reports/
   traces.json
   traces/
     sec-001-org-consumer.subjects.json
+  scanner-readiness/
+    gitleaks.json
+    syft.json
+  SCANNER_RUNS.md
+  scanner-runs.json
   METRICS.md
   metrics.json
   BENCHMARK.md
@@ -165,7 +177,8 @@ validation output, optional cross-repo trace output, optional metrics output,
 optional evidence graph output,
 optional external imported finding output,
 optional known-finding novelty ledger output, optional issue ledger output, optional command event output, optional run
-manifest output, optional scanner index artifacts, and optional dependency/posture
+manifest output, optional scanner index artifacts, optional scanner execution
+readiness reports, optional scanner-run summaries, and optional dependency/posture
 artifacts against the bundled JSON schemas using the Python standard library. It also
 applies local safety rules before downstream tools can use report-controlled
 paths.
@@ -221,12 +234,14 @@ installation, or producer/consumer repository modification.
 `gra-metrics`. It records counts and rates for findings, adversarial validation
 decisions, chains, proofs, gapfill, traces, Issue publication plan warnings,
 Issue ledger publication states, workflow-profile scoped skips, duplicate
-decision counts, artifact counts, run duration when local metadata is
+decision counts, scanner readiness report presence/count and counts by adapter,
+state, and reason code, artifact counts, run duration when local metadata is
 available, and structured command-event observability aggregates such as status,
 duration, failure, retry, execution-configuration, artifact-reference, stage,
 and producer-coverage summaries. It must not copy raw finding evidence, issue
 body text, proof evidence, trace evidence, scanner lead bodies, or secret
-values.
+values. Scanner readiness aggregation must not copy report paths, environment
+values, daemon/runtime output, image-inspection output, or target content.
 
 `workflow-profile.json` is a local-only workflow scope artifact produced by
 `gra-workflow-profile`. The initial `recon-only` profile records completed
@@ -475,6 +490,15 @@ Important constraints:
   and scanner-index references must remain under `reports/scanner-results/`.
   Raw scanner bodies, secret values, and raw-output paths are prohibited from
   this report and `SCANNER_RUNS.md`.
+- If `<reports_dir>/scanner-readiness/` exists, it must be a non-symlink
+  directory contained by the run directory and contain only regular,
+  non-symlink JSON files. At most one file per approved adapter is allowed (two
+  files in the current `gitleaks`/`syft` registry), and each filename stem must
+  equal its report `adapter_id`. Every report must match
+  `templates/reports/scanner-readiness.schema.json`, pass the stricter semantic
+  validator, and remain at or below 256 KiB. Unknown top-level/nested fields,
+  invalid or inconsistent readiness flags, endpoint fields, exposed credential
+  values, non-canonical reasons/next steps, and unsafe probe claims are rejected.
 - If `reports/supply-chain-posture.json` exists, its Scorecard check reasons and
   details must be treated as posture leads. Promote them to findings only after
   repository context confirms concrete file/line evidence and impact.
@@ -549,9 +573,13 @@ Important constraints:
   output must stay aggregate-only and avoid raw evidence fields. Its
   `observability` section may include sanitized command names, phases, target
   IDs, durations, exit codes, retry counts, failure counts, and taxonomy
-  normalization counts, and its `artifacts` section may include manifest
+  normalization counts, its `scanner_readiness` section may include only
+  artifact presence/report count and counts by state, reason, and adapter, and
+  its `artifacts` section may include manifest
   retention counts and hygiene warning counts, but it must not copy raw evidence
-  or command transcripts.
+  or command transcripts. The compact `summary.scanner` may repeat readiness
+  presence/report count and state/reason counts, while the dashboard may render
+  the report count and state/reason tables from these aggregates only.
 
 `issue_body_file`, when present, must point to a regular `.md` file under
 the configured `<reports_dir>/issue-drafts/`, for example with the default:
@@ -565,6 +593,118 @@ issue body files are rejected. References to the default `reports/` directory
 are also rejected when the run configures a different `reports_dir`. If
 `issue_body_file` is empty, `gra-issues` can
 render a body from structured finding fields instead of reading a draft file.
+
+## scanner execution readiness output
+
+When the canonical target and reports paths are safe, distinct, and
+unambiguous, `gra-scan --readiness` writes exactly one latest adapter report at:
+
+```text
+<reports_dir>/scanner-readiness/<adapter_id>.json
+```
+
+If `repo_dir` and `target_repo_dir` disagree, target/reports safety fails, or
+the directories overlap, the command returns the bounded blocked report on
+stdout but does not persist it. This prevents readiness diagnostics from
+creating artifacts in a path that the evaluator classified as a target or an
+unsafe reports location.
+
+The current adapter IDs are `gitleaks` and `syft`. The report uses schema
+version `1` and `mode: readiness`. It can record any declared sandbox profile
+(`source-only`, `local-test`, `container`, `gvisor`, or `vm`) and network policy
+(`disabled` or `explicit-allow`) so a non-executable request can be represented
+as a bounded blocked report. Only `container`/`gvisor` plus `disabled` can reach
+`ready` or `experimental`. Its closed object groups are:
+
+- identity and outcome: `adapter_id`, `state`, canonical `reason_codes`, and
+  fixed bounded `next_steps`;
+- `platform`: detected environment and `supported`/`experimental`/`unsupported`
+  support level;
+- `adapter`: container execution source, bare executable name, and informational
+  host-executable availability; a host scanner executable is not required;
+- `runtime`: `required`, `candidate_available`, `healthy_available`, and probe
+  flags, selected bare runtime name
+  (`docker`, `podman`, or `null`), local-only state, and rejected remote-runtime
+  environment **names**;
+- `image`: configured/digest/local-presence flags and the reviewed immutable
+  digest reference;
+- `paths`: boolean `target_safe`, `reports_safe`, `output_safe`,
+  `staging_safe`, and `overlap` results, never the paths;
+- `sandbox`: boolean offline/read-only/capability/resource-limit/gVisor
+  invariants;
+- `credentials`: presence, configured credential environment **names**, and the
+  invariant `values_exposed: false`; and
+- `probes`: whether the bounded runtime/version check ran, plus invariants that
+  scanner execution, image pull, and remote-runtime contact did not occur.
+
+`scanner_executed` and `network_accessed` are always `false`. The schema and
+semantic validator prohibit absolute runtime/scanner/target/report paths,
+runtime endpoint fields, remote endpoint values, environment values, daemon
+stdout/stderr, target content, and unknown extension fields. Environment-name
+arrays are sorted, unique, bounded, and name-only. The report is therefore a
+bounded local operational artifact, not scanner evidence and not execution
+authorization.
+
+Readiness may read only the bounded run context and path metadata required for
+containment/symlink/overlap checks. It does not inspect target file content, run
+a scanner/container, pull an image, or access the network. When preconditions
+allow, it may run an explicit local Docker/Podman `version` probe (10-second
+timeout) and a digest-pinned local `image inspect` probe (20-second timeout per
+candidate). Probe stdin/stdout/stderr are discarded and only return codes affect
+the report. Remote-like values for `CONTAINER_HOST`, `DOCKER_CONTEXT`,
+`DOCKER_HOST`, or `PODMAN_HOST` block the probe; configured credential-like
+environment names, unsafe paths, non-executable profiles, and non-disabled
+network policy also suppress probes and block final readiness.
+The expected raw output must be unused and non-symlinked; staging must be absent
+or a non-symlink directory. These metadata checks do not read their content.
+`healthy_available` means at least one bounded runtime version probe succeeded,
+even if image inspection later yields `image_not_local`.
+
+Allowed states are:
+
+| State | Contract |
+|---|---|
+| `ready` | Supported Linux/confirmed-WSL2 boundary and no blocking reason. |
+| `experimental` | Native-Windows/macOS experimental boundary and no blocking reason. |
+| `blocked` | Recognized platform with one or more blocking reasons. |
+| `unsupported` | Unsupported/unconfirmed platform boundary. |
+
+`ready` and `experimental` must use exactly `reason_codes: ["ready"]`.
+`blocked` and `unsupported` must not contain `ready`. Other allowed codes, in
+canonical order, are `runtime_missing`, `runtime_remote`,
+`runtime_unavailable`, `image_not_configured`, `image_not_digest_pinned`,
+`image_not_local`, `platform_unsupported`, `sandbox_unsupported`,
+`gvisor_missing`, `target_unsafe`, `reports_path_unsafe`,
+`output_path_unsafe`, `staging_path_unsafe`, `path_overlap`,
+`resource_limits_unavailable`, `credential_environment_present`, and
+`network_policy_unsupported`. `next_steps` must be the validator-defined text
+for those codes in the same order; it is not free-form daemon/error output.
+
+For the CLI, `ready`/`experimental` return `0`, `blocked`/`unsupported` return
+`1`, and usage, evaluation, schema, unsafe path, or write failures return `2`.
+`gra-doctor` has a separate wrapper status: scanner `ready` maps to doctor `ok`,
+`experimental` to `warning`, and `blocked`/`unsupported` to `error`; doctor
+returns `1` only with `--strict` and an overall error, otherwise `0`, while
+option errors return `2`. A caught evaluator exception uses doctor-only reason
+`readiness_evaluation_failed`; that value is not valid in a persisted scanner
+readiness report.
+
+The immutable image must be pulled by a human during a separately authorized,
+network-enabled setup phase using the exact reviewed `IMAGE@sha256:...`
+reference. Readiness and execution never pull; execution retains
+`--pull=never` and `--network=none`. The operator must disable setup network
+access and remove remote-runtime/credential-like environment variables before
+readiness. See [`SCANNER_INTEGRATION.md`](SCANNER_INTEGRATION.md) for the exact
+release digests and pull commands.
+
+Reuse is deliberately narrow: plan reads the persisted adapter report only when
+its sandbox profile and network policy match, then copies only `checked`,
+`state`, and `reason_codes` without probing; a mismatch yields `not_checked`; execute
+re-evaluates the current contract and does not trust the persisted result;
+doctor invokes the same evaluator in memory only when the scanner run/tool pair
+and `--probe-scanner-runtime` are explicit; metrics validates the report and
+aggregates counts by adapter/state/reason; dashboard renders only report count
+and state/reason counts from `metrics.json`.
 
 ## finding quality bar
 

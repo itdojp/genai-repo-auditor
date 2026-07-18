@@ -31,6 +31,8 @@ class ScannerRunnerWorkflowTests(CliWorkflowTestCase):
             "args = sys.argv[1:]\n"
             "mode = " + repr(mode) + "\n"
             "runtime_log = " + repr(str(runtime_log) if runtime_log else "") + "\n"
+            "if 'version' in args:\n"
+            "    raise SystemExit(0)\n"
             "if 'image' in args and 'inspect' in args:\n"
             "    raise SystemExit(1 if mode == 'missing-image' else 0)\n"
             "if 'rm' in args and '-f' in args:\n"
@@ -79,8 +81,7 @@ class ScannerRunnerWorkflowTests(CliWorkflowTestCase):
         (run_dir / "repo").mkdir(exist_ok=True)
         runtime_log = self.work_dir / f"{tool}-{mode}-runtime.json"
         self.write_container_runtime(mode=mode, runtime_log=runtime_log)
-        env = self.env.copy()
-        env["GH_TOKEN"] = "must-not-reach-runtime"
+        env = self.env_without_credentials()
         return self.run_cmd(
             [
                 REPO_ROOT / "bin" / "gra-scan",
@@ -286,7 +287,7 @@ class ScannerRunnerWorkflowTests(CliWorkflowTestCase):
         run_dir = self.copy_fixture_run("minimal-run")
         self.write_container_runtime(mode="timeout")
         (run_dir / "repo").mkdir()
-        env = self.env.copy()
+        env = self.env_without_credentials()
         with mock.patch.dict(ADAPTERS, {"gitleaks": dataclasses.replace(ADAPTERS["gitleaks"], timeout_seconds=1)}):
             timeout_result = execute_scan(
                 run_dir,

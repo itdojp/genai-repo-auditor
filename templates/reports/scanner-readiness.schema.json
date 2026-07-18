@@ -1,0 +1,1218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://itdojp.github.io/genai-repo-auditor/schemas/scanner-readiness.schema.json",
+  "title": "GenAI Repo Auditor scanner execution readiness",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "mode",
+    "scanner_executed",
+    "network_accessed",
+    "adapter_id",
+    "sandbox_profile",
+    "network_policy",
+    "state",
+    "reason_codes",
+    "next_steps",
+    "platform",
+    "adapter",
+    "runtime",
+    "image",
+    "paths",
+    "sandbox",
+    "credentials",
+    "probes"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1"
+    },
+    "mode": {
+      "const": "readiness"
+    },
+    "scanner_executed": {
+      "const": false
+    },
+    "network_accessed": {
+      "const": false
+    },
+    "adapter_id": {
+      "enum": [
+        "gitleaks",
+        "syft"
+      ]
+    },
+    "sandbox_profile": {
+      "enum": [
+        "source-only",
+        "local-test",
+        "container",
+        "gvisor",
+        "vm"
+      ]
+    },
+    "network_policy": {
+      "enum": [
+        "disabled",
+        "explicit-allow"
+      ]
+    },
+    "state": {
+      "enum": [
+        "ready",
+        "blocked",
+        "experimental",
+        "unsupported"
+      ]
+    },
+    "reason_codes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 18,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/reasonCode"
+      }
+    },
+    "next_steps": {
+      "type": "array",
+      "maxItems": 18,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      }
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "environment",
+        "support"
+      ],
+      "properties": {
+        "environment": {
+          "enum": [
+            "linux",
+            "wsl2",
+            "wsl-unknown",
+            "macos",
+            "native-windows",
+            "unsupported"
+          ]
+        },
+        "support": {
+          "enum": [
+            "supported",
+            "experimental",
+            "unsupported"
+          ]
+        }
+      }
+    },
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "execution_source",
+        "executable",
+        "host_executable_required",
+        "host_executable_available"
+      ],
+      "properties": {
+        "execution_source": {
+          "const": "container"
+        },
+        "executable": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$"
+        },
+        "host_executable_required": {
+          "const": false
+        },
+        "host_executable_available": {
+          "type": "boolean"
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "candidate_available",
+        "healthy_available",
+        "selected",
+        "local_only",
+        "remote_environment_names",
+        "probe_executed"
+      ],
+      "properties": {
+        "required": {
+          "const": true
+        },
+        "candidate_available": {
+          "type": "boolean"
+        },
+        "healthy_available": {
+          "type": "boolean"
+        },
+        "selected": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "docker",
+            "podman",
+            null
+          ]
+        },
+        "local_only": {
+          "type": "boolean"
+        },
+        "remote_environment_names": {
+          "$ref": "#/$defs/environmentNames"
+        },
+        "probe_executed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "configured",
+        "digest_pinned",
+        "reference",
+        "local_available"
+      ],
+      "properties": {
+        "configured": {
+          "type": "boolean"
+        },
+        "digest_pinned": {
+          "type": "boolean"
+        },
+        "reference": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-z0-9][a-z0-9./:@_-]{0,255}$",
+          "maxLength": 256
+        },
+        "local_available": {
+          "type": "boolean"
+        }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_safe",
+        "reports_safe",
+        "output_safe",
+        "staging_safe",
+        "overlap"
+      ],
+      "properties": {
+        "target_safe": {
+          "type": "boolean"
+        },
+        "reports_safe": {
+          "type": "boolean"
+        },
+        "output_safe": {
+          "type": "boolean"
+        },
+        "staging_safe": {
+          "type": "boolean"
+        },
+        "overlap": {
+          "type": "boolean"
+        }
+      }
+    },
+    "sandbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "network_disabled",
+        "target_read_only",
+        "root_filesystem_read_only",
+        "capabilities_dropped",
+        "resource_limits_configured",
+        "gvisor_available"
+      ],
+      "properties": {
+        "network_disabled": {
+          "type": "boolean"
+        },
+        "target_read_only": {
+          "type": "boolean"
+        },
+        "root_filesystem_read_only": {
+          "type": "boolean"
+        },
+        "capabilities_dropped": {
+          "type": "boolean"
+        },
+        "resource_limits_configured": {
+          "type": "boolean"
+        },
+        "gvisor_available": {
+          "type": "boolean"
+        }
+      }
+    },
+    "credentials": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "environment_present",
+        "environment_names",
+        "values_exposed"
+      ],
+      "properties": {
+        "environment_present": {
+          "type": "boolean"
+        },
+        "environment_names": {
+          "$ref": "#/$defs/environmentNames"
+        },
+        "values_exposed": {
+          "const": false
+        }
+      }
+    },
+    "probes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_probe_executed",
+        "scanner_executed",
+        "version_check_executed",
+        "image_pulled",
+        "remote_runtime_contacted"
+      ],
+      "properties": {
+        "runtime_probe_executed": {
+          "type": "boolean"
+        },
+        "scanner_executed": {
+          "const": false
+        },
+        "version_check_executed": {
+          "type": "boolean"
+        },
+        "image_pulled": {
+          "const": false
+        },
+        "remote_runtime_contacted": {
+          "const": false
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "adapter_id": {
+            "const": "gitleaks"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "adapter": {
+            "properties": {
+              "executable": {
+                "const": "gitleaks"
+              }
+            }
+          },
+          "image": {
+            "properties": {
+              "reference": {
+                "const": "ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "adapter_id": {
+            "const": "syft"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "adapter": {
+            "properties": {
+              "executable": {
+                "const": "syft"
+              }
+            }
+          },
+          "image": {
+            "properties": {
+              "reference": {
+                "const": "ghcr.io/anchore/syft@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "ready"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reason_codes": {
+            "const": [
+              "ready"
+            ]
+          },
+          "platform": {
+            "properties": {
+              "support": {
+                "const": "supported"
+              }
+            }
+          },
+          "runtime": {
+            "properties": {
+              "candidate_available": {
+                "const": true
+              },
+              "healthy_available": {
+                "const": true
+              },
+              "selected": {
+                "enum": [
+                  "docker",
+                  "podman"
+                ]
+              },
+              "local_only": {
+                "const": true
+              },
+              "probe_executed": {
+                "const": true
+              }
+            }
+          },
+          "image": {
+            "properties": {
+              "configured": {
+                "const": true
+              },
+              "digest_pinned": {
+                "const": true
+              },
+              "local_available": {
+                "const": true
+              }
+            }
+          },
+          "paths": {
+            "properties": {
+              "target_safe": {
+                "const": true
+              },
+              "reports_safe": {
+                "const": true
+              },
+              "output_safe": {
+                "const": true
+              },
+              "staging_safe": {
+                "const": true
+              },
+              "overlap": {
+                "const": false
+              }
+            }
+          },
+          "credentials": {
+            "properties": {
+              "environment_present": {
+                "const": false
+              },
+              "environment_names": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "experimental"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reason_codes": {
+            "const": [
+              "ready"
+            ]
+          },
+          "platform": {
+            "properties": {
+              "support": {
+                "const": "experimental"
+              }
+            }
+          },
+          "runtime": {
+            "properties": {
+              "candidate_available": {
+                "const": true
+              },
+              "healthy_available": {
+                "const": true
+              },
+              "selected": {
+                "enum": [
+                  "docker",
+                  "podman"
+                ]
+              },
+              "local_only": {
+                "const": true
+              },
+              "probe_executed": {
+                "const": true
+              }
+            }
+          },
+          "image": {
+            "properties": {
+              "configured": {
+                "const": true
+              },
+              "digest_pinned": {
+                "const": true
+              },
+              "local_available": {
+                "const": true
+              }
+            }
+          },
+          "paths": {
+            "properties": {
+              "target_safe": {
+                "const": true
+              },
+              "reports_safe": {
+                "const": true
+              },
+              "output_safe": {
+                "const": true
+              },
+              "staging_safe": {
+                "const": true
+              },
+              "overlap": {
+                "const": false
+              }
+            }
+          },
+          "credentials": {
+            "properties": {
+              "environment_present": {
+                "const": false
+              },
+              "environment_names": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "blocked"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reason_codes": {
+            "not": {
+              "contains": {
+                "const": "ready"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "unsupported"
+          }
+        }
+      },
+      "then": {
+        "allOf": [
+          {
+            "properties": {
+              "reason_codes": {
+                "contains": {
+                  "const": "platform_unsupported"
+                }
+              }
+            }
+          },
+          {
+            "properties": {
+              "platform": {
+                "properties": {
+                  "support": {
+                    "const": "unsupported"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "platform": {
+            "properties": {
+              "environment": {
+                "enum": [
+                  "linux",
+                  "wsl2"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "platform": {
+            "properties": {
+              "support": {
+                "const": "supported"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "platform": {
+            "properties": {
+              "environment": {
+                "enum": [
+                  "macos",
+                  "native-windows"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "platform": {
+            "properties": {
+              "support": {
+                "const": "experimental"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "platform": {
+            "properties": {
+              "environment": {
+                "enum": [
+                  "wsl-unknown",
+                  "unsupported"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "platform": {
+            "properties": {
+              "support": {
+                "const": "unsupported"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "paths": {
+            "properties": {
+              "target_safe": {
+                "const": false
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reason_codes": {
+            "contains": {
+              "const": "target_unsafe"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reason_codes": {
+            "contains": {
+              "const": "target_unsafe"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "paths": {
+            "properties": {
+              "target_safe": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "paths": {
+            "properties": {
+              "reports_safe": {
+                "const": false
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reason_codes": {
+            "contains": {
+              "const": "reports_path_unsafe"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reason_codes": {
+            "contains": {
+              "const": "reports_path_unsafe"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "paths": {
+            "properties": {
+              "reports_safe": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "paths": {
+            "properties": {
+              "output_safe": {
+                "const": false
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reason_codes": {
+            "contains": {
+              "const": "output_path_unsafe"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reason_codes": {
+            "contains": {
+              "const": "output_path_unsafe"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "paths": {
+            "properties": {
+              "output_safe": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "paths": {
+            "properties": {
+              "staging_safe": {
+                "const": false
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reason_codes": {
+            "contains": {
+              "const": "staging_path_unsafe"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reason_codes": {
+            "contains": {
+              "const": "staging_path_unsafe"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "paths": {
+            "properties": {
+              "staging_safe": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "paths": {
+            "properties": {
+              "overlap": {
+                "const": true
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reason_codes": {
+            "contains": {
+              "const": "path_overlap"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reason_codes": {
+            "contains": {
+              "const": "path_overlap"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "paths": {
+            "properties": {
+              "overlap": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "credentials": {
+            "properties": {
+              "environment_present": {
+                "const": true
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reason_codes": {
+            "contains": {
+              "const": "credential_environment_present"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reason_codes": {
+            "contains": {
+              "const": "credential_environment_present"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "credentials": {
+            "properties": {
+              "environment_present": {
+                "const": true
+              },
+              "environment_names": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "network_policy": {
+            "const": "explicit-allow"
+          }
+        }
+      },
+      "then": {
+        "allOf": [
+          {
+            "properties": {
+              "reason_codes": {
+                "contains": {
+                  "const": "network_policy_unsupported"
+                }
+              }
+            }
+          },
+          {
+            "properties": {
+              "sandbox": {
+                "properties": {
+                  "network_disabled": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "network_policy": {
+            "const": "disabled"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "sandbox": {
+            "properties": {
+              "network_disabled": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "candidate_available": {
+                "const": false
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "probe_executed": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "healthy_available": {
+                "const": true
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "candidate_available": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "selected": {
+                "enum": [
+                  "docker",
+                  "podman"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "healthy_available": {
+                "const": true
+              }
+            }
+          },
+          "image": {
+            "properties": {
+              "local_available": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "image": {
+            "properties": {
+              "local_available": {
+                "const": true
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "image": {
+            "properties": {
+              "configured": {
+                "const": true
+              },
+              "digest_pinned": {
+                "const": true
+              }
+            }
+          },
+          "runtime": {
+            "properties": {
+              "healthy_available": {
+                "const": true
+              },
+              "selected": {
+                "enum": [
+                  "docker",
+                  "podman"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "probe_executed": {
+                "const": true
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "probes": {
+            "properties": {
+              "runtime_probe_executed": {
+                "const": true
+              },
+              "version_check_executed": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "probe_executed": {
+                "const": false
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "probes": {
+            "properties": {
+              "runtime_probe_executed": {
+                "const": false
+              },
+              "version_check_executed": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "reasonCode": {
+      "enum": [
+        "runtime_missing",
+        "runtime_remote",
+        "runtime_unavailable",
+        "image_not_configured",
+        "image_not_digest_pinned",
+        "image_not_local",
+        "platform_unsupported",
+        "sandbox_unsupported",
+        "gvisor_missing",
+        "target_unsafe",
+        "reports_path_unsafe",
+        "output_path_unsafe",
+        "staging_path_unsafe",
+        "path_overlap",
+        "resource_limits_unavailable",
+        "credential_environment_present",
+        "network_policy_unsupported",
+        "ready"
+      ]
+    },
+    "environmentNames": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+      }
+    }
+  }
+}

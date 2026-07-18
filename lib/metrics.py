@@ -17,6 +17,7 @@ from run_events import (
 from duplicate_decisions import duplicate_decision_metrics
 from issue_ledger import ledger_metrics
 from scanner_reporting import ScannerReportError, validate_scanner_runs_for_run
+from scanner_readiness import ScannerReadinessError, read_scanner_readiness_report
 from workflow_profile import summarize_workflow_profile
 from workflow_execution import summarize_workflow_execution
 
@@ -605,7 +606,49 @@ def scanner_run_metrics(scanner_runs: Any) -> dict[str, Any]:
     }
 
 
-def scanner_compact_summary(scanner_index: Any, scanner_runs: Any) -> dict[str, Any]:
+def scanner_readiness_metrics(reports: Path) -> dict[str, Any]:
+    root = reports / "scanner-readiness"
+    if root.is_symlink():
+        raise MetricsError("scanner readiness artifact directory must be a non-symlink directory")
+    if not root.exists():
+        return {
+            "artifact_present": False,
+            "report_count": 0,
+            "by_state": {},
+            "by_reason": {},
+            "by_adapter": {},
+        }
+    if root.is_symlink() or not root.is_dir():
+        raise MetricsError("scanner readiness artifact directory must be a non-symlink directory")
+    reports_found: list[dict[str, Any]] = []
+    for path in sorted(root.iterdir()):
+        if path.suffix != ".json":
+            continue
+        if path.is_symlink() or not path.is_file():
+            raise MetricsError("scanner readiness artifacts must be regular non-symlink JSON files")
+        try:
+            report = read_scanner_readiness_report(path)
+        except (OSError, ValueError, ScannerReadinessError) as exc:
+            raise MetricsError(f"scanner readiness artifact {path.name} is not public-safe: {exc}") from exc
+        if path.stem != report["adapter_id"]:
+            raise MetricsError("scanner readiness artifact adapter_id does not match its filename")
+        reports_found.append(report)
+    return {
+        "artifact_present": bool(reports_found),
+        "report_count": len(reports_found),
+        "by_state": counter_dict(Counter(str(item["state"]) for item in reports_found)),
+        "by_reason": counter_dict(
+            Counter(str(code) for item in reports_found for code in item["reason_codes"])
+        ),
+        "by_adapter": counter_dict(Counter(str(item["adapter_id"]) for item in reports_found)),
+    }
+
+
+def scanner_compact_summary(
+    scanner_index: Any,
+    scanner_runs: Any,
+    scanner_readiness: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     results = []
     if isinstance(scanner_index, dict):
         results = [item for item in scanner_index.get("results") or [] if isinstance(item, dict)]
@@ -615,6 +658,12 @@ def scanner_compact_summary(scanner_index: Any, scanner_runs: Any) -> dict[str, 
         if isinstance(count, int) and not isinstance(count, bool) and count > 0:
             normalized_leads += count
     run_summary = scanner_run_metrics(scanner_runs)
+    readiness = scanner_readiness or {
+        "artifact_present": False,
+        "report_count": 0,
+        "by_state": {},
+        "by_reason": {},
+    }
     return {
         "artifact_present": isinstance(scanner_index, dict),
         "result_count": len(results),
@@ -625,6 +674,10 @@ def scanner_compact_summary(scanner_index: Any, scanner_runs: Any) -> dict[str, 
         "total_duration_ms": run_summary["total_duration_ms"],
         "maximum_duration_ms": run_summary["maximum_duration_ms"],
         "redaction_count": run_summary["redaction_count"],
+        "readiness_artifact_present": bool(readiness["artifact_present"]),
+        "readiness_report_count": int(readiness["report_count"]),
+        "readiness_by_state": dict(readiness["by_state"]),
+        "readiness_by_reason": dict(readiness["by_reason"]),
     }
 
 
@@ -640,6 +693,7 @@ def compact_public_summary(
     benchmark: Any,
     scanner_index: Any,
     scanner_runs: Any,
+    scanner_readiness: dict[str, Any],
 ) -> dict[str, Any]:
     no_findings = findings_data.get("no_findings") if isinstance(findings_data, dict) and isinstance(findings_data.get("no_findings"), dict) else {}
     no_findings_source_stage = str(no_findings.get("source_stage") or "")
@@ -657,7 +711,7 @@ def compact_public_summary(
         "workflow_execution": dict(workflow_execution),
         "evidence_graph": evidence_graph_compact_summary(evidence_graph),
         "benchmark": benchmark_compact_summary(benchmark),
-        "scanner": scanner_compact_summary(scanner_index, scanner_runs),
+        "scanner": scanner_compact_summary(scanner_index, scanner_runs, scanner_readiness),
         "no_findings": {
             "recorded": bool(no_findings),
             "source_stage": no_findings_source_stage,
@@ -799,6 +853,7 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
             validate_scanner_runs_for_run(run_dir, scanner_runs)
         except ScannerReportError as exc:
             raise MetricsError(f"scanner-runs.json is not public-safe: {exc}") from exc
+    scanner_readiness = scanner_readiness_metrics(reports)
     command_events_path = reports / "command-events.jsonl"
     command_events = load_jsonl_objects(command_events_path)
     taxonomy_normalizations_path = reports / "taxonomy-normalizations.jsonl"
@@ -869,6 +924,7 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
             benchmark=benchmark,
             scanner_index=scanner_index,
             scanner_runs=scanner_runs,
+            scanner_readiness=scanner_readiness,
         ),
         "findings": findings_metrics,
         "adversarial_validation": validation_summary,
@@ -882,6 +938,7 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
         "workflow_execution": workflow_execution_summary,
         "duplicate_decisions": duplicate_decisions_summary,
         "scanner_runs": scanner_run_metrics(scanner_runs),
+        "scanner_readiness": scanner_readiness,
         "observability": observability_summary,
         "artifacts": artifacts_summary,
         "run_duration": duration_summary,
@@ -948,6 +1005,7 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
         f"| Scanner executions | {scanner.get('run_count', 0)} |",
         f"| Scanner execution duration | {scanner.get('total_duration_ms', 0)} ms |",
         f"| Scanner redactions | {scanner.get('redaction_count', 0)} |",
+        f"| Scanner readiness reports | {scanner.get('readiness_report_count', 0)} |",
         f"| No-findings record present | {str(bool(no_findings.get('recorded'))).lower()} |",
         "",
         "## Summary",
@@ -1073,6 +1131,8 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
     lines.extend(markdown_counts("Scanner phases", metrics["observability"]["stage_groups"]["scanner_phases"]))
     lines.extend(markdown_counts("Scanner run statuses", metrics["scanner_runs"]["by_status"]))
     lines.extend(markdown_counts("Scanner runs by adapter", metrics["scanner_runs"]["by_adapter"]))
+    lines.extend(markdown_counts("Scanner readiness states", metrics["scanner_readiness"]["by_state"]))
+    lines.extend(markdown_counts("Scanner readiness blocked reasons", metrics["scanner_readiness"]["by_reason"]))
     lines.extend(markdown_counts("Remediation phases", metrics["observability"]["stage_groups"]["remediation_phases"]))
     lines.extend(markdown_counts("Issue publication phases", metrics["observability"]["stage_groups"]["issue_publication_phases"]))
     lines.extend(markdown_counts("Taxonomy normalizations by target", metrics["observability"]["taxonomy_normalizations_by_target"]))

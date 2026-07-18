@@ -14,6 +14,7 @@ from report_safety import (
 )
 from gralib import load_context
 from scanner_reporting import ScannerReportError, validate_scanner_runs_for_run
+from scanner_readiness import ScannerReadinessError, read_scanner_readiness_report
 from run_events import (
     COMMAND_EVENT_COMMANDS,
     COMMAND_EVENT_PHASES,
@@ -1497,6 +1498,51 @@ def validate_scanner_runs(run_dir: Path, errors: List[str]) -> bool:
     return True
 
 
+def validate_scanner_readiness_reports(run_dir: Path, errors: List[str]) -> bool:
+    try:
+        reports = configured_reports_dir(run_dir)
+        reports_rel = reports.relative_to(run_dir)
+    except (OSError, ValueError) as exc:
+        errors.append(f"scanner_readiness: invalid reports_dir: {exc}")
+        return True
+    readiness_rel = reports_rel / "scanner-readiness"
+    readiness_dir = run_dir / readiness_rel
+    if readiness_dir.is_symlink():
+        errors.append("scanner_readiness: report directory must not be a symlink")
+        return True
+    if not readiness_dir.exists():
+        return False
+    if not readiness_dir.is_dir():
+        errors.append("scanner_readiness: report path must be a directory")
+        return True
+    try:
+        validate_no_symlink_components(run_dir, readiness_rel, field_path="scanner_readiness")
+    except ReportSafetyError as exc:
+        errors.append(str(exc))
+        return True
+    entries = sorted(readiness_dir.iterdir())
+    if len(entries) > 2:
+        errors.append("scanner_readiness: at most one report per approved adapter is allowed")
+    for report_path in entries:
+        if report_path.is_symlink() or not report_path.is_file() or report_path.suffix != ".json":
+            errors.append("scanner_readiness: only regular non-symlink JSON report files are allowed")
+            continue
+        try:
+            report = read_scanner_readiness_report(report_path)
+        except (OSError, ScannerReadinessError) as exc:
+            errors.append(f"scanner_readiness.{report_path.name}: invalid bounded report: {exc}")
+            continue
+        validate_schema(
+            report,
+            load_schema("scanner-readiness.schema.json"),
+            f"scanner_readiness.{report_path.stem}",
+            errors,
+        )
+        if report_path.stem != report["adapter_id"]:
+            errors.append(f"scanner_readiness.{report_path.name}: adapter_id must match the filename")
+    return True
+
+
 def validate_metrics(run_dir: Path, errors: List[str]) -> bool:
     metrics_path = configured_artifact_path(run_dir, METRICS_PATH)
     if not metrics_path.exists():
@@ -1533,6 +1579,26 @@ def validate_metrics(run_dir: Path, errors: List[str]) -> bool:
         errors.append("metrics.safety.raw_evidence_copied: must be false")
     if safety.get("secrets_copied") is not False:
         errors.append("metrics.safety.secrets_copied: must be false")
+    try:
+        from metrics import MetricsError, scanner_readiness_metrics
+
+        expected_readiness = scanner_readiness_metrics(configured_reports_dir(run_dir))
+    except (OSError, ValueError, MetricsError) as exc:
+        errors.append(f"metrics.scanner_readiness: unable to validate source reports safely: {exc}")
+    else:
+        if metrics_data.get("scanner_readiness") != expected_readiness:
+            errors.append("metrics.scanner_readiness: counts must match scanner readiness reports")
+        scanner_summary = metrics_data.get("summary", {}).get("scanner", {})
+        expected_compact = {
+            "readiness_artifact_present": expected_readiness["artifact_present"],
+            "readiness_report_count": expected_readiness["report_count"],
+            "readiness_by_state": expected_readiness["by_state"],
+            "readiness_by_reason": expected_readiness["by_reason"],
+        }
+        if isinstance(scanner_summary, dict) and scanner_summary and any(
+            scanner_summary.get(key) != value for key, value in expected_compact.items()
+        ):
+            errors.append("metrics.summary.scanner: readiness counts must match scanner readiness reports")
     validate_metrics_payload(metrics_data, "metrics", errors)
     return True
 
@@ -2355,6 +2421,7 @@ ADVANCED_VALIDATOR_ORDER = (
     "novelty_ledger",
     "traces",
     "scanner_runs",
+    "scanner_readiness",
     "metrics",
     "workflow_profile",
     "workflow_execution",
@@ -2397,6 +2464,10 @@ def register_advanced_validators(registry: Any) -> None:
     registry.register("novelty_ledger", lambda context: _run_with_findings(context, validate_novelty_ledger))
     registry.register("traces", lambda context: _run_with_findings(context, validate_traces))
     registry.register("scanner_runs", lambda context: _run_without_findings(context, validate_scanner_runs))
+    registry.register(
+        "scanner_readiness",
+        lambda context: _run_without_findings(context, validate_scanner_readiness_reports),
+    )
     registry.register("metrics", lambda context: _run_without_findings(context, validate_metrics))
     registry.register("workflow_profile", lambda context: _run_without_findings(context, validate_workflow_profile))
     registry.register("workflow_execution", lambda context: _run_without_findings(context, validate_workflow_execution))

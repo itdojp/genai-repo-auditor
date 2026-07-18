@@ -360,6 +360,7 @@ def main() -> int:
     if metrics_present:
         observability = metrics_data.get('observability') if isinstance(metrics_data.get('observability'), dict) else {}
         artifacts_metrics = metrics_data.get('artifacts') if isinstance(metrics_data.get('artifacts'), dict) else {}
+        scanner_readiness = metrics_data.get('scanner_readiness') if isinstance(metrics_data.get('scanner_readiness'), dict) else {}
         metric_cards = [
             ('Findings', metrics_data.get('findings', {}).get('total', 0)),
             ('Validations', metrics_data.get('adversarial_validation', {}).get('total', 0)),
@@ -378,6 +379,7 @@ def main() -> int:
             ('Producer coverage %', (observability.get('producer_coverage') or {}).get('coverage_percent', 0)),
             ('Validation retries', observability.get('validation_retry_count', 0)),
             ('Taxonomy normalizations', observability.get('taxonomy_normalization_count', 0)),
+            ('Scanner readiness reports', scanner_readiness.get('report_count', 0)),
             ('Latest status artifacts', artifacts_metrics.get('latest_status_artifact_count', 0)),
             ('Archive artifacts', artifacts_metrics.get('archive_artifact_count', 0)),
             ('Manifest hygiene warnings', artifacts_metrics.get('manifest_hygiene_warnings', 0)),
@@ -423,6 +425,10 @@ def main() -> int:
         sandbox_body = sandbox_rows or '<tr><td colspan="2">No sandbox profile metadata.</td></tr>'
         scanner_phase_rows = metric_count_rows((observability.get('stage_groups') or {}).get('scanner_phases'))
         scanner_phase_body = scanner_phase_rows or '<tr><td colspan="2">No scanner phases observed.</td></tr>'
+        scanner_readiness_state_rows = metric_count_rows(scanner_readiness.get('by_state'))
+        scanner_readiness_state_body = scanner_readiness_state_rows or '<tr><td colspan="2">No scanner readiness reports.</td></tr>'
+        scanner_readiness_reason_rows = metric_count_rows(scanner_readiness.get('by_reason'))
+        scanner_readiness_reason_body = scanner_readiness_reason_rows or '<tr><td colspan="2">No scanner readiness reasons.</td></tr>'
         remediation_phase_rows = metric_count_rows((observability.get('stage_groups') or {}).get('remediation_phases'))
         remediation_phase_body = remediation_phase_rows or '<tr><td colspan="2">No remediation phases observed.</td></tr>'
         issue_phase_rows = metric_count_rows((observability.get('stage_groups') or {}).get('issue_publication_phases'))
@@ -459,6 +465,12 @@ def main() -> int:
             "<h3>Workflow stage groups</h3>"
             "<table><thead><tr><th>Scanner phase</th><th>Events</th></tr></thead>"
             f"<tbody>{scanner_phase_body}</tbody></table>"
+            "<h3>Scanner execution readiness</h3>"
+            "<p>Bounded state and reason-code counts only; local paths, environment values, and runtime output are excluded.</p>"
+            "<table><thead><tr><th>State</th><th>Reports</th></tr></thead>"
+            f"<tbody>{scanner_readiness_state_body}</tbody></table>"
+            "<table><thead><tr><th>Reason code</th><th>Reports</th></tr></thead>"
+            f"<tbody>{scanner_readiness_reason_body}</tbody></table>"
             "<table><thead><tr><th>Remediation phase</th><th>Events</th></tr></thead>"
             f"<tbody>{remediation_phase_body}</tbody></table>"
             "<table><thead><tr><th>Issue publication phase</th><th>Events</th></tr></thead>"

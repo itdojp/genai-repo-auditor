@@ -6,10 +6,51 @@ except ImportError:
     from support import *  # noqa: F401,F403
 
 from run_events import append_command_event, start_command_event  # noqa: E402
+from scanner_readiness import evaluate_scanner_readiness, write_scanner_readiness_report  # noqa: E402
 from workflow_execution import build_workflow_execution  # noqa: E402
 
 
 class MetricsWorkflowTests(CliWorkflowTestCase):
+    def test_metrics_and_dashboard_surface_bounded_scanner_readiness_reasons(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        (run_dir / "repo").mkdir()
+        report = evaluate_scanner_readiness(
+            run_dir,
+            adapter_id="gitleaks",
+            sandbox_profile="container",
+            path_env=str(run_dir / "missing-bin"),
+            env={"PATH": str(run_dir / "missing-bin")},
+        )
+        self.assertEqual("blocked", report["state"])
+        self.assertIn("runtime_missing", report["reason_codes"])
+        write_scanner_readiness_report(run_dir, report)
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
+        readiness = metrics["scanner_readiness"]
+        self.assertTrue(readiness["artifact_present"])
+        self.assertEqual(1, readiness["report_count"])
+        self.assertEqual(1, readiness["by_state"]["blocked"])
+        self.assertEqual(1, readiness["by_reason"]["runtime_missing"])
+        self.assertEqual(1, metrics["summary"]["scanner"]["readiness_report_count"])
+        serialized = json.dumps(readiness)
+        self.assertNotIn(str(run_dir), serialized)
+        self.assertNotIn("missing-bin", serialized)
+
+        dashboard = run_dir / "reports" / "dashboard.html"
+        self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-dashboard", "--run", run_dir, "--out", dashboard],
+            check=True,
+        )
+        html = dashboard.read_text(encoding="utf-8")
+        self.assertIn("Scanner execution readiness", html)
+        self.assertIn("runtime_missing", html)
+        validated = self.run_cmd(
+            [REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir],
+            check=True,
+        )
+        self.assertIn("Scanner readiness: validated", validated.stdout)
+
     def test_metrics_and_evidence_graph_consume_workflow_execution_status(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         plan = {

@@ -189,6 +189,129 @@ class DoctorTests(unittest.TestCase):
         data = json.loads(cp.stdout)
         self.assertEqual("error", data["overall_status"])
 
+    def test_scanner_readiness_requires_explicit_scanner_runtime_probe_opt_in(self) -> None:
+        cp = self.run_doctor(
+            "--json",
+            "--probe-external-tools",
+            "--scanner-run",
+            str(self.work_dir / "run"),
+            "--scanner-tool",
+            "gitleaks",
+        )
+        self.assertEqual(2, cp.returncode)
+        self.assertIn("requires --probe-scanner-runtime", cp.stderr)
+
+    def test_scanner_runtime_probe_requires_scanner_pair(self) -> None:
+        cp = self.run_doctor("--json", "--probe-scanner-runtime")
+        self.assertEqual(2, cp.returncode)
+        self.assertIn("requires --scanner-run and --scanner-tool", cp.stderr)
+
+    def test_scanner_readiness_rejects_generic_external_probes(self) -> None:
+        cp = self.run_doctor(
+            "--json",
+            "--probe-scanner-runtime",
+            "--probe-external-tools",
+            "--scanner-run",
+            str(self.work_dir / "run"),
+            "--scanner-tool",
+            "gitleaks",
+        )
+        self.assertEqual(2, cp.returncode)
+        self.assertIn("cannot be combined with --probe-external-tools", cp.stderr)
+
+    def test_scanner_readiness_usage_errors_do_not_echo_invalid_values(self) -> None:
+        secret_like_value = "private-user-name-token"
+        for option in ("--scanner-tool", "--scanner-sandbox-profile"):
+            cp = self.run_doctor(
+                "--json",
+                "--probe-scanner-runtime",
+                "--scanner-run",
+                str(self.work_dir / "run"),
+                "--scanner-tool",
+                "gitleaks" if option != "--scanner-tool" else secret_like_value,
+                *([option, secret_like_value] if option != "--scanner-tool" else []),
+            )
+            with self.subTest(option=option):
+                self.assertEqual(2, cp.returncode)
+                self.assertNotIn(secret_like_value, cp.stderr)
+
+    def test_scanner_readiness_reuses_bounded_contract_without_scanner_execution(self) -> None:
+        run_dir = self.work_dir / "run"
+        (run_dir / "repo").mkdir(parents=True)
+        (run_dir / "reports").mkdir()
+        (run_dir / "context.json").write_text(
+            json.dumps(
+                {
+                    "run_id": "doctor-scanner-readiness",
+                    "repo": "example/doctor-readiness",
+                    "target_repo_dir": "repo",
+                    "reports_dir": "reports",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        unexpected_command_log = self.work_dir / "unexpected-commands.log"
+        for command in ("git", "gh", "codex", "runsc"):
+            self.write_mock_command(
+                command,
+                f'printf \'{command} %s\\n\' "$*" >> "{unexpected_command_log}"\nexit 97\n',
+            )
+        command_log = self.work_dir / "docker-commands.log"
+        self.write_mock_command(
+            "docker",
+            f'printf \'%s\\n\' "$*" >> "{command_log}"\n'
+            'case "$*" in\n'
+            "  *' version') exit 0 ;;\n"
+            "  *' image inspect '*) exit 0 ;;\n"
+            "  *) exit 97 ;;\n"
+            "esac\n",
+        )
+        env = os.environ.copy()
+        env["PATH"] = str(self.work_dir / "bin")
+        credential_markers = (
+            "ACCESS_KEY",
+            "API_KEY",
+            "AUTH_CONFIG",
+            "AUTH_FILE",
+            "CREDENTIAL",
+            "PASSWORD",
+            "PASSWD",
+            "PRIVATE_KEY",
+            "SECRET",
+            "SESSION_TOKEN",
+            "TOKEN",
+        )
+        for name in list(env):
+            if any(marker in name.upper() for marker in credential_markers):
+                env.pop(name)
+
+        cp = self.run_doctor(
+            "--json",
+            "--probe-scanner-runtime",
+            "--runs-dir",
+            str(self.work_dir / "runs"),
+            "--scanner-run",
+            str(run_dir),
+            "--scanner-tool",
+            "syft",
+            env=env,
+        )
+        self.assertEqual(0, cp.returncode, f"stdout:\n{cp.stdout}\nstderr:\n{cp.stderr}")
+        data = json.loads(cp.stdout)
+        self.assertFalse(data["external_tool_probes_enabled"])
+        self.assertTrue(data["scanner_runtime_probes_enabled"])
+        self.assertFalse(unexpected_command_log.exists(), "scanner-only doctor must not execute git, gh, codex, or runsc")
+        check = data["checks"]["scanner_execution_readiness"]
+        self.assertTrue(check["checked"])
+        self.assertIn(check["state"], {"ready", "experimental"})
+        self.assertEqual(["ready"], check["reason_codes"])
+        self.assertFalse(check["readiness"]["scanner_executed"])
+        self.assertFalse(check["readiness"]["probes"]["image_pulled"])
+        commands = command_log.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(2, len(commands), commands)
+        self.assertFalse(any(" run " in f" {item} " or " pull " in f" {item} " for item in commands))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

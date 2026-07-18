@@ -242,16 +242,84 @@ def _safe_run_relative_path(run_dir: Path, value: object, *, field: str, require
     except (OSError, ValueError) as exc:
         raise ScannerAdapterError(f"{field} must stay under the run directory") from exc
     current = run_dir
-    for part in lexical_relative.parts:
+    final_index = len(lexical_relative.parts) - 1
+    for index, part in enumerate(lexical_relative.parts):
         current = current / part
         if current.is_symlink():
             raise ScannerAdapterError(f"{field} must not contain symlink components")
+        try:
+            mode = current.lstat().st_mode
+        except FileNotFoundError:
+            # Descendants cannot exist when this component is absent. The caller
+            # separately decides whether the final path must already exist.
+            break
+        except OSError as exc:
+            raise ScannerAdapterError(f"{field} components must be inspectable") from exc
+        if index < final_index and not stat.S_ISDIR(mode):
+            raise ScannerAdapterError(f"{field} parent components must be directories")
+        if index == final_index and require_directory and not stat.S_ISDIR(mode):
+            raise ScannerAdapterError(f"{field} must be a directory")
     if require_directory and candidate.exists() and not candidate.is_dir():
         raise ScannerAdapterError(f"{field} must be a directory")
     relative_text = lexical_relative.as_posix()
     if _SECRET_VALUE_RE.search(relative_text):
         raise ScannerAdapterError(f"{field} must not contain secret-like values")
     return candidate, relative_text
+
+
+def _canonical_target_value(run_dir: Path, context: dict[str, Any]) -> object:
+    """Return the single target declared by context, rejecting ambiguous aliases."""
+
+    target_value = context.get("target_repo_dir") or "repo"
+    repo_value = context.get("repo_dir")
+    if not repo_value:
+        return target_value
+
+    repo_path, _repo_ref = _safe_run_relative_path(
+        run_dir,
+        repo_value,
+        field="repo_dir",
+        require_directory=True,
+    )
+    target_path, _target_ref = _safe_run_relative_path(
+        run_dir,
+        target_value,
+        field="target_repo_dir",
+        require_directory=True,
+    )
+    try:
+        same_target = repo_path.resolve(strict=False) == target_path.resolve(strict=False)
+    except OSError as exc:
+        raise ScannerAdapterError("repo_dir and target_repo_dir must be inspectable") from exc
+    if not same_target:
+        raise ScannerAdapterError("repo_dir and target_repo_dir must identify the same target")
+    return repo_value
+
+
+def _creation_parent_is_safe(path: Path, *, run_dir: Path) -> bool:
+    """Check that the nearest existing parent is a writable run-local directory."""
+
+    current = path.parent
+    run_root = run_dir.resolve(strict=False)
+    while True:
+        if current.is_symlink():
+            return False
+        try:
+            mode = current.lstat().st_mode
+        except FileNotFoundError:
+            if current == run_dir:
+                return False
+            current = current.parent
+            continue
+        except OSError:
+            return False
+        if not stat.S_ISDIR(mode):
+            return False
+        try:
+            current.resolve(strict=False).relative_to(run_root)
+        except (OSError, ValueError):
+            return False
+        return os.access(current, os.W_OK | os.X_OK)
 
 
 def _adapter_contract(adapter: ScannerAdapter, *, path_env: str | None = None) -> dict[str, Any]:
@@ -301,6 +369,139 @@ def _render_argument(token: str, *, target: str, output: str) -> str:
     return token.replace("{target}", target).replace("{output}", output)
 
 
+def resolve_scan_layout(run_dir: Path, *, adapter_id: str) -> dict[str, Any]:
+    """Resolve bounded run-local scanner paths without evaluating execution support."""
+
+    run_dir = validate_run_directory(run_dir)
+    adapter = adapter_by_id(adapter_id)
+    context = _load_safe_context(run_dir)
+    run_id = _validate_safe_metadata(context.get("run_id") or run_dir.name, field="run_id")
+    target_value = _canonical_target_value(run_dir, context)
+    target_path, target_ref = _safe_run_relative_path(
+        run_dir,
+        target_value,
+        field="target repository path",
+        require_directory=True,
+    )
+    reports_value = context.get("reports_dir") or "reports"
+    reports_path, reports_ref = _safe_run_relative_path(
+        run_dir,
+        reports_value,
+        field="reports directory",
+        require_directory=True,
+    )
+    output_ref = f"{reports_ref}/scanner-results/raw/{adapter.id}.json"
+    _safe_run_relative_path(run_dir, output_ref, field="raw scanner output path", require_directory=False)
+    return {
+        "run_id": run_id,
+        "target_path": target_path,
+        "target_ref": target_ref,
+        "reports_path": reports_path,
+        "reports_ref": reports_ref,
+        "output_ref": output_ref,
+    }
+
+
+def scan_layout_safety(run_dir: Path, *, adapter_id: str) -> dict[str, bool]:
+    """Evaluate target/report safety independently so one invalid path does not mask the other."""
+
+    run_dir = validate_run_directory(run_dir)
+    adapter = adapter_by_id(adapter_id)
+    try:
+        context = _load_safe_context(run_dir)
+    except (OSError, ScannerAdapterError):
+        return {
+            "target_safe": False,
+            "reports_safe": False,
+            "output_safe": False,
+            "staging_safe": False,
+            "overlap": False,
+        }
+
+    target_path: Path | None = None
+    reports_path: Path | None = None
+    target_safe = False
+    reports_safe = False
+    output_safe = False
+    staging_safe = False
+    try:
+        target_value = _canonical_target_value(run_dir, context)
+        target_path, _target_ref = _safe_run_relative_path(
+            run_dir,
+            target_value,
+            field="target repository path",
+            require_directory=True,
+        )
+        target_safe = target_path.is_dir() and not target_path.is_symlink()
+    except (OSError, ScannerAdapterError):
+        target_safe = False
+
+    try:
+        reports_value = context.get("reports_dir") or "reports"
+        reports_path, reports_ref = _safe_run_relative_path(
+            run_dir,
+            reports_value,
+            field="reports directory",
+            require_directory=True,
+        )
+        reports_safe = (
+            reports_path.is_dir()
+            and not reports_path.is_symlink()
+            and os.access(reports_path, os.W_OK | os.X_OK)
+        )
+        output_ref = f"{reports_ref}/scanner-results/raw/{adapter.id}.json"
+        output_path, _output_ref = _safe_run_relative_path(
+            run_dir,
+            output_ref,
+            field="raw scanner output path",
+            require_directory=False,
+        )
+        output_safe = (
+            not output_path.exists()
+            and not output_path.is_symlink()
+            and _creation_parent_is_safe(output_path, run_dir=run_dir)
+        )
+        staging_ref = f"{reports_ref}/scanner-results/.gra-scan-staging"
+        staging_path, _staging_ref = _safe_run_relative_path(
+            run_dir,
+            staging_ref,
+            field="scanner staging path",
+            require_directory=True,
+        )
+        staging_safe = (
+            not staging_path.is_symlink()
+            and (not staging_path.exists() or staging_path.is_dir())
+            and _creation_parent_is_safe(staging_path, run_dir=run_dir)
+        )
+    except (OSError, ScannerAdapterError):
+        if not reports_safe:
+            output_safe = False
+            staging_safe = False
+    if not reports_safe:
+        output_safe = False
+        staging_safe = False
+
+    overlap = False
+    if target_path is not None and reports_path is not None:
+        try:
+            target_resolved = target_path.resolve(strict=False)
+            reports_resolved = reports_path.resolve(strict=False)
+            overlap = (
+                target_resolved == reports_resolved
+                or target_resolved in reports_resolved.parents
+                or reports_resolved in target_resolved.parents
+            )
+        except OSError:
+            overlap = False
+    return {
+        "target_safe": target_safe,
+        "reports_safe": reports_safe,
+        "output_safe": output_safe,
+        "staging_safe": staging_safe,
+        "overlap": overlap,
+    }
+
+
 def build_scan_plan(
     run_dir: Path,
     *,
@@ -329,24 +530,11 @@ def build_scan_plan(
     if not adapter.network_required and network_policy != "disabled":
         raise ScannerAdapterError(f"adapter {adapter.id} does not declare network access")
 
-    context = _load_safe_context(run_dir)
-    run_id = _validate_safe_metadata(context.get("run_id") or run_dir.name, field="run_id")
-    target_value = context.get("repo_dir") or context.get("target_repo_dir") or "repo"
-    target_path, target_ref = _safe_run_relative_path(
-        run_dir,
-        target_value,
-        field="target repository path",
-        require_directory=True,
-    )
-    reports_value = context.get("reports_dir") or "reports"
-    _reports_path, reports_ref = _safe_run_relative_path(
-        run_dir,
-        reports_value,
-        field="reports directory",
-        require_directory=True,
-    )
-    output_ref = f"{reports_ref}/scanner-results/raw/{adapter.id}.json"
-    _safe_run_relative_path(run_dir, output_ref, field="raw scanner output path", require_directory=False)
+    layout = resolve_scan_layout(run_dir, adapter_id=adapter.id)
+    run_id = layout["run_id"]
+    target_path = layout["target_path"]
+    target_ref = layout["target_ref"]
+    output_ref = layout["output_ref"]
     command = [
         adapter.executable,
         *(
@@ -375,6 +563,7 @@ def build_scan_plan(
             "sandbox_profile_selected": sandbox_profile,
             "sandbox_readiness_executed": False,
         },
+        "execution_readiness": {"checked": False, "state": "not_checked", "reason_codes": []},
         "working_directory": ".",
         "command": command,
         "command_display": shlex.join(command),

@@ -17,6 +17,8 @@ LAB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LAB_ROOT / "lib"))
 from agent_worker import AgentWorkerProfileError, check_profile_executable, load_profile  # noqa: E402
 from platform_support import platform_support_report  # noqa: E402
+from scanner_adapters import ScannerAdapterError  # noqa: E402
+from scanner_readiness import ScannerReadinessError, evaluate_scanner_readiness  # noqa: E402
 from version import auditor_version  # noqa: E402
 
 SENSITIVE_SEGMENT_RE = re.compile(r"(?i)(token|secret|password|passwd|credential|apikey|api[_-]?key)")
@@ -289,6 +291,43 @@ def check_resources() -> dict[str, Any]:
     }
 
 
+def check_scanner_execution_readiness(
+    *,
+    run_dir: Path,
+    adapter_id: str,
+    sandbox_profile: str,
+) -> dict[str, Any]:
+    """Return the shared bounded scanner readiness result without path or value details."""
+
+    try:
+        readiness = evaluate_scanner_readiness(
+            run_dir,
+            adapter_id=adapter_id,
+            sandbox_profile=sandbox_profile,
+            network_policy="disabled",
+            path_env=os.environ.get("PATH"),
+            env=dict(os.environ),
+        )
+    except (OSError, ValueError, ScannerAdapterError, ScannerReadinessError) as exc:
+        return {
+            "status": "error",
+            "checked": True,
+            "state": "blocked",
+            "reason_codes": ["readiness_evaluation_failed"],
+            "diagnostics": [f"Scanner readiness evaluation failed safely: {type(exc).__name__}."],
+        }
+    state = str(readiness["state"])
+    status = "ok" if state == "ready" else ("warning" if state == "experimental" else "error")
+    return {
+        "status": status,
+        "checked": True,
+        "state": state,
+        "reason_codes": list(readiness["reason_codes"]),
+        "readiness": readiness,
+        "diagnostics": [f"Scanner execution readiness: {state}."],
+    }
+
+
 def summarize(checks: dict[str, Any]) -> str:
     statuses = []
     for value in checks.values():
@@ -303,11 +342,13 @@ def summarize(checks: dict[str, Any]) -> str:
 
 def build_report(args: argparse.Namespace) -> dict[str, Any]:
     runs_dir = Path(args.runs_dir or os.environ.get("GENAI_REPO_AUDITOR_RUNS_DIR") or LAB_ROOT / "runs").expanduser().resolve()
+    scanner_mode = args.scanner_run is not None
+    generic_external_probes = bool(args.probe_external_tools) and not scanner_mode
     checks = {
         "python": check_python(),
-        "git": check_command("git", required=True, probe_external_tools=args.probe_external_tools),
-        "gh": check_command("gh", required=True, probe_external_tools=args.probe_external_tools),
-        "gh_auth": check_gh_auth(probe_external_tools=args.probe_external_tools),
+        "git": check_command("git", required=True, probe_external_tools=generic_external_probes),
+        "gh": check_command("gh", required=True, probe_external_tools=generic_external_probes),
+        "gh_auth": check_gh_auth(probe_external_tools=generic_external_probes),
         "github_token_environment": check_github_token_environment(),
         "worker": check_worker(args.worker_profile),
         "sandbox_runtime": check_sandbox_runtimes(),
@@ -315,12 +356,19 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         "run_directory": check_run_directory(runs_dir),
         "packaged_resources": check_resources(),
     }
+    if args.scanner_run is not None:
+        checks["scanner_execution_readiness"] = check_scanner_execution_readiness(
+            run_dir=Path(args.scanner_run),
+            adapter_id=args.scanner_tool,
+            sandbox_profile=args.scanner_sandbox_profile,
+        )
     overall = summarize(checks)
     return {
         "schema_version": "1",
         "tool": "genai-repo-auditor",
         "version": auditor_version(LAB_ROOT),
-        "external_tool_probes_enabled": bool(args.probe_external_tools),
+        "external_tool_probes_enabled": generic_external_probes,
+        "scanner_runtime_probes_enabled": bool(args.probe_scanner_runtime) and scanner_mode,
         "overall_status": overall,
         "checks": checks,
     }
@@ -349,8 +397,40 @@ def main() -> int:
         action="store_true",
         help="Execute trusted git/gh readiness probes such as --version and gh auth status. Disabled by default.",
     )
+    parser.add_argument(
+        "--probe-scanner-runtime",
+        action="store_true",
+        help="Execute only bounded local Docker/Podman version and image inspect probes for scanner readiness.",
+    )
+    parser.add_argument(
+        "--scanner-run",
+        type=Path,
+        help="Existing audit run to probe for scanner execution readiness; requires --scanner-tool and --probe-scanner-runtime.",
+    )
+    parser.add_argument(
+        "--scanner-tool",
+        help="Approved scanner adapter to evaluate with --scanner-run.",
+    )
+    parser.add_argument(
+        "--scanner-sandbox-profile",
+        default="container",
+        help="Scanner execution profile to evaluate. Default: container.",
+    )
     parser.add_argument("--strict", action="store_true", help="Exit non-zero when required readiness checks report errors")
     args = parser.parse_args()
+
+    if args.scanner_tool is not None and args.scanner_tool not in {"gitleaks", "syft"}:
+        parser.error("--scanner-tool must name an approved scanner adapter")
+    if args.scanner_sandbox_profile not in {"container", "gvisor"}:
+        parser.error("--scanner-sandbox-profile must name an approved execution profile")
+    if (args.scanner_run is None) != (args.scanner_tool is None):
+        parser.error("--scanner-run and --scanner-tool must be used together")
+    if args.probe_scanner_runtime and args.scanner_run is None:
+        parser.error("--probe-scanner-runtime requires --scanner-run and --scanner-tool")
+    if args.scanner_run is not None and not args.probe_scanner_runtime:
+        parser.error("--scanner-run requires --probe-scanner-runtime for explicit bounded runtime probes")
+    if args.scanner_run is not None and args.probe_external_tools:
+        parser.error("scanner readiness cannot be combined with --probe-external-tools")
 
     report = build_report(args)
     if args.json:

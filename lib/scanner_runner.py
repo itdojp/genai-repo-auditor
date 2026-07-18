@@ -6,7 +6,6 @@ import os
 import platform
 import shutil
 import signal
-import stat
 import subprocess
 import tempfile
 import threading
@@ -24,17 +23,15 @@ from scanner_adapters import (
     validate_run_directory,
 )
 from platform_support import detect_environment
+from scanner_readiness import (
+    CONTAINER_IMAGES,
+    CONTAINER_TOOL_VERSIONS,
+    EXECUTION_PROFILES,
+    evaluate_scanner_readiness_for_execution,
+    runtime_candidates as _runtime_candidates,
+    safe_runtime_environment as _safe_runtime_environment,
+)
 
-
-CONTAINER_IMAGES = {
-    "gitleaks": "ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f",
-    "syft": "ghcr.io/anchore/syft@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb",
-}
-CONTAINER_TOOL_VERSIONS = {
-    "gitleaks": "8.30.1",
-    "syft": "1.46.0",
-}
-EXECUTION_PROFILES = ("container", "gvisor")
 _LOG_LIMIT_BYTES = 1_000_000
 _POLL_SECONDS = 0.05
 
@@ -49,53 +46,6 @@ class _ScannerTermination(Exception):
 
 def _raise_scanner_termination(_signum: int, _frame: Any) -> None:
     raise _ScannerTermination
-
-
-def _safe_runtime_environment(source: dict[str, str] | None = None) -> dict[str, str]:
-    env = dict(os.environ if source is None else source)
-    allowed_names = {
-        "HOME",
-        "LANG",
-        "LOGNAME",
-        "PATH",
-        "SYSTEMROOT",
-        "TEMP",
-        "TMP",
-        "TMPDIR",
-        "USER",
-        "WINDIR",
-        "XDG_RUNTIME_DIR",
-    }
-    return {key: value for key, value in env.items() if key.upper() in allowed_names or key.upper().startswith("LC_")}
-
-
-def _docker_endpoint(env: dict[str, str]) -> str:
-    if os.name == "nt":
-        return "npipe:////./pipe/docker_engine"
-    candidates: list[Path] = []
-    xdg = env.get("XDG_RUNTIME_DIR")
-    if xdg:
-        candidates.append(Path(xdg) / "docker.sock")
-    home = Path.home()
-    candidates.extend((home / ".docker" / "run" / "docker.sock", Path("/var/run/docker.sock")))
-    for candidate in candidates:
-        try:
-            if stat.S_ISSOCK(candidate.stat().st_mode):
-                return f"unix://{candidate}"
-        except OSError:
-            continue
-    return "unix:///var/run/docker.sock"
-
-
-def _runtime_candidates(path_env: str | None, env: dict[str, str]) -> list[tuple[list[str], str]]:
-    candidates: list[tuple[list[str], str]] = []
-    docker = shutil.which("docker", path=path_env)
-    if docker:
-        candidates.append(([docker, "--host", _docker_endpoint(env)], "docker"))
-    podman = shutil.which("podman", path=path_env)
-    if podman and platform.system().lower() == "linux":
-        candidates.append(([podman, "--remote=false"], "podman"))
-    return candidates
 
 
 def _runtime_prefix(path_env: str | None, env: dict[str, str]) -> tuple[list[str], str]:
@@ -353,6 +303,21 @@ def execute_scan(
         network_policy=network_policy,
         path_env=path_env,
     )
+    source_env = dict(os.environ if env is None else env)
+    readiness, runtime_selection = evaluate_scanner_readiness_for_execution(
+        run_dir,
+        adapter_id=adapter.id,
+        sandbox_profile=sandbox_profile,
+        network_policy=network_policy,
+        path_env=path_env,
+        env=source_env,
+    )
+    if readiness["state"] not in {"ready", "experimental"}:
+        raise ScannerExecutionError(
+            "scanner readiness blocked: " + ",".join(readiness["reason_codes"])
+        )
+    if runtime_selection is None:
+        raise ScannerExecutionError("scanner readiness did not select an approved local runtime")
     if not target.is_dir() or target.is_symlink():
         raise ScannerExecutionError("target repository must be an existing non-symlink directory")
     if output.exists() or output.is_symlink():
@@ -361,31 +326,8 @@ def execute_scan(
     _ensure_directory(scanner_results, root=run_dir)
     _ensure_directory(output.parent, root=run_dir)
 
-    source_env = dict(os.environ if env is None else env)
     safe_env = _safe_runtime_environment(source_env)
-    candidates = _runtime_candidates(path_env, source_env)
-    if not candidates:
-        raise ScannerExecutionError("container execution requires local Podman or Docker on PATH")
-    prefix: list[str] | None = None
-    runtime: str | None = None
-    for candidate_prefix, candidate_runtime in candidates:
-        try:
-            inspected = subprocess.run(
-                [*candidate_prefix, "image", "inspect", image],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=20,
-                check=False,
-                env=safe_env,
-            )
-        except (OSError, subprocess.SubprocessError):
-            continue
-        if inspected.returncode == 0:
-            prefix, runtime = candidate_prefix, candidate_runtime
-            break
-    if prefix is None or runtime is None:
-        raise ScannerExecutionError("pinned scanner image is not available locally; pre-pull it explicitly")
+    prefix, runtime = runtime_selection
 
     staging_root = scanner_results / ".gra-scan-staging"
     _ensure_directory(staging_root, root=run_dir)
