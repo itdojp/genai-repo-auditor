@@ -274,7 +274,15 @@ def read_summary(run_dir: Path) -> dict[str, Any] | None:
     try:
         json_path.lstat()
     except FileNotFoundError:
-        return None
+        try:
+            markdown_path.lstat()
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            raise IssueDryRunSummaryError(f"invalid bounded dry-run Markdown summary: {exc}") from exc
+        raise IssueDryRunSummaryError(
+            "dry-run JSON and Markdown summary artifacts must be present together"
+        )
     except OSError as exc:
         raise IssueDryRunSummaryError(f"invalid bounded dry-run summary: {exc}") from exc
     if json_path.is_symlink():

@@ -1196,6 +1196,22 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
         self.assertEqual(1, benchmark_summary["issue_dry_run_selected"])
         self.assertEqual(1, benchmark_summary["issue_dry_run_would_create"])
 
+    def test_metrics_rejects_orphan_dry_run_markdown_summary(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        (run_dir / "reports" / "ISSUE_DRY_RUN_SUMMARY.md").write_text(
+            "# Orphan dry-run summary\n",
+            encoding="utf-8",
+        )
+
+        rejected = self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir])
+
+        self.assertEqual(2, rejected.returncode)
+        self.assertIn(
+            "dry-run JSON and Markdown summary artifacts must be present together",
+            rejected.stderr,
+        )
+        self.assertFalse((run_dir / "reports" / "metrics.json").exists())
+
     def test_gra_metrics_skips_symlinked_report_directories(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")
         outside = self.work_dir / "outside-reports"
