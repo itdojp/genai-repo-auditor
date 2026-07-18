@@ -1061,13 +1061,13 @@ def _open_ref_fd(run_dir: Path, ref: str, *, allow_missing: bool) -> int | None:
             for part in parts[:-1]:
                 try:
                     next_fd = os.open(part, directory_flags, dir_fd=parent_fd)
+                    stack.callback(os.close, next_fd)
                 except FileNotFoundError:
                     if allow_missing:
                         return None
                     raise FreshnessError("required report dependency is missing")
                 except OSError as exc:
                     raise FreshnessError(f"artifact_ref must not traverse a symlink or non-directory: {normalized}") from exc
-                stack.callback(os.close, next_fd)
                 parent_fd = next_fd
             try:
                 fd = os.open(parts[-1], leaf_flags, dir_fd=parent_fd)
