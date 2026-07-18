@@ -7,6 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from gralib import write_run_artifact_text
+from run_events import reports_dir
+
 
 DUPLICATE_DECISIONS_REL_DIR = Path("reports") / "duplicate-decisions"
 DECISION_VALUES = {"new", "exact-duplicate", "variant", "related-not-duplicate"}
@@ -17,7 +20,7 @@ def utc_now() -> str:
 
 
 def duplicate_decisions_dir(run_dir: Path) -> Path:
-    return run_dir / DUPLICATE_DECISIONS_REL_DIR
+    return reports_dir(run_dir) / DUPLICATE_DECISIONS_REL_DIR.name
 
 
 def safe_filename(value: object) -> str:
@@ -164,8 +167,11 @@ def decision_for(
 
 def write_duplicate_decision(run_dir: Path, decision: dict[str, Any]) -> Path:
     path = decision_path_for(run_dir, decision.get("finding_id"), decision.get("fingerprint"))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(decision, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    write_run_artifact_text(
+        run_dir,
+        path,
+        json.dumps(decision, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+    )
     return path
 
 

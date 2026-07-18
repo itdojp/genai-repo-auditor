@@ -152,7 +152,7 @@ def write_issue_ledger_snapshot(
         plan_written=plan_written,
         publication_plan_status=publication_plan_status,
     )
-    write_ledger(ledger_path, ledger)
+    write_ledger(run_dir, ledger_path, ledger)
     print(f"Wrote issue ledger: {ledger_path}")
     return ledger
 

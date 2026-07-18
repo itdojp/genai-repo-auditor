@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GenAI Repo Auditor GitHub Issue Dry-run Summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_at", "source", "mode", "repo", "run_id", "commit", "selection_source", "visibility", "visibility_source", "github_duplicate_search_performed", "github_visibility_lookup_performed", "counts", "safety"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "generated_at": {"type": "string", "minLength": 1, "maxLength": 64},
+    "source": {"const": "local-issue-dry-run"},
+    "mode": {"const": "dry-run"},
+    "repo": {"type": "string", "minLength": 1, "maxLength": 240},
+    "run_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "commit": {"type": "string", "maxLength": 128},
+    "selection_source": {"enum": ["current-findings", "verified-publication-plan"]},
+    "visibility": {"enum": ["PRIVATE", "PUBLIC", "INTERNAL", "UNKNOWN"]},
+    "visibility_source": {"enum": ["run-artifact", "verified-publication-plan", "not-available"]},
+    "github_duplicate_search_performed": {"const": false},
+    "github_visibility_lookup_performed": {"const": false},
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total_candidates", "selected", "filtered_by_severity_or_status", "issue_recommendation_suppressed", "novelty_suppressed", "duplicate_suppressed", "advanced_validation_blocked", "public_visibility_blocked", "would_create", "warnings", "issues_created"],
+      "properties": {
+        "total_candidates": {"$ref": "#/$defs/count"},
+        "selected": {"$ref": "#/$defs/count"},
+        "filtered_by_severity_or_status": {"$ref": "#/$defs/count"},
+        "issue_recommendation_suppressed": {"$ref": "#/$defs/count"},
+        "novelty_suppressed": {"$ref": "#/$defs/count"},
+        "duplicate_suppressed": {"$ref": "#/$defs/count"},
+        "advanced_validation_blocked": {"$ref": "#/$defs/count"},
+        "public_visibility_blocked": {"$ref": "#/$defs/count"},
+        "would_create": {"$ref": "#/$defs/count"},
+        "warnings": {"$ref": "#/$defs/count"},
+        "issues_created": {"const": 0}
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["local_artifacts_only", "github_mutation_performed", "publication_plan_written", "finding_content_copied", "raw_github_response_copied"],
+      "properties": {
+        "local_artifacts_only": {"const": true},
+        "github_mutation_performed": {"const": false},
+        "publication_plan_written": {"const": false},
+        "finding_content_copied": {"const": false},
+        "raw_github_response_copied": {"const": false}
+      }
+    }
+  },
+  "$defs": {
+    "count": {"type": "integer", "minimum": 0, "maximum": 1000000}
+  }
+}

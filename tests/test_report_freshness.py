@@ -64,6 +64,46 @@ class ReportFreshnessTests(unittest.TestCase):
         self.assertEqual(metrics["status"], "stale")
         self.assertEqual(metrics["stale_dependency_refs"], ["reports/findings.json"])
 
+    def test_issue_dry_run_pair_is_tracked_by_metrics_and_dashboard(self) -> None:
+        for artifact_id in ("metrics", "dashboard"):
+            with self.subTest(artifact_id=artifact_id):
+                temporary, run_dir = self.make_run()
+                self.addCleanup(temporary.cleanup)
+                reports = run_dir / "reports"
+                (reports / "findings.json").write_text("{}\n", encoding="utf-8")
+                (reports / "issue-dry-run-summary.json").write_text("{}\n", encoding="utf-8")
+                markdown = reports / "ISSUE_DRY_RUN_SUMMARY.md"
+                markdown.write_text("# Initial\n", encoding="utf-8")
+                for name in freshness.ARTIFACT_CATALOG[artifact_id].output_names:
+                    (reports / name).write_text("generated\n", encoding="utf-8")
+
+                dependencies = freshness.artifact_dependencies(run_dir, artifact_id)
+                refs = {item["artifact_ref"] for item in dependencies}
+                self.assertIn("reports/issue-dry-run-summary.json", refs)
+                self.assertIn("reports/ISSUE_DRY_RUN_SUMMARY.md", refs)
+                freshness.record_artifact(run_dir, artifact_id, dependencies)
+
+                markdown.write_text("# Changed\n", encoding="utf-8")
+                status = next(
+                    item
+                    for item in freshness.assess_freshness(run_dir)["artifacts"]
+                    if item["artifact_id"] == artifact_id
+                )
+                self.assertEqual("stale", status["status"])
+                self.assertIn(
+                    "reports/ISSUE_DRY_RUN_SUMMARY.md",
+                    status["stale_dependency_refs"],
+                )
+
+        temporary, run_dir = self.make_run()
+        self.addCleanup(temporary.cleanup)
+        benchmark_refs = {
+            item["artifact_ref"]
+            for item in freshness.artifact_dependencies(run_dir, "benchmark")
+        }
+        self.assertIn("reports/issue-dry-run-summary.json", benchmark_refs)
+        self.assertIn("reports/ISSUE_DRY_RUN_SUMMARY.md", benchmark_refs)
+
     def test_optional_absence_is_fresh_and_later_presence_is_stale(self) -> None:
         temporary, run_dir = self.make_run()
         self.addCleanup(temporary.cleanup)

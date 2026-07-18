@@ -125,6 +125,7 @@ templates/reports/efficacy-worker-response.schema.json
 templates/reports/evidence-graph.schema.json
 templates/reports/findings.schema.json
 templates/reports/imported-findings.schema.json
+templates/reports/issue-dry-run-summary.schema.json
 templates/reports/issue-ledger.schema.json
 templates/reports/metrics.schema.json
 templates/reports/novelty.schema.json

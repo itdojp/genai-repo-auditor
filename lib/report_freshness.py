@@ -153,8 +153,6 @@ def report_ref(run_dir: Path, name: str) -> str:
 
 def expected_output_refs(run_dir: Path, artifact_id: str) -> list[str]:
     definition = _definition(artifact_id)
-    if artifact_id == "issue_publication_plan":
-        return [_normalize_ref(Path("reports") / name, "output_ref") for name in definition.output_names]
     return [report_ref(run_dir, name) for name in definition.output_names]
 
 
@@ -168,7 +166,7 @@ def artifact_dependencies(run_dir: Path, artifact_id: str) -> list[dict[str, str
     run_dir = _validated_run_dir(run_dir)
     report = lambda name, **kwargs: dependency(report_ref(run_dir, name), **kwargs)
     context = dependency("context.json", required=True)
-    publication_findings_ref = "reports/findings.json"
+    publication_findings_ref = report_ref(run_dir, "findings.json")
     if not (run_dir / publication_findings_ref).exists() and (
         run_dir / "repo" / ".genai-audit" / "reports" / "findings.json"
     ).exists():
@@ -191,12 +189,12 @@ def artifact_dependencies(run_dir: Path, artifact_id: str) -> list[dict[str, str
         "issue_publication_plan": [
             context,
             dependency(publication_findings_ref, required=True),
-            dependency("reports/chains.json"),
-            dependency("reports/proofs.json"),
-            dependency("reports/validation.json"),
-            dependency("reports/traces.json"),
-            dependency("reports/known-findings.json"),
-            dependency("reports/remediation/remediation-candidates.json"),
+            report("chains.json"),
+            report("proofs.json"),
+            report("validation.json"),
+            report("traces.json"),
+            report("known-findings.json"),
+            report("remediation/remediation-candidates.json"),
         ],
         "metrics": [
             context,
@@ -209,6 +207,8 @@ def artifact_dependencies(run_dir: Path, artifact_id: str) -> list[dict[str, str
             report("gapfill-targets.json"),
             report("COVERAGE.md", mode="presence"),
             report("issue-publication-plan.json"),
+            report("issue-dry-run-summary.json"),
+            report("ISSUE_DRY_RUN_SUMMARY.md"),
             report("issue-ledger.json"),
             report("workflow-profile.json"),
             report("workflow-execution.json"),
@@ -226,6 +226,8 @@ def artifact_dependencies(run_dir: Path, artifact_id: str) -> list[dict[str, str
             report("findings.json", required=True),
             report("proofs.json"),
             report("issue-ledger.json"),
+            report("issue-dry-run-summary.json"),
+            report("ISSUE_DRY_RUN_SUMMARY.md"),
             report("issues-created.json"),
             report("evidence-graph.json", mode="presence"),
             report("dashboard.html", mode="presence"),
@@ -262,6 +264,8 @@ def artifact_dependencies(run_dir: Path, artifact_id: str) -> list[dict[str, str
             report("remediation/remediation-candidates.json"),
             report("imported-findings.json"),
             report("known-findings.json"),
+            report("issue-dry-run-summary.json"),
+            report("ISSUE_DRY_RUN_SUMMARY.md"),
         ],
     }
     _definition(artifact_id)
@@ -274,11 +278,13 @@ def artifact_dependencies(run_dir: Path, artifact_id: str) -> list[dict[str, str
         declared.extend(_dynamic_report_dependencies(run_dir, "remediation", "**/patch-validation.json"))
     elif artifact_id in {"evidence_graph", "issue_publication_plan"}:
         if artifact_id == "issue_publication_plan":
-            declared.extend(_dynamic_run_dependencies(run_dir, "reports/remediation", "**/patch-validation.json"))
+            reports_ref = reports_dir(run_dir).relative_to(run_dir).as_posix()
+            declared.extend(_dynamic_run_dependencies(run_dir, f"{reports_ref}/remediation", "**/patch-validation.json"))
         else:
             declared.extend(_dynamic_report_dependencies(run_dir, "remediation", "**/patch-validation.json"))
         if artifact_id == "issue_publication_plan":
-            declared.extend(_dynamic_run_dependencies(run_dir, "reports/issue-drafts", "*.md"))
+            reports_ref = reports_dir(run_dir).relative_to(run_dir).as_posix()
+            declared.extend(_dynamic_run_dependencies(run_dir, f"{reports_ref}/issue-drafts", "*.md"))
     return _deduplicate_declarations(declared)
 
 
@@ -573,6 +579,25 @@ def load_bounded_json_artifact(
         return json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise FreshnessError("run artifact must be valid bounded UTF-8 JSON") from exc
+
+
+def load_bounded_text_artifact(
+    run_dir: Path,
+    ref: str | Path,
+    *,
+    max_bytes: int = MAX_INPUT_BYTES,
+) -> str:
+    """Load one run-relative UTF-8 text artifact through the no-follow bounded reader."""
+
+    run_dir = _validated_run_dir(run_dir)
+    if not isinstance(max_bytes, int) or isinstance(max_bytes, bool) or not 1 <= max_bytes <= MAX_INPUT_BYTES:
+        raise FreshnessError("bounded text limit must be a positive supported integer")
+    normalized = _normalize_ref(ref, "artifact_ref")
+    raw = _read_bounded_file(run_dir, normalized, allow_missing=False, max_bytes=max_bytes)
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise FreshnessError("run artifact must be valid bounded UTF-8 text") from exc
 
 
 def assess_freshness(run_dir: Path) -> dict[str, Any]:

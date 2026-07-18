@@ -28,6 +28,11 @@ from scanner_readiness import ScannerReadinessError, read_scanner_readiness_repo
 from workflow_profile import summarize_workflow_profile
 from workflow_execution import summarize_workflow_execution
 from target_queue import TARGET_SOURCES, validate_target_queue_artifact
+from issue_dry_run_summary import (
+    COUNT_KEYS as ISSUE_DRY_RUN_COUNT_KEYS,
+    IssueDryRunSummaryError,
+    read_summary as read_issue_dry_run_summary,
+)
 
 COUNT_STATUSES = [
     "Confirmed",
@@ -570,6 +575,14 @@ def issue_plan_metrics(plan: Any, present: bool) -> dict[str, Any]:
     }
 
 
+def issue_dry_run_metrics(summary: Any) -> dict[str, Any]:
+    counts = summary.get("counts") if isinstance(summary, dict) and isinstance(summary.get("counts"), dict) else {}
+    return {
+        "artifact_present": isinstance(summary, dict),
+        **{key: int(counts.get(key) or 0) for key in ISSUE_DRY_RUN_COUNT_KEYS},
+    }
+
+
 def evidence_graph_compact_summary(graph: Any) -> dict[str, Any]:
     nodes = []
     edges = []
@@ -719,6 +732,7 @@ def compact_public_summary(
     findings_data: Any,
     findings: dict[str, Any],
     issue_publication_plan: dict[str, Any],
+    issue_dry_run: dict[str, Any],
     issue_ledger: dict[str, Any],
     workflow_profile: dict[str, Any],
     workflow_execution: dict[str, Any],
@@ -738,6 +752,7 @@ def compact_public_summary(
         "findings_by_status": dict(findings.get("by_status") or {}),
         "issue_recommended_findings": int(findings.get("issue_recommended") or 0),
         "issue_publication_warning_count": int(issue_publication_plan.get("warning_count") or 0),
+        "issue_dry_run": dict(issue_dry_run),
         "issue_ledger_published_findings": int(issue_ledger.get("published_findings") or 0),
         "issue_ledger_drift_warning_count": int(issue_ledger.get("drift_warning_count") or 0),
         "workflow_profile": dict(workflow_profile),
@@ -874,6 +889,10 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
     traces_data = load_json(reports / "traces.json", None)
     gapfill_data = load_json(reports / "gapfill-targets.json", None)
     issue_plan = load_json(reports / "issue-publication-plan.json", None)
+    try:
+        issue_dry_run = read_issue_dry_run_summary(run_dir)
+    except IssueDryRunSummaryError as exc:
+        raise MetricsError(f"issue dry-run summary is invalid: {exc}") from exc
     issue_ledger = load_json(reports / "issue-ledger.json", None)
     workflow_profile_data = load_report_json(reports, Path("workflow-profile.json"), None)
     workflow_execution_data = load_report_json(reports, Path("workflow-execution.json"), None)
@@ -919,6 +938,7 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
     )
     traces_summary = trace_metrics(traces, traces_data is not None)
     issue_plan_summary = issue_plan_metrics(issue_plan, issue_plan is not None)
+    issue_dry_run_summary = issue_dry_run_metrics(issue_dry_run)
     issue_ledger_summary = ledger_metrics(issue_ledger, issue_ledger is not None)
     workflow_profile_summary = summarize_workflow_profile(workflow_profile_data)
     workflow_execution_summary = summarize_workflow_execution(workflow_execution_data)
@@ -951,6 +971,7 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
             findings_data=findings_data,
             findings=findings_metrics,
             issue_publication_plan=issue_plan_summary,
+            issue_dry_run=issue_dry_run_summary,
             issue_ledger=issue_ledger_summary,
             workflow_profile=workflow_profile_summary,
             workflow_execution=workflow_execution_summary,
@@ -968,6 +989,7 @@ def build_metrics(run_dir: Path) -> dict[str, Any]:
         "target_queue": target_queue_summary,
         "traces": traces_summary,
         "issue_publication_plan": issue_plan_summary,
+        "issue_dry_run": issue_dry_run_summary,
         "issue_ledger": issue_ledger_summary,
         "workflow_profile": workflow_profile_summary,
         "workflow_execution": workflow_execution_summary,
@@ -1070,6 +1092,8 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
         f"| High-risk targets deferred | {metrics['target_queue']['high_risk_deferred']} |",
         f"| Traces | {metrics['traces']['total']} |",
         f"| Issue plan warnings | {metrics['issue_publication_plan']['warning_count']} |",
+        f"| Issue dry-run would create | {metrics['issue_dry_run']['would_create']} |",
+        f"| Issue dry-run blocked/suppressed | {metrics['issue_dry_run']['selected'] - metrics['issue_dry_run']['would_create']} |",
         f"| Issue ledger published findings | {metrics['issue_ledger']['published_findings']} |",
         f"| Workflow profile stages skipped by scope | {metrics['workflow_profile']['skipped_by_scope_count']} |",
         f"| Workflow execution status | {metrics['workflow_execution']['status']} |",
@@ -1133,6 +1157,10 @@ def render_metrics_markdown(metrics: dict[str, Any]) -> str:
     lines.extend(["## Issue publication plan", "", "| Metric | Count |", "|---|---:|"])
     lines.append(f"| Selected findings | {metrics['issue_publication_plan']['selected_findings']} |")
     lines.append(f"| Warnings | {metrics['issue_publication_plan']['warning_count']} |")
+    lines.append("")
+    lines.extend(["## Issue dry-run", "", "| Metric | Count |", "|---|---:|"])
+    for key in ISSUE_DRY_RUN_COUNT_KEYS:
+        lines.append(f"| {key} | {metrics['issue_dry_run'][key]} |")
     lines.append("")
     lines.extend(["## Issue ledger", "", "| Metric | Count |", "|---|---:|"])
     lines.append(f"| Tracked findings | {metrics['issue_ledger']['tracked_findings']} |")

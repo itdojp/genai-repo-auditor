@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from gralib import write_run_artifact_text
+from run_events import reports_dir
+
 LEDGER_REL_PATH = Path("reports") / "issue-ledger.json"
 PUBLISHED_STATUSES = {"published", "duplicate"}
 
@@ -15,7 +18,7 @@ def utc_now() -> str:
 
 
 def default_ledger_path(run_dir: Path) -> Path:
-    return run_dir / LEDGER_REL_PATH
+    return reports_dir(run_dir) / LEDGER_REL_PATH.name
 
 
 def issue_number_from_url(url: str) -> int | None:
@@ -68,9 +71,12 @@ def load_ledger(path: Path, *, run_id: str, repo: str, commit: str) -> dict[str,
     return data
 
 
-def write_ledger(path: Path, ledger: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(ledger, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+def write_ledger(run_dir: Path, path: Path, ledger: dict[str, Any]) -> None:
+    write_run_artifact_text(
+        run_dir,
+        path,
+        json.dumps(ledger, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+    )
 
 
 def entries_by_key(ledger: dict[str, Any]) -> dict[str, dict[str, Any]]:

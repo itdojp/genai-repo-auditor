@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from novelty_ledger import suppresses_publication as novelty_suppresses_publication
+from run_events import reports_dir as configured_reports_dir
 
 from .rendering import stable_fingerprint, slug
 
@@ -50,19 +51,39 @@ def finding_selection_decision(
     repo: Optional[str] = None,
     novelty_entries: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Tuple[bool, str]:
+    selected, reason, _reason_code = finding_selection_outcome(
+        finding,
+        min_severity,
+        statuses,
+        repo=repo,
+        novelty_entries=novelty_entries,
+    )
+    return selected, reason
+
+
+def finding_selection_outcome(
+    finding: Dict[str, Any],
+    min_severity: str,
+    statuses: Iterable[str],
+    *,
+    repo: Optional[str] = None,
+    novelty_entries: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Tuple[bool, str, str]:
+    """Return the canonical selection decision plus a stable aggregate reason code."""
+
     if finding.get("issue_recommended") is False:
-        return False, "issue_recommended=false"
+        return False, "issue_recommended=false", "issue_recommendation_suppressed"
     severity = str(finding.get("severity") or "Informational")
     if SEVERITY_RANK.get(severity, 0) < SEVERITY_RANK[min_severity]:
-        return False, f"severity below {min_severity}"
+        return False, f"severity below {min_severity}", "filtered_by_severity_or_status"
     status = str(finding.get("status") or "")
     if status not in set(statuses):
-        return False, f"status {status or 'Unknown'} not selected"
+        return False, f"status {status or 'Unknown'} not selected", "filtered_by_severity_or_status"
     if repo is not None and novelty_entries is not None:
         entry = matching_novelty_entry(repo, finding, novelty_entries)
         if novelty_suppresses_publication(entry):
-            return False, novelty_suppression_reason(entry or {})
-    return True, "selected"
+            return False, novelty_suppression_reason(entry or {}), "novelty_suppressed"
+    return True, "selected", "selected"
 
 
 def select_findings(
@@ -114,7 +135,10 @@ def plan_visibility(data: Dict[str, Any], context: Dict[str, Any]) -> str:
 
 
 def optional_report(run_dir: Path, rel_path: str, array_key: str) -> Tuple[bool, List[Dict[str, Any]], List[str]]:
-    path = run_dir / rel_path
+    relative = Path(rel_path)
+    if relative.parts and relative.parts[0] == "reports":
+        relative = Path(*relative.parts[1:])
+    path = configured_reports_dir(run_dir) / relative
     if not path.exists():
         return False, [], []
     try:
@@ -128,7 +152,7 @@ def optional_report(run_dir: Path, rel_path: str, array_key: str) -> Tuple[bool,
 
 
 def optional_patch_validations(run_dir: Path) -> Tuple[bool, List[Dict[str, Any]], List[str]]:
-    remediation_root = run_dir / "reports" / "remediation"
+    remediation_root = configured_reports_dir(run_dir) / "remediation"
     if not remediation_root.exists():
         return False, [], []
     paths = sorted(remediation_root.rglob("patch-validation.json"))

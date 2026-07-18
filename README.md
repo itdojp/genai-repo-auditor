@@ -213,6 +213,21 @@ Issue mutation remains an explicit operator action after review. Public
 repository Issue creation is denied by default. Use `gra-issues --apply` and
 `--allow-public` only when publication is intentional and approved.
 
+`gra-issues --dry-run` also writes the sanitized local aggregates
+`<reports_dir>/issue-dry-run-summary.json` and
+`<reports_dir>/ISSUE_DRY_RUN_SUMMARY.md` (under `reports/` by default).
+The JSON is the machine-readable input for `gra-metrics`; its resulting
+`issue_dry_run` summary is then displayed by `gra-dashboard` and consumed by
+`gra-benchmark`. The dry-run never performs a GitHub visibility or duplicate
+lookup, never mutates GitHub, and never writes the immutable
+`issue-publication-plan.json`. Its visibility is the declared value from the
+run artifact or a verified publication plan, not an online lookup. See
+[`docs/ISSUE_WORKFLOW.md`](docs/ISSUE_WORKFLOW.md) for counter semantics,
+strict-validation behavior, and the validation sequence.
+`would_create` is therefore a local-preview classification, not publication
+approval or proof of current repository visibility; apply mode performs the
+authoritative GitHub visibility check and may still refuse publication.
+
 ## Advanced staged audit for large repositories
 
 For large or high-value repositories, use the primary `gra-run` path above for

@@ -1150,11 +1150,67 @@ class MetricsWorkflowTests(CliWorkflowTestCase):
         self.assertFalse(metrics["proofs"]["artifact_present"])
         self.assertFalse(metrics["traces"]["artifact_present"])
         self.assertFalse(metrics["issue_publication_plan"]["artifact_present"])
+        self.assertFalse(metrics["issue_dry_run"]["artifact_present"])
+        self.assertTrue(
+            all(value == 0 for key, value in metrics["issue_dry_run"].items() if key != "artifact_present")
+        )
         self.assertEqual(0, metrics["adversarial_validation"]["downgrade_or_invalidate_rate"])
         self.assertIn("Run duration was not available", (run_dir / "reports" / "METRICS.md").read_text(encoding="utf-8"))
 
         cp_validate = self.run_cmd([REPO_ROOT / "bin" / "gra-validate-report", "--run", run_dir], check=True)
         self.assertIn("Metrics: validated", cp_validate.stdout)
+
+    def test_dry_run_summary_flows_to_metrics_dashboard_and_benchmark(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        self.run_cmd(
+            [
+                REPO_ROOT / "bin" / "gra-issues",
+                "--run",
+                run_dir,
+                "--dry-run",
+                "--min-severity",
+                "Low",
+                "--statuses",
+                "Confirmed",
+            ],
+            check=True,
+        )
+        self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir], check=True)
+        metrics = json.loads((run_dir / "reports" / "metrics.json").read_text(encoding="utf-8"))
+        self.assertTrue(metrics["issue_dry_run"]["artifact_present"])
+        self.assertEqual(1, metrics["issue_dry_run"]["selected"])
+        self.assertEqual(1, metrics["issue_dry_run"]["would_create"])
+        self.assertEqual(0, metrics["issue_dry_run"]["issues_created"])
+        self.assertEqual(metrics["issue_dry_run"], metrics["summary"]["issue_dry_run"])
+        self.assertIn("## Issue dry-run", (run_dir / "reports" / "METRICS.md").read_text(encoding="utf-8"))
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-dashboard", "--run", run_dir], check=True)
+        dashboard = (run_dir / "reports" / "dashboard.html").read_text(encoding="utf-8")
+        self.assertIn("Issue dry-run would create", dashboard)
+        self.assertIn("Issue dry-run suppressed", dashboard)
+
+        self.run_cmd([REPO_ROOT / "bin" / "gra-benchmark", "--run", run_dir], check=True)
+        benchmark = json.loads((run_dir / "reports" / "benchmark.json").read_text(encoding="utf-8"))
+        benchmark_summary = benchmark["metrics"]["summary"]
+        self.assertTrue(benchmark_summary["issue_dry_run_artifact_present"])
+        self.assertEqual(1, benchmark_summary["issue_dry_run_selected"])
+        self.assertEqual(1, benchmark_summary["issue_dry_run_would_create"])
+
+    def test_metrics_rejects_orphan_dry_run_markdown_summary(self) -> None:
+        run_dir = self.copy_fixture_run("minimal-run")
+        (run_dir / "reports" / "ISSUE_DRY_RUN_SUMMARY.md").write_text(
+            "# Orphan dry-run summary\n",
+            encoding="utf-8",
+        )
+
+        rejected = self.run_cmd([REPO_ROOT / "bin" / "gra-metrics", "--run", run_dir])
+
+        self.assertEqual(2, rejected.returncode)
+        self.assertIn(
+            "dry-run JSON and Markdown summary artifacts must be present together",
+            rejected.stderr,
+        )
+        self.assertFalse((run_dir / "reports" / "metrics.json").exists())
 
     def test_gra_metrics_skips_symlinked_report_directories(self) -> None:
         run_dir = self.copy_fixture_run("minimal-run")

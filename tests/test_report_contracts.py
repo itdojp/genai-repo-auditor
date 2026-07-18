@@ -197,6 +197,7 @@ class ReportContractTests(unittest.TestCase):
         command_event_schema = self.load_json(SCHEMAS / "command-event.schema.json")
         report_freshness_schema = self.load_json(SCHEMAS / "report-freshness.schema.json")
         store_import_state_schema = self.load_json(SCHEMAS / "store-import-state.schema.json")
+        issue_dry_run_schema = self.load_json(SCHEMAS / "issue-dry-run-summary.schema.json")
 
         adapter_required = {
             "schema_version",
@@ -266,6 +267,10 @@ class ReportContractTests(unittest.TestCase):
         self.assertEqual(16777216, dependency_contract["properties"]["size_bytes"]["maximum"])
         self.assertEqual("local-store-import", store_import_state_schema["properties"]["source"]["const"])
         self.assertFalse(store_import_state_schema["properties"]["database_location_recorded"]["const"])
+        self.assertFalse(issue_dry_run_schema["properties"]["github_duplicate_search_performed"]["const"])
+        self.assertFalse(issue_dry_run_schema["properties"]["github_visibility_lookup_performed"]["const"])
+        self.assertFalse(issue_dry_run_schema["properties"]["safety"]["properties"]["github_mutation_performed"]["const"])
+        self.assertEqual(0, issue_dry_run_schema["properties"]["counts"]["properties"]["issues_created"]["const"])
         self.assertIn("report_freshness", benchmark_schema["properties"])
         self.assertIn("report_freshness", evidence_graph_schema["properties"]["summary"]["properties"])
         metrics_summary = metrics_schema["properties"]["summary"]
@@ -306,6 +311,24 @@ class ReportContractTests(unittest.TestCase):
             set(metrics_schema["properties"]["scanner_readiness"]["required"]),
         )
         self.assertIn("workflow_profile", metrics_summary["properties"])
+        self.assertIn("issue_dry_run", metrics_summary["properties"])
+        self.assertEqual(
+            {
+                "artifact_present",
+                "total_candidates",
+                "selected",
+                "filtered_by_severity_or_status",
+                "issue_recommendation_suppressed",
+                "novelty_suppressed",
+                "duplicate_suppressed",
+                "advanced_validation_blocked",
+                "public_visibility_blocked",
+                "would_create",
+                "warnings",
+                "issues_created",
+            },
+            set(metrics_schema["properties"]["issue_dry_run"]["required"]),
+        )
         self.assertIn("workflow_profile", metrics_schema["properties"])
         retention_schema = manifest_schema["properties"]["artifact_retention"]
         self.assertEqual(
@@ -716,6 +739,8 @@ class ReportContractTests(unittest.TestCase):
         benchmark_summary = benchmark_schema["properties"]["metrics"]["properties"]["summary"]["properties"]
         self.assertIn("workflow_profile", benchmark_summary)
         self.assertIn("workflow_skipped_by_scope_count", benchmark_summary)
+        self.assertIn("issue_dry_run_would_create", benchmark_summary)
+        self.assertIn("issue_dry_run_blocked", benchmark_summary)
         self.assertEqual(
             {
                 "schema_version",
