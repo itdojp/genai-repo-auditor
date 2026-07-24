@@ -254,7 +254,7 @@ jobs:
           (cd pypi-candidate && sha256sum -c SHA256SUMS)
 
       - name: Publish to TestPyPI with OIDC
-        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1
         with:
           packages-dir: pypi-candidate/packages/
           repository-url: https://test.pypi.org/legacy/
@@ -364,7 +364,7 @@ jobs:
           PY
 
       - name: Publish to PyPI with OIDC
-        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1
         with:
           packages-dir: pypi-candidate/packages/
           attestations: true
